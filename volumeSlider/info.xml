@@ -1,0 +1,21 @@
+<plugin name="Volume slider">
+	<directory>
+		volumeSlider
+	</directory>
+	<version>
+		2019.01.11
+	</version>
+	<author>
+		George Dickinson
+	</author>
+	<url>
+	</url>
+	<dependencies>
+	</dependencies>
+	<menu_layout>
+		<action location="volumeSlider" function="volumeSlider.startVolumeSlider">volume from file</action>
+        <action location="camVolumeSlider1" function="camVolumeSlider.startVolumeSlider">camera recording - current window</action>
+        <action location="camVolumeSlider2" function="camVolumeSlider2.startVolumeSlider">camera recording - open file</action>
+        <!--<action location="tiffPageLoader" function="tiffPageLoader.gui">load Tiff by Pages</action>--><!--Too slow with large files-->
+	</menu_layout>
+</plugin>
