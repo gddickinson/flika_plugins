@@ -20,7 +20,7 @@ from flika.process.file_ import get_permutation_tuple
 from PyQt5.QtCore import QTime, QTimer
 from PyQt5.QtWidgets import QApplication, QLCDNumber
 from time import sleep
-from subprocess import Popen, PIPE, STDOUT 
+
 import platform
 
 flika_version = flika.__version__
@@ -328,8 +328,8 @@ class MainGUI(QtWidgets.QDialog):
         self.showElapsedTimeButton = QtWidgets.QPushButton('Show Elapsed Time')
         self.showElapsedTimeButton.pressed.connect(self.showElapsedTime)
 
-        #self.sendBatch_button = QtWidgets.QPushButton('Run Batch Analysis Now')
-        #self.sendBatch_button.pressed.connect(self.sendBatchToVolumeAnalyser)
+        self.sendBatch_button = QtWidgets.QPushButton('Run Batch Analysis Now')
+        self.sendBatch_button.pressed.connect(self.sendBatchToVolumeAnalyser)
 
  
         #sliders
@@ -353,7 +353,7 @@ class MainGUI(QtWidgets.QDialog):
         layout.addWidget(self.spinLabel1, 4, 0)        
         layout.addWidget(self.SpinBox1, 4, 1)
         layout.addWidget(self.slider1, 5, 0, 2, 5)
-        #layout.addWidget(self.sendBatch_button, 7, 0)
+        layout.addWidget(self.sendBatch_button, 7, 0)
 
         
         self.setLayout(layout)
@@ -366,9 +366,6 @@ class MainGUI(QtWidgets.QDialog):
         self.slider1.valueChanged.connect(self.slider1ValueChange)
         self.SpinBox1.valueChanged.connect(self.spinBox1ValueChange)
 
-        #define path to volumeViewConverter script that will be called by subprocess
-        #self.scriptPath = "C:\\Users\\George\\.FLIKA\\plugins\\onTheFly_Reconstruction\\volumeViewConverter.py"
-        self.scriptPath = os.path.join(os.path.expanduser("~"), '.FLIKA\\plugins\\onTheFly_Reconstruction\\volumeViewConverter.py')
         return
  
      #volume changes with slider & spinbox
@@ -443,15 +440,9 @@ class MainGUI(QtWidgets.QDialog):
                 newVol_1, newVol_2 = load_tiff.openTiff(filename)
             
             #single-channel recording
-            self.recordingArray_1 = np.vstack((self.recordingArray_1, newVol_1)) 
-
+            self.recordingArray_1 = np.vstack((self.recordingArray_1, newVol_1)) #to go to batch for light-sheet analysis
+            self.numberVolsAdded_channel1 += 1 
             #print('Channel 1: ' + str(self.recordingArray_1.shape))
-            
-            #call volumeViewConverter.py for each volume added via subprocess
-            self.call_analyze1Volume(self.numberVolsAdded_channel1)
-            
-            #update volume number
-            self.numberVolsAdded_channel1 += 1            
             
             #2-channel recording
             if self.nChannels == 2:
@@ -535,30 +526,6 @@ class MainGUI(QtWidgets.QDialog):
                 
                 
         return
-
-    def call_analyze1Volume(self, volume):
-        #define arguments to pass to volumeViewConverter.py
-        args = ' '.join([str(self.nSteps),
-                         str(self.shift_factor),
-                         str(self.theta),
-                         str(self.triangle_scan),
-                         str(self.interpolate),
-                         str(self.trim_last_frame),
-                         str(self.zscan),
-                         str(self.nChannels),
-                         str(volume),
-                         self.folderPath,
-                         self.exportFolderPath])
-
-        #create command
-        cmd = 'python' + ' ' + self.scriptPath + ' ' + args
-        #call python scipt via subprocess to analyse 1 volume
-        p = Popen(cmd)
-        #to get widow output
-        #p = Popen(cmd, shell=True, stdin=PIPE, stdout=PIPE, stderr=STDOUT)      
-        #output = p.stdout.read() 
-        #print (output)
-        return
         
         
     def test(self):
@@ -574,6 +541,54 @@ class MainGUI(QtWidgets.QDialog):
         #TODO
         return
 
+    def sendBatchToVolumeAnalyser(self):
+        #for testing
+        #self.batchNumber = 0
+        #Get batch of recording array to send
+        #TODO
+        start = self.batchNumber * (self.batchSize*self.nSteps)
+        end = start + (self.batchSize*self.nSteps)
+        A = np.copy(self.recordingArray_1[start:end])
+        #print(A.shape)
+        
+        #Preprocess array
+        
+        if self.zscan:
+            A = A.swapaxes(1,2)
+        
+        mt, mx, my = A.shape
+        
+        if self.triangle_scan:
+            for i in np.arange(mt // (self.nSteps * 2)):
+                t0 = i * self.nSteps * 2 + self.nSteps
+                tf = (i + 1) * self.nSteps * 2
+                A[t0:tf] = A[tf:t0:-1]
+        
+        mv = mt // self.nSteps  # number of volumes
+        
+        A = A[:mv * self.nSteps]
+        B = np.reshape(A, (mv, self.nSteps, mx, my))
+        A_dataType = A.dtype
+        
+        A = np.zeros((2,2)) #clear array to save memory
+        
+        if self.trim_last_frame:
+            B = B[:, :-1, :, :]
+
+        D = perform_shear_transform(B, self.shift_factor, self.interpolate, A_dataType, self.theta)
+
+        B = np.zeros((2,2)) #clear array to save memory
+        
+        #send batch to volume analyzer
+        try:
+            volumeAnalyzer.run(D,self.exportFolderPath,self.batchNumber)
+            #update batchNumber
+            self.batchNumber += 1
+        
+        except:
+            pass
+        
+        return 
     
     def stopVolumeViewer(self):
         return
@@ -640,9 +655,9 @@ class Clock(QtWidgets.QWidget):
             print('update')
             
         #send batch to volume analyzer according to updateAnalyzer rate
-        #if self.iterations % onTheFly.mainGUI.updateAnalyzerRate == 0:      
-        #    onTheFly.mainGUI.sendBatchToVolumeAnalyser()
-        #    print('batch sent')
+        if self.iterations % onTheFly.mainGUI.updateAnalyzerRate == 0:      
+            onTheFly.mainGUI.sendBatchToVolumeAnalyser()
+            print('batch sent')
             
         self.iterations += 1 #approx 1 iteration/sec
         return
@@ -683,7 +698,83 @@ class Clock(QtWidgets.QWidget):
         self.close()
         return
 
+ 
+class VolumeAnalyzer():
+
+    def __init__(self):
+        pass
+
+    def run(self, volume, exportPath, batchNumber): 
+        #get variables
+        self.volume = volume
+        self.vol_shape = self.volume.shape
+        mv,mz,mx,my= self.volume.shape
+        self.currentAxisOrder=[0,1,2,3]
+        self.current_v_Index=0
+        self.current_z_Index=0
+        self.current_x_Index=0
+        self.current_y_Index=0
+        self.exportPath = exportPath
+        self.batchNumber = batchNumber
+        
+        #run
+        self.export_volume()
+        
+        return
+        
+        
+    def getXview(self):
+        vol = self.volume
+        #assert currentAxisOrder==[0,1,2,3]
+        vol=vol.swapaxes(1,2)
+        #currentAxisOrder=[0,2,1,3]
+        vol=vol.swapaxes(2,3)
+        #currentAxisOrder=[0,2,3,1]  
+        return vol
+
+    def getYview(self):
+        vol = self.volume
+        #assert self.currentAxisOrder==[0,1,2,3]    
+        vol=vol.swapaxes(1,3)
+        #self.currentAxisOrder=[0,3,2,1]
+        return vol
+        
+    def make_maxintensity(self):
+        vol=self.volume
+        new_vol=np.max(vol,1)
+        #Window(new_vol, name=name)
+        
+    def export_volume(self):
+        operations = [(self.volume,'top'), (self.getXview(),'Xview'), (self.getYview(),'Yview')]
+    
+        for operation in operations:
+        
+            vol = operation[0]
+            folderName = operation[1]
+            
+            #if platform.system() == 'Windows':
+            #    correctPath = self.exportPath.replace('/','\\')
+            
+            export_path = os.path.join(self.exportPath, folderName,'light_sheet_vols')
+            #export_path = self.exportPath + '/' + folderName + '/' + 'light_sheet_vols'
+            i=0
+            while os.path.isdir(export_path+str(self.batchNumber)+'_'+str(i)):
+                i+=1
+            export_path=export_path+str(self.batchNumber)+'_'+str(i)
+            os.makedirs(export_path, exist_ok=True) 
+            for v in np.arange(len(vol)):
+                A=vol[v]
+                filename=os.path.join(export_path,str(v)+'.tiff')
+                if len(A.shape)==3:
+                    A=np.transpose(A,(0,2,1)) # This keeps the x and the y the same as in FIJI
+                elif len(A.shape)==2:
+                    A=np.transpose(A,(1,0))
+                tifffile.imsave(filename, A)
+
+        return
+
        
+volumeAnalyzer = VolumeAnalyzer()        
         
 class Load_tiff ():
     """ load_tiff()
