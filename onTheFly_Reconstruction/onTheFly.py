@@ -407,9 +407,19 @@ class MainGUI(QtWidgets.QDialog):
         sorted_filename_list = [ os.path.basename(i) for i in time_sorted_list]
         #print(sorted_filename_list)
         return sorted_filename_list
+
+    def getNameSortedDirList(self):
+        name_list = os.listdir(self.folderPath)
+        full_list = [self.folderPath + '/' + i for i in name_list]
+        name_sorted_list = sorted(full_list, key=lambda x: int(os.path.splitext(x)[-2].split('_')[-1]))
+        sorted_filename_list = [ os.path.basename(i) for i in name_sorted_list]
+        print(sorted_filename_list)
+        return sorted_filename_list
+
         
     def initializeFolderCheck(self):
-        self.folderContents = dict([f,None] for f in self.getTimeSortedDirList())
+        #self.folderContents = dict([f,None] for f in self.getTimeSortedDirList())
+        self.folderContents = dict([f,None] for f in self.getNameSortedDirList())
         return
        
     def checkFolder(self):
