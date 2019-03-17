@@ -23,11 +23,18 @@ from time import sleep
 from subprocess import Popen, PIPE, STDOUT 
 import platform
 
+import sys
+
+sys.path.insert(0, os.path.join(os.path.expanduser("~"), '.FLIKA\\plugins\\onTheFly_Reconstruction'))
+
+import volumeSlider_display
+
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
     from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow
 else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow
+
 
     
 def get_transformation_matrix(theta=45):
@@ -150,12 +157,12 @@ class OnTheFly(BaseProcess_noPriorWindow):
     Continuous light sheet analysis
     """
     def __init__(self):
-        if g.settings['on_the_fly'] is None or 'updateAnalyzerRate' not in g.settings['on_the_fly']:
+        if g.settings['on_the_fly'] is None or 'autoUpdateViewer' not in g.settings['on_the_fly']:
             s = dict()
             s['sliceNumber'] = 0
             s['batchSize'] = 10
             s['updateRate'] = 2 #seconds
-            s['updateAnalyzerRate'] = 120 #seconds            
+            s['updateAnalyzerRate'] = 60 #seconds            
             s['nSteps'] = 1
             s['displaySlice'] = 0
             s['shift_factor'] = 1
@@ -164,12 +171,13 @@ class OnTheFly(BaseProcess_noPriorWindow):
             s['interpolate'] = False
             s['trim_last_frame'] = False
             s['nChannels'] = 1
+            s['autoUpdateViewer'] = True
             g.settings['on_the_fly'] = s
         
         BaseProcess_noPriorWindow.__init__(self)
         
 
-    def __call__(self, recordingFolder, exportFolder, batchSize, updateRate, updateAnalyzerRate, nSteps, displaySlice, shift_factor, theta, triangle_scan, interpolate, trim_last_frame, zscan, nChannels, keepSourceWindow=False):
+    def __call__(self, recordingFolder, exportFolder, batchSize, updateRate, updateAnalyzerRate, nSteps, displaySlice, shift_factor, theta, triangle_scan, interpolate, trim_last_frame, zscan, nChannels, autoUpdateViewer, keepSourceWindow=False):
         g.settings['on_the_fly']['recordingFolder'] = recordingFolder
         g.settings['on_the_fly']['exportFolder'] = exportFolder        
         g.settings['on_the_fly']['batchSize'] = batchSize
@@ -184,6 +192,7 @@ class OnTheFly(BaseProcess_noPriorWindow):
         g.settings['on_the_fly']['trim_last_frame'] = trim_last_frame 
         g.settings['on_the_fly']['zscan'] = zscan
         g.settings['on_the_fly']['nChannels'] = nChannels
+        g.settings['on_the_fly']['autoUpdateViewer'] = autoUpdateViewer
         g.m.statusBar().showMessage("Starting ...")
         t = time()
         
@@ -244,6 +253,10 @@ class OnTheFly(BaseProcess_noPriorWindow):
         self.nChannels.setMinimum(1)
         self.nChannels.setMaximum(2)       
         self.nChannels.setValue(s['nChannels'])        
+        
+        self.autoUpdateViewer = CheckBox()
+        self.autoUpdateViewer.setValue(s['autoUpdateViewer'])
+        
 
         self.items.append({'name': 'recordingFolder','string':'Results Folder Location','object': self.recordingFolder})     
         self.items.append({'name': 'exportFolder','string':'Export Folder Location','object': self.exportFolder})         
@@ -259,6 +272,7 @@ class OnTheFly(BaseProcess_noPriorWindow):
         self.items.append({'name': 'trim_last_frame', 'string': 'Trim Last Frame', 'object': self.trim_last_frame})
         self.items.append({'name': 'zscan', 'string': 'Z Scan', 'object': self.zscan})       
         self.items.append({'name': 'nChannels', 'string': 'Number of Channels', 'object': self.nChannels}) 
+        self.items.append({'name': 'autoUpdateViewer', 'string': 'Automatically update Volume Analyzer', 'object': self.autoUpdateViewer})         
         
         super().gui()
         
@@ -286,6 +300,8 @@ class MainGUI(QtWidgets.QDialog):
         self.displaySlice = s['displaySlice']
         
         self.nChannels = s['nChannels']
+        
+        self.autoUpdateViewer = s['autoUpdateViewer']
 
         self.shift_factor = s['shift_factor']
         self.theta = s['theta']
@@ -317,6 +333,12 @@ class MainGUI(QtWidgets.QDialog):
         self.SpinBox1 = QtWidgets.QSpinBox()
         self.SpinBox1.setRange(0,sliderMax)
         self.SpinBox1.setValue(0)
+        
+        #ComboBox
+        self.viewerTypeBox = QtWidgets.QComboBox()
+        self.viewerTypeBox.addItems(["top", "Xview", "Yview"])
+        self.viewerTypeBox.currentIndexChanged.connect(self.viewerSelectionChange)
+        self.viewerSelection = self.viewerTypeBox.currentText()
  
         #buttons
         self.startButton = QtWidgets.QPushButton('Start')
@@ -328,10 +350,16 @@ class MainGUI(QtWidgets.QDialog):
         self.showElapsedTimeButton = QtWidgets.QPushButton('Show Elapsed Time')
         self.showElapsedTimeButton.pressed.connect(self.showElapsedTime)
 
-        #self.sendBatch_button = QtWidgets.QPushButton('Run Batch Analysis Now')
-        #self.sendBatch_button.pressed.connect(self.sendBatchToVolumeAnalyser)
+        self.startViewer_button = QtWidgets.QPushButton('Start Viewer')
+        self.startViewer_button.pressed.connect(self.startViewer)
 
- 
+        self.updateViewer_button = QtWidgets.QPushButton('Update Viewer')
+        self.updateViewer_button.pressed.connect(self.updateViewer)
+        
+        self.stopViewer_button = QtWidgets.QPushButton('Stop Viewer')
+        self.stopViewer_button.pressed.connect(self.stopViewer)    
+
+
         #sliders
         self.sliderLabel1 = QtWidgets.QLabel("Slice #")
         self.slider1 = QtWidgets.QSlider(QtCore.Qt.Horizontal)
@@ -353,8 +381,10 @@ class MainGUI(QtWidgets.QDialog):
         layout.addWidget(self.spinLabel1, 4, 0)        
         layout.addWidget(self.SpinBox1, 4, 1)
         layout.addWidget(self.slider1, 5, 0, 2, 5)
-        #layout.addWidget(self.sendBatch_button, 7, 0)
-
+        layout.addWidget(self.startViewer_button, 7, 0)
+        layout.addWidget(self.updateViewer_button, 7, 1)
+        layout.addWidget(self.stopViewer_button, 7, 2)
+        layout.addWidget(self.viewerTypeBox, 7, 3)
         
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -369,6 +399,9 @@ class MainGUI(QtWidgets.QDialog):
         #define path to volumeViewConverter script that will be called by subprocess
         #self.scriptPath = "C:\\Users\\George\\.FLIKA\\plugins\\onTheFly_Reconstruction\\volumeViewConverter.py"
         self.scriptPath = os.path.join(os.path.expanduser("~"), '.FLIKA\\plugins\\onTheFly_Reconstruction\\volumeViewConverter.py')
+        
+        #define path to volumeSlider_display script that will be called by subprocess
+        #self.scriptPath_2 = os.path.join(os.path.expanduser("~"), '.FLIKA\\plugins\\onTheFly_Reconstruction\\volumeSlider_display.py')
         return
  
      #volume changes with slider & spinbox
@@ -397,6 +430,9 @@ class MainGUI(QtWidgets.QDialog):
         self.displayWindow_FLAG = True
         self.autolevelsFlag_1 = True
         self.autolevelsFlag_2 = True
+        
+        #disable button
+        self.startButton.setEnabled(False)
         return
 
         
@@ -493,6 +529,20 @@ class MainGUI(QtWidgets.QDialog):
 
     def stop(self):
         self.clock.stopClock()
+        
+        #close display window(s)
+        #single-channel
+        self.displayWindow_1.close()
+        #2-channel
+        if self.nChannels == 2:
+            self.displayWindow_2.close()  
+        
+        #initialize FLAG settings
+        self.displayWindow_FLAG = False
+        self.autolevelsFlag_1 = False
+        self.autolevelsFlag_2 = False        
+        #disable button
+        self.startButton.setEnabled(True)
         return        
 
     def showElapsedTime(self):
@@ -569,7 +619,17 @@ class MainGUI(QtWidgets.QDialog):
         #output = p.stdout.read() 
         #print (output)
         return
-        
+
+    # def call_volumeViewer(self, volume_path):
+        # #create command
+        # cmd = 'python' + ' ' + self.scriptPath_2 + ' ' + volume_path
+        # #call python scipt via subprocess to analyse 1 volume
+        # p = Popen(cmd)
+        # #to get widow output
+        # #p = Popen(cmd, shell=True, stdin=PIPE, stdout=PIPE, stderr=STDOUT)      
+        # #output = p.stdout.read() 
+        # #print (output)
+        # return
         
     def test(self):
         for key, value in self.folderContents.items() :
@@ -580,12 +640,30 @@ class MainGUI(QtWidgets.QDialog):
             print('no array')
         return
  
-    def startVolumeViewer(self):
-        #TODO
+ 
+ 
+    def viewerSelectionChange(self):
+        self.viewerSelection = self.viewerTypeBox.currentText()
+ 
+    def startViewer(self):
+        volume_path = os.path.join(self.exportFolderPath, self.viewerSelection) 
+        print(volume_path)
+        volumeSlider_display.volumeSlider.startVolumeSlider(volume_path)
+        #self.call_volumeViewer(volume_path)
+        
+        #disable start button
+        self.startViewer_button.setEnabled(False)
         return
 
+    def updateViewer(self):
+        volumeSlider_display.volumeSlider.updateVolume()
+        return
     
-    def stopVolumeViewer(self):
+    def stopViewer(self):
+        volumeSlider_display.volumeSlider.closeViewer()
+        
+        #enable start button
+        self.startViewer_button.setEnabled(True)
         return
         
     def pauseVolumeViewer(self):
@@ -644,11 +722,20 @@ class Clock(QtWidgets.QWidget):
         #update timer display
         self.showElapsedTime()
         
+        if len(os.listdir(onTheFly.mainGUI.folderPath) ) == 0:
+            pass
+        
         #use updateRate to limit number of updateCalls made
         if self.iterations % onTheFly.mainGUI.updateRate == 0:
             onTheFly.mainGUI.updateCall()
-            print('update')
-            
+            print('update main view')
+                
+        if onTheFly.mainGUI.autoUpdateViewer == True and self.iterations % onTheFly.mainGUI.updateAnalyzerRate == 0 and len(os.listdir(onTheFly.mainGUI.exportFolderPath) ) != 0:
+            onTheFly.mainGUI.updateViewer()
+            print('update volume viewer')
+
+
+        
         #send batch to volume analyzer according to updateAnalyzer rate
         #if self.iterations % onTheFly.mainGUI.updateAnalyzerRate == 0:      
         #    onTheFly.mainGUI.sendBatchToVolumeAnalyser()
@@ -794,3 +881,5 @@ class Load_tiff ():
             return B, C
         
 load_tiff = Load_tiff()   
+
+

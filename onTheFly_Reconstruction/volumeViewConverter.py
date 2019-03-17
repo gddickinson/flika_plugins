@@ -249,7 +249,7 @@ class VolumeAnalyzer():
             os.makedirs(export_path, exist_ok=True) 
             for v in np.arange(len(vol)):
                 A=vol[v]
-                filename=os.path.join(export_path,str(v)+'.tiff')
+                filename=os.path.join(export_path,str(i)+'.tiff')
                 if len(A.shape)==3:
                     A=np.transpose(A,(0,2,1)) # This keeps the x and the y the same as in FIJI
                 elif len(A.shape)==2:
