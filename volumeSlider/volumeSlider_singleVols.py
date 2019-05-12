@@ -45,7 +45,7 @@ class VolumeSlider(BaseProcess):
         #print(self.displayImage.shape)
         return
 
-    def interleave(self, A):
+    def interleave_OLD(self, A):
         print(A.shape)
         self.nVols, self.nFrames, self.x, self.y = A.shape
         #print(self.nVols, self.nFrames, self.x, self.y )
@@ -61,6 +61,13 @@ class VolumeSlider(BaseProcess):
     
         return interleaved
 
+    def interleave(self, A):
+        print(A.shape)
+        self.nVols, self.nFrames, self.x, self.y = A.shape   
+        return np.reshape(A, (self.nVols*self.nFrames,self.x,self.y), order='F')       
+        
+        
+        
     def updateImage(self):
         self.displayWindow.imageview.setImage(self.displayImage[self.displayedTimeSlice:(self.displayedTimeSlice+self.numberOfTimeSlices)],autoLevels=False)
         return

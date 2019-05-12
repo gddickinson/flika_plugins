@@ -466,9 +466,17 @@ class MainGUI(QtWidgets.QDialog):
             for folder in added:
                 #pathName = os.path.join(self.folderPath , folder)
                 pathName = self.folderPath + '/' + folder
-                file = os.listdir(pathName)[0]
+                file = os.listdir(pathName)[0] #gets first file (timepoint 0 with Ian's multi-xy?)
+                
+                #if '.ome' in file:
+                #    newFile = file.replace('.ome','_ome')
+                #    os.rename (pathName + '/' + file,pathName + '/' + newFile)
+                #    file = os.listdir(pathName)[0]
+                #print(file)
+                
                 #filename = os.path.join(pathName, file)
                 filename = pathName + '/' + file
+                #print(filename)
                 self.addVolumeToArray(filename)
             self.folderContents = {**self.folderContents,**updatedContents}   
             return
@@ -510,6 +518,7 @@ class MainGUI(QtWidgets.QDialog):
         else: #initiate recording array
             self.loading = True
             try:
+                print(filename)
                 self.recordingArray_1, self.recordingArray_2 = load_tiff.openTiff(filename)
             except:
                 sleep(3)   #sleep and try again to give file time to be unlocked
@@ -796,7 +805,8 @@ class Load_tiff ():
         Tiff = tifffile.TiffFile(str(filename))
         A = Tiff.asarray()
         Tiff.close()
-        axes = [tifffile.AXES_LABELS[ax] for ax in Tiff.series[0].axes]
+        axes = [tifffile.AXES_LABELS[ax] for ax in Tiff.series[0].axes]       
+        #print(axes)
 
         if set(axes) == set(['time', 'depth', 'height', 'width']):  # single channel, multi-volume
             target_axes = ['time', 'depth', 'width', 'height']
@@ -816,7 +826,18 @@ class Load_tiff ():
             A = A.reshape(nFrames,x,y)
             #newWindow = Window(A,'Loaded Tiff')
             return A, None
-            
+ 
+
+        elif set(axes) == set(['depth', 'height', 'width']):  # single channel, single-volume
+            target_axes = ['depth', 'width', 'height']
+            perm = get_permutation_tuple(axes, target_axes)
+            A = np.transpose(A, perm)
+            nFrames, x, y = A.shape
+            A = A.reshape(nFrames,x,y)
+            #newWindow = Window(A,'Loaded Tiff')
+            return A, None
+
+ 
         elif set(axes) == set(['time', 'height', 'width']):  # single channel, single-volume
             target_axes = ['time', 'width', 'height']
             perm = get_permutation_tuple(axes, target_axes)
@@ -878,7 +899,12 @@ class Load_tiff ():
             
             #clear A array to reduce memory use
             A = np.zeros((2,2))
+            print(target_axes)
             return B, C
+            
+        else:
+            print(axes + 'not available')
+
         
 load_tiff = Load_tiff()   
 
