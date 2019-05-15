@@ -19,10 +19,15 @@ else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector
 
 class PlotWindow(BaseProcess_noPriorWindow):
-    def __init__(self,window):
+    def __init__(self,window, channel):
         BaseProcess_noPriorWindow.__init__(self)
-        #use current window to get ROI data
+        #uset current window 
         self.win = window
+        #set colour channel at start
+        self.channelSelection = channel
+        #create colour dict
+        self.colourChannelDict = {'R': 0, 'G': 1, 'B': 2}
+        #get linedata
         self.getLineData()
         #set plot line style
         self.setStyle()
@@ -30,6 +35,7 @@ class PlotWindow(BaseProcess_noPriorWindow):
         self.initalizePlot()
         #set connections
         self.setUpdateConnections()
+
 
     def initalizePlot(self):
         #create window for plot
@@ -60,15 +66,10 @@ class PlotWindow(BaseProcess_noPriorWindow):
             linescanData = self.win.rois[0].getArrayRegion(data,self.win.imageview.imageItem)
 
             #colour image line plot
-            #red
-            redLine = linescanData[:,0]
-            #green
-            greenLine = linescanData[:,1]
-            #blue
-            blueLine = linescanData[:,2]
+            channel = self.colourChannelDict[self.channelSelection]
     
             self.x = range(linescanData[:,0].shape[0])
-            self.y = redLine #curently only displaying red channel data
+            self.y = linescanData[:,channel]
 
     def setStyle(self):
         #set pen type
@@ -76,6 +77,11 @@ class PlotWindow(BaseProcess_noPriorWindow):
         #penType = pg.mkPen('y', width=3, style=Qt.DashLine)                ## Make a dashed yellow line 2px wide
         self.penType = pg.mkPen(0.5)                                        ## solid grey line 1px wide
         #penType = pg.mkPen(color=(200, 200, 255), style=Qt.DotLine)        ## Dotted pale-blue line
+        return
+
+    def setChannel(self, channel):
+        self.channelSelection = channel
+        self.update()
         return
 
     def setUpdateConnections(self):
@@ -137,6 +143,8 @@ class OptionsGUI(QDialog):
         self.show()
 
     def channelSelectionChange(self):
+        self.channelSelection = self.channelSelectorBox.currentText()
+        linescan.linescanPlot.setChannel(self.channelSelection)
         return
 
     def closeOptions(self):
@@ -172,7 +180,7 @@ class Linescan(BaseProcess_noPriorWindow):
 
     def linescan(self):
         #create plotWindow instance
-        self.linescanPlot = PlotWindow(g.win)      
+        self.linescanPlot = PlotWindow(g.win, 'R')      
         return
 
     def options(self):
