@@ -10,7 +10,7 @@ from distutils.version import StrictVersion
 import flika
 from flika import global_vars as g
 from flika.window import Window
-
+from pyqtgraph.Point import Point
 
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
@@ -42,11 +42,36 @@ class PlotWindow(BaseProcess_noPriorWindow):
         self.plotWin = pg.GraphicsWindow(title="Linescan Plot")       
         #add plot object to window
         self.linescanPlot = self.plotWin.addPlot()
+        label = pg.LabelItem(justify='right')
+        self.plotWin.addItem(label)
         #add plot
         #self.linescanPlot.plot(x, self.linescanData, pen=penType, symbol='o')       
         self.linescanPlot.plot(self.x, self.y, pen=self.penType, clear=True)
         #add title to plot
-        #self.linescanPlot.setTitle('ROI #1')       
+        #self.linescanPlot.setTitle('ROI #1') 
+        
+        #get mouse hover data from line
+
+        #cross hair
+        vLine = pg.InfiniteLine(angle=90, movable=False)
+        hLine = pg.InfiniteLine(angle=0, movable=False)
+        self.linescanPlot.addItem(vLine, ignoreBounds=True)
+        self.linescanPlot.addItem(hLine, ignoreBounds=True)
+        vb = self.linescanPlot.vb
+
+        def mouseMoved(evt): 
+            if self.linescanPlot.sceneBoundingRect().contains(evt):
+                mousePoint = vb.mapSceneToView(evt)
+                index = int(mousePoint.x())
+                if index > 0 and index < len(self.y):
+                    label.setText("<span style='font-size: 12pt'>x=%0.1f,   <span style='color: red'>y=%0.1f</span>" % (mousePoint.x(), self.y[index]))
+                    vLine.setPos(mousePoint.x())
+                    #hLine.setPos(mousePoint.y())
+                    hLine.setPos(self.y[index])
+
+        ## use signal proxy to turn original arguments into a tuple
+        proxy = pg.SignalProxy(self.linescanPlot.scene().sigMouseMoved, rateLimit=60, slot=mouseMoved)  
+        self.linescanPlot.scene().sigMouseMoved.connect(mouseMoved)
         return 
 
     def getLineData(self):
