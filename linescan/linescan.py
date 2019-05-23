@@ -11,12 +11,47 @@ import flika
 from flika import global_vars as g
 from flika.window import Window
 from pyqtgraph.Point import Point
+from os.path import expanduser
+import os
 
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
     from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector
 else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector
+
+
+class FolderSelector(QWidget):
+    """
+    This widget is a button with a label.  Once you click the button, the widget waits for you to select a folder.  Once you do, it sets self.folder and it sets the label.
+    """
+    valueChanged=Signal()
+    def __init__(self,filetypes='*.*'):
+        QWidget.__init__(self)
+        self.button=QPushButton('Select Folder')
+        self.label=QLabel('None')
+        self.window=None
+        self.layout=QHBoxLayout()
+        self.layout.addWidget(self.button)
+        self.layout.addWidget(self.label)
+        self.setLayout(self.layout)
+        self.button.clicked.connect(self.buttonclicked)
+        self.filetypes = filetypes
+        self.folder = ''
+        
+    def buttonclicked(self):
+        prompt = 'testing folderSelector'
+        self.folder = QFileDialog.getExistingDirectory(g.m, "Select recording folder.", expanduser("~"), QFileDialog.ShowDirsOnly)
+        self.label.setText('...'+os.path.split(self.folder)[-1][-20:])
+        self.valueChanged.emit()
+
+    def value(self):
+        return self.folder
+
+    def setValue(self, folder):
+        self.folder = str(folder)
+        self.label.setText('...' + os.path.split(self.folder)[-1][-20:])    
+
 
 class PlotWindow(BaseProcess_noPriorWindow):
     def __init__(self,window, channel):
@@ -42,6 +77,7 @@ class PlotWindow(BaseProcess_noPriorWindow):
         self.plotWin = pg.GraphicsWindow(title="Linescan Plot")       
         #add plot object to window
         self.linescanPlot = self.plotWin.addPlot()
+        #add label to display xy data
         label = pg.LabelItem(justify='right')
         self.plotWin.addItem(label)
         #add plot
@@ -64,7 +100,7 @@ class PlotWindow(BaseProcess_noPriorWindow):
                 mousePoint = vb.mapSceneToView(evt)
                 index = int(mousePoint.x())
                 if index > 0 and index < len(self.y):
-                    label.setText("<span style='font-size: 12pt'>x=%0.1f,   <span style='color: red'>y=%0.1f</span>" % (mousePoint.x(), self.y[index]))
+                    label.setText("<span style='font-size: 12pt'>x=%0.2f,   <span style='color: red'>y=%0.2f</span>" % (mousePoint.x(), self.y[index]))
                     vLine.setPos(mousePoint.x())
                     #hLine.setPos(mousePoint.y())
                     hLine.setPos(self.y[index])
@@ -121,6 +157,8 @@ class PlotWindow(BaseProcess_noPriorWindow):
         self.linescanPlot.plot(self.x, self.y, clear=True)
         return
 
+    def exportLineData(self):
+        return (self.x, self.y)
 
 class OptionsGUI(QDialog):
     def __init__(self, parent = None):
@@ -148,6 +186,9 @@ class OptionsGUI(QDialog):
         self.closeButton = QPushButton('Close')
         self.closeButton.pressed.connect(self.closeOptions)
         
+        #self.exportButton = QPushButton('Export')
+        #self.exportButton.pressed.connect(self.export)        
+        
         #grid layout
         layout = QGridLayout()
         layout.setSpacing(10)
@@ -156,9 +197,9 @@ class OptionsGUI(QDialog):
         layout.addWidget(self.SpinBox1, 4, 1)
         layout.addWidget(self.channelSelectorBoxLabel, 5, 0)  
         layout.addWidget(self.channelSelectorBox, 5, 1)
-        layout.addWidget(self.closeButton, 7, 0)
-        
-        
+        #layout.addWidget(self.exportButton, 7, 0)           
+        layout.addWidget(self.closeButton, 8, 0)
+                     
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
         
@@ -173,7 +214,13 @@ class OptionsGUI(QDialog):
         return
 
     def closeOptions(self):
+        #TODO
+        linescan.optionsGUI.close()
         return
+
+#    def export(self):
+#        data = linescan.getData()       
+#        return
 
 class Linescan(BaseProcess_noPriorWindow):
     """
@@ -197,9 +244,13 @@ class Linescan(BaseProcess_noPriorWindow):
         self.gui_reset()
         self.linescanButton = QPushButton('Start')
         self.linescanButton.pressed.connect(self.linescan)
+        
         self.optionsButton = QPushButton('Show Options Menu')
-        self.optionsButton.pressed.connect(self.options)       
-        self.items.append({'name': 'linescan', 'string': 'Linescan: ', 'object': self.linescanButton})
+        self.optionsButton.pressed.connect(self.options)  
+        
+        #self.exportFolder = FolderSelector('*.txt')
+        
+        self.items.append({'name': 'linescan', 'string': 'Linescan: ', 'object': self.linescanButton})         
         self.items.append({'name': 'options', 'string': 'Options: ', 'object': self.optionsButton})       
         super().gui()
 
@@ -210,7 +261,10 @@ class Linescan(BaseProcess_noPriorWindow):
 
     def options(self):
         #create optionsGUI instance
-        self.optionsWGUI = OptionsGUI()      
+        self.optionsGUI = OptionsGUI()      
         return        
+
+    def getData(self):
+        return self.linescanPlot.exportLineData()
  
 linescan = Linescan()
