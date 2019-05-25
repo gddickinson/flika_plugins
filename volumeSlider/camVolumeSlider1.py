@@ -12,6 +12,7 @@ import os
 from os import listdir
 from os.path import expanduser, isfile, join
 from distutils.version import StrictVersion
+from copy import deepcopy
 
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
@@ -29,7 +30,8 @@ class CamVolumeSlider(BaseProcess):
 
     def startVolumeSlider(self):
         #copy selected window
-        self.A = g.win.image
+        self.A =  deepcopy(g.win.image)
+        self.B = []
         #get shape
         self.nFrames, self.x, self.y = self.A.shape
         #setup display window
@@ -41,7 +43,7 @@ class CamVolumeSlider(BaseProcess):
     
     def updateDisplay_volumeSizeChange(self):
         self.B = np.reshape(self.A, (self.getFramesPerVol(),self.getNVols(),self.x,self.y), order='F')
-        self.displayWindow.imageview.setImage(self.B[0],autoLevels=False)
+        self.displayWindow.imageview.setImage(self.B[0],autoLevels=False) 
         return   
 
     def updateDisplay_sliceNumberChange(self, index):
@@ -58,6 +60,53 @@ class CamVolumeSlider(BaseProcess):
 
     def getFramesPerVol(self):
         return int(self.nFrames/self.nVols)
+
+    def closeEvent(self, event):
+        BaseProcess.closeEvent(self, event)
+        self.dialogbox.close()
+
+    def getArrayShape(self):
+        if self.B == []:
+            return self.A.shape
+        return self.B.shape
+
+    def subtractBaseline(self):
+        index = self.displayWindow.imageview.currentIndex
+        baseStart, baseEnd = self.dialogbox.getBaseline()
+        if baseStart >= baseEnd:
+            print('invalid baseline selection')
+            return
+        baseToSubtract = self.B[:,baseStart:baseEnd,:,]
+        baseToSubtract = np.mean(baseToSubtract, axis=1,keepdims=True)
+        #print(baseToSubtract.shape)
+        #print(baseToSubtract)
+
+        self.B = self.B - baseToSubtract
+        self.displayWindow.imageview.setImage(self.B[index],autoLevels=False)
+
+    def averageByVol(self):
+        index = self.displayWindow.imageview.currentIndex
+        #TODO
+        return
+
+    def ratioDFF0(self):
+        index = self.displayWindow.imageview.currentIndex
+        ratioStart, ratioEnd = self.dialogbox.getF0()
+        if ratioStart >= ratioEnd:
+            print('invalid F0 selection')
+            return
+        
+        ratioVol = self.B[:,ratioStart:ratioEnd,:,]
+        ratioVol = np.mean(ratioVol, axis=1,keepdims=True)        
+
+        self.B = self.B / ratioVol
+        self.displayWindow.imageview.setImage(self.B[index],autoLevels=False)                
+        return
+
+    def exportToWindow(self):
+        Window(np.reshape(self.B, (self.nFrames, self.x, self.y), order='F'))
+        return
+
         
 camVolumeSlider = CamVolumeSlider()  
 
@@ -69,7 +118,7 @@ class Form2(QtWidgets.QDialog):
         self.left = 300
         self.top = 300
         self.width = 600
-        self.height = 250
+        self.height = 400
 
         #spinboxes
         self.spinLabel1 = QtWidgets.QLabel("Slice #") 
@@ -107,7 +156,6 @@ class Form2(QtWidgets.QDialog):
         self.SpinBox7.setRange(0,camVolumeSlider.getNVols())
         self.SpinBox7.setValue(0)
         
-
         
         #sliders
         self.slider1 = QtWidgets.QSlider(QtCore.Qt.Horizontal)
@@ -125,10 +173,14 @@ class Form2(QtWidgets.QDialog):
         self.button3 = QtWidgets.QPushButton("Average Volumes")  
         self.button4 = QtWidgets.QPushButton("subtract baseline")          
         self.button5 = QtWidgets.QPushButton("run DF/F0")  
+        self.button6 = QtWidgets.QPushButton("export to Window")  
 
         #labels
-        self.volumeLabel = QtWidgets.QLabel("# of volumes")
+        self.volumeLabel = QtWidgets.QLabel("# of volumes: ")
         self.volumeText = QtWidgets.QLabel("  ")
+        
+        self.shapeLabel = QtWidgets.QLabel("array shape: ")
+        self.shapeText = QtWidgets.QLabel(str(camVolumeSlider.getArrayShape()))        
         
         #grid layout
         layout = QtWidgets.QGridLayout()
@@ -137,30 +189,34 @@ class Form2(QtWidgets.QDialog):
         layout.addWidget(self.spinLabel1, 1, 0)        
         layout.addWidget(self.SpinBox1, 1, 1)
         layout.addWidget(self.slider1, 2, 0, 2, 5)
-        layout.addWidget(self.spinLabel2, 3, 0)
-        layout.addWidget(self.SpinBox2, 3, 1)
-        layout.addWidget(self.button2, 3, 2) 
         
-        layout.addWidget(self.spinLabel3, 4, 0)
-        layout.addWidget(self.SpinBox3, 4, 1)
-        layout.addWidget(self.button3, 4, 2) 
-
-        layout.addWidget(self.spinLabel4, 5, 0)
-        layout.addWidget(self.SpinBox4, 5, 1)
-        layout.addWidget(self.spinLabel5, 5, 2)
-        layout.addWidget(self.SpinBox5, 5, 3)        
-        layout.addWidget(self.button4, 5, 4) 
-
-        layout.addWidget(self.spinLabel6, 6, 0)
-        layout.addWidget(self.SpinBox6, 6, 1)
-        layout.addWidget(self.spinLabel7, 6, 2)
-        layout.addWidget(self.SpinBox7, 6, 3)        
-        layout.addWidget(self.button5, 6, 4)         
-
-        layout.addWidget(self.volumeLabel, 7, 0)         
-        layout.addWidget(self.volumeText, 7, 1) 
+        layout.addWidget(self.spinLabel2, 4, 0)
+        layout.addWidget(self.SpinBox2, 4, 1)
+        layout.addWidget(self.button2, 4, 2) 
         
-        layout.addWidget(self.button1, 8, 4, 1, 1)  
+        layout.addWidget(self.spinLabel3, 5, 0)
+        layout.addWidget(self.SpinBox3, 5, 1)
+        layout.addWidget(self.button3, 5, 2) 
+
+        layout.addWidget(self.spinLabel4, 6, 0)
+        layout.addWidget(self.SpinBox4, 6, 1)
+        layout.addWidget(self.spinLabel5, 6, 2)
+        layout.addWidget(self.SpinBox5, 6, 3)        
+        layout.addWidget(self.button4, 6, 4) 
+
+        layout.addWidget(self.spinLabel6, 7, 0)
+        layout.addWidget(self.SpinBox6, 7, 1)
+        layout.addWidget(self.spinLabel7, 7, 2)
+        layout.addWidget(self.SpinBox7, 7, 3)        
+        layout.addWidget(self.button5, 7, 4)         
+
+        layout.addWidget(self.volumeLabel, 8, 0)         
+        layout.addWidget(self.volumeText, 8, 1) 
+        layout.addWidget(self.shapeLabel, 9, 0)         
+        layout.addWidget(self.shapeText, 9, 1) 
+        
+        layout.addWidget(self.button6, 10, 0)          
+        layout.addWidget(self.button1, 10, 4)  
         
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -175,6 +231,10 @@ class Form2(QtWidgets.QDialog):
         #connect buttons
         self.button1.clicked.connect(self.autoLevel)
         self.button2.clicked.connect(self.updateVolumeValue)
+        self.button3.clicked.connect(self.averageByVol)
+        self.button4.clicked.connect(self.subtractBaseline)
+        self.button5.clicked.connect(self.ratioDFF0)
+        self.button6.clicked.connect(self.exportToWindow)
 
         return
  
@@ -199,6 +259,7 @@ class Form2(QtWidgets.QDialog):
         self.volumeText.setText(str(noVols))
         
         camVolumeSlider.updateDisplay_volumeSizeChange()
+        self.shapeText.setText(str(camVolumeSlider.getArrayShape())) 
         
         if (value)%2 == 0:
             self.SpinBox1.setRange(0,value-1) #if even, display the last volume 
@@ -206,13 +267,39 @@ class Form2(QtWidgets.QDialog):
         else:
             self.SpinBox1.setRange(0,value-2) #else, don't display the last volume 
             self.slider1.setMaximum(value-2)
-            
-        self.SpinBox3.setRange(0,camVolumeSlider.getNVols())
-        self.SpinBox4.setRange(0,camVolumeSlider.getNVols())
+        
+        self.updateVolSpinBoxes()         
         return
 
+    def updateVolSpinBoxes(self):     
+        self.SpinBox3.setRange(0,camVolumeSlider.getNVols())
+        self.SpinBox4.setRange(0,camVolumeSlider.getNVols())
+        self.SpinBox5.setRange(0,camVolumeSlider.getNVols())
+        self.SpinBox6.setRange(0,camVolumeSlider.getNVols())
+        self.SpinBox7.setRange(0,camVolumeSlider.getNVols())
+        return
+
+    def getBaseline(self):
+        return self.SpinBox4.value(), self.SpinBox5.value()
+
+    def getF0(self):
+        return self.SpinBox6.value(), self.SpinBox7.value()
+
+    def getVolsToAverage(self):
+        return self.SpinBox3.value()
+
     def averageByVol(self):
+        camVolumeSlider.averageByVol()
+        return
+
+    def subtractBaseline(self):
+        camVolumeSlider.subtractBaseline()
         return
     
     def ratioDFF0(self):
+        camVolumeSlider.ratioDFF0()
+        return
+    
+    def exportToWindow(self):
+        camVolumeSlider.exportToWindow()
         return
