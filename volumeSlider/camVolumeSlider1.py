@@ -81,7 +81,33 @@ class Form2(QtWidgets.QDialog):
         self.SpinBox2 = QtWidgets.QSpinBox()
         self.SpinBox2.setRange(0,camVolumeSlider.getNFrames())
         self.SpinBox2.setValue(camVolumeSlider.getNFrames())
- 
+
+        self.spinLabel3 = QtWidgets.QLabel("# of volumes to average by: ") 
+        self.SpinBox3 = QtWidgets.QSpinBox()
+        self.SpinBox3.setRange(0,camVolumeSlider.getNVols())
+        self.SpinBox3.setValue(0)
+
+        self.spinLabel4 = QtWidgets.QLabel("baseline start volume: ") 
+        self.SpinBox4 = QtWidgets.QSpinBox()
+        self.SpinBox4.setRange(0,camVolumeSlider.getNVols())
+        self.SpinBox4.setValue(0)
+        
+        self.spinLabel5 = QtWidgets.QLabel("baseline end volume: ") 
+        self.SpinBox5 = QtWidgets.QSpinBox()
+        self.SpinBox5.setRange(0,camVolumeSlider.getNVols())
+        self.SpinBox5.setValue(0)
+         
+        self.spinLabel6 = QtWidgets.QLabel("F0 start volume: ") 
+        self.SpinBox6 = QtWidgets.QSpinBox()
+        self.SpinBox6.setRange(0,camVolumeSlider.getNVols())
+        self.SpinBox6.setValue(0)
+        
+        self.spinLabel7 = QtWidgets.QLabel("F0 start volume: ") 
+        self.SpinBox7 = QtWidgets.QSpinBox()
+        self.SpinBox7.setRange(0,camVolumeSlider.getNVols())
+        self.SpinBox7.setValue(0)
+        
+
         
         #sliders
         self.slider1 = QtWidgets.QSlider(QtCore.Qt.Horizontal)
@@ -91,10 +117,14 @@ class Form2(QtWidgets.QDialog):
         self.slider1.setMaximum(camVolumeSlider.getNFrames())
         self.slider1.setTickInterval(1)
         self.slider1.setSingleStep(1)
+             
         
         #buttons
         self.button1 = QtWidgets.QPushButton("Autolevel")       
-        self.button2 = QtWidgets.QPushButton("Set Slices")          
+        self.button2 = QtWidgets.QPushButton("Set Slices")      
+        self.button3 = QtWidgets.QPushButton("Average Volumes")  
+        self.button4 = QtWidgets.QPushButton("subtract baseline")          
+        self.button5 = QtWidgets.QPushButton("run DF/F0")  
 
         #labels
         self.volumeLabel = QtWidgets.QLabel("# of volumes")
@@ -109,10 +139,28 @@ class Form2(QtWidgets.QDialog):
         layout.addWidget(self.slider1, 2, 0, 2, 5)
         layout.addWidget(self.spinLabel2, 3, 0)
         layout.addWidget(self.SpinBox2, 3, 1)
-        layout.addWidget(self.button2, 3, 2)         
-        layout.addWidget(self.button1, 4, 4, 1, 1)  
-        layout.addWidget(self.volumeLabel, 4, 0)         
-        layout.addWidget(self.volumeText, 4, 1) 
+        layout.addWidget(self.button2, 3, 2) 
+        
+        layout.addWidget(self.spinLabel3, 4, 0)
+        layout.addWidget(self.SpinBox3, 4, 1)
+        layout.addWidget(self.button3, 4, 2) 
+
+        layout.addWidget(self.spinLabel4, 5, 0)
+        layout.addWidget(self.SpinBox4, 5, 1)
+        layout.addWidget(self.spinLabel5, 5, 2)
+        layout.addWidget(self.SpinBox5, 5, 3)        
+        layout.addWidget(self.button4, 5, 4) 
+
+        layout.addWidget(self.spinLabel6, 6, 0)
+        layout.addWidget(self.SpinBox6, 6, 1)
+        layout.addWidget(self.spinLabel7, 6, 2)
+        layout.addWidget(self.SpinBox7, 6, 3)        
+        layout.addWidget(self.button5, 6, 4)         
+
+        layout.addWidget(self.volumeLabel, 7, 0)         
+        layout.addWidget(self.volumeText, 7, 1) 
+        
+        layout.addWidget(self.button1, 8, 4, 1, 1)  
         
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -158,5 +206,13 @@ class Form2(QtWidgets.QDialog):
         else:
             self.SpinBox1.setRange(0,value-2) #else, don't display the last volume 
             self.slider1.setMaximum(value-2)
+            
+        self.SpinBox3.setRange(0,camVolumeSlider.getNVols())
+        self.SpinBox4.setRange(0,camVolumeSlider.getNVols())
         return
 
+    def averageByVol(self):
+        return
+    
+    def ratioDFF0(self):
+        return
