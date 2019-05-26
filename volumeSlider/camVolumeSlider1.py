@@ -188,6 +188,7 @@ class Form2(QtWidgets.QDialog):
 
         layout.addWidget(self.spinLabel1, 1, 0)        
         layout.addWidget(self.SpinBox1, 1, 1)
+        
         layout.addWidget(self.slider1, 2, 0, 2, 5)
         
         layout.addWidget(self.spinLabel2, 4, 0)
