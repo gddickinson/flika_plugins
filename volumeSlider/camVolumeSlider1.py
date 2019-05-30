@@ -42,7 +42,12 @@ class CamVolumeSlider(BaseProcess):
         return        
     
     def updateDisplay_volumeSizeChange(self):
-        self.B = np.reshape(self.A, (self.getFramesPerVol(),self.getNVols(),self.x,self.y), order='F')
+        #remove final volume if it dosen't contain the full number of frames
+        numberFramesToRemove = self.nFrames%self.getFramesPerVol()
+        self.B = self.A[:-numberFramesToRemove,:,:]   
+        print(self.nFrames,self.getFramesPerVol(),self.B.shape)
+        #reshape to 4D
+        self.B = np.reshape(self.B, (self.getFramesPerVol(),self.getNVols(),self.x,self.y), order='F')
         self.displayWindow.imageview.setImage(self.B[0],autoLevels=False) 
         return   
 
@@ -72,17 +77,12 @@ class CamVolumeSlider(BaseProcess):
 
     def subtractBaseline(self):
         index = self.displayWindow.imageview.currentIndex
-        baseStart, baseEnd = self.dialogbox.getBaseline()
-        if baseStart >= baseEnd:
-            print('invalid baseline selection')
-            return
-        baseToSubtract = self.B[:,baseStart:baseEnd,:,]
-        baseToSubtract = np.mean(baseToSubtract, axis=1,keepdims=True)
-        #print(baseToSubtract.shape)
-        #print(baseToSubtract)
-
-        self.B = self.B - baseToSubtract
-        self.displayWindow.imageview.setImage(self.B[index],autoLevels=False)
+        baseline = self.dialogbox.getBaseline()
+        if self.B == []:
+            print('first set number of frames per volume')
+        else:
+            self.B = self.B - baseline
+            self.displayWindow.imageview.setImage(self.B[index],autoLevels=False)
 
     def averageByVol(self):
         index = self.displayWindow.imageview.currentIndex
@@ -107,6 +107,12 @@ class CamVolumeSlider(BaseProcess):
         Window(np.reshape(self.B, (self.nFrames, self.x, self.y), order='F'))
         return
 
+    def getMaxPixel(self):
+        if self.B == []:
+            return np.max(self.A)
+        else:
+            return np.max(self.B)
+        
         
 camVolumeSlider = CamVolumeSlider()  
 
@@ -136,22 +142,17 @@ class Form2(QtWidgets.QDialog):
         self.SpinBox3.setRange(0,camVolumeSlider.getNVols())
         self.SpinBox3.setValue(0)
 
-        self.spinLabel4 = QtWidgets.QLabel("baseline start volume: ") 
+        self.spinLabel4 = QtWidgets.QLabel("baseline value: ") 
         self.SpinBox4 = QtWidgets.QSpinBox()
-        self.SpinBox4.setRange(0,camVolumeSlider.getNVols())
+        self.SpinBox4.setRange(0,camVolumeSlider.getMaxPixel())
         self.SpinBox4.setValue(0)
-        
-        self.spinLabel5 = QtWidgets.QLabel("baseline end volume: ") 
-        self.SpinBox5 = QtWidgets.QSpinBox()
-        self.SpinBox5.setRange(0,camVolumeSlider.getNVols())
-        self.SpinBox5.setValue(0)
-         
+                 
         self.spinLabel6 = QtWidgets.QLabel("F0 start volume: ") 
         self.SpinBox6 = QtWidgets.QSpinBox()
         self.SpinBox6.setRange(0,camVolumeSlider.getNVols())
         self.SpinBox6.setValue(0)
         
-        self.spinLabel7 = QtWidgets.QLabel("F0 start volume: ") 
+        self.spinLabel7 = QtWidgets.QLabel("F0 end volume: ") 
         self.SpinBox7 = QtWidgets.QSpinBox()
         self.SpinBox7.setRange(0,camVolumeSlider.getNVols())
         self.SpinBox7.setValue(0)
@@ -200,10 +201,8 @@ class Form2(QtWidgets.QDialog):
         layout.addWidget(self.button3, 5, 2) 
 
         layout.addWidget(self.spinLabel4, 6, 0)
-        layout.addWidget(self.SpinBox4, 6, 1)
-        layout.addWidget(self.spinLabel5, 6, 2)
-        layout.addWidget(self.SpinBox5, 6, 3)        
-        layout.addWidget(self.button4, 6, 4) 
+        layout.addWidget(self.SpinBox4, 6, 1)      
+        layout.addWidget(self.button4, 6, 2) 
 
         layout.addWidget(self.spinLabel6, 7, 0)
         layout.addWidget(self.SpinBox6, 7, 1)
@@ -274,14 +273,13 @@ class Form2(QtWidgets.QDialog):
 
     def updateVolSpinBoxes(self):     
         self.SpinBox3.setRange(0,camVolumeSlider.getNVols())
-        self.SpinBox4.setRange(0,camVolumeSlider.getNVols())
-        self.SpinBox5.setRange(0,camVolumeSlider.getNVols())
+
         self.SpinBox6.setRange(0,camVolumeSlider.getNVols())
         self.SpinBox7.setRange(0,camVolumeSlider.getNVols())
         return
 
     def getBaseline(self):
-        return self.SpinBox4.value(), self.SpinBox5.value()
+        return self.SpinBox4.value()
 
     def getF0(self):
         return self.SpinBox6.value(), self.SpinBox7.value()
