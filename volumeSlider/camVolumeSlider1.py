@@ -20,6 +20,8 @@ if StrictVersion(flika_version) < StrictVersion('0.2.23'):
 else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox
 
+
+dataType = np.float16
         
 class CamVolumeSlider(BaseProcess):
 
@@ -30,10 +32,11 @@ class CamVolumeSlider(BaseProcess):
 
     def startVolumeSlider(self):
         #copy selected window
-        self.A =  deepcopy(g.win.image)
+        self.A =  np.array(deepcopy(g.win.image),dtype=dataType)
         self.B = []
         #get shape
         self.nFrames, self.x, self.y = self.A.shape
+        self.framesPerVol = int(self.nFrames/self.nVols)
         #setup display window
         self.displayWindow = Window(self.A,'Volume Slider Window')
         #open gui
@@ -44,8 +47,13 @@ class CamVolumeSlider(BaseProcess):
     def updateDisplay_volumeSizeChange(self):
         #remove final volume if it dosen't contain the full number of frames
         numberFramesToRemove = self.nFrames%self.getFramesPerVol()
-        self.B = self.A[:-numberFramesToRemove,:,:]   
-        print(self.nFrames,self.getFramesPerVol(),self.B.shape)
+        if numberFramesToRemove != 0:
+            self.B = self.A[:-numberFramesToRemove,:,:]   
+        else:
+            self.B = self.A
+        
+        self.nFrames, self.x, self.y = self.B.shape
+        
         #reshape to 4D
         self.B = np.reshape(self.B, (self.getFramesPerVol(),self.getNVols(),self.x,self.y), order='F')
         self.displayWindow.imageview.setImage(self.B[0],autoLevels=False) 
@@ -64,7 +72,11 @@ class CamVolumeSlider(BaseProcess):
         return self.nVols
 
     def getFramesPerVol(self):
-        return int(self.nFrames/self.nVols)
+        return self.framesPerVol
+
+    def updateVolsandFramesPerVol(self, nVols, framesPerVol):
+        self.nVols = nVols
+        self.framesPerVol = framesPerVol
 
     def closeEvent(self, event):
         BaseProcess.closeEvent(self, event)
@@ -99,7 +111,7 @@ class CamVolumeSlider(BaseProcess):
         ratioVol = self.B[:,ratioStart:ratioEnd,:,]
         ratioVol = np.mean(ratioVol, axis=1,keepdims=True)        
 
-        self.B = self.B / ratioVol
+        self.B = np.divide(self.B, ratioVol, dtype=dataType)
         self.displayWindow.imageview.setImage(self.B[index],autoLevels=False)                
         return
 
@@ -255,7 +267,7 @@ class Form2(QtWidgets.QDialog):
     def updateVolumeValue(self):
         value = self.SpinBox2.value()
         noVols = int(camVolumeSlider.getNFrames()/value)
-        camVolumeSlider.nVols = noVols
+        camVolumeSlider.updateVolsandFramesPerVol(noVols, value)
         self.volumeText.setText(str(noVols))
         
         camVolumeSlider.updateDisplay_volumeSizeChange()
