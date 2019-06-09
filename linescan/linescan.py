@@ -13,6 +13,7 @@ from flika.window import Window
 from pyqtgraph.Point import Point
 from os.path import expanduser
 import os
+import math
 
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
@@ -56,8 +57,10 @@ class FolderSelector(QWidget):
 class PlotWindow(BaseProcess_noPriorWindow):
     def __init__(self,window, channel):
         BaseProcess_noPriorWindow.__init__(self)
-        #uset current window 
+        #set current window 
         self.win = window
+        #add ROI
+        self.drawROI()
         #set colour channel at start
         self.channelSelection = channel
         #create colour dict
@@ -159,6 +162,32 @@ class PlotWindow(BaseProcess_noPriorWindow):
 
     def exportLineData(self):
         return (self.x, self.y)
+
+
+    def drawROI(self):
+        # Custom ROI for selecting an image region
+        handle1_x = self.win.rois[0].getLocalHandlePositions()[0][1].x()
+        handle1_y = self.win.rois[0].getLocalHandlePositions()[0][1].y()
+        handle2_x = self.win.rois[0].getLocalHandlePositions()[1][1].x()
+        handle2_y = self.win.rois[0].getLocalHandlePositions()[1][1].y()               
+        width = 1
+        #imageHeight = self.win.imageDimensions()[1]
+        #angle = math.degrees(math.atan2(handle2_y-handle1_y , handle2_x-handle1_x))
+        
+        def newY(handle1_y,handle2_y):
+            diff = abs(handle1_y-handle2_y)
+            if handle2_y - handle1_y >= 0:
+                return handle1_y - diff
+            else:
+                return handle1_y + diff
+            
+        
+        roi = pg.LineROI([handle1_x, handle1_y], [handle2_x, newY(handle1_y,handle2_y)], width = width, pen=(1,9))
+        #roi.addScaleHandle([0.5, 1], [0.5, 0.5])
+        #roi.addScaleHandle([0, 0.5], [0.5, 0.5])
+        self.win.imageview.addItem(roi)
+        #roi.setZValue(10)  # make sure ROI is drawn above image
+
 
 class OptionsGUI(QDialog):
     def __init__(self, parent = None):
