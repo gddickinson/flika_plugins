@@ -59,6 +59,10 @@ class PlotWindow(BaseProcess_noPriorWindow):
         BaseProcess_noPriorWindow.__init__(self)
         #set current window 
         self.win = window
+        #set linescan width
+        self.width = 1
+        #set integration selection
+        self.integrationSelection = 'mean'
         #add ROI
         self.drawROI()
         #set colour channel at start
@@ -66,7 +70,8 @@ class PlotWindow(BaseProcess_noPriorWindow):
         #create colour dict
         self.colourChannelDict = {'R': 0, 'G': 1, 'B': 2}
         #get linedata
-        self.getLineData()
+        #self.getLineData()
+        self.getROIdata()
         #set plot line style
         self.setStyle()
         #initialize plot
@@ -113,7 +118,32 @@ class PlotWindow(BaseProcess_noPriorWindow):
         self.linescanPlot.scene().sigMouseMoved.connect(mouseMoved)
         return 
 
-    def getLineData(self):
+# =============================================================================
+#     def getLineData(self):
+#         #get current frame index
+#         self.index = self.win.imageview.currentIndex 
+#         #get current frame data
+#         data = self.win.imageview.getProcessedImage()
+# 
+#         #using data.shape to detect if colour image ##TODO fix this to better deal with movies v single images, bw v colour etc
+#         if data.shape[2] != 3:
+#             data = data[self.index]
+#             linescanData = self.win.rois[0].getArrayRegion(data,self.win.imageview.imageItem)
+#             self.x = range(linescanData.shape[0])
+#             self.y = linescanData
+# 
+#         else:
+#             linescanData = self.win.rois[0].getArrayRegion(data,self.win.imageview.imageItem)
+# 
+#             #colour image line plot
+#             channel = self.colourChannelDict[self.channelSelection]
+#     
+#             self.x = range(linescanData[:,0].shape[0])
+#             self.y = linescanData[:,channel]
+# =============================================================================
+
+
+    def getROIdata(self):
         #get current frame index
         self.index = self.win.imageview.currentIndex 
         #get current frame data
@@ -122,18 +152,31 @@ class PlotWindow(BaseProcess_noPriorWindow):
         #using data.shape to detect if colour image ##TODO fix this to better deal with movies v single images, bw v colour etc
         if data.shape[2] != 3:
             data = data[self.index]
-            linescanData = self.win.rois[0].getArrayRegion(data,self.win.imageview.imageItem)
+            
+            if self.integrationSelection == 'mean':            
+                linescanData = np.mean(self.roi.getArrayRegion(data,self.win.imageview.imageItem),axis=1)
+            elif self.integrationSelection == 'min':            
+                linescanData = np.min(self.roi.getArrayRegion(data,self.win.imageview.imageItem),axis=1)
+            elif self.integrationSelection == 'max':            
+                linescanData = np.max(self.roi.getArrayRegion(data,self.win.imageview.imageItem),axis=1)            
+                        
             self.x = range(linescanData.shape[0])
             self.y = linescanData
 
         else:
-            linescanData = self.win.rois[0].getArrayRegion(data,self.win.imageview.imageItem)
+            if self.integrationSelection == 'mean':            
+                linescanData = np.mean(self.roi.getArrayRegion(data,self.win.imageview.imageItem),axis=1)
+            elif self.integrationSelection == 'min':            
+                linescanData = np.min(self.roi.getArrayRegion(data,self.win.imageview.imageItem),axis=1)
+            elif self.integrationSelection == 'max':            
+                linescanData = np.max(self.roi.getArrayRegion(data,self.win.imageview.imageItem),axis=1) 
 
             #colour image line plot
             channel = self.colourChannelDict[self.channelSelection]
     
             self.x = range(linescanData[:,0].shape[0])
-            self.y = linescanData[:,channel]
+            self.y = linescanData[:,channel]        
+
 
     def setStyle(self):
         #set pen type
@@ -148,21 +191,31 @@ class PlotWindow(BaseProcess_noPriorWindow):
         self.update()
         return
 
+    def setIntegration(self, intergration):
+        self.integrationSelection = intergration
+        self.update()
+        return
+
     def setUpdateConnections(self):
         #connect roi change to update
-        self.win.rois[0].sigRegionChanged.connect(self.update)
+        #self.win.rois[0].sigRegionChanged.connect(self.update)
+        self.roi.sigRegionChanged.connect(self.update)        
         #connect frame index change to update
         self.win.sigTimeChanged.connect(self.update)
         return
 
+    def disconnectROI(self):
+        self.roi.sigRegionChanged.disconnect(self.update)
+        self.win.sigTimeChanged.disconnect(self.update)
+
     def update(self):
-        self.getLineData()
+        #self.getLineData()
+        self.getROIdata()
         self.linescanPlot.plot(self.x, self.y, clear=True)
         return
 
     def exportLineData(self):
         return (self.x, self.y)
-
 
     def drawROI(self):
         # Custom ROI for selecting an image region
@@ -170,7 +223,6 @@ class PlotWindow(BaseProcess_noPriorWindow):
         handle1_y = self.win.rois[0].getLocalHandlePositions()[0][1].y()
         handle2_x = self.win.rois[0].getLocalHandlePositions()[1][1].x()
         handle2_y = self.win.rois[0].getLocalHandlePositions()[1][1].y()               
-        width = 1
         #imageHeight = self.win.imageDimensions()[1]
         #angle = math.degrees(math.atan2(handle2_y-handle1_y , handle2_x-handle1_x))
         
@@ -182,12 +234,21 @@ class PlotWindow(BaseProcess_noPriorWindow):
                 return handle1_y + diff
             
         
-        roi = pg.LineROI([handle1_x, handle1_y], [handle2_x, newY(handle1_y,handle2_y)], width = width, pen=(1,9))
+        self.roi = pg.LineROI([handle1_x, handle1_y], [handle2_x, newY(handle1_y,handle2_y)], width = self.width, pen=(1,9))
         #roi.addScaleHandle([0.5, 1], [0.5, 0.5])
         #roi.addScaleHandle([0, 0.5], [0.5, 0.5])
-        self.win.imageview.addItem(roi)
+        self.win.removeAllROIs()
+        self.win.imageview.addItem(self.roi)
         #roi.setZValue(10)  # make sure ROI is drawn above image
 
+    def close(self):
+        try:
+            self.disconnectROI()
+            self.win.imageview.removeItem(self.roi)
+            self.roi = None
+            self.plotWin.close()
+        except:
+            pass
 
 class OptionsGUI(QDialog):
     def __init__(self, parent = None):
@@ -197,14 +258,14 @@ class OptionsGUI(QDialog):
         self.top = 300
         self.width = 300
         self.height = 150
-        
-        #spinboxes
-        self.spinLabel1 = QLabel("line width") 
-        self.SpinBox1 = QSpinBox()
-        self.SpinBox1.setRange(1,10)
-        self.SpinBox1.setValue(1)
-        
+                
         #ComboBox
+        self.integrationSelectorBoxLabel = QLabel("width integration") 
+        self.integrationSelectorBox = QComboBox()
+        self.integrationSelectorBox.addItems(["mean", "min", "max"])
+        self.integrationSelectorBox.currentIndexChanged.connect(self.integrationSelectionChange)
+        self.integrationSelection = self.integrationSelectorBox.currentText()        
+        
         self.channelSelectorBoxLabel = QLabel("channel") 
         self.channelSelectorBox = QComboBox()
         self.channelSelectorBox.addItems(["R", "G", "B"])
@@ -222,8 +283,8 @@ class OptionsGUI(QDialog):
         layout = QGridLayout()
         layout.setSpacing(10)
         
-        layout.addWidget(self.spinLabel1, 4, 0)        
-        layout.addWidget(self.SpinBox1, 4, 1)
+        layout.addWidget(self.integrationSelectorBoxLabel, 4, 0)        
+        layout.addWidget(self.integrationSelectorBox, 4, 1)
         layout.addWidget(self.channelSelectorBoxLabel, 5, 0)  
         layout.addWidget(self.channelSelectorBox, 5, 1)
         #layout.addWidget(self.exportButton, 7, 0)           
@@ -242,6 +303,11 @@ class OptionsGUI(QDialog):
         linescan.linescanPlot.setChannel(self.channelSelection)
         return
 
+    def integrationSelectionChange(self):
+        self.integrationSelection = self.integrationSelectorBox.currentText()
+        linescan.linescanPlot.setIntegration(self.integrationSelection)
+        return
+
     def closeOptions(self):
         #TODO
         linescan.optionsGUI.close()
@@ -257,12 +323,13 @@ class Linescan(BaseProcess_noPriorWindow):
     """
     def __init__(self):
         BaseProcess_noPriorWindow.__init__(self)
+        self.linescanPlot = None
 
     def __call__(self):
         '''
         
         '''
-        pass
+        self.linescanPlot.close()
         return
 
     def closeEvent(self, event):
@@ -284,8 +351,12 @@ class Linescan(BaseProcess_noPriorWindow):
         super().gui()
 
     def linescan(self):
+        #clear old instances
+        if self.linescanPlot != None:
+            self.linescanPlot.close()
         #create plotWindow instance
-        self.linescanPlot = PlotWindow(g.win, 'R')      
+        self.linescanPlot = PlotWindow(g.win, 'R')   
+        
         return
 
     def options(self):
