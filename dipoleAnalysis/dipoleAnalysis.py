@@ -3,17 +3,17 @@ from qtpy.QtCore import *
 from qtpy.QtGui import *
 from qtpy.QtWidgets import *
 import numpy as np
-from scipy.ndimage.interpolation import shift
+#from scipy.ndimage.interpolation import shift
 from flika.window import Window
 import flika.global_vars as g
-import pyqtgraph as pg
-from time import time
+#import pyqtgraph as pg
+#from time import time
 from distutils.version import StrictVersion
 import flika
 
-from flika.utils.io import tifffile
-from flika.process.file_ import get_permutation_tuple
-from flika.utils.misc import open_file_gui
+#from flika.utils.io import tifffile
+#from flika.process.file_ import get_permutation_tuple
+#from flika.utils.misc import open_file_gui
 from flika import *
 from flika.process.file_ import *
 from flika.process.filters import *
@@ -25,32 +25,30 @@ from os.path import expanduser
 
 from skimage.color import rgb2gray
 
-from skimage.io import imread, imshow
-from skimage.filters import gaussian, threshold_otsu, threshold_adaptive
+#from skimage.io import imread, imshow
+from skimage.feature import peak_local_max
+from skimage.filters import gaussian, threshold_adaptive
 from skimage import measure
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
 import glob
-from skimage.draw import ellipse
-from skimage.transform import rotate
+#from skimage.draw import ellipse
+#from skimage.transform import rotate
 import math
-from statistics import mean, median
-from scipy import pi, dot, sin, cos
+from statistics import mean
+from scipy import pi
 import pandas as pd
-from skimage.morphology import watershed
+#from skimage.morphology import watershed, disk
 from skimage import morphology
-from skimage.morphology import disk
+
 import scipy
 from scipy import ndimage as ndi
-from skimage.feature import peak_local_max
 
 from flika import *
 from flika.process.file_ import *
 from flika.process.filters import *
 from flika.window import *
-
-
 
 
 flika_version = flika.__version__
@@ -59,6 +57,9 @@ if StrictVersion(flika_version) < StrictVersion('0.2.23'):
 else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector
 
+
+#for testing
+#start_flika()
 
 ###################     helper functions    ########################################
 rad = lambda ang: ang*pi/180 
@@ -86,7 +87,7 @@ def intersection(L1, L2):
     
 def triangleAngles(A,B,C):    
     def lengthSquare(p1,p2):
-        #returns square of distance b/w two points
+        #distance squared
         xDiff = p1[0] - p2[0]
         yDiff = p1[1] - p2[1]
         return (xDiff*xDiff) + (yDiff*yDiff)   
@@ -101,20 +102,18 @@ def triangleAngles(A,B,C):
     b = np.sqrt(b2)
     c = np.sqrt(c2)
       
-    #From Cosine law   
+    #get angle From Cosine law   
     alpha = np.arccos((b2 + c2 - a2)/(2*b*c)) 
     beta = np.arccos((a2 + c2 - b2)/(2*a*c)) 
     gamma = np.arccos((a2 + b2 - c2)/(2*a*b)) 
       
-    # Converting to degrees 
+    # Convert to degrees 
     alpha = alpha * 180 / pi 
     beta = beta * 180 / pi 
     gamma = gamma * 180 / pi 
     
     return (alpha, beta, gamma)
-######################################################################################
-
-
+####################################################################################
 
 class FolderSelector(QWidget):
     """
@@ -148,8 +147,6 @@ class FolderSelector(QWidget):
         self.label.setText('...' + os.path.split(self.folder)[-1][-20:])    
     
     
-
-
 class DipoleAnalysis(BaseProcess_noPriorWindow):
     """
     Carry out dipole analysis 
@@ -158,31 +155,56 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
         |twoColor tiff
 
     Parameters:
-        |
+        |Step 1: Guassian Blur
+        |Step 1: Threshold
+        
+        |Step 2: Guassian Blur
+        |Step 2: Threshold
+
+        |Step 3: Guassian Blur
+        |Step 3: Threshold
+        |Step 3: Minimum number of blobs
+        
 
     Returns:
-        |Cropped clusters
-        |Rotated clusters
+        |Step 1: Two-color imaged masked by dipole image
+        |Step 2: Cropped clusters from two-color image
+        |Step 3: Rotated clusters from cropped clusters
 
     """
     def __init__(self):
-        if g.settings['dipoleAnalysis'] is None:
+        if g.settings['dipoleAnalysis'] is None or 'step2minClusterArea' not in g.settings['dipoleAnalysis'] :
             s = dict()
             s['resultsFolder1'] = None
             s['resultsFolder2'] = None
+            s['resultsFolder3'] = None           
             s['dipoleWindow'] = None
-            s['twoColorWindow'] = None             
+            s['twoColorWindow'] = None  
+            s['twoColorWindow_crop'] = None   
+            s['step1Gaussian'] = False 
+            s['step1Threshold'] = False    
+            s['step1GuassianValue'] = 150
+            s['step1ThresholdValue'] = 0.025
+            s['step2GuassianValue'] = 20
+            s['step2ThresholdValue'] = 0.02
+            s['step2minClusterArea'] = 2200
+            
             g.settings['dipoleAnalysis'] = s
                 
         BaseProcess_noPriorWindow.__init__(self)
 
-    def __call__(self,resultsFolder1,resultsFolder2,keepSourceWindow=False):
-        '''
-        
+    def __call__(self,resultsFolder1,resultsFolder2,resultsFolder3,step1Gaussian,step1Threshold,step2Gaussian,step2Threshold,step2minClusterArea,keepSourceWindow=False):
+        '''        
         '''
         g.settings['dipoleAnalysis']['resultsFolder1'] = resultsFolder1
         g.settings['dipoleAnalysis']['resultsFolder2'] = resultsFolder2
-
+        g.settings['dipoleAnalysis']['resultsFolder3'] = resultsFolder3        
+        g.settings['dipoleAnalysis']['step1Gaussian'] = step1Gaussian        
+        g.settings['dipoleAnalysis']['step1Threshold'] = step1Threshold
+        g.settings['dipoleAnalysis']['step2Gaussian'] = step2Gaussian        
+        g.settings['dipoleAnalysis']['step2Threshold'] = step2Threshold 
+        g.settings['dipoleAnalysis']['step2minClusterArea'] = step2minClusterArea         
+        
         g.m.statusBar().showMessage("Starting Dipole Analysis...")
         return
 
@@ -193,39 +215,107 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
     def gui(self):
         s=g.settings['dipoleAnalysis']
         self.gui_reset()
-        
+        #paths
         self.resultsFolder1 = FolderSelector('*.txt')
         self.resultsFolder2 = FolderSelector('*.txt')
-        
+        self.resultsFolder3 = FolderSelector('*.txt')        
+        #windows
         self.dipoleWindow = WindowSelector()
         self.twoColorWindow = WindowSelector()
+        self.twoColorWindow_crop = WindowSelector()
+        #buttons
+        self.step2_Button = QPushButton('Extract Clusters from 2-Color Image')
+        self.step2_Button.pressed.connect(self.step2)        
+        self.step3_Button = QPushButton('Rotate Clusters - Get Positions')
+        self.step3_Button.pressed.connect(self.step3)        
+        self.step1_Button = QPushButton('Filter Clusters by Dipole Image')
+        self.step1_Button.pressed.connect(self.step1)        
+        #checkboxes
+        self.step1Gaussian = CheckBox()
+        self.step1Threshold = CheckBox()        
+        #Spinboxes
+        self.step1GuassianValue = pg.SpinBox(int= True, step= 1)
+        self.step1GuassianValue.setValue(s['step1GuassianValue'])
+        self.step1ThresholdValue = pg.SpinBox(int= False, step= .001)
+        self.step1ThresholdValue.setValue(s['step1ThresholdValue'])      
         
-        self.step1_Button = QPushButton('Extract Clusters from 2-Color Image')
-        self.step1_Button.pressed.connect(self.step1)
+        self.step2GuassianValue = pg.SpinBox(int= True, step= 1)
+        self.step2GuassianValue.setValue(s['step2GuassianValue'])
+        self.step2ThresholdValue = pg.SpinBox(int= False, step= .001)
+        self.step2ThresholdValue.setValue(s['step2ThresholdValue'])  
         
-        self.step2_Button = QPushButton('Rotate Clusters - Get Positions')
-        self.step2_Button.pressed.connect(self.step2)
+        self.step2minClusterArea  = pg.SpinBox(int= True, step= 1)
+        self.step2minClusterArea.setValue(s['step2minClusterArea'])
         
-        self.step3_Button = QPushButton('Filter Clusters by Dipole Image')
-        self.step3_Button.pressed.connect(self.step3)
-        
-        
-        self.items.append({'name': 'resultsFolder1','string':'Results Folder 1 Location','object': self.resultsFolder1})     
-        self.items.append({'name': 'resultsFolder2','string':'Results Folder 2 Location','object': self.resultsFolder2})   
-        self.items.append({'name': 'dipoleWindow', 'string': 'Select Dipole Window', 'object': self.dipoleWindow})
-        self.items.append({'name': 'twoColorWindow', 'string': 'Select two-color Window', 'object': self.twoColorWindow})
+        #populate GUI
+        self.items.append({'name': 'resultsFolder1','string':'Results Folder 1 (for filtered two-color image)','object': self.resultsFolder1})            
+        self.items.append({'name': 'resultsFolder2','string':'Results Folder 2 (for extracted clusters)','object': self.resultsFolder2})     
+        self.items.append({'name': 'resultsFolder3','string':'Results Folder 3 (for final rotated clusters)','object': self.resultsFolder3})   
+        self.items.append({'name': 'dipoleWindow', 'string': 'Dipole Window (Step 1)', 'object': self.dipoleWindow})
+        self.items.append({'name': 'twoColorWindow', 'string': 'Two-color Window (Step 1)', 'object': self.twoColorWindow})
+        self.items.append({'name': 'twoColorWindow_crop', 'string': 'Two-color Window for cluster analysis (Step 2)', 'object': self.twoColorWindow_crop})         
+        self.items.append({'name': 'step1Gaussian', 'string': 'Display Step 1 Gaussian Image', 'object': self.step1Gaussian})  
+        self.items.append({'name': 'step1Threshold', 'string': 'Display Step 1 Thresholded Image', 'object': self.step1Threshold})
+        self.items.append({'name': 'step1GuassianValue', 'string': 'Step 1 Gaussian Value', 'object': self.step1GuassianValue})  
+        self.items.append({'name': 'step1ThresholdValue', 'string': 'Step 1 Threshold Value', 'object': self.step1ThresholdValue})
+        self.items.append({'name': 'step2GuassianValue', 'string': 'Step 2 Gaussian Value', 'object': self.step2GuassianValue})  
+        self.items.append({'name': 'step2ThresholdValue', 'string': 'Step 2 Threshold Value', 'object': self.step2ThresholdValue})
+        self.items.append({'name': 'step2minClusterArea', 'string': 'Step 2 Minimum Cluster Area', 'object': self.step2minClusterArea})       
+          
         self.items.append({'name': 'step1_Button', 'string': 'Step 1', 'object': self.step1_Button})
         self.items.append({'name': 'step2_Button', 'string': 'Step 2', 'object': self.step2_Button})
         self.items.append({'name': 'step3_Button', 'string': 'Step 3', 'object': self.step3_Button})      
         super().gui()
 
-    def step1(self):
+
+    def step1(self):      
+        #save path       
+        savePath = self.getValue('resultsFolder1') 
+        
+        #get dipole data
+        dipole = self.getValue('dipoleWindow')
+        dipole.setWindowTitle('dipole')
+                
+        #gaussian blur
+        gaussianBlurred = gaussian(dipole.imageview.getProcessedImage(), self.getValue('step1GuassianValue'))
+        
+        if self.getValue('step1Gaussian'):
+            Window(gaussianBlurred, 'dipole - gaussian blurred')
+        
+        #threshold
+        dipole_thresh = gaussianBlurred > self.getValue('step1ThresholdValue')
+        dipole_thresh = dipole_thresh.astype(int)
+        
+        if self.getValue('step1Threshold'):       
+            Window(dipole_thresh, 'dipole - thresholded')
+                
+        #get superResData
+        superRes = self.getValue('twoColorWindow')
+        superRes.setWindowTitle('twoColorSuperRes')
+                
+        #overlay
+        #overlay = background(dipole_thresh,superRes,0.5, True)
+                
+        #mask by threshold
+        superRes_crop = superRes.imageview.getProcessedImage()       
+        mask = dipole_thresh < 1
+        superRes_crop[mask] = [0,0,0] 
+        
+        #create window
+        Window(superRes_crop, 'twoColor_Crop')
+        
+        #save image
+        save_file(os.path.join(savePath,'twoColor_crop.tif'))
+        return
+
+
+    def step2(self):
         #FIND CLUSTERS - CROP AND SAVE
         #superRes_crop_Path = r"C:\Users\georgedickinson\Documents\BSU_work\Brett - analysis for automation 2\tiffs\20190325 DMAT Dimer ED Unpaired 2Color.tif"
                
-        #get cropped image
-        superRes_crop = self.getValue('dipoleWindow')
-        superRes_crop.setWindowTitle('superRes_crop')
+        #set image windows
+        superRes_crop = self.getValue('twoColorWindow_crop')
+        superRes_crop.setWindowTitle('twoColorWindow_crop')
         
         #convert superres to greyscale
         superResCrop_array = superRes_crop.imageview.getProcessedImage()
@@ -234,10 +324,10 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
         Window(superRes_grey, 'SuperRes Grey')
         
         #blur image
-        gaussian_blur(20,keepSourceWindow=False)
+        gaussian_blur(self.getValue('step2GuassianValue'),keepSourceWindow=False)
         
         #threshold
-        threshold(0.02)        
+        threshold(self.getValue('step2ThresholdValue'))        
         superRes_blur_thresh = g.m.currentWindow        
         superRes_blur_thresh_Array = superRes_blur_thresh.imageview.getProcessedImage()
         
@@ -253,7 +343,7 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
         #np.savetxt(r"C:\Users\georgedickinson\Documents\BSU_work\Brett - analysis for automation 2\tiffs\results\clusterInfo.csv",exportList,delimiter=',',header='label,area,centeroid_X,centeroid_Y')
 
         #export cluster data
-        savePath1 = self.getValue('resultsFolder1')        
+        savePath1 = self.getValue('resultsFolder2')        
         np.savetxt(os.path.join(savePath1,'clusterInfo.csv'),exportList,delimiter=',',header='label,area,centeroid_X,centeroid_Y')
         
         #plot cluster boxes - crop and save images
@@ -263,18 +353,19 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
         i=1
         for region in measure.regionprops(labels):
             # take regions with large enough areas
-            if region.area >= 2200:
+            if region.area >= self.getValue('step2minClusterArea') :
         	
                 # draw rectangle around segmented objects
                 minr, minc, maxr, maxc = region.bbox
         
-                #crop image and save tiff
+                #crop image
                 imageCrop = superResCrop_array[minr:maxr,minc:maxc,:]
                 Window(imageCrop, str(i))
-               
+                
+                #get centeroid
                 (X,Y) = region.centroid 
                 
-                #save_file(r"C:\Users\georgedickinson\Documents\BSU_work\Brett - analysis for automation 2\tiffs\results\crop_{}_X{}_Y{}.tif".format(str(i), str(int(X)), str(int(Y))))
+                #save image
                 save_file(os.path.join(savePath1,"crop_{}_X{}_Y{}.tif".format(str(i), str(int(X)), str(int(Y)))))   
                 close()
         
@@ -288,19 +379,22 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
         plt.show()
         return
 
-    def step2(self):
+    def step3(self):
         #ROTATE CLUSTERS BLUE UP - IDENTIFY POSITIONS
         #get all cropped tiff paths
-        #path = r"C:\Users\georgedickinson\Documents\BSU_work\Brett - analysis for automation 2\tiffs\results\*.tif"
-        path = os.path.join(self.getValue('resultsFolder1'),'*.tif') 
+
+        path = os.path.join(self.getValue('resultsFolder2'),'*.tif') 
         fileList = glob.glob(path)
         
         #savepath
-        #savePath = r"C:\Users\georgedickinson\\Documents\BSU_work\Brett - analysis for automation 2\tiffs\results2"
-        savePath = self.getValue('resultsFolder2') 
+        savePath = self.getValue('resultsFolder3') 
         
         #for testing
+        fileName = r"C:\Users\georgedickinson\Desktop\test-Brett\results2\crop_54_X11118_Y2758.tif"
         #fileName = fileList[71]
+
+        #for export
+        exportList2 = []
         
         fileNumber = 0
         
@@ -312,6 +406,9 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
                 file = open_file(fileName)
                 file_img = file.imageview.getProcessedImage()
                 close()
+                
+                
+                
   
                 ####### Rotate cropped image so orange up #############################################
                 
@@ -330,7 +427,7 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
                 num_blobs = len(np.unique(labelled_blobs))-1  # subtract 1 b/c background is labelled 0
                 print ('number of blobs: %i' % num_blobs)
                 
-                
+                #skip image if not enough blobs detected               
                 if num_blobs != 6:
                     print ('Incorrect number of blobs detected - skipping: ' + fileName.split('\\')[-1])
                     fileNumber += 1
@@ -435,33 +532,7 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
                 rotation = 270-angle
                 rotatedImg = scipy.ndimage.rotate(file_img,rotation)
                 
-                
-        #        #plot data
-        #        fig, ax = plt.subplots()
-        #        ax.imshow(np.swapaxes(file_img,0,1))
-        #        
-        #        for prop in blue_props:
-        #            y0, x0 = prop.centroid
-        #            ax.plot(y0, x0, '.g', markersize=15)
-        #        
-        #            minr, minc, maxr, maxc = prop.bbox
-        #            bx = (minc, maxc, maxc, minc, minc)
-        #            by = (minr, minr, maxr, maxr, minr)
-        #            ax.plot(by, bx, '-b', linewidth=2.5)
-        #        
-        #        for prop in orange_props:
-        #            y0, x0 = prop.centroid
-        #            ax.plot(y0, x0, '.g', markersize=15)
-        #        
-        #            minr, minc, maxr, maxc = prop.bbox
-        #            bx = (minc, maxc, maxc, minc, minc)
-        #            by = (minr, minr, maxr, maxr, minr)
-        #            ax.plot(by, bx, '-y', linewidth=2.5)        
-        
-        
-                
-                ######################################################################################
-                
+                     
                 ######## Analyse Orange up image ######################################################
                 #showrotated image
                 #Window(rotatedImg, 'rotated')
@@ -472,11 +543,9 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
                 thresholded_rotated = threshold_adaptive(gray_rotated, 35)        
                 
                 distance_img_rotated = ndi.distance_transform_edt(thresholded_rotated)
-                
-                #Window(distance_img_rotated, 'distance')
-                
+                                
                 peaks_img_rotated = peak_local_max(distance_img_rotated, indices=False, min_distance=2)
-                #Window(peaks_img_rotated, 'peaks')
+
                 blurred_img_rotated = gaussian(peaks_img_rotated, 3)
                 peaks_img_rotated = peak_local_max(blurred_img_rotated, indices=False)
                 markers_img_rotated = measure.label(peaks_img_rotated)
@@ -484,7 +553,6 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
                 
                 props_rotated = measure.regionprops(labelled_blobs_rotated)
                 
-                #Window(labelled_blobs_rotated, 'labelled blobs_rotated')
                 
                 mask_1_rotated = (np.copy(rotatedImg))
                 mask_1_rotated[labelled_blobs_rotated !=1] = 0
@@ -524,16 +592,7 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
                 
                 for meanRGB in maskMeanList_rotated:
                     colourLabels_rotated.append(returnLabel(meanRGB))
-                    
-                
-                #show mask
-                #Window(mask_1_rotated, 'mask 1 %s' % colourLabels[0])
-                #Window(mask_2_rotated, 'mask 2 %s' % colourLabels[1])
-                #Window(mask_3_rotated, 'mask 3 %s' % colourLabels[2])
-                #Window(mask_4_rotated, 'mask 4 %s' % colourLabels[3])
-                #Window(mask_5_rotated, 'mask 5 %s' % colourLabels[4])
-                #Window(mask_6_rotated, 'mask 6 %s' % colourLabels[5])
-                
+                                     
                 
                 blue_props_rotated = []
                 orange_props_rotated = []
@@ -557,7 +616,7 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
                     print('Blue-label: {} >> Object size: {}, Object position: {}'.format(prop.label, prop.area, prop.centroid))
                     blueCenteroids_rotated.append(prop.centroid)
                     #exportList.append([prop.label, prop.area, prop.centroid[0],prop.centroid[1]])
-                    allProps.append(['blue', prop.label, prop.area, prop.centroid[0],prop.centroid[1]])
+                    allProps.append(['blue', prop.label, prop.area, prop.centroid[0],prop.centroid[1],prop.bbox])
                 
                 
                 orangeCenteroids_rotated = []
@@ -566,11 +625,11 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
                     print('Orange-label: {} >> Object size: {}, Object position: {}'.format(prop.label, prop.area, prop.centroid))
                     orangeCenteroids_rotated.append(prop.centroid)
                     #exportList.append([prop.label, prop.area, prop.centroid[0],prop.centroid[1]])
-                    allProps.append(['orange', prop.label, prop.area, prop.centroid[0],prop.centroid[1]])
-                
-                
-                
-                #plot data
+                    allProps.append(['orange', prop.label, prop.area, prop.centroid[0],prop.centroid[1],prop.bbox])
+                                
+                ###############################
+                ##### plot data ###############
+                ###############################
                 fig, ax = plt.subplots()
                 ax.imshow(np.swapaxes(rotatedImg,0,1))
                 
@@ -593,8 +652,8 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
                     ax.plot(by, bx, '-y', linewidth=2.5)
                 
                 #determine blob positions (1-6) for 'butter-side up' or 'butter-side down'
-                #create data frame for easier searching/filtering
-                allPropsDF = pd.DataFrame(allProps,columns=['colour','label','area','centeroid-x','centeroid-y'])
+                #create pd dataframe for easier searching/filtering
+                allPropsDF = pd.DataFrame(allProps,columns=['colour','label','area','centeroid-x','centeroid-y','bbox'])
                 allPropsDF['position'] = 0
         
                 #try butterside up layout
@@ -637,56 +696,161 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
                     allPropsDF.loc[(allPropsDF['colour'] == 'blue') & (allPropsDF['position'] == 0), 'position'] = 5
         
                
-                #line1
+                #line1 (Origami Angle)
                 line1_start_x = float(allPropsDF[(allPropsDF.position  == 1)]['centeroid-x'])
                 line1_start_y = float(allPropsDF[(allPropsDF.position  == 1)]['centeroid-y'])
                 
                 line1_end_x = float(allPropsDF[(allPropsDF.position  == 4)]['centeroid-x'])
                 line1_end_y = float(allPropsDF[(allPropsDF.position  == 4)]['centeroid-y'])
                 
-                ax.plot([line1_start_x,line1_end_x], [line1_start_y,line1_end_y], '-g')
+                ax.plot([line1_start_x,line1_end_x], [line1_start_y,line1_end_y], '-g') #THIS IS THE ORIGAMI ANGLE LINE
                 
-                #line2
+                #get origami angle  
+                if side == 'DOWN':
+                    origami_angle = abs(angle2points((line1_end_x,line1_end_y), (line1_start_x,line1_start_y)))
+                else:
+                    origami_angle = 360 - angle2points((line1_start_x,line1_start_y), (line1_end_x,line1_end_y))
+
+                #line1 bounds (Uncertainty of Origami Angle) 
+                line1_start_bbox = allPropsDF[(allPropsDF.position  == 1)]['bbox'].values[0]
+                line1_end_bbox = allPropsDF[(allPropsDF.position  == 4)]['bbox'].values[0] 
+                
+                if side == 'DOWN':                
+                    line1_start_bounds1_x = float(line1_start_bbox[0])
+                    line1_start_bounds1_y = float(line1_start_bbox[1])
+                    line1_start_bounds2_x = float(line1_start_bbox[2])
+                    line1_start_bounds2_y = float(line1_start_bbox[3])               
+    
+                    line1_end_bounds2_x = float(line1_end_bbox[0])
+                    line1_end_bounds2_y = float(line1_end_bbox[1])
+                    line1_end_bounds1_x = float(line1_end_bbox[2])
+                    line1_end_bounds1_y = float(line1_end_bbox[3])  
+                    
+                else:
+                    line1_start_bounds1_x = float(line1_start_bbox[2])
+                    line1_start_bounds1_y = float(line1_start_bbox[1])
+                    line1_start_bounds2_x = float(line1_start_bbox[0])
+                    line1_start_bounds2_y = float(line1_start_bbox[3])               
+    
+                    line1_end_bounds2_x = float(line1_end_bbox[2])
+                    line1_end_bounds2_y = float(line1_end_bbox[1])
+                    line1_end_bounds1_x = float(line1_end_bbox[0])
+                    line1_end_bounds1_y = float(line1_end_bbox[3])  
+
+                ax.plot([line1_start_bounds1_x,line1_end_bounds1_x], [line1_start_bounds1_y,line1_end_bounds1_y], '-g') #ORIGAMI ANGLE BOUNDARYLINE 1
+                ax.plot([line1_start_bounds2_x,line1_end_bounds2_x], [line1_start_bounds2_y,line1_end_bounds2_y], '-g') #ORIGAMI ANGLE BOUNDARYLINE 2
+                
+                #get origami boundary line angles   
+                #origami_angle_bounds1 = angle2points((line1_start_bounds1_x,line1_start_bounds1_y), (line1_end_bounds1_x,line1_end_bounds1_y))
+                #origami_angle_bounds2 = angle2points((line1_start_bounds2_x,line1_start_bounds2_y), (line1_end_bounds2_x,line1_end_bounds2_y))
+                
+                if side == 'DOWN':
+                    origami_angle_bounds1 = abs( angle2points((line1_end_bounds1_x, line1_end_bounds1_y), (line1_start_bounds1_x, line1_start_bounds1_y)))
+                    origami_angle_bounds2 = abs( angle2points((line1_end_bounds2_x, line1_end_bounds2_y), (line1_start_bounds2_x, line1_start_bounds2_y)))
+                else:
+                    origami_angle_bounds1 = 360 - angle2points((line1_start_bounds1_x, line1_start_bounds1_y), (line1_end_bounds1_x, line1_end_bounds1_y))
+                    origami_angle_bounds2 = 360 - angle2points((line1_start_bounds2_x, line1_start_bounds2_y), (line1_end_bounds2_x, line1_end_bounds2_y))
+                
+                
+                ##########
+                
+                #line2 (Helical Domain Angle)
                 line2_start_x = float(allPropsDF[(allPropsDF.position  == 6)]['centeroid-x'])
                 line2_start_y = float(allPropsDF[(allPropsDF.position  == 6)]['centeroid-y'])
                 
                 line2_end_x = float(allPropsDF[(allPropsDF.position  == 2)]['centeroid-x'])
                 line2_end_y = float(allPropsDF[(allPropsDF.position  == 2)]['centeroid-y'])
                 
-                ax.plot([line2_start_x,line2_end_x], [line2_start_y,line2_end_y], '-g')
+                #ax.plot([line2_start_x,line2_end_x], [line2_start_y,line2_end_y], '-g')
+
+
+                #line2 bounds
+                line2_start_bbox = allPropsDF[(allPropsDF.position  == 6)]['bbox'].values[0]
+                line2_end_bbox = allPropsDF[(allPropsDF.position  == 2)]['bbox'].values[0]
                 
-                #line3
-                line3_start_x = float(allPropsDF[(allPropsDF.position  == 5)]['centeroid-x'])
-                line3_start_y = float(allPropsDF[(allPropsDF.position  == 5)]['centeroid-y'])
+                if side == 'DOWN':                  
+                    line2_start_bounds1_x = float(line2_start_bbox[2])
+                    line2_start_bounds1_y = float(line2_start_bbox[1])
+                    line2_start_bounds2_x = float(line2_start_bbox[0])
+                    line2_start_bounds2_y = float(line2_start_bbox[3])                                  
+                    line2_end_bounds2_x = float(line2_end_bbox[2])
+                    line2_end_bounds2_y = float(line2_end_bbox[1])
+                    line2_end_bounds1_x = float(line2_end_bbox[0])
+                    line2_end_bounds1_y = float(line2_end_bbox[3])  
+                    
+                else:
+                    line2_start_bounds1_x = float(line2_start_bbox[0])
+                    line2_start_bounds1_y = float(line2_start_bbox[1])
+                    line2_start_bounds2_x = float(line2_start_bbox[2])
+                    line2_start_bounds2_y = float(line2_start_bbox[3])                                  
+                    line2_end_bounds2_x = float(line2_end_bbox[0])
+                    line2_end_bounds2_y = float(line2_end_bbox[1])
+                    line2_end_bounds1_x = float(line2_end_bbox[2])
+                    line2_end_bounds1_y = float(line2_end_bbox[3])                    
                 
-                line3_end_x = float(allPropsDF[(allPropsDF.position  == 3)]['centeroid-x'])
-                line3_end_y = float(allPropsDF[(allPropsDF.position  == 3)]['centeroid-y'])
+
+                #ax.plot([line2_start_bounds1_x,line2_end_bounds1_x], [line2_start_bounds1_y,line2_end_bounds1_y], '-g')
+                ax.plot([line2_start_bounds2_x,line2_end_bounds2_x], [line2_start_bounds2_y,line2_end_bounds2_y], '-r') #THIS IS THE HELICAL ANGLE DOMAIN LINE (BUTTERSIDE DOWN)
                 
-                ax.plot([line3_start_x,line3_end_x], [line3_start_y,line3_end_y], '-g')
+                #get helical angle   (butterside down)
+                helical_angle = abs(angle2points((line2_start_bounds2_x,line2_start_bounds2_y), (line2_end_bounds2_x,line2_end_bounds2_y)))
+
+
+                #########
                 
+# =============================================================================
+#                 #line3 (Helical Domain Angle for Butter Side Up)
+#                 line3_start_x = float(allPropsDF[(allPropsDF.position  == 5)]['centeroid-x'])
+#                 line3_start_y = float(allPropsDF[(allPropsDF.position  == 5)]['centeroid-y'])
+#                 
+#                 line3_end_x = float(allPropsDF[(allPropsDF.position  == 3)]['centeroid-x'])
+#                 line3_end_y = float(allPropsDF[(allPropsDF.position  == 3)]['centeroid-y'])
+#                 
+#                 #ax.plot([line3_start_x,line3_end_x], [line3_start_y,line3_end_y], '-g')
+#                 
+#                 #line3 bounds 
+#                 line3_start_bbox = allPropsDF[(allPropsDF.position  == 5)]['bbox'].values[0]
+#                 line3_start_bounds1_x = float(line3_start_bbox[2])
+#                 line3_start_bounds1_y = float(line3_start_bbox[1])
+#                 line3_start_bounds2_x = float(line3_start_bbox[0])
+#                 line3_start_bounds2_y = float(line3_start_bbox[3])               
+# 
+#                 line3_end_bbox = allPropsDF[(allPropsDF.position  == 3)]['bbox'].values[0]
+#                 line3_end_bounds2_x = float(line3_end_bbox[2])
+#                 line3_end_bounds2_y = float(line3_end_bbox[1])
+#                 line3_end_bounds1_x = float(line3_end_bbox[0])
+#                 line3_end_bounds1_y = float(line3_end_bbox[3])  
+# 
+#                 #ax.plot([line3_start_bounds1_x,line3_end_bounds1_x], [line3_start_bounds1_y,line3_end_bounds1_y], '-g')
+#                 #ax.plot([line3_start_bounds2_x,line3_end_bounds2_x], [line3_start_bounds2_y,line3_end_bounds2_y], '-g')                
+# =============================================================================
                 
-                #get intersect point (using cramer's rule)
-                line1 = line([line1_start_x,line1_start_y],[line1_end_x,line1_end_y]) 
-                line2 = line([line2_start_x,line2_start_y],[line2_end_x,line2_end_y])                 
-                line1_2_intersect = intersection(line1,line2)
-                
-                #get angle 1
-                A = (line1_start_x,line1_start_y)
-                B = (line2_start_x,line2_start_y)
-                C = line1_2_intersect
-                
-                line1_2_angle = triangleAngles(A,B,C)[2]        
                                 
-                line1 = line([line1_start_x,line1_start_y],[line1_end_x,line1_end_y]) 
-                line3 = line([line3_start_x,line3_start_y],[line3_end_x,line3_end_y])                 
-                line1_3_intersect = intersection(line1,line3)               
-                
-                #get angle 2
-                A = (line1_end_x,line1_end_y)
-                B = (line3_end_x,line3_end_y)
-                C = line1_3_intersect
-                
-                line1_3_angle = triangleAngles(A,B,C)[2]   
+                                
+# =============================================================================
+#                 #get intersect point (using cramer's rule)
+#                 line1 = line([line1_start_x,line1_start_y],[line1_end_x,line1_end_y]) 
+#                 line2 = line([line2_start_x,line2_start_y],[line2_end_x,line2_end_y])                 
+#                 line1_2_intersect = intersection(line1,line2)
+#                 
+#                 #get angle 1
+#                 A = (line1_start_x,line1_start_y)
+#                 B = (line2_start_x,line2_start_y)
+#                 C = line1_2_intersect
+#                 
+#                 line1_2_angles = triangleAngles(A,B,C)        
+#                                 
+#                 line1 = line([line1_start_x,line1_start_y],[line1_end_x,line1_end_y]) 
+#                 line3 = line([line3_start_x,line3_start_y],[line3_end_x,line3_end_y])                 
+#                 line1_3_intersect = intersection(line1,line3)               
+#                 
+#                 #get angle 2
+#                 A = (line1_end_x,line1_end_y)
+#                 B = (line3_end_x,line3_end_y)
+#                 C = line1_3_intersect
+#                 
+#                 line1_3_angles = triangleAngles(A,B,C)   
+# =============================================================================
                
                 fig.suptitle(fileName.split('\\')[-1])
                 
@@ -694,18 +858,58 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
                 
                 #uncomment to show plots
                 #plt.show()
+
+                #convert rotation to clock-wise
+                rotation = 360 - rotation
                 
-                fig.savefig(savePath + '\\' + str(fileNumber) + '_' + fileName.split('\\')[-1].split('.')[0] + '_Rot_' +str(int(rotation)) + '_Butter'+side + '_Angle1_' +str(int(line1_2_angle)) + '_Angle2_' +str(int(line1_3_angle)) )
+                exportList2.append([fileNumber,
+                                    fileName.split('\\')[-1].split('.')[0],
+                                    round(rotation,2),
+                                    side,
+                                    
+                                    round(line1_start_x,2),
+                                    round(line1_start_y,2),
+                                    round(line1_end_x,2),
+                                    round(line1_end_y,2),
+                                    round(origami_angle,2),
+                                                                  
+                                    round(line1_start_bounds1_x,2),
+                                    round(line1_start_bounds1_y,2),
+                                    round(line1_end_bounds1_x,2),
+                                    round(line1_end_bounds1_y,2),                                    
+                                    round(origami_angle_bounds1,2),
+                                    
+                                    round(line1_start_bounds2_x,2),
+                                    round(line1_start_bounds2_y,2),     
+                                    round(line1_end_bounds2_x,2),
+                                    round(line1_end_bounds2_y,2),  
+                                    round(origami_angle_bounds2,2),
+                                    
+                                    round(line2_start_x,2),
+                                    round(line2_start_y,2),
+                                    round(line2_end_x,2),
+                                    round(line2_end_y,2),
+                                    round(helical_angle,2)])
+
+                
+                fig.savefig(savePath + '\\' + str(fileNumber) + '_' + fileName.split('\\')[-1].split('.')[0] +
+                            '_Rot_' +str(int(rotation)) + '_Butter'+side + '_origamiAngle_' +str(int(origami_angle)) + '_helicalAngle_' +str(int(helical_angle)) )
                 fileNumber += 1
                   
             except:
                 print('error - skipping: ' + fileName.split('\\')[-1])
                 fileNumber += 1
+        
+        #save datafile
+        print(exportList2)
+        np.savetxt(os.path.join(savePath,'finalInfo.csv'),
+                   exportList2,delimiter=',',
+                   header='fileNumber,fileName,rotationFromOriginal,side,line1_start_x,line1_start_y,line1_end_x,line1_end_y,origami_angle,line1_start_bounds1_x,line1_start_bounds1_y,line1_end_bounds1_x,line1_end_bounds1_y,origami_angle_bounds1,line1_start_bounds2_x,line1_start_bounds2_y,line1_end_bounds2_x,line1_end_bounds2_y,origami_angle_bounds2,line2_start_x,line2_start_y,line2_end_x,line2_end_y,helical_angle', 
+                   fmt='%s')
+        
+        
         return
 
-    def step3(self):
-        pass
-        return
 
 dipoleAnalysis = DipoleAnalysis()
 
