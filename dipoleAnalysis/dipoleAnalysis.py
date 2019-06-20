@@ -27,7 +27,12 @@ from skimage.color import rgb2gray
 
 #from skimage.io import imread, imshow
 from skimage.feature import peak_local_max
-from skimage.filters import gaussian, threshold_adaptive
+
+try:
+    from skimage.filters import gaussian, threshold_adaptive
+except:
+    from skimage.filter import gaussian, threshold_adaptive
+
 from skimage import measure
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
