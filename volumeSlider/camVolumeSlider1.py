@@ -17,7 +17,12 @@ from numpy import moveaxis
 from skimage.transform import rescale
 from pyqtgraph.dockarea import *
 from pyqtgraph import mkPen
-
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
+import copy
+import pyqtgraph.opengl as gl
+from OpenGL.GL import *
 
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
@@ -29,7 +34,7 @@ else:
 dataType = np.float16
 
 
-#####################################################################################
+##############       Helper functions        ###########################################
 
 def get_transformation_matrix(theta=45):
     """
@@ -78,7 +83,8 @@ def get_transformation_coordinates(I, theta):
 
 def perform_shear_transform(A, shift_factor, interpolate, datatype, theta):
     #A = moveaxis(A, [1, 3, 2, 0], [0, 1, 2, 3])
-    A = moveaxis(A, [2, 3, 0, 1], [0, 1, 2, 3])
+    #A = moveaxis(A, [2, 3, 0, 1], [0, 1, 2, 3])
+    A = moveaxis(A, [0, 3, 1, 2], [0, 1, 2, 3]) 
     m1, m2, m3, m4 = A.shape
     if interpolate:
         A_rescaled = np.zeros((m1*int(shift_factor), m2, m3, m4))
@@ -96,12 +102,210 @@ def perform_shear_transform(A, shift_factor, interpolate, datatype, theta):
     D = np.zeros((new_mx, new_my, mz, mt))
     D[new_coords[0], new_coords[1], :, :] = A_rescaled[old_coords[0], old_coords[1], :, :]
     #E = moveaxis(D, [0, 1, 2, 3], [3, 1, 2, 0])
-    E = moveaxis(D, [0, 1, 2, 3], [2, 3, 0, 1])
+    #E = moveaxis(D, [0, 1, 2, 3], [2, 3, 0, 1])
+    E = moveaxis(D, [0, 1, 2, 3], [0, 3, 1, 2]) 
     E = np.flip(E, 1)
 
     return E
 
+def getCorners(vol):
+    z,x,y = vol.nonzero()
+    z_min = np.min(z)
+    z_max = np.max(z)
+    x_min = np.min(x)
+    x_max = np.max(x)
+    y_min = np.min(y)
+    y_max = np.max(y)
+    newArray = np.zeros(vol.shape)
+
+    newArray[z_min,x_min,y_min] = 1    
+    newArray[z_min,x_max,y_min] = 1    
+    newArray[z_min,x_min,y_max] = 1    
+    newArray[z_min,x_max,y_max] = 1    
+    newArray[z_max,x_min,y_min] = 1    
+    newArray[z_max,x_max,y_min] = 1    
+    newArray[z_max,x_min,y_max] = 1    
+    newArray[z_max,x_max,y_max] = 1     
+    return newArray
+
+def getDimensions(vol):
+    z,x,y = vol.nonzero()
+    z_min = np.min(z)
+    z_max = np.max(z)
+    x_min = np.min(x)
+    x_max = np.max(x)
+    y_min = np.min(y)
+    y_max = np.max(y)
+    return x_min,x_max,y_min,y_max,z_min,z_max
+
+def getMaxDimension(vol):
+    z,x,y = vol.nonzero()
+    z_max = np.max(z)
+    x_max = np.max(x)
+    y_max = np.max(y)
+    return np.max([x_max,y_max,z_max])
+
+def plot_cube(ax, cube_definition):
+    cube_definition_array = [
+        np.array(list(item))
+        for item in cube_definition
+    ]
+
+    points = []
+    points += cube_definition_array
+    vectors = [
+        cube_definition_array[1] - cube_definition_array[0],
+        cube_definition_array[2] - cube_definition_array[0],
+        cube_definition_array[3] - cube_definition_array[0]
+    ]
+
+    points += [cube_definition_array[0] + vectors[0] + vectors[1]]
+    points += [cube_definition_array[0] + vectors[0] + vectors[2]]
+    points += [cube_definition_array[0] + vectors[1] + vectors[2]]
+    points += [cube_definition_array[0] + vectors[0] + vectors[1] + vectors[2]]
+
+    points = np.array(points)
+
+    edges = [
+        [points[0], points[3], points[5], points[1]],
+        [points[1], points[5], points[7], points[4]],
+        [points[4], points[2], points[6], points[7]],
+        [points[2], points[6], points[3], points[0]],
+        [points[0], points[2], points[4], points[1]],
+        [points[3], points[6], points[7], points[5]]
+    ]
+
+    #fig = plt.figure()
+    #ax = fig.add_subplot(111, projection='3d')
+
+    faces = Poly3DCollection(edges, linewidths=1, edgecolors='k')
+    faces.set_facecolor((0,0,0.1,0.1))
+
+    ax.add_collection3d(faces)
+
+    # Plot the points themselves to force the scaling of the axes
+    ax.scatter(points[:,0], points[:,1], points[:,2], s=0)
+
+    ax.set_aspect('equal')    
 #######################################################################################
+class GLBorderItem(gl.GLAxisItem):
+    """
+    **Bases:** :class:`GLGraphicsItem <pyqtgraph.opengl.GLGraphicsItem>`
+    Overwrite of GLAxisItem 
+    Displays borders of plot data 
+    
+    """
+    
+    def setSize(self, x=None, y=None, z=None, size=None):
+        """
+        Set the size of the axes (in its local coordinate system; this does not affect the transform)
+        Arguments can be x,y,z or size=QVector3D().
+        """
+        if size is not None:
+            x = size.x()
+            y = size.y()
+            z = size.z()
+        self.__size = [x,y,z]
+        self.update()
+
+        
+    def size(self):
+        return self.__size[:]
+
+    
+# =============================================================================
+#     def paint(self):
+# 
+#         #glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+#         #glEnable( GL_BLEND )
+#         #glEnable( GL_ALPHA_TEST )
+#         self.setupGLState()
+#         
+#         if self.antialias:
+#             glEnable(GL_LINE_SMOOTH)
+#             glHint(GL_LINE_SMOOTH_HINT, GL_NICEST)
+#             
+#         glBegin( GL_LINES )
+#         
+#         x,y,z = self.size()
+#         glColor4f(0, 1, 0, .6)  # z is green
+#         glVertex3f(0, 0, 0)
+#         glVertex3f(0, 0, z)
+# 
+#         glColor4f(1, 1, 0, .6)  # y is yellow
+#         glVertex3f(0, 0, 0)
+#         glVertex3f(0, y, 0)
+# 
+#         glColor4f(0, 0, 1, .6)  # x is blue
+#         glVertex3f(0, 0, 0)
+#         glVertex3f(x, 0, 0)
+#         glEnd()
+# =============================================================================
+        
+    def paint(self):
+
+        #glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        #glEnable( GL_BLEND )
+        #glEnable( GL_ALPHA_TEST )
+        self.setupGLState()
+        
+        if self.antialias:
+            glEnable(GL_LINE_SMOOTH)
+            glHint(GL_LINE_SMOOTH_HINT, GL_NICEST)
+            
+        glBegin( GL_LINES )
+        
+        x,y,z = self.size()       
+
+        def zFrame(x,y,z,r=1,g=1,b=1,thickness=0.6):
+            glColor4f(r, g, b, thickness)  # z 
+            glVertex3f(-(int(x)), -(int(y/2)), -(int(z/2)))
+            glVertex3f(-(int(x)), -(int(y/2)), z-(int(z/2)))
+            
+            glColor4f(r, g, b, thickness)  # z 
+            glVertex3f(-(int(x)), y -(int(y/2)), -(int(z/2)))
+            glVertex3f(-(int(x)), y -(int(y/2)), z-(int(z/2)))        
+    
+            glColor4f(r, g, b, thickness)  # y 
+            glVertex3f(-(int(x)), -(int(y/2)), -(int(z/2)))
+            glVertex3f(-(int(x)), y -(int(y/2)), -(int(z/2)))
+            
+            glColor4f(r, g, b, thickness)  # y 
+            glVertex3f(-(int(x)), -(int(y/2)), z-(int(z/2)))
+            glVertex3f(-(int(x)), y -(int(y/2)), z-(int(z/2))) 
+
+        
+        def xFrame(x,y,z,r=1,g=1,b=1,thickness=0.6):
+            glColor4f(r, g, b, thickness)  # x is blue
+            glVertex3f(x-(int(x/2)), -(int(y)), -(int(z/2)))
+            glVertex3f((int(x/2))-x, -(int(y)), -(int(z/2)))
+    
+            glColor4f(r, g, b, thickness)  # x is blue
+            glVertex3f(x-(int(x/2)), -(int(y)), z-(int(z/2)))
+            glVertex3f((int(x/2))-x, -(int(y)), z-(int(z/2)))        
+            
+            glColor4f(r, g, b, thickness)  # z 
+            glVertex3f(x-(int(x/2)), -(int(y)), -(int(z/2)))
+            glVertex3f(x-(int(x/2)), -(int(y)), z-(int(z/2)))
+            
+            glColor4f(r, g, b, thickness)  # z 
+            glVertex3f((int(x/2))-x, -(int(y)), -(int(z/2)))
+            glVertex3f((int(x/2))-x, -(int(y)), z-(int(z/2))) 
+            
+
+        def box(x,y,z,r=1,g=1,b=1,thickness=0.6):        
+            zFrame(x/2,y,z,r=r,g=g,b=b,thickness=thickness)
+            zFrame(x/2-x,y,z,r=r,g=g,b=b,thickness=thickness)        
+            xFrame(x,y/2,z,r=r,g=g,b=b,thickness=thickness)
+            xFrame(x,-y/2,z,r=r,g=g,b=b,thickness=thickness)        
+       
+
+        box(x,y,z)
+        
+        glEnd()
+ 
+
+
 
 class SliceViewer(QtWidgets.QApplication):
     def __init__(self, A):
@@ -142,42 +346,44 @@ class SliceViewer(QtWidgets.QApplication):
         self.win.setCentralWidget(self.area)
         
         #define docks
-        self.d1 = Dock("Top View", size=(500,400))
-        self.d2 = Dock("X slice", size=(500,400), closable=True)
+        self.d1 = Dock("Top View - Max Projection", size=(500,400))
+        self.d2 = Dock("X Slice", size=(500,400), closable=True)
         self.d3 = Dock("Y Slice", size=(500,400), closable=True)
         self.d4 = Dock("Free ROI", size=(500,400), closable=True)
         self.d5 = Dock("Time Slider", size=(1000,50))
+        self.d6 = Dock("Z Slice", size=(500,400), closable=True)
         
         #add docks to area
-        self.area.addDock(self.d1, 'left')        ## place d1 at left edge of dock area 
-        self.area.addDock(self.d2, 'right')       ## place d2 at right edge of dock area
-        self.area.addDock(self.d3, 'bottom', self.d1)  ## place d3 at bottom edge of d1
-        self.area.addDock(self.d4, 'bottom', self.d2)  ## place d4 at bottom edge of d2
-        self.area.addDock(self.d5, 'bottom')  ## place d4 at bottom edge of d2
+        self.area.addDock(self.d1, 'left')              ## place d1 at left edge of dock area 
+        self.area.addDock(self.d2, 'right')             ## place d2 at right edge of dock area
+        self.area.addDock(self.d3, 'bottom', self.d1)   ## place d3 at bottom edge of d1
+        self.area.addDock(self.d4, 'bottom', self.d2)   ## place d4 at bottom edge of d2
+        self.area.addDock(self.d5, 'bottom')            ## place d4 at bottom edge of d2
+        self.area.addDock(self.d6, 'below', self.d4)    ## tab below d4
         
         #initialise image widgets
         self.imv1 = pg.ImageView()
         self.imv2 = pg.ImageView()
         self.imv3 = pg.ImageView()
         self.imv4 = pg.ImageView()
+        self.imv6 = pg.ImageView()
         
-        self.imageWidgits = [self.imv1,self.imv2,self.imv3,self.imv4]
+        self.imageWidgits = [self.imv1,self.imv2,self.imv3,self.imv4,self.imv6]
         
         #add image widgets to docks
         self.d1.addWidget(self.imv1)
         self.d2.addWidget(self.imv3)
         self.d3.addWidget(self.imv2)
         self.d4.addWidget(self.imv4)
+        self.d6.addWidget(self.imv6)
         
-        #hide dock title-bars
-        self.d5.hideTitleBar()
-        
-        self.hide_titles(self)
+        #hide dock title-bars at start
+        self.d5.hideTitleBar()        
+        #self.hide_titles(self)
         
         #add menu functions
         self.state = self.area.saveState()
-        
-        
+                
         self.menubar = self.win.menuBar()
         
         self.fileMenu1 = self.menubar.addMenu('&Options')
@@ -199,6 +405,27 @@ class SliceViewer(QtWidgets.QApplication):
         self.hideTitles.triggered.connect(self.hide_titles)
         self.fileMenu1.addAction(self.hideTitles)
         
+        self.fileMenu2 = self.menubar.addMenu('&3D Plot')
+        self.plot = QtWidgets.QAction(QtGui.QIcon('open.png'), '3D Plot')
+        self.plot.setShortcut('Ctrl+P')
+        self.plot.setStatusTip('3D Plot')
+        self.plot.triggered.connect(self.plot3D)
+        self.fileMenu2.addAction(self.plot)
+        
+        self.fileMenu3 = self.menubar.addMenu('&Texture Plot')
+        self.texturePlot = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Texture Plot')
+        self.texturePlot.setShortcut('Ctrl+T')
+        self.texturePlot.setStatusTip('Texture Plot')
+        self.texturePlot.triggered.connect(self.plotTexture)
+        self.fileMenu3.addAction(self.texturePlot)        
+        
+        self.fileMenu4 = self.menubar.addMenu('&Quit')
+        self.quit = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Quit')
+        self.quit.setShortcut('Ctrl+Q')
+        self.quit.setStatusTip('Quit')
+        self.quit.triggered.connect(self.close)
+        self.fileMenu4.addAction(self.quit)
+        
         #add time slider
         self.slider1 = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.slider1.setFocusPolicy(QtCore.Qt.StrongFocus)
@@ -209,8 +436,7 @@ class SliceViewer(QtWidgets.QApplication):
         self.slider1.setSingleStep(1)
         
         self.d5.addWidget(self.slider1)
-        
-        
+                
         #display window
         self.win.show()
         
@@ -233,7 +459,6 @@ class SliceViewer(QtWidgets.QApplication):
         for imv in self.imageWidgits:
             hideButtons(imv)
 
-
         #disconnect roi handles
         def disconnectHandles(roi):
             handles = roi.getHandles()
@@ -247,8 +472,11 @@ class SliceViewer(QtWidgets.QApplication):
         disconnectHandles(self.roi2)
         disconnectHandles(self.roi3)
 
-        #add data to main window
-        self.imv1.setImage(np.mean(self.data, axis=0)) #display topview (mean of slices)
+        #add max projection data to main window
+        self.imv1.setImage(self.maxProjection(self.data)) #display topview (max of slices)
+        
+        #add sliceable data to side window
+        self.imv6.setImage(self.data)
         
         #connect roi updates
         self.roi1.sigRegionChanged.connect(self.update)
@@ -264,8 +492,8 @@ class SliceViewer(QtWidgets.QApplication):
         self.imv2.autoLevels()
         self.imv3.autoLevels()
         self.imv4.autoLevels()
+        self.imv6.autoLevels()
         
-
          
         self.slider1.valueChanged.connect(self.timeUpdate)
 
@@ -285,12 +513,14 @@ class SliceViewer(QtWidgets.QApplication):
         #global data, imv1, imv3
         self.d3 = self.roi3.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2))
         self.imv3.setImage(self.d3,autoLevels=False)
+              
 
     #connect time slider
     def timeUpdate(self,value):
         #global data
         self.data = self.originalData[:,value,:,:]
-        self.imv1.setImage(np.mean(self.data, axis=0))
+        self.imv1.setImage(self.maxProjection(self.data))
+        self.imv6.setImage(self.data)
         self.update()
         self.update_2()
         self.update_3()
@@ -305,12 +535,108 @@ class SliceViewer(QtWidgets.QApplication):
         self.d2.hideTitleBar()
         self.d3.hideTitleBar()
         self.d4.hideTitleBar()
+        self.d6.hideTitleBar()
         
     def show_titles(self):
         self.d1.showTitleBar()
         self.d2.showTitleBar()
         self.d3.showTitleBar()
         self.d4.showTitleBar()
+        self.d6.showTitleBar()
+
+    def maxProjection(self,data):
+        return np.max(data,axis=0)
+
+
+    def plot3D(self):
+        vol_downSample = copy.deepcopy(self.data)
+
+        #downsample data
+        prob = 0.001
+        mask = np.random.choice([False, True], vol_downSample.shape, p=[prob, 1-prob])
+        vol_downSample[mask] = 0
+        
+        ##z,x,y = vol.nonzero()
+        z,x,y =(vol_downSample > 300).nonzero()
+        
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(x, y, -z, zdir='z', c= 'red', s=1)
+        
+        vol_corners = getCorners(self.data)
+        z_c,x_c,y_c = vol_corners.nonzero()
+        
+        ax.scatter(x_c, y_c, -z_c, zdir='z', c= 'green', s=5)
+
+        x_min,x_max,y_min,y_max,z_min,z_max = getDimensions(self.data)
+        maxDim = getMaxDimension(self.data)
+        
+        ax.set_xlim(0, maxDim)
+        ax.set_ylim(0, maxDim)
+        ax.set_zlim(0, -maxDim)
+        
+        ax.view_init(0,180)
+        plt.draw()
+        
+        
+        outline = [(x_min,y_min,z_min),(x_min,y_max,z_min),(x_max,y_min,z_min),(x_min,y_min,-z_max)]
+
+        plot_cube(ax, outline)
+        
+        fig.show()
+
+
+    def plotTexture(self):
+        #app = QtGui.QApplication([])
+        w = gl.GLViewWidget()
+        w.opts['distance'] = 200
+        w.show()
+        w.setWindowTitle('3D slice - texture plot')
+        
+        shape = self.data.shape
+                
+        ## slice out three planes, convert to RGBA for OpenGL texture
+        levels = (0, 1000)
+        
+        slice1 = int(shape[0]/2)
+        slice2 = int(shape[1]/2)
+        slice3 = int(shape[2]/2)
+        
+        tex1 = pg.makeRGBA(self.data[slice1], levels=levels)[0]       # yz plane
+        tex2 = pg.makeRGBA(self.data[:,slice2], levels=levels)[0]     # xz plane
+        tex3 = pg.makeRGBA(self.data[:,:,slice3], levels=levels)[0]   # xy plane
+        
+        
+        ## Create three image items from textures, add to view
+        v1 = gl.GLImageItem(tex1)
+        v1.translate(-slice2, -slice3, 0)
+        v1.rotate(90, 0,0,1)
+        v1.rotate(-90, 0,1,0)
+        w.addItem(v1)
+        
+        v2 = gl.GLImageItem(tex2)
+        v2.translate(-slice1, -slice3, 0)
+        v2.rotate(-90, 1,0,0)
+        w.addItem(v2)
+        
+        v3 = gl.GLImageItem(tex3)
+        v3.translate(-slice1, -slice2, 0)
+        w.addItem(v3)
+        
+        #ax = gl.GLAxisItem()
+        ax = GLBorderItem()
+        ax.setSize(x=shape[0],y=shape[1],z=shape[2])
+        w.addItem(ax)
+
+
+        
+    def close(self):
+        self.roi1.sigRegionChanged.disconnect(self.update)
+        self.roi2.sigRegionChanged.disconnect(self.update_2)
+        self.roi3.sigRegionChanged.disconnect(self.update_3)
+        self.win.close()
+        self.win.destroy()
+        return
         
 class CamVolumeSlider(BaseProcess):
 
@@ -484,7 +810,7 @@ class Form2(QtWidgets.QDialog):
         self.height = 400
 
         self.theta = 45
-        self.shiftFactor = 1.5
+        self.shiftFactor = 1
 
         #spinboxes
         self.spinLabel1 = QtWidgets.QLabel("Slice #") 
@@ -528,9 +854,8 @@ class Form2(QtWidgets.QDialog):
         self.SpinBox9.setValue(self.theta)
         
         self.spinLabel10 = QtWidgets.QLabel("shift factor: ") 
-        self.SpinBox10 = QtWidgets.QDoubleSpinBox()
+        self.SpinBox10 = QtWidgets.QSpinBox()
         self.SpinBox10.setRange(0,100)  
-        self.SpinBox10.setSingleStep(0.1)
         self.SpinBox10.setValue(self.shiftFactor)        
 
         
