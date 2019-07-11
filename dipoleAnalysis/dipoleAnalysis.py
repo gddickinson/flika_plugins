@@ -29,9 +29,11 @@ from skimage.color import rgb2gray
 from skimage.feature import peak_local_max
 
 try:
-    from skimage.filters import gaussian, threshold_adaptive
+    from skimage.filters import gaussian, threshold_local
+    skimageVersion = 0
 except:
     from skimage.filter import gaussian, threshold_adaptive
+    skimageVersion = 1
 
 from skimage import measure
 import matplotlib.pyplot as plt
@@ -395,7 +397,8 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
         savePath = self.getValue('resultsFolder3') 
         
         #for testing
-        fileName = r"C:\Users\georgedickinson\Desktop\test-Brett\results2\crop_54_X11118_Y2758.tif"
+        #fileName = r"C:\Users\georgedickinson\Desktop\test-Brett\results2\crop_54_X11118_Y2758.tif"
+        #fileName = r"C:\Users\georgedickinson\Desktop\test-Brett\results2\crop_7_X3087_Y2122.tif"
         #fileName = fileList[71]
 
         #for export
@@ -420,7 +423,11 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
                 file_blur = gaussian(file_img, 3)
                 gray = rgb2gray(file_blur)
                 
-                thresholded = threshold_adaptive(gray, 35)
+                if skimageVersion == 1:
+                    thresholded = threshold_adaptive(gray, 35)
+                else:
+                    adaptive_thresh = threshold_local(gray, 35)
+                    thresholded = gray > adaptive_thresh
                                 
                 distance_img = ndi.distance_transform_edt(thresholded)
                 
@@ -545,7 +552,11 @@ class DipoleAnalysis(BaseProcess_noPriorWindow):
                 file_blur_rotated = gaussian(rotatedImg, 3)
                 gray_rotated = rgb2gray(file_blur_rotated)
                 
-                thresholded_rotated = threshold_adaptive(gray_rotated, 35)        
+                if skimageVersion == 1:
+                    thresholded_rotated = threshold_adaptive(gray_rotated, 35) 
+                else:
+                    adaptive_thresh = threshold_local(gray_rotated, 35) 
+                    thresholded_rotated = gray_rotated > adaptive_thresh
                 
                 distance_img_rotated = ndi.distance_transform_edt(thresholded_rotated)
                                 
