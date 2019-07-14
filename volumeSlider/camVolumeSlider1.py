@@ -82,9 +82,7 @@ def get_transformation_coordinates(I, theta):
 
 
 def perform_shear_transform(A, shift_factor, interpolate, datatype, theta):
-    #A = moveaxis(A, [1, 3, 2, 0], [0, 1, 2, 3])
-    #A = moveaxis(A, [2, 3, 0, 1], [0, 1, 2, 3])
-    A = moveaxis(A, [0, 3, 1, 2], [0, 1, 2, 3]) 
+    A = moveaxis(A, [0, 3, 1, 2], [0, 1, 2, 3]) # INPUT
     m1, m2, m3, m4 = A.shape
     if interpolate:
         A_rescaled = np.zeros((m1*int(shift_factor), m2, m3, m4))
@@ -101,10 +99,8 @@ def perform_shear_transform(A, shift_factor, interpolate, datatype, theta):
 
     D = np.zeros((new_mx, new_my, mz, mt))
     D[new_coords[0], new_coords[1], :, :] = A_rescaled[old_coords[0], old_coords[1], :, :]
-    #E = moveaxis(D, [0, 1, 2, 3], [3, 1, 2, 0])
-    #E = moveaxis(D, [0, 1, 2, 3], [2, 3, 0, 1])
-    E = moveaxis(D, [0, 1, 2, 3], [0, 3, 1, 2]) 
-    E = np.flip(E, 1)
+    E = moveaxis(D, [0, 1, 2, 3], [3, 0, 1, 2]) # AXIS INDEX CHANGED FROM INPUT TO MATCH KYLE'S CODE
+    #E = np.flip(E, 1)
 
     return E
 
@@ -175,19 +171,18 @@ def plot_cube(ax, cube_definition):
         [points[3], points[6], points[7], points[5]]
     ]
 
-    #fig = plt.figure()
-    #ax = fig.add_subplot(111, projection='3d')
-
+    # Plot faces
     faces = Poly3DCollection(edges, linewidths=1, edgecolors='k')
     faces.set_facecolor((0,0,0.1,0.1))
 
     ax.add_collection3d(faces)
 
-    # Plot the points themselves to force the scaling of the axes
+    # Plot the points
     ax.scatter(points[:,0], points[:,1], points[:,2], s=0)
 
     ax.set_aspect('equal')    
-#######################################################################################
+
+###############  New GLGraphicsItem class definition ################################
 class GLBorderItem(gl.GLAxisItem):
     """
     **Bases:** :class:`GLGraphicsItem <pyqtgraph.opengl.GLGraphicsItem>`
@@ -211,36 +206,7 @@ class GLBorderItem(gl.GLAxisItem):
         
     def size(self):
         return self.__size[:]
-
     
-# =============================================================================
-#     def paint(self):
-# 
-#         #glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-#         #glEnable( GL_BLEND )
-#         #glEnable( GL_ALPHA_TEST )
-#         self.setupGLState()
-#         
-#         if self.antialias:
-#             glEnable(GL_LINE_SMOOTH)
-#             glHint(GL_LINE_SMOOTH_HINT, GL_NICEST)
-#             
-#         glBegin( GL_LINES )
-#         
-#         x,y,z = self.size()
-#         glColor4f(0, 1, 0, .6)  # z is green
-#         glVertex3f(0, 0, 0)
-#         glVertex3f(0, 0, z)
-# 
-#         glColor4f(1, 1, 0, .6)  # y is yellow
-#         glVertex3f(0, 0, 0)
-#         glVertex3f(0, y, 0)
-# 
-#         glColor4f(0, 0, 1, .6)  # x is blue
-#         glVertex3f(0, 0, 0)
-#         glVertex3f(x, 0, 0)
-#         glEnd()
-# =============================================================================
         
     def paint(self):
 
@@ -304,8 +270,12 @@ class GLBorderItem(gl.GLAxisItem):
         
         glEnd()
  
-
-
+    
+    
+    
+    
+    
+################################################################################
 
 class SliceViewer(QtWidgets.QApplication):
     def __init__(self, A):
@@ -317,6 +287,12 @@ class SliceViewer(QtWidgets.QApplication):
         
         print('shift factor: '+ str(self.shift_factor))
         print('theta: ' + str(self.theta))
+        
+        #3D plot params
+        self.prob = 0.001
+        self.threshold_3D = 300
+        self.plotCube = False
+        self.hideAxis = True
                 
         self.originalData = A
         
@@ -412,6 +388,11 @@ class SliceViewer(QtWidgets.QApplication):
         self.plot.triggered.connect(self.plot3D)
         self.fileMenu2.addAction(self.plot)
         
+        self.plotOptions = QtWidgets.QAction(QtGui.QIcon('open.png'), '3D Plot Options')
+        self.plotOptions.setStatusTip('3D Plot Options')
+        self.plotOptions.triggered.connect(self.plot3D_options)
+        self.fileMenu2.addAction(self.plotOptions)        
+                
         self.fileMenu3 = self.menubar.addMenu('&Texture Plot')
         self.texturePlot = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Texture Plot')
         self.texturePlot.setShortcut('Ctrl+T')
@@ -497,7 +478,6 @@ class SliceViewer(QtWidgets.QApplication):
          
         self.slider1.valueChanged.connect(self.timeUpdate)
 
-
     #define update calls for each roi
     def update(self):
         #global data, imv1, imv4
@@ -548,16 +528,15 @@ class SliceViewer(QtWidgets.QApplication):
         return np.max(data,axis=0)
 
 
-    def plot3D(self):
+    def plot3D(self):       
         vol_downSample = copy.deepcopy(self.data)
 
         #downsample data
-        prob = 0.001
-        mask = np.random.choice([False, True], vol_downSample.shape, p=[prob, 1-prob])
+        mask = np.random.choice([False, True], vol_downSample.shape, p=[self.prob, 1-self.prob])
         vol_downSample[mask] = 0
         
         ##z,x,y = vol.nonzero()
-        z,x,y =(vol_downSample > 300).nonzero()
+        z,x,y =(vol_downSample > self.threshold_3D).nonzero()
         
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
@@ -576,15 +555,26 @@ class SliceViewer(QtWidgets.QApplication):
         ax.set_zlim(0, -maxDim)
         
         ax.view_init(0,180)
+        
+        #hide axis
+        if self.hideAxis:
+            ax.axis('off')
+        
         plt.draw()
         
-        
+        #plot array outline        
         outline = [(x_min,y_min,z_min),(x_min,y_max,z_min),(x_max,y_min,z_min),(x_min,y_min,-z_max)]
 
-        plot_cube(ax, outline)
+        # plot array shape
+        if self.plotCube:
+            plot_cube(ax, outline)
         
         fig.show()
 
+    def plot3D_options(self):
+        self.plot3D_optionWin = plot3D_options(self.prob,self.threshold_3D)
+        self.plot3D_optionWin.show() 
+        return
 
     def plotTexture(self):
         #app = QtGui.QApplication([])
@@ -627,8 +617,6 @@ class SliceViewer(QtWidgets.QApplication):
         ax = GLBorderItem()
         ax.setSize(x=shape[0],y=shape[1],z=shape[2])
         w.addItem(ax)
-
-
         
     def close(self):
         self.roi1.sigRegionChanged.disconnect(self.update)
@@ -637,7 +625,24 @@ class SliceViewer(QtWidgets.QApplication):
         self.win.close()
         self.win.destroy()
         return
-        
+
+
+    def setProb(self, prob):
+        self.prob = prob
+        return
+    
+    def setThreshold(self, thresh):
+        self.threshold_3D = thresh
+        return
+ 
+    def setPlotCube(self, flag):
+        self.plotCube = flag
+        return
+
+    def setPlotAxis(self, flag):
+        self.hideAxis = flag
+        return
+       
 class CamVolumeSlider(BaseProcess):
 
     def __init__(self):
@@ -706,8 +711,7 @@ class CamVolumeSlider(BaseProcess):
         self.framesPerVol = framesPerVol
 
     def closeEvent(self, event):
-        BaseProcess.closeEvent(self, event)
-        self.dialogbox.close()
+        event.accept()
 
     def getArrayShape(self):
         if self.B == []:
@@ -796,9 +800,6 @@ camVolumeSlider = CamVolumeSlider()
 
 
 
-
-
-
 class Form2(QtWidgets.QDialog):
     def __init__(self, parent = None):
         super(Form2, self).__init__(parent)
@@ -884,9 +885,7 @@ class Form2(QtWidgets.QDialog):
         self.button7 = QtWidgets.QPushButton("set data Type") 
         self.button8 = QtWidgets.QPushButton("multiply") 
         self.button9 = QtWidgets.QPushButton("export array") 
-        
-        self.button10 = QtWidgets.QPushButton("set theta") 
-        self.button11 = QtWidgets.QPushButton("set shift factor")         
+              
         self.button12 = QtWidgets.QPushButton("open 3D viewer") 
 
         #labels
@@ -960,11 +959,9 @@ class Form2(QtWidgets.QDialog):
         
         layout.addWidget(self.spinLabel9, 15, 0)
         layout.addWidget(self.SpinBox9, 15, 1)
-        layout.addWidget(self.button10, 15, 2)
 
         layout.addWidget(self.spinLabel10, 16, 0)
         layout.addWidget(self.SpinBox10, 16, 1)
-        layout.addWidget(self.button11, 16, 2)
         
         layout.addWidget(self.button12, 17, 0)  
         
@@ -978,6 +975,8 @@ class Form2(QtWidgets.QDialog):
         #connect sliders & spinboxes
         self.slider1.valueChanged.connect(self.slider1ValueChange)
         self.SpinBox1.valueChanged.connect(self.spinBox1ValueChange)
+        self.SpinBox9.valueChanged.connect(self.setTheta)        
+        self.SpinBox10.valueChanged.connect(self.setShiftFactor)       
         
         #connect buttons
         self.button1.clicked.connect(self.autoLevel)
@@ -988,9 +987,7 @@ class Form2(QtWidgets.QDialog):
         self.button6.clicked.connect(self.exportToWindow)
         self.button7.clicked.connect(self.dTypeSelectionChange)    
         self.button8.clicked.connect(self.multiplyByFactor)   
-        self.button9.clicked.connect(self.exportArray) 
-        self.button10.clicked.connect(self.setTheta)         
-        self.button11.clicked.connect(self.setShiftFactor)         
+        self.button9.clicked.connect(self.exportArray)        
         self.button12.clicked.connect(self.startViewer)           
 
         return
@@ -1081,3 +1078,97 @@ class Form2(QtWidgets.QDialog):
 
     def setShiftFactor(self):
         self.shiftFactor = self.SpinBox10.value()    
+
+    def close(self):
+        camVolumeSlider.viewer.close()
+        camVolumeSlider.displayWindow.close()
+        camVolumeSlider.dialogbox.destroy()
+        camVolumeSlider.end()
+        self.closeAllWindows()
+        return        
+
+class plot3D_options(QtWidgets.QDialog):
+    def __init__(self, prob, threshold, parent = None):
+        super(plot3D_options, self).__init__(parent)
+        
+        self.prob = prob
+        self.threshold = threshold
+        
+        #window geometry
+        self.left = 300
+        self.top = 300
+        self.width = 300
+        self.height = 200
+
+        #spinboxes
+        self.spinLabel1 = QtWidgets.QLabel("Amount of downsampling (0-1)") 
+        self.SpinBox1 = QtWidgets.QDoubleSpinBox()
+        self.SpinBox1.setDecimals(4)
+        self.SpinBox1.setRange(0,1.0000)
+        self.SpinBox1.setValue(self.prob)
+ 
+        self.spinLabel2 = QtWidgets.QLabel("Threshold level") 
+        self.SpinBox2 = QtWidgets.QSpinBox()
+        self.SpinBox2.setRange(0,10000)
+        self.SpinBox2.setValue(self.threshold)
+
+        #checkboxes
+        self.checkBox1_label = QtWidgets.QLabel("Display array outline")  
+        self.checkBox1 = QtWidgets.QCheckBox()
+        self.checkBox2_label = QtWidgets.QLabel("Display plot axis")  
+        self.checkBox2 = QtWidgets.QCheckBox()
+        #buttons
+        self.button1 = QtWidgets.QPushButton("Close")       
+        
+        #grid layout
+        layout = QtWidgets.QGridLayout()
+        layout.setSpacing(5)
+
+        layout.addWidget(self.spinLabel1, 1, 0)        
+        layout.addWidget(self.SpinBox1, 1, 1)
+        layout.addWidget(self.spinLabel2, 2, 0)        
+        layout.addWidget(self.SpinBox2, 2, 1)
+        layout.addWidget(self.checkBox1_label, 3, 0)        
+        layout.addWidget(self.checkBox1, 3, 1) 
+        layout.addWidget(self.checkBox2_label, 4, 0)        
+        layout.addWidget(self.checkBox2, 4, 1) 
+        layout.addWidget(self.button1, 5, 2) 
+               
+        self.setLayout(layout)
+        self.setGeometry(self.left, self.top, self.width, self.height)
+        
+        #add window title
+        self.setWindowTitle("3D Plot Options")
+        
+        #connect sliders & spinboxes
+        self.SpinBox1.valueChanged.connect(self.spinBox1ValueChange)
+        self.SpinBox2.valueChanged.connect(self.spinBox2ValueChange)    
+        
+        #connect checkboxes
+        self.checkBox1.stateChanged.connect(self.checkBox1ValueChange)
+        self.checkBox2.stateChanged.connect(self.checkBox2ValueChange)
+        
+        #connect buttons
+        self.button1.clicked.connect(self.close)
+         
+        return
+          
+    def spinBox1ValueChange(self, value):
+        camVolumeSlider.viewer.setProb(value)
+        return       
+    
+    def spinBox2ValueChange(self, value):
+        camVolumeSlider.viewer.setThreshold(value)
+        return  
+
+    def checkBox1ValueChange(self, value):
+        camVolumeSlider.viewer.setPlotCube(value)
+        return
+
+    def checkBox2ValueChange(self, value):
+        camVolumeSlider.viewer.setPlotAxis((not value))
+        return
+
+    def close(self):
+        self.close()
+        return            
