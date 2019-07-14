@@ -81,8 +81,8 @@ def get_transformation_coordinates(I, theta):
     return old_coords, new_coords
 
 
-def perform_shear_transform(A, shift_factor, interpolate, datatype, theta):
-    A = moveaxis(A, [0, 3, 1, 2], [0, 1, 2, 3]) # INPUT
+def perform_shear_transform(A, shift_factor, interpolate, datatype, theta, inputArrayOrder = [0, 3, 1, 2], displayArrayOrder = [3, 0, 1, 2]):
+    A = moveaxis(A, inputArrayOrder, [0, 1, 2, 3]) # INPUT
     m1, m2, m3, m4 = A.shape
     if interpolate:
         A_rescaled = np.zeros((m1*int(shift_factor), m2, m3, m4))
@@ -99,7 +99,7 @@ def perform_shear_transform(A, shift_factor, interpolate, datatype, theta):
 
     D = np.zeros((new_mx, new_my, mz, mt))
     D[new_coords[0], new_coords[1], :, :] = A_rescaled[old_coords[0], old_coords[1], :, :]
-    E = moveaxis(D, [0, 1, 2, 3], [3, 0, 1, 2]) # AXIS INDEX CHANGED FROM INPUT TO MATCH KYLE'S CODE
+    E = moveaxis(D, [0, 1, 2, 3], displayArrayOrder) # AXIS INDEX CHANGED FROM INPUT TO MATCH KYLE'S CODE
     #E = np.flip(E, 1)
 
     return E
@@ -284,9 +284,13 @@ class SliceViewer(QtWidgets.QApplication):
         self.shift_factor = camVolumeSlider.dialogbox.shiftFactor
         self.interpolate = False
         self.theta = camVolumeSlider.dialogbox.theta
+        self.inputArrayOrder = camVolumeSlider.getInputArrayOrder()
+        self.displayArrayOrder = camVolumeSlider.getDisplayArrayOrder()
         
         print('shift factor: '+ str(self.shift_factor))
         print('theta: ' + str(self.theta))
+        print('input Array Order: '+ str(self.inputArrayOrder))
+        print('display Array Order: ' + str(self.displayArrayOrder))        
         
         #3D plot params
         self.prob = 0.001
@@ -300,10 +304,9 @@ class SliceViewer(QtWidgets.QApplication):
         self.nVols = self.originalDataShape[1]
         self.nSteps = self.originalDataShape[0]
             
-        self.originalData= perform_shear_transform(self.originalData, self.shift_factor, self.interpolate, self.originalData.dtype, self.theta)
+        self.originalData= perform_shear_transform(self.originalData, self.shift_factor, self.interpolate, self.originalData.dtype, self.theta, inputArrayOrder=self.inputArrayOrder,displayArrayOrder=self.displayArrayOrder)
         self.dataShape = self.originalData.shape
-        
-        
+                
         self.height = self.dataShape[3]
         self.width = self.dataShape[2]
                
@@ -480,19 +483,16 @@ class SliceViewer(QtWidgets.QApplication):
 
     #define update calls for each roi
     def update(self):
-        #global data, imv1, imv4
         self.d1 = self.roi1.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2))
-        self.imv4.setImage(self.d1,autoLevels=False)
+        self.imv4.setImage(self.d1, autoRange=False, autoLevels=False)
     
     def update_2(self):
-        #global data, imv1, imv2
         self.d2 = np.rot90(self.roi2.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2)), axes=(1,0))
-        self.imv2.setImage(self.d2,autoLevels=False)
+        self.imv2.setImage(self.d2, autoRange=False, autoLevels=False)
         
     def update_3(self):
-        #global data, imv1, imv3
         self.d3 = self.roi3.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2))
-        self.imv3.setImage(self.d3,autoLevels=False)
+        self.imv3.setImage(self.d3, autoRange=False, autoLevels=False)
               
 
     #connect time slider
@@ -648,16 +648,51 @@ class CamVolumeSlider(BaseProcess):
     def __init__(self):
         super().__init__()
         self.nVols = 1
+        
         #create dtype dict
-        self.dTypeDict = {'float16': np.float16,
-                                  'float32': np.float32,
-                                  'float64': np.float64,
-                                  'int8': np.uint8,
-                                  'int16': np.uint16,                                 
-                                  'int32': np.uint32,
-                                  'int64': np.uint64
+        self.dTypeDict = {
+                'float16': np.float16,
+                'float32': np.float32,
+                'float64': np.float64,
+                'int8': np.uint8,
+                'int16': np.uint16,                                 
+                'int32': np.uint32,
+                'int64': np.uint64
                                   }
+        
         self.dataType = dataType
+        
+        #create array order dict
+        self.arrayDict = {
+                '[0, 1, 2, 3]': [0, 1, 2, 3],
+                '[0, 1, 3, 2]': [0, 1, 3, 2],
+                '[0, 2, 1, 3]': [0, 2, 1, 3],
+                '[0, 2, 3, 1]': [0, 2, 3, 1],
+                '[0, 3, 1, 2]': [0, 3, 1, 2],
+                '[0, 3, 2, 1]': [0, 3, 2, 1],
+                '[1, 0, 2, 3]': [1, 0, 2, 3],
+                '[1, 0, 3, 2]': [1, 0, 3, 2],
+                '[1, 2, 0, 3]': [1, 2, 0, 3],
+                '[1, 2, 3, 0]': [1, 2, 3, 0],
+                '[1, 3, 0, 2]': [1, 3, 0, 2],
+                '[1, 3, 2, 0]': [1, 3, 2, 0],
+                '[2, 0, 1, 3]': [2, 0, 1, 3],
+                '[2, 0, 3, 1]': [2, 0, 3, 1],
+                '[2, 1, 0, 3]': [2, 1, 0, 3],
+                '[2, 1, 3, 0]': [2, 1, 3, 0],
+                '[2, 3, 0, 1]': [2, 3, 0, 1],
+                '[2, 3, 1, 0]': [2, 3, 1, 0],
+                '[3, 0, 1, 2]': [3, 0, 1, 2],
+                '[3, 0, 2, 1]': [3, 0, 2, 1],
+                '[3, 1, 0, 2]': [3, 1, 0, 2],
+                '[3, 1, 2, 0]': [3, 1, 2, 0],
+                '[3, 2, 0, 1]': [3, 2, 0, 1],
+                '[3, 2, 1, 0]': [3, 2, 1, 0]
+                }
+        
+        self.inputArrayOrder = [0, 3, 1, 2]
+        self.displayArrayOrder = [3, 0, 1, 2]
+        
         #array savepath
         self.savePath = os.path.join(os.path.expanduser("~/Desktop"),'array_4D_data.npy')
         return        
@@ -770,12 +805,28 @@ class CamVolumeSlider(BaseProcess):
             self.dataType = self.dTypeDict[newDataType]
             self.B = self.B.astype(self.dataType)   
             self.dialogbox.dataTypeText.setText(self.getDataType())        
-            self.displayWindow.imageview.setImage(self.B[index],autoLevels=False)         
+            self.displayWindow.imageview.setImage(self.B[index],autoLevels=False)   
         return
     
     def getDataType(self):
         return str(self.dataType).split(".")[-1].split("'")[0]
 
+    def getArrayKeys(self):
+        return list(self.arrayDict.keys())
+
+    def getInputArrayOrder(self):
+        return self.inputArrayOrder
+    
+    def getDisplayArrayOrder(self):
+        return self.displayArrayOrder
+    
+    def setInputArrayOrder(self, value):
+        self.inputArrayOrder = self.arrayDict[value]
+        return 
+    
+    def setDisplayArrayOrder(self, value):
+        self.displayArrayOrder = self.arrayDict[value]
+        return 
 
     def multiplyByFactor(self, factor):
         #factor = np.array(factor).astype(self.dataType)
@@ -873,7 +924,16 @@ class Form2(QtWidgets.QDialog):
         self.dTypeSelectorBox = QtWidgets.QComboBox()
         self.dTypeSelectorBox.addItems(["float16", "float32", "float64","int8","int16","int32","int64"])
         #self.dTypeSelectorBox.currentIndexChanged.connect(self.dTypeSelectionChange)
-        #self.dTypeSelection = self.dTypeSelectorBox.currentText()             
+        #self.dTypeSelection = self.dTypeSelectorBox.currentText()  
+        self.inputArraySelectorBox = QtWidgets.QComboBox()
+        self.inputArraySelectorBox.addItems(camVolumeSlider.getArrayKeys()) 
+        self.inputArraySelectorBox.setCurrentIndex(4) 
+        self.inputArraySelectorBox.currentIndexChanged.connect(self.inputArraySelectionChange)
+        
+        self.displayArraySelectorBox = QtWidgets.QComboBox()
+        self.displayArraySelectorBox.addItems(camVolumeSlider.getArrayKeys())  
+        self.displayArraySelectorBox.setCurrentIndex(18)          
+        self.displayArraySelectorBox.currentIndexChanged.connect(self.displayArraySelectionChange)
         
         #buttons
         self.button1 = QtWidgets.QPushButton("Autolevel")       
@@ -898,6 +958,9 @@ class Form2(QtWidgets.QDialog):
         self.dataTypeLabel = QtWidgets.QLabel("current data type: ")          
         self.dataTypeText = QtWidgets.QLabel(str(camVolumeSlider.getDataType()))   
         self.dataTypeChangeLabel = QtWidgets.QLabel("new data type: ")          
+
+        self.inputArrayLabel = QtWidgets.QLabel("input array order: ") 
+        self.displayArrayLabel = QtWidgets.QLabel("display array order: ") 
 
         #checkbox
         #self.XYviewerLabel = QtWidgets.QLabel("XY Viewer: ")
@@ -963,7 +1026,13 @@ class Form2(QtWidgets.QDialog):
         layout.addWidget(self.spinLabel10, 16, 0)
         layout.addWidget(self.SpinBox10, 16, 1)
         
-        layout.addWidget(self.button12, 17, 0)  
+        layout.addWidget(self.inputArrayLabel, 17, 0)
+        layout.addWidget(self.inputArraySelectorBox, 17, 1)
+        
+        layout.addWidget(self.displayArrayLabel, 17, 2)
+        layout.addWidget(self.displayArraySelectorBox, 17, 3)
+        
+        layout.addWidget(self.button12, 18, 0)  
         
         
         self.setLayout(layout)
@@ -1058,7 +1127,8 @@ class Form2(QtWidgets.QDialog):
         return
     
     def dTypeSelectionChange(self):
-        camVolumeSlider.setDType(self.dTypeSelectorBox.currentText())
+        camVolumeSlider.setDType(self.dTypeSelectorBox.currentText())   
+        self.dataTypeText = QtWidgets.QLabel(str(camVolumeSlider.getDataType()))  
         return
     
     def multiplyByFactor(self):
@@ -1078,6 +1148,14 @@ class Form2(QtWidgets.QDialog):
 
     def setShiftFactor(self):
         self.shiftFactor = self.SpinBox10.value()    
+
+    def inputArraySelectionChange(self, value):
+        camVolumeSlider.setInputArrayOrder(self.inputArraySelectorBox.currentText()) 
+        return
+    
+    def displayArraySelectionChange(self, value):
+        camVolumeSlider.setDisplayArrayOrder(self.displayArraySelectorBox.currentText()) 
+        return
 
     def close(self):
         camVolumeSlider.viewer.close()
@@ -1118,7 +1196,7 @@ class plot3D_options(QtWidgets.QDialog):
         self.checkBox2_label = QtWidgets.QLabel("Display plot axis")  
         self.checkBox2 = QtWidgets.QCheckBox()
         #buttons
-        self.button1 = QtWidgets.QPushButton("Close")       
+        #self.button1 = QtWidgets.QPushButton("Close")       
         
         #grid layout
         layout = QtWidgets.QGridLayout()
@@ -1132,7 +1210,7 @@ class plot3D_options(QtWidgets.QDialog):
         layout.addWidget(self.checkBox1, 3, 1) 
         layout.addWidget(self.checkBox2_label, 4, 0)        
         layout.addWidget(self.checkBox2, 4, 1) 
-        layout.addWidget(self.button1, 5, 2) 
+        #layout.addWidget(self.button1, 5, 2) 
                
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -1149,7 +1227,7 @@ class plot3D_options(QtWidgets.QDialog):
         self.checkBox2.stateChanged.connect(self.checkBox2ValueChange)
         
         #connect buttons
-        self.button1.clicked.connect(self.close)
+        #self.button1.clicked.connect(self.close)
          
         return
           
@@ -1168,7 +1246,7 @@ class plot3D_options(QtWidgets.QDialog):
     def checkBox2ValueChange(self, value):
         camVolumeSlider.viewer.setPlotAxis((not value))
         return
-
-    def close(self):
-        self.close()
+        
+#    def close(self):
+#        self.close()
         return            
