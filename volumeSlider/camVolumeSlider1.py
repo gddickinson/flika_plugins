@@ -277,9 +277,11 @@ class GLBorderItem(gl.GLAxisItem):
     
 ################################################################################
 
-class SliceViewer(QtWidgets.QApplication):
+class SliceViewer(BaseProcess):
+
     def __init__(self, A):
-        super(SliceViewer, self).__init__([])
+        super().__init__()
+
         
         self.shift_factor = camVolumeSlider.dialogbox.shiftFactor
         self.interpolate = False
@@ -622,10 +624,17 @@ class SliceViewer(QtWidgets.QApplication):
         self.roi1.sigRegionChanged.disconnect(self.update)
         self.roi2.sigRegionChanged.disconnect(self.update_2)
         self.roi3.sigRegionChanged.disconnect(self.update_3)
+        self.imv1.close()
+        self.imv2.close()
+        self.imv3.close()
+        self.imv4.close()
+        self.imv6.close()        
         self.win.close()
         self.win.destroy()
         return
 
+    def closeEvent(self, event):
+        event.accept()
 
     def setProb(self, prob):
         self.prob = prob
@@ -846,6 +855,9 @@ class CamVolumeSlider(BaseProcess):
         self.viewer = SliceViewer(self.B)
         return
 
+    def closeViewer(self):
+        self.viewer.close()
+        return
         
 camVolumeSlider = CamVolumeSlider()  
 
@@ -947,6 +959,7 @@ class Form2(QtWidgets.QDialog):
         self.button9 = QtWidgets.QPushButton("export array") 
               
         self.button12 = QtWidgets.QPushButton("open 3D viewer") 
+        self.button13 = QtWidgets.QPushButton("close 3D viewer")         
 
         #labels
         self.volumeLabel = QtWidgets.QLabel("# of volumes: ")
@@ -1033,6 +1046,7 @@ class Form2(QtWidgets.QDialog):
         layout.addWidget(self.displayArraySelectorBox, 17, 3)
         
         layout.addWidget(self.button12, 18, 0)  
+        layout.addWidget(self.button13, 18, 1)  
         
         
         self.setLayout(layout)
@@ -1058,7 +1072,8 @@ class Form2(QtWidgets.QDialog):
         self.button8.clicked.connect(self.multiplyByFactor)   
         self.button9.clicked.connect(self.exportArray)        
         self.button12.clicked.connect(self.startViewer)           
-
+        self.button13.clicked.connect(self.closeViewer)  
+        
         return
  
      #volume changes with slider & spinbox
@@ -1142,6 +1157,11 @@ class Form2(QtWidgets.QDialog):
     def startViewer(self):
         camVolumeSlider.startViewer()
         return   
+
+    def closeViewer(self):
+        camVolumeSlider.closeViewer()
+        return   
+
     
     def setTheta(self):
         self.theta = self.SpinBox9.value()
@@ -1158,12 +1178,13 @@ class Form2(QtWidgets.QDialog):
         return
 
     def close(self):
-        camVolumeSlider.viewer.close()
+        camVolumeSlider.closeViewer()
         camVolumeSlider.displayWindow.close()
         camVolumeSlider.dialogbox.destroy()
         camVolumeSlider.end()
         self.closeAllWindows()
         return        
+
 
 class plot3D_options(QtWidgets.QDialog):
     def __init__(self, prob, threshold, parent = None):
@@ -1247,6 +1268,50 @@ class plot3D_options(QtWidgets.QDialog):
         camVolumeSlider.viewer.setPlotAxis((not value))
         return
         
-#    def close(self):
-#        self.close()
-        return            
+        return        
+
+
+class exportOptions(QtWidgets.QDialog):
+    def __init__(self, prob, threshold, parent = None):
+        super(exportOptions, self).__init__(parent)
+                
+        #window geometry
+        self.left = 300
+        self.top = 300
+        self.width = 300
+        self.height = 200
+
+        #buttons
+        self.button1 = QtWidgets.QPushButton("Export Z view")     
+        self.button2 = QtWidgets.QPushButton("Export X view")  
+        self.button3 = QtWidgets.QPushButton("Export Y view")  
+        
+        #grid layout
+        layout = QtWidgets.QGridLayout()
+        layout.setSpacing(5)
+        layout.addWidget(self.button1, 0, 0) 
+        layout.addWidget(self.button2, 1, 0) 
+        layout.addWidget(self.button3, 2, 0) 
+               
+        self.setLayout(layout)
+        self.setGeometry(self.left, self.top, self.width, self.height)
+        
+        #add window title
+        self.setWindowTitle("Export Options")
+        
+        #connect buttons
+        self.button1.clicked.connect(self.exportZ)
+        self.button2.clicked.connect(self.exportX)
+        self.button3.clicked.connect(self.exportY)         
+        return
+          
+    def exportZ(self):
+        return       
+    
+    def exportX(self):
+        return 
+
+    def exportY(self):
+        return 
+        
+    
