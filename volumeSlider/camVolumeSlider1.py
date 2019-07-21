@@ -412,6 +412,12 @@ class SliceViewer(BaseProcess):
         self.texturePlot.triggered.connect(self.plotTexture)
         self.fileMenu3.addAction(self.texturePlot)        
 
+        self.texturePlotControl = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Texture Plot Control')
+        self.texturePlotControl.setShortcut('Ctrl+M')
+        self.texturePlotControl.setStatusTip('Texture Plot')
+        self.texturePlotControl.triggered.connect(self.plotTexture_control)
+        self.fileMenu3.addAction(self.texturePlotControl)  
+
         self.fileMenu4 = self.menubar.addMenu('&Export')
         self.export = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Export')
         self.export.setShortcut('Ctrl+E')
@@ -593,46 +599,14 @@ class SliceViewer(BaseProcess):
         return
 
     def plotTexture(self):
-        #app = QtGui.QApplication([])
-        w = gl.GLViewWidget()
-        w.opts['distance'] = 200
-        w.show()
-        w.setWindowTitle('3D slice - texture plot')
-        
-        shape = self.data.shape
-                
-        ## slice out three planes, convert to RGBA for OpenGL texture
-        levels = (0, 1000)
-        
-        slice1 = int(shape[0]/2)
-        slice2 = int(shape[1]/2)
-        slice3 = int(shape[2]/2)
-        
-        tex1 = pg.makeRGBA(self.data[slice1], levels=levels)[0]       # yz plane
-        tex2 = pg.makeRGBA(self.data[:,slice2], levels=levels)[0]     # xz plane
-        tex3 = pg.makeRGBA(self.data[:,:,slice3], levels=levels)[0]   # xy plane
-        
-        
-        ## Create three image items from textures, add to view
-        v1 = gl.GLImageItem(tex1)
-        v1.translate(-slice2, -slice3, 0)
-        v1.rotate(90, 0,0,1)
-        v1.rotate(-90, 0,1,0)
-        w.addItem(v1)
-        
-        v2 = gl.GLImageItem(tex2)
-        v2.translate(-slice1, -slice3, 0)
-        v2.rotate(-90, 1,0,0)
-        w.addItem(v2)
-        
-        v3 = gl.GLImageItem(tex3)
-        v3.translate(-slice1, -slice2, 0)
-        w.addItem(v3)
-        
-        #ax = gl.GLAxisItem()
-        ax = GLBorderItem()
-        ax.setSize(x=shape[0],y=shape[1],z=shape[2])
-        w.addItem(ax)
+        self.texturePlot = plotTexture(self.data)
+        self.texturePlot.w.show()
+
+    def plotTexture_control(self):
+        X,Y,Z = self.texturePlot.getSliceValues()
+        self.textureControl = textureDialog_win(self.texturePlot.getShape(), X, Y, Z)
+        self.textureControl.show()
+        return
         
     def close(self):
         self.roi1.sigRegionChanged.disconnect(self.update)
@@ -1356,4 +1330,155 @@ class exportDialog_win(QtWidgets.QDialog):
     def exportY(self):
         self.y_displayWindow = Window(camVolumeSlider.viewer.getYWin(),'Y view')
         return 
-         
+
+class plotTexture(QtWidgets.QDialog):
+    def __init__(self, data, parent = None):
+        super(plotTexture, self).__init__(parent)
+
+        self.data = data
+
+        self.w = gl.GLViewWidget()
+        self.w.opts['distance'] = 200
+        self.w.setWindowTitle('3D slice - texture plot')
+        
+        self.shape = self.data.shape
+                
+        #set intensity
+        self.levels = (0, 1000)
+        
+        ## slice out three center planes, convert to RGBA for OpenGL texture
+        self.slice1 = int(self.shape[0]/2)
+        self.slice2 = int(self.shape[1]/2)
+        self.slice3 = int(self.shape[2]/2)
+    
+        ## Create three image items from textures, add to view
+        self.updateYZ()
+        self.updateXZ()
+        self.updateXY()
+        self.addBorder(self.shape[0],self.shape[1],self.shape[2])
+ 
+        
+    def updateYZ(self):
+        try:
+            self.w.removeItem(self.v1)
+        except:
+            pass
+        tex1 = pg.makeRGBA(self.data[self.slice1], levels=self.levels)[0]       # yz plane
+        self.v1 = gl.GLImageItem(tex1)
+        self.v1.translate(-self.slice2, -self.slice3, 0)
+        self.v1.rotate(90, 0,0,1)
+        self.v1.rotate(-90, 0,1,0)
+        self.w.addItem(self.v1)
+        return
+        
+    def updateXZ(self):
+        try:
+            self.w.removeItem(self.v2)
+        except:
+            pass
+        tex2 = pg.makeRGBA(self.data[:,self.slice2], levels=self.levels)[0]     # xz plane
+        self.v2 = gl.GLImageItem(tex2)
+        self.v2.translate(-self.slice1, -self.slice3, 0)
+        self.v2.rotate(-90, 1,0,0)
+        self.w.addItem(self.v2)
+        return
+        
+    def updateXY(self):
+        try:
+            self.w.removeItem(self.v3)
+        except:
+            pass        
+        tex3 = pg.makeRGBA(self.data[:,:,self.slice3], levels=self.levels)[0]   # xy plane
+        self.v3 = gl.GLImageItem(tex3)
+        self.v3.translate(-self.slice1, -self.slice2, 0)
+        self.w.addItem(self.v3)
+        return
+        
+    def addBorder(self,x,y,z):
+        self.ax = GLBorderItem()
+        self.ax.setSize(x=x,y=y,z=z)
+        self.w.addItem(self.ax)  
+        
+    def getSliceValues(self):
+        return [self.slice1,self.slice2,self.slice3]
+    
+    def setSliceValues(self,slice1,slice2,slice3):
+        self.slice1 = slice1
+        self.slice2 = slice2        
+        self.slice3 = slice3        
+        return
+    
+    def getShape(self):
+        return self.shape
+
+class textureDialog_win(QtWidgets.QDialog):
+    def __init__(self, shape, X,Y,Z, parent = None):
+        super(textureDialog_win, self).__init__(parent)
+                
+        #window geometry
+        self.left = 300
+        self.top = 300
+        self.width = 500
+        self.height = 200
+
+        #sliders
+        self.sliderX = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.sliderX.setFocusPolicy(QtCore.Qt.StrongFocus)
+        self.sliderX.setTickPosition(QtWidgets.QSlider.TicksBothSides)
+        self.sliderX.setMinimum(0)
+        self.sliderX.setMaximum(shape[0])
+        self.sliderX.setTickInterval(1)
+        self.sliderX.setSingleStep(1) 
+        self.sliderX.setValue(X)
+
+        self.sliderY = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.sliderY.setFocusPolicy(QtCore.Qt.StrongFocus)
+        self.sliderY.setTickPosition(QtWidgets.QSlider.TicksBothSides)
+        self.sliderY.setMinimum(0)
+        self.sliderY.setMaximum(shape[1])
+        self.sliderY.setTickInterval(1)
+        self.sliderY.setSingleStep(1) 
+        self.sliderY.setValue(Y)
+
+        self.sliderZ = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.sliderZ.setFocusPolicy(QtCore.Qt.StrongFocus)
+        self.sliderZ.setTickPosition(QtWidgets.QSlider.TicksBothSides)
+        self.sliderZ.setMinimum(0)
+        self.sliderZ.setMaximum(shape[2])
+        self.sliderZ.setTickInterval(1)
+        self.sliderZ.setSingleStep(1) 
+        self.sliderZ.setValue(Z)
+        
+        #grid layout
+        layout = QtWidgets.QGridLayout()
+        layout.setSpacing(5)
+        layout.addWidget(self.sliderX, 0, 0) 
+        layout.addWidget(self.sliderY, 1, 0) 
+        layout.addWidget(self.sliderZ, 2, 0) 
+               
+        self.setLayout(layout)
+        self.setGeometry(self.left, self.top, self.width, self.height)
+        
+        #add window title
+        self.setWindowTitle("Texture Control")
+        
+        #connect sliders
+        self.sliderX.valueChanged.connect(self.sliderXValueChange)
+        self.sliderY.valueChanged.connect(self.sliderYValueChange)
+        self.sliderZ.valueChanged.connect(self.sliderZValueChange)        
+        return
+          
+    def sliderXValueChange(self, value):
+        camVolumeSlider.viewer.texturePlot.slice1 = value
+        camVolumeSlider.viewer.texturePlot.updateYZ()
+        return       
+    
+    def sliderYValueChange(self, value):
+        camVolumeSlider.viewer.texturePlot.slice2 = value
+        camVolumeSlider.viewer.texturePlot.updateXZ()
+        return 
+
+    def sliderZValueChange(self, value):
+        camVolumeSlider.viewer.texturePlot.slice3 = value
+        camVolumeSlider.viewer.texturePlot.updateXY()
+        return 
