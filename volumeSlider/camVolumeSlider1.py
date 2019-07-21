@@ -288,6 +288,9 @@ class SliceViewer(BaseProcess):
         self.theta = camVolumeSlider.dialogbox.theta
         self.inputArrayOrder = camVolumeSlider.getInputArrayOrder()
         self.displayArrayOrder = camVolumeSlider.getDisplayArrayOrder()
+
+        self.trim_last_frame = camVolumeSlider.dialogbox.trim_last_frame
+
         
         print('shift factor: '+ str(self.shift_factor))
         print('theta: ' + str(self.theta))
@@ -300,7 +303,11 @@ class SliceViewer(BaseProcess):
         self.plotCube = False
         self.hideAxis = True
                 
-        self.originalData = A
+        
+        if self.trim_last_frame:
+            self.originalData = A[:, :-1, :, :]            
+        else:
+            self.originalData = A
         
         self.originalDataShape = self.originalData.shape
         self.nVols = self.originalDataShape[1]
@@ -404,13 +411,20 @@ class SliceViewer(BaseProcess):
         self.texturePlot.setStatusTip('Texture Plot')
         self.texturePlot.triggered.connect(self.plotTexture)
         self.fileMenu3.addAction(self.texturePlot)        
+
+        self.fileMenu4 = self.menubar.addMenu('&Export')
+        self.export = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Export')
+        self.export.setShortcut('Ctrl+E')
+        self.export.setStatusTip('Export')
+        self.export.triggered.connect(self.exportDialog)
+        self.fileMenu4.addAction(self.export) 
         
-        self.fileMenu4 = self.menubar.addMenu('&Quit')
+        self.fileMenu5 = self.menubar.addMenu('&Quit')
         self.quit = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Quit')
         self.quit.setShortcut('Ctrl+Q')
         self.quit.setStatusTip('Quit')
         self.quit.triggered.connect(self.close)
-        self.fileMenu4.addAction(self.quit)
+        self.fileMenu5.addAction(self.quit)
         
         #add time slider
         self.slider1 = QtWidgets.QSlider(QtCore.Qt.Horizontal)
@@ -628,7 +642,8 @@ class SliceViewer(BaseProcess):
         self.imv2.close()
         self.imv3.close()
         self.imv4.close()
-        self.imv6.close()        
+        self.imv6.close()   
+        self.exportDialogWin.close() 
         self.win.close()
         self.win.destroy()
         return
@@ -651,6 +666,20 @@ class SliceViewer(BaseProcess):
     def setPlotAxis(self, flag):
         self.hideAxis = flag
         return
+
+    def exportDialog(self):
+        self.exportDialogWin = exportDialog_win()
+        self.exportDialogWin.show() 
+        return
+
+    def getXWin(self):
+        return self.data.swapaxes(0,1)
+
+    def getYWin(self):
+        return self.data.swapaxes(2,0)
+
+    def getZWin(self):
+        return self.data.swapaxes(1,2)
        
 class CamVolumeSlider(BaseProcess):
 
@@ -875,6 +904,7 @@ class Form2(QtWidgets.QDialog):
 
         self.theta = 45
         self.shiftFactor = 1
+        self.trim_last_frame = False
 
         #spinboxes
         self.spinLabel1 = QtWidgets.QLabel("Slice #") 
@@ -979,7 +1009,13 @@ class Form2(QtWidgets.QDialog):
         #self.XYviewerLabel = QtWidgets.QLabel("XY Viewer: ")
         #self.XYviewer=CheckBox()
         #self.XYviewer.setChecked(False)
-        #self.XYviewer.stateChanged.connect(self.XYviewerClicked)        
+        #self.XYviewer.stateChanged.connect(self.XYviewerClicked)    
+        
+        self.trim_last_frameLabel = QtWidgets.QLabel("Trim Last Frame: ")
+        self.trim_last_frame_checkbox = CheckBox()
+        self.trim_last_frame_checkbox.setChecked(self.trim_last_frame)
+        self.trim_last_frame_checkbox.stateChanged.connect(self.trim_last_frameClicked)          
+        
         
         #grid layout
         layout = QtWidgets.QGridLayout()
@@ -1038,15 +1074,17 @@ class Form2(QtWidgets.QDialog):
 
         layout.addWidget(self.spinLabel10, 16, 0)
         layout.addWidget(self.SpinBox10, 16, 1)
+        layout.addWidget(self.trim_last_frameLabel, 17, 0)         
+        layout.addWidget(self.trim_last_frame_checkbox, 17, 1)        
         
-        layout.addWidget(self.inputArrayLabel, 17, 0)
-        layout.addWidget(self.inputArraySelectorBox, 17, 1)
+        layout.addWidget(self.inputArrayLabel, 18, 0)
+        layout.addWidget(self.inputArraySelectorBox, 18, 1)
         
-        layout.addWidget(self.displayArrayLabel, 17, 2)
-        layout.addWidget(self.displayArraySelectorBox, 17, 3)
+        layout.addWidget(self.displayArrayLabel, 18, 2)
+        layout.addWidget(self.displayArraySelectorBox, 18, 3)
         
-        layout.addWidget(self.button12, 18, 0)  
-        layout.addWidget(self.button13, 18, 1)  
+        layout.addWidget(self.button12, 19, 0)  
+        layout.addWidget(self.button13, 19, 1)  
         
         
         self.setLayout(layout)
@@ -1161,13 +1199,15 @@ class Form2(QtWidgets.QDialog):
     def closeViewer(self):
         camVolumeSlider.closeViewer()
         return   
-
     
     def setTheta(self):
         self.theta = self.SpinBox9.value()
 
     def setShiftFactor(self):
         self.shiftFactor = self.SpinBox10.value()    
+
+    def trim_last_frameClicked(self):
+        self.trim_last_frame = self.trim_last_frame_checkbox.isChecked()
 
     def inputArraySelectionChange(self, value):
         camVolumeSlider.setInputArrayOrder(self.inputArraySelectorBox.currentText()) 
@@ -1271,9 +1311,9 @@ class plot3D_options(QtWidgets.QDialog):
         return        
 
 
-class exportOptions(QtWidgets.QDialog):
-    def __init__(self, prob, threshold, parent = None):
-        super(exportOptions, self).__init__(parent)
+class exportDialog_win(QtWidgets.QDialog):
+    def __init__(self, parent = None):
+        super(exportDialog_win, self).__init__(parent)
                 
         #window geometry
         self.left = 300
@@ -1306,12 +1346,14 @@ class exportOptions(QtWidgets.QDialog):
         return
           
     def exportZ(self):
+        self.z_displayWindow = Window(camVolumeSlider.viewer.getZWin(),'Z view')
         return       
     
     def exportX(self):
+        self.x_displayWindow = Window(camVolumeSlider.viewer.getXWin(),'X view')
         return 
 
     def exportY(self):
+        self.y_displayWindow = Window(camVolumeSlider.viewer.getYWin(),'Y view')
         return 
-        
-    
+         
