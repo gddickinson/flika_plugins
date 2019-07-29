@@ -450,12 +450,25 @@ class SliceViewer(BaseProcess):
         self.roi1 = pg.LineSegmentROI([[10, 64], [120,64]], pen='r')
         self.imv1.addItem(self.roi1)
         
-        #define crosshair rois
-        self.roi2 = pg.LineSegmentROI([[0, 0], [self.width, 0]], pen='y', maxBounds=QtCore.QRect(0,0,0,self.height))
+        #define crosshair rois        
+        dash = mkPen('w', width=1,style=QtCore.Qt.DashLine)
+        self.roi2 = pg.LineSegmentROI([[0, int(self.height/2)], [self.width, int(self.height/2)]], pen='y', maxBounds=QtCore.QRect(0,-int(self.height/2),0,self.height))
+        self.roi2b = pg.LineSegmentROI([[0, int(self.height/2)], [self.width, int(self.height/2)]], pen=dash, maxBounds=QtCore.QRect(0,-int(self.height/2),0,self.height),movable=False)
         self.imv1.addItem(self.roi2)
+        self.imv6.addItem(self.roi2b)        
         
-        self.roi3 = pg.LineSegmentROI([[0, 0], [0, self.height]], pen='y', maxBounds=QtCore.QRect(0,0,self.width,0))
+        self.roi3 = pg.LineSegmentROI([[int(self.width/2), 0], [int(self.width/2), self.height]], pen='y', maxBounds=QtCore.QRect(-int(self.width/2),0,self.width,0))
+        self.roi3b = pg.LineSegmentROI([[int(self.width/2), 0], [int(self.width/2), self.height]], pen=dash, maxBounds=QtCore.QRect(-int(self.width/2),0,self.width,0),movable=False)
         self.imv1.addItem(self.roi3)
+        self.imv6.addItem(self.roi3b)
+
+        #define height indicator rois
+        dash2 = mkPen('r', width=1,style=QtCore.Qt.DashLine)
+        self.roi4 = pg.LineSegmentROI([[0, int(self.height/2)], [self.width, int(self.height/2)]], pen=dash2, maxBounds=QtCore.QRect(0,-int(self.height/2),0,self.height),movable=False)
+        self.imv2.addItem(self.roi4)
+        self.roi5 = pg.LineSegmentROI([[0, 0], [0, self.height]], pen=dash2, maxBounds=QtCore.QRect(-int(self.width/2),0,self.width,0),movable=False)
+        self.imv3.addItem(self.roi5)
+        
 
         #hide default imageview buttons
         def hideButtons(imv):    
@@ -477,6 +490,11 @@ class SliceViewer(BaseProcess):
             
         disconnectHandles(self.roi2)
         disconnectHandles(self.roi3)
+        disconnectHandles(self.roi2b)
+        disconnectHandles(self.roi3b) 
+        disconnectHandles(self.roi4)
+        disconnectHandles(self.roi5)        
+        
 
         #add max projection data to main window
         self.imv1.setImage(self.maxProjection(self.data)) #display topview (max of slices)
@@ -488,6 +506,11 @@ class SliceViewer(BaseProcess):
         self.roi1.sigRegionChanged.connect(self.update)
         self.roi2.sigRegionChanged.connect(self.update_2)
         self.roi3.sigRegionChanged.connect(self.update_3)
+        #self.roi2b.sigRegionChanged.connect(self.update_2b)
+        #self.roi3b.sigRegionChanged.connect(self.update_3b)
+
+
+        self.imv6.sigTimeChanged.connect(self.update_6)
         
         #initial update to populate roi windows
         self.update()
@@ -503,29 +526,53 @@ class SliceViewer(BaseProcess):
          
         self.slider1.valueChanged.connect(self.timeUpdate)
 
+
     #define update calls for each roi
     def update(self):
         self.d1 = self.roi1.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2))
         self.imv4.setImage(self.d1, autoRange=False, autoLevels=False)
     
     def update_2(self):
+        levels = self.imv2.getHistogramWidget().getLevels()
         self.d2 = np.rot90(self.roi2.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2)), axes=(1,0))
-        self.imv2.setImage(self.d2, autoRange=False, autoLevels=False)
+        self.imv2.setImage(self.d2, autoRange=False, autoLevels=False, levels=levels)
+        self.roi2b.setPos(self.roi2.pos(), finish=False)
         
     def update_3(self):
+        levels = self.imv3.getHistogramWidget().getLevels()
         self.d3 = self.roi3.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2))
-        self.imv3.setImage(self.d3, autoRange=False, autoLevels=False)
-              
+        self.imv3.setImage(self.d3, autoRange=False, autoLevels=False, levels=levels)
+        self.roi3b.setPos(self.roi3.pos(),finish=False)      
+
+    def update_6(self):
+        index = self.imv6.currentIndex
+        roi4_x, roi4_y = self.roi4.pos()
+        roi5_x, roi5_y = self.roi5.pos()
+        self.roi4.setPos((roi4_x, -index)) #check this is startiing at right end
+        self.roi5.setPos((index, roi5_y))
+
+#    def update_2b(self):
+#        #self.roi2.setPos(self.roi2b.pos())    
+#        return
+#        
+#    def update_3b(self):
+#        #self.roi3.setPos(self.roi3b.pos()) 
+#        return
+        
+
 
     #connect time slider
     def timeUpdate(self,value):
-        #global data
+        index = self.imv6.currentIndex
+        levels = self.imv6.getHistogramWidget().getLevels()            
         self.data = self.originalData[:,value,:,:]
         self.imv1.setImage(self.maxProjection(self.data))
-        self.imv6.setImage(self.data)
+        self.imv6.setImage(self.data, levels=levels)
+        self.imv6.setCurrentIndex(index)
         self.update()
         self.update_2()
         self.update_3()
+        self.update_6()
         return
 
     def reset_layout(self):
