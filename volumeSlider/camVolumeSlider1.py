@@ -529,8 +529,9 @@ class SliceViewer(BaseProcess):
 
     #define update calls for each roi
     def update(self):
+        levels = self.imv4.getHistogramWidget().getLevels()
         self.d1 = self.roi1.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2))
-        self.imv4.setImage(self.d1, autoRange=False, autoLevels=False)
+        self.imv4.setImage(self.d1, autoRange=False, autoLevels=False, levels=levels)
     
     def update_2(self):
         levels = self.imv2.getHistogramWidget().getLevels()
@@ -548,7 +549,7 @@ class SliceViewer(BaseProcess):
         index = self.imv6.currentIndex
         roi4_x, roi4_y = self.roi4.pos()
         roi5_x, roi5_y = self.roi5.pos()
-        self.roi4.setPos((roi4_x, -index)) #check this is startiing at right end
+        self.roi4.setPos((roi4_x, -index)) #check this is starting at right end
         self.roi5.setPos((index, roi5_y))
 
 #    def update_2b(self):
@@ -564,10 +565,11 @@ class SliceViewer(BaseProcess):
     #connect time slider
     def timeUpdate(self,value):
         index = self.imv6.currentIndex
-        levels = self.imv6.getHistogramWidget().getLevels()            
+        levels1 = self.imv1.getHistogramWidget().getLevels() 
+        levels6 = self.imv6.getHistogramWidget().getLevels()            
         self.data = self.originalData[:,value,:,:]
-        self.imv1.setImage(self.maxProjection(self.data))
-        self.imv6.setImage(self.data, levels=levels)
+        self.imv1.setImage(self.maxProjection(self.data),autoRange=False, levels=levels1)
+        self.imv6.setImage(self.data,autoRange=False, levels=levels6)
         self.imv6.setCurrentIndex(index)
         self.update()
         self.update_2()
