@@ -333,6 +333,7 @@ class SliceViewer(BaseProcess):
         self.area = DockArea()
         self.win.setCentralWidget(self.area)
         
+        
         #define docks
         self.d1 = Dock("Top View - Max Projection", size=(500,400))
         self.d2 = Dock("X Slice", size=(500,400), closable=True)
@@ -365,6 +366,12 @@ class SliceViewer(BaseProcess):
         self.d4.addWidget(self.imv4)
         self.d6.addWidget(self.imv6)
         
+        self.imv1.scene.sigMouseMoved.connect(self.mouseMoved_1)
+        self.imv2.scene.sigMouseMoved.connect(self.mouseMoved_2)
+        self.imv3.scene.sigMouseMoved.connect(self.mouseMoved_3)
+        self.imv4.scene.sigMouseMoved.connect(self.mouseMoved_4)
+        self.imv6.scene.sigMouseMoved.connect(self.mouseMoved_6)                                
+        
         #hide dock title-bars at start
         self.d5.hideTitleBar()        
         #self.hide_titles(self)
@@ -392,6 +399,18 @@ class SliceViewer(BaseProcess):
         self.hideTitles.setStatusTip('Hide Titles')
         self.hideTitles.triggered.connect(self.hide_titles)
         self.fileMenu1.addAction(self.hideTitles)
+        
+        self.hideCursors = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Hide Cursors')
+        #self.hideCursors.setShortcut('Ctrl+H')
+        self.hideCursors.setStatusTip('Hide Titles')
+        self.hideCursors.triggered.connect(self.hide_cursors)
+        self.fileMenu1.addAction(self.hideCursors)    
+        
+        self.showCursors = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Show Cursors')
+        #self.showCursors.setShortcut('Ctrl+H')
+        self.showCursors.setStatusTip('Hide Titles')
+        self.showCursors.triggered.connect(self.show_cursors)
+        self.fileMenu1.addAction(self.showCursors)  
         
         self.fileMenu2 = self.menubar.addMenu('&3D Plot')
         self.plot = QtWidgets.QAction(QtGui.QIcon('open.png'), '3D Plot')
@@ -451,22 +470,22 @@ class SliceViewer(BaseProcess):
         self.imv1.addItem(self.roi1)
         
         #define crosshair rois        
-        dash = mkPen('w', width=1,style=QtCore.Qt.DashLine)
+        self.dash = mkPen('w', width=1,style=QtCore.Qt.DashLine)
         self.roi2 = pg.LineSegmentROI([[0, int(self.height/2)], [self.width, int(self.height/2)]], pen='y', maxBounds=QtCore.QRect(0,-int(self.height/2),0,self.height))
-        self.roi2b = pg.LineSegmentROI([[0, int(self.height/2)], [self.width, int(self.height/2)]], pen=dash, maxBounds=QtCore.QRect(0,-int(self.height/2),0,self.height),movable=False)
+        self.roi2b = pg.LineSegmentROI([[0, int(self.height/2)], [self.width, int(self.height/2)]], pen=self.dash, maxBounds=QtCore.QRect(0,-int(self.height/2),0,self.height),movable=False)
         self.imv1.addItem(self.roi2)
         self.imv6.addItem(self.roi2b)        
         
         self.roi3 = pg.LineSegmentROI([[int(self.width/2), 0], [int(self.width/2), self.height]], pen='y', maxBounds=QtCore.QRect(-int(self.width/2),0,self.width,0))
-        self.roi3b = pg.LineSegmentROI([[int(self.width/2), 0], [int(self.width/2), self.height]], pen=dash, maxBounds=QtCore.QRect(-int(self.width/2),0,self.width,0),movable=False)
+        self.roi3b = pg.LineSegmentROI([[int(self.width/2), 0], [int(self.width/2), self.height]], pen=self.dash, maxBounds=QtCore.QRect(-int(self.width/2),0,self.width,0),movable=False)
         self.imv1.addItem(self.roi3)
         self.imv6.addItem(self.roi3b)
 
         #define height indicator rois
-        dash2 = mkPen('r', width=1,style=QtCore.Qt.DashLine)
-        self.roi4 = pg.LineSegmentROI([[0, int(self.height/2)], [self.width, int(self.height/2)]], pen=dash2, maxBounds=QtCore.QRect(0,-int(self.height/2),0,self.height),movable=False)
+        self.dash2 = mkPen('r', width=1,style=QtCore.Qt.DashLine)
+        self.roi4 = pg.LineSegmentROI([[0, 0], [self.width, 0]], pen=self.dash2, maxBounds=QtCore.QRect(0,-int(self.height/2),0,self.height),movable=False)
         self.imv2.addItem(self.roi4)
-        self.roi5 = pg.LineSegmentROI([[0, 0], [0, self.height]], pen=dash2, maxBounds=QtCore.QRect(-int(self.width/2),0,self.width,0),movable=False)
+        self.roi5 = pg.LineSegmentROI([[0, 0], [0, self.height]], pen=self.dash2, maxBounds=QtCore.QRect(-int(self.width/2),0,self.width,0),movable=False)
         self.imv3.addItem(self.roi5)
         
 
@@ -526,7 +545,6 @@ class SliceViewer(BaseProcess):
          
         self.slider1.valueChanged.connect(self.timeUpdate)
 
-
     #define update calls for each roi
     def update(self):
         levels = self.imv4.getHistogramWidget().getLevels()
@@ -549,7 +567,7 @@ class SliceViewer(BaseProcess):
         index = self.imv6.currentIndex
         roi4_x, roi4_y = self.roi4.pos()
         roi5_x, roi5_y = self.roi5.pos()
-        self.roi4.setPos((roi4_x, -index)) #check this is starting at right end
+        self.roi4.setPos((roi4_x, index)) #check this is starting at right end
         self.roi5.setPos((index, roi5_y))
 
 #    def update_2b(self):
@@ -594,6 +612,22 @@ class SliceViewer(BaseProcess):
         self.d3.showTitleBar()
         self.d4.showTitleBar()
         self.d6.showTitleBar()
+
+    def hide_cursors(self):
+        self.roi2b.setPen(None)
+        self.roi3b.setPen(None)
+        self.roi4.setPen(None)
+        self.roi5.setPen(None)        
+        return
+    
+    def show_cursors(self):
+        self.roi2b.setPen(self.dash)
+        self.roi3b.setPen(self.dash)
+        self.roi4.setPen(self.dash2)
+        self.roi5.setPen(self.dash2)  
+        return
+
+
 
     def maxProjection(self,data):
         return np.max(data,axis=0)
@@ -703,6 +737,42 @@ class SliceViewer(BaseProcess):
 
     def getZWin(self):
         return self.data.swapaxes(1,2)
+
+    def mouseMoved(self, point, imv): 
+        '''mouseMoved(self,point)
+        Event handler function for mouse movement.
+        '''
+        point=imv.getImageItem().mapFromScene(point)
+        self.point = point
+        self.x = point.x()
+        self.y = point.y()
+        image=imv.getImageItem().image
+        if self.x < 0 or self.y < 0 or self.x >= image.shape[0] or self.y >= image.shape[1]:
+            pass# if we are outside the image
+        else:
+            z=imv.currentIndex
+            value=image[int(self.x),int(self.y)]
+            g.m.statusBar().showMessage('x={}, y={}, z={}, value={}'.format(int(self.x),int(self.y),z,value))
+
+    def mouseMoved_1(self,point):
+        self.mouseMoved(point,self.imv1)
+        return
+    
+    def mouseMoved_2(self,point):
+        self.mouseMoved(point,self.imv2)
+        return
+    
+    def mouseMoved_3(self,point):
+        self.mouseMoved(point,self.imv3)
+        return
+    
+    def mouseMoved_4(self,point):
+        self.mouseMoved(point,self.imv4)
+        return
+    
+    def mouseMoved_6(self,point):
+        self.mouseMoved(point,self.imv6)
+        return
        
 class CamVolumeSlider(BaseProcess):
 
