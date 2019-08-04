@@ -13,10 +13,7 @@
 	<dependencies>
 	</dependencies>
 	<menu_layout>
-		<action location="volumeSlider" function="volumeSlider.startVolumeSlider">volume from file</action>
-        <action location="volumeSlider_singleVols" function="volumeSlider.startVolumeSlider">volume from file (single vol recordings)</action>
-        <action location="camVolumeSlider1" function="camVolumeSlider.startVolumeSlider">camera recording - current window</action>
-        <action location="camVolumeSlider2" function="camVolumeSlider2.startVolumeSlider">camera recording - open file</action>
-        <!--<action location="tiffPageLoader" function="tiffPageLoader.gui">load Tiff by Pages</action>--><!--Too slow with large files-->
+		<action location="volumeSlider" function="volumeSliderBase.gui">volume slider</action>
+        
 	</menu_layout>
 </plugin>
