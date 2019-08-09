@@ -201,12 +201,18 @@ class SliceViewer(BaseProcess):
         self.fileMenu4.addAction(self.export)
         
         self.fileMenu5 = self.menubar.addMenu('&Overlay')
-        self.overlayArray = QtWidgets.QAction(QtGui.QIcon('open.png'), 'OverlayArray')
+        self.overlayArray = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Overlay (from Array)')
         self.overlayArray.setShortcut('Ctrl+O')
         self.overlayArray.setStatusTip('OverlayArray')
         self.overlayArray.triggered.connect(self.overlayArray_start)
         self.fileMenu5.addAction(self.overlayArray)
-
+        
+        self.overlayArrayOff = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Remove Overlay')
+        self.overlayArrayOff.setShortcut('Ctrl+L')
+        self.overlayArrayOff.setStatusTip('OverlayOff')
+        self.overlayArrayOff.triggered.connect(self.overlayOff)
+        self.fileMenu5.addAction(self.overlayArrayOff)
+        
         self.fileMenu6 = self.menubar.addMenu('&Quit')
         self.quit = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Quit')
         self.quit.setShortcut('Ctrl+Q')
@@ -243,6 +249,7 @@ class SliceViewer(BaseProcess):
         self.roi3b = pg.LineSegmentROI([[int(self.width/2), 0], [int(self.width/2), self.height]], pen=self.dash, maxBounds=QtCore.QRect(-int(self.width/2),0,self.width,0),movable=False)
         self.imv1.addItem(self.roi3)
         self.imv6.addItem(self.roi3b)
+
 
         #define height indicator rois
         self.dash2 = mkPen('r', width=1,style=QtCore.Qt.DashLine)
@@ -301,6 +308,9 @@ class SliceViewer(BaseProcess):
         self.imv6.autoLevels()
 
         self.slider1.valueChanged.connect(self.timeUpdate)
+        
+        #correct roi4 position
+        self.update_6()
 
     #define update calls for each roi
     def update(self):
@@ -321,22 +331,23 @@ class SliceViewer(BaseProcess):
         self.roi3b.setPos(self.roi3.pos(),finish=False)
 
     def update_6(self):
-        index = self.imv6.currentIndex
+        self.index = self.imv6.currentIndex
         roi4_x, roi4_y = self.roi4.pos()
         roi5_x, roi5_y = self.roi5.pos()
-        self.roi4.setPos((roi4_x, index)) #check this is starting at right end
-        self.roi5.setPos((index, roi5_y))
+        self.roi4.setPos((roi4_x, self.imv2.imageItem.height()-self.index)) #check this is starting at right end
+        self.roi5.setPos((self.index, roi5_y))
 
+    
 
     #connect time slider
     def timeUpdate(self,value):
-        index = self.imv6.currentIndex
+        self.index = self.imv6.currentIndex
         levels1 = self.imv1.getHistogramWidget().getLevels()
         levels6 = self.imv6.getHistogramWidget().getLevels()
         self.data = self.originalData[:,value,:,:]
         self.imv1.setImage(self.maxProjection(self.data),autoRange=False, levels=levels1)
         self.imv6.setImage(self.data,autoRange=False, levels=levels6)
-        self.imv6.setCurrentIndex(index)
+        self.imv6.setCurrentIndex(self.index)
         self.update()
         self.update_2()
         self.update_3()
@@ -529,11 +540,15 @@ class SliceViewer(BaseProcess):
 
         #set flag
         self.overlayFlag = True
+       
         #set to volume displayed
         self.A_overlay_currentVol =self.A_overlay[:,0,:,:] #first volume
         #overlay images
-        self.overlay(self.roi3.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv3)
-        self.overlay(np.rot90(self.roi2.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), axes=(1,0)), self.imv2)
+        self.bgItem_imv1 = self.overlay(self.maxProjection(self.A_overlay_currentVol), self.imv1)
+        self.bgItem_imv3 = self.overlay(self.roi3.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv3)
+        self.bgItem_imv2 = self.overlay(np.rot90(self.roi2.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), axes=(1,0)), self.imv2)
+        #self.bgItem_imv4 = self.overlay(self.roi1.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv4)
+        #self.bgItem_imv6 = self.overlay(self.A_overlay_currentVol, self.imv6)
         return
 
     def overlay(self, overlayImage, imv):        
@@ -544,8 +559,23 @@ class SliceViewer(BaseProcess):
         bgItem.hist_luttt.setMinimumWidth(110)
         bgItem.hist_luttt.setImageItem(bgItem)
         imv.ui.gridLayout.addWidget(bgItem.hist_luttt, 0, 4, 1, 4)
+        return bgItem
+
+    def overlay_hide(self, bgItem,imv):
+        bgItem.hist_luttt.hide()
+        imv.ui.gridLayout.removeWidget(bgItem.hist_luttt)
+        imv.view.removeItem(bgItem)
         return
 
+    def overlayOff(self):
+        if self.overlayFlag:
+            self.overlay_hide(self.bgItem_imv1,self.imv1)
+            self.overlay_hide(self.bgItem_imv2,self.imv2) 
+            self.overlay_hide(self.bgItem_imv3,self.imv3)
+            #self.overlay_hide(self.bgItem_imv4,self.imv4) 
+            #self.overlay_hide(self.bgItem_imv6,self.imv6)
+            self.overlayFlag = False            
+        return
 
 #########################################################################################
 #############                  volumeViewer class                ########################
