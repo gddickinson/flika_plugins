@@ -44,6 +44,7 @@ class SliceViewer(BaseProcess):
     def __init__(self, A):
         super().__init__()
 
+        self.overlayFlag = False
 
         self.shift_factor = camVolumeSlider.dialogbox.shiftFactor
         self.interpolate = False
@@ -52,7 +53,6 @@ class SliceViewer(BaseProcess):
         self.displayArrayOrder = camVolumeSlider.getDisplayArrayOrder()
 
         self.trim_last_frame = camVolumeSlider.dialogbox.trim_last_frame
-
 
         print('shift factor: '+ str(self.shift_factor))
         print('theta: ' + str(self.theta))
@@ -64,7 +64,6 @@ class SliceViewer(BaseProcess):
         self.threshold_3D = 300
         self.plotCube = False
         self.hideAxis = True
-
 
         if self.trim_last_frame:
             self.originalData = A[:, :-1, :, :]
@@ -83,9 +82,6 @@ class SliceViewer(BaseProcess):
 
         self.data = self.originalData[:,0,:,:]
 
-        #define app
-        #self.app = QtWidgets.QApplication([])
-
         ## Create window with 4 docks
         self.win = QtWidgets.QMainWindow()
         self.win.resize(1000,800)
@@ -94,7 +90,6 @@ class SliceViewer(BaseProcess):
         #create Dock area
         self.area = DockArea()
         self.win.setCentralWidget(self.area)
-
 
         #define docks
         self.d1 = Dock("Top View - Max Projection", size=(500,400))
@@ -136,7 +131,6 @@ class SliceViewer(BaseProcess):
 
         #hide dock title-bars at start
         self.d5.hideTitleBar()
-        #self.hide_titles(self)
 
         #add menu functions
         self.state = self.area.saveState()
@@ -205,13 +199,20 @@ class SliceViewer(BaseProcess):
         self.export.setStatusTip('Export')
         self.export.triggered.connect(self.exportDialog)
         self.fileMenu4.addAction(self.export)
+        
+        self.fileMenu5 = self.menubar.addMenu('&Overlay')
+        self.overlayArray = QtWidgets.QAction(QtGui.QIcon('open.png'), 'OverlayArray')
+        self.overlayArray.setShortcut('Ctrl+O')
+        self.overlayArray.setStatusTip('OverlayArray')
+        self.overlayArray.triggered.connect(self.overlayArray_start)
+        self.fileMenu5.addAction(self.overlayArray)
 
-        self.fileMenu5 = self.menubar.addMenu('&Quit')
+        self.fileMenu6 = self.menubar.addMenu('&Quit')
         self.quit = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Quit')
         self.quit.setShortcut('Ctrl+Q')
         self.quit.setStatusTip('Quit')
         self.quit.triggered.connect(self.close)
-        self.fileMenu5.addAction(self.quit)
+        self.fileMenu6.addAction(self.quit)
 
         #add time slider
         self.slider1 = QtWidgets.QSlider(QtCore.Qt.Horizontal)
@@ -250,7 +251,6 @@ class SliceViewer(BaseProcess):
         self.roi5 = pg.LineSegmentROI([[0, 0], [0, self.height]], pen=self.dash2, maxBounds=QtCore.QRect(-int(self.width/2),0,self.width,0),movable=False)
         self.imv3.addItem(self.roi5)
 
-
         #hide default imageview buttons
         def hideButtons(imv):
             imv.ui.roiBtn.hide()
@@ -276,7 +276,6 @@ class SliceViewer(BaseProcess):
         disconnectHandles(self.roi4)
         disconnectHandles(self.roi5)
 
-
         #add max projection data to main window
         self.imv1.setImage(self.maxProjection(self.data)) #display topview (max of slices)
 
@@ -287,9 +286,6 @@ class SliceViewer(BaseProcess):
         self.roi1.sigRegionChanged.connect(self.update)
         self.roi2.sigRegionChanged.connect(self.update_2)
         self.roi3.sigRegionChanged.connect(self.update_3)
-        #self.roi2b.sigRegionChanged.connect(self.update_2b)
-        #self.roi3b.sigRegionChanged.connect(self.update_3b)
-
 
         self.imv6.sigTimeChanged.connect(self.update_6)
 
@@ -303,7 +299,6 @@ class SliceViewer(BaseProcess):
         self.imv3.autoLevels()
         self.imv4.autoLevels()
         self.imv6.autoLevels()
-
 
         self.slider1.valueChanged.connect(self.timeUpdate)
 
@@ -331,15 +326,6 @@ class SliceViewer(BaseProcess):
         roi5_x, roi5_y = self.roi5.pos()
         self.roi4.setPos((roi4_x, index)) #check this is starting at right end
         self.roi5.setPos((index, roi5_y))
-
-#    def update_2b(self):
-#        #self.roi2.setPos(self.roi2b.pos())
-#        return
-#
-#    def update_3b(self):
-#        #self.roi3.setPos(self.roi3b.pos())
-#        return
-
 
 
     #connect time slider
@@ -389,11 +375,8 @@ class SliceViewer(BaseProcess):
         self.roi5.setPen(self.dash2)
         return
 
-
-
     def maxProjection(self,data):
         return np.max(data,axis=0)
-
 
     def plot3D(self):
         vol_downSample = copy.deepcopy(self.data)
@@ -536,7 +519,32 @@ class SliceViewer(BaseProcess):
         self.mouseMoved(point,self.imv6)
         return
 
+    def overlayArray_start(self):
+        #get array data
+        A_path = open_file_gui(directory=os.path.expanduser("~/Desktop"),filetypes='*.npy')
+        g.m.statusBar().showMessage("Importing Array: " + A_path)
+        self.A_overlay = np.load(str(A_path))
+        #perform transform
+        self.A_overlay= perform_shear_transform(self.A_overlay, self.shift_factor, self.interpolate, self.originalData.dtype, self.theta, inputArrayOrder=self.inputArrayOrder,displayArrayOrder=self.displayArrayOrder)
 
+        #set flag
+        self.overlayFlag = True
+        #set to volume displayed
+        self.A_overlay_currentVol =self.A_overlay[:,0,:,:] #first volume
+        #overlay images
+        self.overlay(self.roi3.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv3)
+        self.overlay(np.rot90(self.roi2.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), axes=(1,0)), self.imv2)
+        return
+
+    def overlay(self, overlayImage, imv):        
+        bgItem = pg.ImageItem(overlayImage)
+        bgItem.setOpacity(0.5)
+        imv.view.addItem(bgItem)
+        bgItem.hist_luttt = pg.HistogramLUTWidget()
+        bgItem.hist_luttt.setMinimumWidth(110)
+        bgItem.hist_luttt.setImageItem(bgItem)
+        imv.ui.gridLayout.addWidget(bgItem.hist_luttt, 0, 4, 1, 4)
+        return
 
 
 #########################################################################################
@@ -556,8 +564,7 @@ class CamVolumeSlider(BaseProcess):
                 'int8': np.uint8,
                 'int16': np.uint16,
                 'int32': np.uint32,
-                'int64': np.uint64
-                                  }
+                'int64': np.uint64                                  }
 
         self.dataType = dataType
 
@@ -619,10 +626,8 @@ class CamVolumeSlider(BaseProcess):
         self.displayWindow = Window(self.A,'Volume Slider Window')
         #open gui
         self.dialogbox = Form2()
-        self.dialogbox.show()
-        
+        self.dialogbox.show()        
         return
-
 
     def updateDisplay_volumeSizeChange(self):
         #remove final volume if it dosen't contain the full number of frames
@@ -742,14 +747,11 @@ class CamVolumeSlider(BaseProcess):
         return
 
     def multiplyByFactor(self, factor):
-        #factor = np.array(factor).astype(self.dataType)
-        #print(type(factor))
         index = self.displayWindow.imageview.currentIndex
         if self.B == []:
             print('first set number of frames per volume')
             return
         else:
-            #self.B = np.multiply(self.B, factor, dtype=self.dataType)
             self.B = self.B * float(factor)
             print(self.B.shape)
             self.displayWindow.imageview.setImage(self.B[index],autoLevels=False)
@@ -800,11 +802,6 @@ class Form2(QtWidgets.QDialog):
         self.SpinBox2.setRange(0,camVolumeSlider.getNFrames())
         self.SpinBox2.setValue(camVolumeSlider.getNFrames())
 
-        #self.spinLabel3 = QtWidgets.QLabel("# of volumes to average by: ")
-        #self.SpinBox3 = QtWidgets.QSpinBox()
-        #self.SpinBox3.setRange(0,camVolumeSlider.getNVols())
-        #self.SpinBox3.setValue(0)
-
         self.spinLabel4 = QtWidgets.QLabel("baseline value: ")
         self.SpinBox4 = QtWidgets.QSpinBox()
         self.SpinBox4.setRange(0,camVolumeSlider.getMaxPixel())
@@ -848,8 +845,6 @@ class Form2(QtWidgets.QDialog):
         #ComboBox
         self.dTypeSelectorBox = QtWidgets.QComboBox()
         self.dTypeSelectorBox.addItems(["float16", "float32", "float64","int8","int16","int32","int64"])
-        #self.dTypeSelectorBox.currentIndexChanged.connect(self.dTypeSelectionChange)
-        #self.dTypeSelection = self.dTypeSelectorBox.currentText()
         self.inputArraySelectorBox = QtWidgets.QComboBox()
         self.inputArraySelectorBox.addItems(camVolumeSlider.getArrayKeys())
         self.inputArraySelectorBox.setCurrentIndex(4)
@@ -890,14 +885,6 @@ class Form2(QtWidgets.QDialog):
 
         self.arraySavePathLabel = QtWidgets.QLabel(str(self.arraySavePath))
 
-
-
-        #checkbox
-        #self.XYviewerLabel = QtWidgets.QLabel("XY Viewer: ")
-        #self.XYviewer=CheckBox()
-        #self.XYviewer.setChecked(False)
-        #self.XYviewer.stateChanged.connect(self.XYviewerClicked)
-
         self.trim_last_frameLabel = QtWidgets.QLabel("Trim Last Frame: ")
         self.trim_last_frame_checkbox = CheckBox()
         self.trim_last_frame_checkbox.setChecked(self.trim_last_frame)
@@ -916,10 +903,6 @@ class Form2(QtWidgets.QDialog):
         layout.addWidget(self.spinLabel2, 4, 0)
         layout.addWidget(self.SpinBox2, 4, 1)
         layout.addWidget(self.button2, 4, 2)
-
-        #layout.addWidget(self.spinLabel3, 5, 0)
-        #layout.addWidget(self.SpinBox3, 5, 1)
-        #layout.addWidget(self.button3, 5, 2)
 
         layout.addWidget(self.spinLabel4, 6, 0)
         layout.addWidget(self.SpinBox4, 6, 1)
@@ -945,9 +928,6 @@ class Form2(QtWidgets.QDialog):
         layout.addWidget(self.dataTypeChangeLabel, 11, 2)
         layout.addWidget(self.dTypeSelectorBox, 11,3)
         layout.addWidget(self.button7, 11, 4)
-
-        #layout.addWidget(self.XYviewerLabel, 12, 0)
-        #layout.addWidget(self.XYviewer, 12, 1)
 
         layout.addWidget(self.button6, 13, 0)
         layout.addWidget(self.button1, 13, 4)
@@ -1048,13 +1028,6 @@ class Form2(QtWidgets.QDialog):
     def getF0(self):
         return self.SpinBox6.value(), self.SpinBox7.value()
 
-#    def getVolsToAverage(self):
-#        return self.SpinBox3.value()
-
-#    def averageByVol(self):
-#        camVolumeSlider.averageByVol()
-#        return
-
     def subtractBaseline(self):
         camVolumeSlider.subtractBaseline()
         return
@@ -1084,7 +1057,6 @@ class Form2(QtWidgets.QDialog):
         self.arraySavePathLabel.setText(self.arraySavePath)
         camVolumeSlider.exportArray()
         return
-
 
     def startViewer(self):
         camVolumeSlider.startViewer()
@@ -1202,8 +1174,6 @@ class plot3D_options(QtWidgets.QDialog):
 
     def checkBox2ValueChange(self, value):
         camVolumeSlider.viewer.setPlotAxis((not value))
-        return
-
         return
 
 

@@ -36,12 +36,13 @@ from .pyqtGraph_classOverwrites import *
 
 dataType = np.float16
 
-
+#########################################################################################
+#############                  slice viewer (3D Display)                #################
+#########################################################################################
 class SliceViewer(BaseProcess):
 
     def __init__(self, A):
         super().__init__()
-
 
         self.shift_factor = camVolumeSlider.dialogbox.shiftFactor
         self.interpolate = False
@@ -50,7 +51,6 @@ class SliceViewer(BaseProcess):
         self.displayArrayOrder = camVolumeSlider.getDisplayArrayOrder()
 
         self.trim_last_frame = camVolumeSlider.dialogbox.trim_last_frame
-
 
         print('shift factor: '+ str(self.shift_factor))
         print('theta: ' + str(self.theta))
@@ -62,7 +62,6 @@ class SliceViewer(BaseProcess):
         self.threshold_3D = 300
         self.plotCube = False
         self.hideAxis = True
-
 
         if self.trim_last_frame:
             self.originalData = A[:, :-1, :, :]
@@ -81,9 +80,6 @@ class SliceViewer(BaseProcess):
 
         self.data = self.originalData[:,0,:,:]
 
-        #define app
-        #self.app = QtWidgets.QApplication([])
-
         ## Create window with 4 docks
         self.win = QtWidgets.QMainWindow()
         self.win.resize(1000,800)
@@ -92,7 +88,6 @@ class SliceViewer(BaseProcess):
         #create Dock area
         self.area = DockArea()
         self.win.setCentralWidget(self.area)
-
 
         #define docks
         self.d1 = Dock("Top View - Max Projection", size=(500,400))
@@ -134,7 +129,6 @@ class SliceViewer(BaseProcess):
 
         #hide dock title-bars at start
         self.d5.hideTitleBar()
-        #self.hide_titles(self)
 
         #add menu functions
         self.state = self.area.saveState()
@@ -248,7 +242,6 @@ class SliceViewer(BaseProcess):
         self.roi5 = pg.LineSegmentROI([[0, 0], [0, self.height]], pen=self.dash2, maxBounds=QtCore.QRect(-int(self.width/2),0,self.width,0),movable=False)
         self.imv3.addItem(self.roi5)
 
-
         #hide default imageview buttons
         def hideButtons(imv):
             imv.ui.roiBtn.hide()
@@ -274,7 +267,6 @@ class SliceViewer(BaseProcess):
         disconnectHandles(self.roi4)
         disconnectHandles(self.roi5)
 
-
         #add max projection data to main window
         self.imv1.setImage(self.maxProjection(self.data)) #display topview (max of slices)
 
@@ -285,9 +277,6 @@ class SliceViewer(BaseProcess):
         self.roi1.sigRegionChanged.connect(self.update)
         self.roi2.sigRegionChanged.connect(self.update_2)
         self.roi3.sigRegionChanged.connect(self.update_3)
-        #self.roi2b.sigRegionChanged.connect(self.update_2b)
-        #self.roi3b.sigRegionChanged.connect(self.update_3b)
-
 
         self.imv6.sigTimeChanged.connect(self.update_6)
 
@@ -301,7 +290,6 @@ class SliceViewer(BaseProcess):
         self.imv3.autoLevels()
         self.imv4.autoLevels()
         self.imv6.autoLevels()
-
 
         self.slider1.valueChanged.connect(self.timeUpdate)
 
@@ -329,15 +317,6 @@ class SliceViewer(BaseProcess):
         roi5_x, roi5_y = self.roi5.pos()
         self.roi4.setPos((roi4_x, index)) #check this is starting at right end
         self.roi5.setPos((index, roi5_y))
-
-#    def update_2b(self):
-#        #self.roi2.setPos(self.roi2b.pos())
-#        return
-#
-#    def update_3b(self):
-#        #self.roi3.setPos(self.roi3b.pos())
-#        return
-
 
 
     #connect time slider
@@ -387,11 +366,8 @@ class SliceViewer(BaseProcess):
         self.roi5.setPen(self.dash2)
         return
 
-
-
     def maxProjection(self,data):
         return np.max(data,axis=0)
-
 
     def plot3D(self):
         vol_downSample = copy.deepcopy(self.data)
@@ -534,6 +510,12 @@ class SliceViewer(BaseProcess):
         self.mouseMoved(point,self.imv6)
         return
 
+
+
+
+#########################################################################################
+#############                  volumeViewer class                ########################
+#########################################################################################
 class CamVolumeSlider(BaseProcess):
 
     def __init__(self):
@@ -548,8 +530,7 @@ class CamVolumeSlider(BaseProcess):
                 'int8': np.uint8,
                 'int16': np.uint16,
                 'int32': np.uint32,
-                'int64': np.uint64
-                                  }
+                'int64': np.uint64                                  }
 
         self.dataType = dataType
 
@@ -611,10 +592,8 @@ class CamVolumeSlider(BaseProcess):
         self.displayWindow = Window(self.A,'Volume Slider Window')
         #open gui
         self.dialogbox = Form2()
-        self.dialogbox.show()
-        
+        self.dialogbox.show()        
         return
-
 
     def updateDisplay_volumeSizeChange(self):
         #remove final volume if it dosen't contain the full number of frames
@@ -734,14 +713,11 @@ class CamVolumeSlider(BaseProcess):
         return
 
     def multiplyByFactor(self, factor):
-        #factor = np.array(factor).astype(self.dataType)
-        #print(type(factor))
         index = self.displayWindow.imageview.currentIndex
         if self.B == []:
             print('first set number of frames per volume')
             return
         else:
-            #self.B = np.multiply(self.B, factor, dtype=self.dataType)
             self.B = self.B * float(factor)
             print(self.B.shape)
             self.displayWindow.imageview.setImage(self.B[index],autoLevels=False)
@@ -755,10 +731,15 @@ class CamVolumeSlider(BaseProcess):
         self.viewer.close()
         return
 
+camVolumeSlider = CamVolumeSlider()
 
 
 
 
+
+#########################################################################################
+#############                  volumeViewer GUI setup            ########################
+#########################################################################################
 class Form2(QtWidgets.QDialog):
     def __init__(self, parent = None):
         super(Form2, self).__init__(parent)
@@ -786,11 +767,6 @@ class Form2(QtWidgets.QDialog):
         self.SpinBox2 = QtWidgets.QSpinBox()
         self.SpinBox2.setRange(0,camVolumeSlider.getNFrames())
         self.SpinBox2.setValue(camVolumeSlider.getNFrames())
-
-        #self.spinLabel3 = QtWidgets.QLabel("# of volumes to average by: ")
-        #self.SpinBox3 = QtWidgets.QSpinBox()
-        #self.SpinBox3.setRange(0,camVolumeSlider.getNVols())
-        #self.SpinBox3.setValue(0)
 
         self.spinLabel4 = QtWidgets.QLabel("baseline value: ")
         self.SpinBox4 = QtWidgets.QSpinBox()
@@ -835,8 +811,6 @@ class Form2(QtWidgets.QDialog):
         #ComboBox
         self.dTypeSelectorBox = QtWidgets.QComboBox()
         self.dTypeSelectorBox.addItems(["float16", "float32", "float64","int8","int16","int32","int64"])
-        #self.dTypeSelectorBox.currentIndexChanged.connect(self.dTypeSelectionChange)
-        #self.dTypeSelection = self.dTypeSelectorBox.currentText()
         self.inputArraySelectorBox = QtWidgets.QComboBox()
         self.inputArraySelectorBox.addItems(camVolumeSlider.getArrayKeys())
         self.inputArraySelectorBox.setCurrentIndex(4)
@@ -877,14 +851,6 @@ class Form2(QtWidgets.QDialog):
 
         self.arraySavePathLabel = QtWidgets.QLabel(str(self.arraySavePath))
 
-
-
-        #checkbox
-        #self.XYviewerLabel = QtWidgets.QLabel("XY Viewer: ")
-        #self.XYviewer=CheckBox()
-        #self.XYviewer.setChecked(False)
-        #self.XYviewer.stateChanged.connect(self.XYviewerClicked)
-
         self.trim_last_frameLabel = QtWidgets.QLabel("Trim Last Frame: ")
         self.trim_last_frame_checkbox = CheckBox()
         self.trim_last_frame_checkbox.setChecked(self.trim_last_frame)
@@ -903,10 +869,6 @@ class Form2(QtWidgets.QDialog):
         layout.addWidget(self.spinLabel2, 4, 0)
         layout.addWidget(self.SpinBox2, 4, 1)
         layout.addWidget(self.button2, 4, 2)
-
-        #layout.addWidget(self.spinLabel3, 5, 0)
-        #layout.addWidget(self.SpinBox3, 5, 1)
-        #layout.addWidget(self.button3, 5, 2)
 
         layout.addWidget(self.spinLabel4, 6, 0)
         layout.addWidget(self.SpinBox4, 6, 1)
@@ -932,9 +894,6 @@ class Form2(QtWidgets.QDialog):
         layout.addWidget(self.dataTypeChangeLabel, 11, 2)
         layout.addWidget(self.dTypeSelectorBox, 11,3)
         layout.addWidget(self.button7, 11, 4)
-
-        #layout.addWidget(self.XYviewerLabel, 12, 0)
-        #layout.addWidget(self.XYviewer, 12, 1)
 
         layout.addWidget(self.button6, 13, 0)
         layout.addWidget(self.button1, 13, 4)
@@ -1035,13 +994,6 @@ class Form2(QtWidgets.QDialog):
     def getF0(self):
         return self.SpinBox6.value(), self.SpinBox7.value()
 
-#    def getVolsToAverage(self):
-#        return self.SpinBox3.value()
-
-#    def averageByVol(self):
-#        camVolumeSlider.averageByVol()
-#        return
-
     def subtractBaseline(self):
         camVolumeSlider.subtractBaseline()
         return
@@ -1071,7 +1023,6 @@ class Form2(QtWidgets.QDialog):
         self.arraySavePathLabel.setText(self.arraySavePath)
         camVolumeSlider.exportArray()
         return
-
 
     def startViewer(self):
         camVolumeSlider.startViewer()
@@ -1106,7 +1057,9 @@ class Form2(QtWidgets.QDialog):
         self.closeAllWindows()
         return
 
-
+#########################################################################################
+#############            3D Matlibplot scatter plot            ##########################
+#########################################################################################
 class plot3D_options(QtWidgets.QDialog):
     def __init__(self, prob, threshold, parent = None):
         super(plot3D_options, self).__init__(parent)
@@ -1189,8 +1142,6 @@ class plot3D_options(QtWidgets.QDialog):
         camVolumeSlider.viewer.setPlotAxis((not value))
         return
 
-        return
-
 
 class exportDialog_win(QtWidgets.QDialog):
     def __init__(self, parent = None):
@@ -1238,6 +1189,10 @@ class exportDialog_win(QtWidgets.QDialog):
         self.y_displayWindow = Window(camVolumeSlider.viewer.getYWin(),'Y view')
         return
 
+
+#########################################################################################
+#############            3D Texture plot            #####################################
+#########################################################################################
 class plotTexture(QtWidgets.QDialog):
     def __init__(self, data, parent = None):
         super(plotTexture, self).__init__(parent)
@@ -1389,3 +1344,65 @@ class textureDialog_win(QtWidgets.QDialog):
         camVolumeSlider.viewer.texturePlot.slice3 = value
         camVolumeSlider.viewer.texturePlot.updateXY()
         return
+
+#########################################################################################
+#############          FLIKA Base Menu             #####################################
+#########################################################################################
+class VolumeSliderBase(BaseProcess_noPriorWindow):
+    """
+    Start Volume Slider from differnt sources
+
+        |Select source (current window or saved numpy array)
+        
+    Returns volumeSlider GUI
+
+    """
+    
+    def __init__(self):
+        if g.settings['volumeSlider'] is None or 'inputChoice' not in g.settings['volumeSlider']:
+            s = dict() 
+            s['inputChoice'] = 'Current Window'              
+            s['keepOriginalWindow'] = False                                  
+            g.settings['volumeSlider'] = s
+                
+        BaseProcess_noPriorWindow.__init__(self)
+        
+    def __call__(self, inputChoice,keepOriginalWindow,keepSourceWindow=False):
+        g.settings['volumeSlider']['inputChoice'] = inputChoice
+        g.settings['volumeSlider']['keepOriginalWindow'] = keepOriginalWindow
+
+        g.m.statusBar().showMessage("Starting Volume Slider...")
+        
+        if inputChoice == 'Current Window':
+            camVolumeSlider.startVolumeSlider(keepWindow=keepOriginalWindow)
+            
+        elif inputChoice == 'Numpy Array':
+            A_path = open_file_gui(directory=os.path.expanduser("~/Desktop"),filetypes='*.npy')
+            g.m.statusBar().showMessage("Importing Array: " + A_path)
+            A = np.load(str(A_path))
+            camVolumeSlider.startVolumeSlider(A=A,keepWindow=keepOriginalWindow)
+            
+        return
+
+    def closeEvent(self, event):
+        BaseProcess_noPriorWindow.closeEvent(self, event)
+
+    def gui(self):
+        self.gui_reset()
+                       
+        #combobox
+        inputChoice = ComboBox()
+        inputChoice.addItem('Current Window')
+        inputChoice.addItem('Numpy Array')
+        
+        #checkbox
+        self.keepOriginalWindow = CheckBox()
+        self.keepOriginalWindow.setValue(False)          
+        
+        #populate GUI
+        self.items.append({'name': 'inputChoice', 'string': 'Choose Input Data:', 'object': inputChoice}) 
+        self.items.append({'name': 'keepOriginalWindow','string':'Keep Original Window','object': self.keepOriginalWindow})                                     
+        super().gui()
+        
+        
+volumeSliderBase = VolumeSliderBase()
