@@ -317,18 +317,28 @@ class SliceViewer(BaseProcess):
         levels = self.imv4.getHistogramWidget().getLevels()
         self.d1 = self.roi1.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2))
         self.imv4.setImage(self.d1, autoRange=False, autoLevels=False, levels=levels)
+        
+        if self.overlayFlag:
+            self.runOverlayUpdate()
+            
 
     def update_2(self):
         levels = self.imv2.getHistogramWidget().getLevels()
         self.d2 = np.rot90(self.roi2.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2)), axes=(1,0))
         self.imv2.setImage(self.d2, autoRange=False, autoLevels=False, levels=levels)
         self.roi2b.setPos(self.roi2.pos(), finish=False)
+        
+        if self.overlayFlag:
+            self.runOverlayUpdate()
 
     def update_3(self):
         levels = self.imv3.getHistogramWidget().getLevels()
         self.d3 = self.roi3.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2))
         self.imv3.setImage(self.d3, autoRange=False, autoLevels=False, levels=levels)
         self.roi3b.setPos(self.roi3.pos(),finish=False)
+        
+        if self.overlayFlag:
+            self.runOverlayUpdate()
 
     def update_6(self):
         self.index = self.imv6.currentIndex
@@ -337,6 +347,14 @@ class SliceViewer(BaseProcess):
         self.roi4.setPos((roi4_x, self.imv2.imageItem.height()-self.index)) #check this is starting at right end
         self.roi5.setPos((self.index, roi5_y))
 
+        if self.overlayFlag:
+            self.runOverlayUpdate()
+
+    def runOverlayUpdate(self):
+            self.overlayOff()
+            self.overlayFlag = True
+            self.overlayUpdate() 
+            return
     
 
     #connect time slider
@@ -537,18 +555,10 @@ class SliceViewer(BaseProcess):
         self.A_overlay = np.load(str(A_path))
         #perform transform
         self.A_overlay= perform_shear_transform(self.A_overlay, self.shift_factor, self.interpolate, self.originalData.dtype, self.theta, inputArrayOrder=self.inputArrayOrder,displayArrayOrder=self.displayArrayOrder)
-
         #set flag
-        self.overlayFlag = True
-       
-        #set to volume displayed
-        self.A_overlay_currentVol =self.A_overlay[:,0,:,:] #first volume
-        #overlay images
-        self.bgItem_imv1 = self.overlay(self.maxProjection(self.A_overlay_currentVol), self.imv1)
-        self.bgItem_imv3 = self.overlay(self.roi3.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv3)
-        self.bgItem_imv2 = self.overlay(np.rot90(self.roi2.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), axes=(1,0)), self.imv2)
-        #self.bgItem_imv4 = self.overlay(self.roi1.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv4)
-        #self.bgItem_imv6 = self.overlay(self.A_overlay_currentVol, self.imv6)
+        self.overlayFlag = True       
+        #update overlay
+        self.overlayUpdate()
         return
 
     def overlay(self, overlayImage, imv):        
@@ -575,6 +585,16 @@ class SliceViewer(BaseProcess):
             #self.overlay_hide(self.bgItem_imv4,self.imv4) 
             #self.overlay_hide(self.bgItem_imv6,self.imv6)
             self.overlayFlag = False            
+        return
+
+    def overlayUpdate(self):
+        self.A_overlay_currentVol =self.A_overlay[:,0,:,:] #first volume
+        #overlay images
+        self.bgItem_imv1 = self.overlay(self.maxProjection(self.A_overlay_currentVol), self.imv1)
+        self.bgItem_imv3 = self.overlay(self.roi3.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv3)
+        self.bgItem_imv2 = self.overlay(np.rot90(self.roi2.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), axes=(1,0)), self.imv2)
+        #self.bgItem_imv4 = self.overlay(self.roi1.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv4)
+        #self.bgItem_imv6 = self.overlay(self.A_overlay_currentVol, self.imv6)
         return
 
 #########################################################################################
