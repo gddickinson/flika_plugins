@@ -212,6 +212,12 @@ class SliceViewer(BaseProcess):
         self.overlayArrayOff.setStatusTip('OverlayOff')
         self.overlayArrayOff.triggered.connect(self.overlayOff)
         self.fileMenu5.addAction(self.overlayArrayOff)
+
+        self.overlayScale = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options')
+        self.overlayScale.setShortcut('Ctrl+S')
+        self.overlayScale.setStatusTip('Overlay Scale Bar')
+        self.overlayScale.triggered.connect(self.overlayScaleOptions)
+        self.fileMenu5.addAction(self.overlayScale)
         
         self.fileMenu6 = self.menubar.addMenu('&Quit')
         self.quit = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Quit')
@@ -350,6 +356,7 @@ class SliceViewer(BaseProcess):
         if self.overlayFlag:
             self.runOverlayUpdate()
 
+#TODO - REMOVE OVERLAY OFF FROM UPDATE TO STOP REDISPLAYING LUT
     def runOverlayUpdate(self):
             self.overlayOff()
             self.overlayFlag = True
@@ -595,6 +602,55 @@ class SliceViewer(BaseProcess):
         self.bgItem_imv2 = self.overlay(np.rot90(self.roi2.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), axes=(1,0)), self.imv2)
         #self.bgItem_imv4 = self.overlay(self.roi1.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv4)
         #self.bgItem_imv6 = self.overlay(self.A_overlay_currentVol, self.imv6)
+        return
+
+    def overlayScaleOptions(self):
+        self.scaleBarOptions = overlayScaleOptions_win()
+        self.scaleBarOptions.show()
+        return
+
+    def showScaleBar(self):
+        return
+    
+    def hideScaleBar(self):
+        return
+
+
+class overlayScaleOptions_win(QtWidgets.QDialog):
+    def __init__(self, parent = None):
+        super(overlayScaleOptions_win, self).__init__(parent)
+
+        #window geometry
+        self.left = 300
+        self.top = 300
+        self.width = 300
+        self.height = 200
+
+        #buttons
+        self.button1 = QtWidgets.QPushButton("Show Scale Bars")
+        self.button2 = QtWidgets.QPushButton("Hide Scale Bars")
+
+        #grid layout
+        layout = QtWidgets.QGridLayout()
+        layout.setSpacing(5)
+        layout.addWidget(self.button1, 0, 0)
+        layout.addWidget(self.button2, 1, 0)
+
+        self.setLayout(layout)
+        self.setGeometry(self.left, self.top, self.width, self.height)
+
+        #add window title
+        self.setWindowTitle("Scale Bar Options")
+
+        #connect buttons
+        self.button1.clicked.connect(self.showScaleBars)
+        self.button2.clicked.connect(self.hideScaleBars)
+        return
+    
+    def showScaleBars(self):
+        return
+    
+    def hideScaleBars(self):
         return
 
 #########################################################################################
@@ -1140,6 +1196,7 @@ class Form2(QtWidgets.QDialog):
         camVolumeSlider.end()
         self.closeAllWindows()
         return
+
 
 #########################################################################################
 #############            3D Matlibplot scatter plot            ##########################
