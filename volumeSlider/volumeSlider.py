@@ -33,6 +33,7 @@ else:
 
 from .helperFunctions import *
 from .pyqtGraph_classOverwrites import *
+from .scalebar_classOverwrite import Scale_Bar_volumeView
 
 dataType = np.float16
 
@@ -193,8 +194,8 @@ class SliceViewer(BaseProcess):
         self.texturePlotControl.triggered.connect(self.plotTexture_control)
         self.fileMenu3.addAction(self.texturePlotControl)
 
-        self.fileMenu4 = self.menubar.addMenu('&Export')
-        self.export = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Export')
+        self.fileMenu4 = self.menubar.addMenu('&Export to Flika')
+        self.export = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Export Options')
         self.export.setShortcut('Ctrl+E')
         self.export.setStatusTip('Export')
         self.export.triggered.connect(self.exportDialog)
@@ -325,7 +326,7 @@ class SliceViewer(BaseProcess):
         self.imv4.setImage(self.d1, autoRange=False, autoLevels=False, levels=levels)
         
         if self.overlayFlag:
-            self.runOverlayUpdate()
+            self.runOverlayUpdate(1)
             
 
     def update_2(self):
@@ -335,7 +336,7 @@ class SliceViewer(BaseProcess):
         self.roi2b.setPos(self.roi2.pos(), finish=False)
         
         if self.overlayFlag:
-            self.runOverlayUpdate()
+            self.runOverlayUpdate(2)
 
     def update_3(self):
         levels = self.imv3.getHistogramWidget().getLevels()
@@ -344,7 +345,7 @@ class SliceViewer(BaseProcess):
         self.roi3b.setPos(self.roi3.pos(),finish=False)
         
         if self.overlayFlag:
-            self.runOverlayUpdate()
+            self.runOverlayUpdate(3)
 
     def update_6(self):
         self.index = self.imv6.currentIndex
@@ -354,13 +355,12 @@ class SliceViewer(BaseProcess):
         self.roi5.setPos((self.index, roi5_y))
 
         if self.overlayFlag:
-            self.runOverlayUpdate()
+            self.runOverlayUpdate(6)
 
-#TODO - REMOVE OVERLAY OFF FROM UPDATE TO STOP REDISPLAYING LUT
-    def runOverlayUpdate(self):
-            self.overlayOff()
+    def runOverlayUpdate(self, win):
+            self.overlayOff_temp(win)
             self.overlayFlag = True
-            self.overlayUpdate() 
+            self.overlayUpdate(win) 
             return
     
 
@@ -565,7 +565,7 @@ class SliceViewer(BaseProcess):
         #set flag
         self.overlayFlag = True       
         #update overlay
-        self.overlayUpdate()
+        self.overlayUpdate(0)
         return
 
     def overlay(self, overlayImage, imv):        
@@ -575,83 +575,107 @@ class SliceViewer(BaseProcess):
         bgItem.hist_luttt = pg.HistogramLUTWidget()
         bgItem.hist_luttt.setMinimumWidth(110)
         bgItem.hist_luttt.setImageItem(bgItem)
+        
+        
+        #unlinked LUT as placeholder to stop imahe resizing on update
+        bgItem.blank_luttt = pg.HistogramLUTWidget()
+        bgItem.blank_luttt.setMinimumWidth(110)
+        imv.ui.gridLayout.addWidget(bgItem.blank_luttt, 0, 4, 1, 4)
+        
         imv.ui.gridLayout.addWidget(bgItem.hist_luttt, 0, 4, 1, 4)
         return bgItem
 
-    def overlay_hide(self, bgItem,imv):
-        bgItem.hist_luttt.hide()
-        imv.ui.gridLayout.removeWidget(bgItem.hist_luttt)
-        imv.view.removeItem(bgItem)
-        return
 
-    def overlayOff(self):
+
+    def overlayOff_temp(self, win):
+        def overlay_hide_temp(bgItem,imv):
+            bgItem.hist_luttt.hide()
+            imv.ui.gridLayout.removeWidget(bgItem.hist_luttt)
+            imv.view.removeItem(bgItem)
+            return        
+        
         if self.overlayFlag:
-            self.overlay_hide(self.bgItem_imv1,self.imv1)
-            self.overlay_hide(self.bgItem_imv2,self.imv2) 
-            self.overlay_hide(self.bgItem_imv3,self.imv3)
-            #self.overlay_hide(self.bgItem_imv4,self.imv4) 
-            #self.overlay_hide(self.bgItem_imv6,self.imv6)
+            if win == 1:
+                overlay_hide_temp(self.bgItem_imv1,self.imv1)
+            elif win == 2:
+                overlay_hide_temp(self.bgItem_imv2,self.imv2) 
+            elif win == 3:
+                overlay_hide_temp(self.bgItem_imv3,self.imv3)
+            #elif win == 4:    
+                #overlay_hide_temp(self.bgItem_imv4,self.imv4) 
+            #elif win == 6:
+                #overlay_hide_temp(self.bgItem_imv6,self.imv6)
             self.overlayFlag = False            
         return
 
-    def overlayUpdate(self):
+
+
+    def overlayOff(self):        
+        def overlay_hide(bgItem,imv):
+            bgItem.hist_luttt.hide()
+            bgItem.blank_luttt.hide()
+            imv.ui.gridLayout.removeWidget(bgItem.hist_luttt)
+            imv.ui.gridLayout.removeWidget(bgItem.blank_luttt)
+            imv.view.removeItem(bgItem)  
+            #bgItem.hist_luttt = None 
+            #bgItem.blank_luttt = None 
+            #bgItem = None             
+            return
+        
+        if self.overlayFlag:
+            overlay_hide(self.bgItem_imv1,self.imv1)
+            overlay_hide(self.bgItem_imv2,self.imv2) 
+            overlay_hide(self.bgItem_imv3,self.imv3)
+            #overlay_hide(self.bgItem_imv4,self.imv4) 
+            #overlay_hide(self.bgItem_imv6,self.imv6)
+            self.overlayFlag = False   
+            
+        self.resetImages()
+            
+        return
+
+
+    def overlayUpdate(self,win):
         self.A_overlay_currentVol =self.A_overlay[:,0,:,:] #first volume
         #overlay images
-        self.bgItem_imv1 = self.overlay(self.maxProjection(self.A_overlay_currentVol), self.imv1)
-        self.bgItem_imv3 = self.overlay(self.roi3.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv3)
-        self.bgItem_imv2 = self.overlay(np.rot90(self.roi2.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), axes=(1,0)), self.imv2)
-        #self.bgItem_imv4 = self.overlay(self.roi1.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv4)
-        #self.bgItem_imv6 = self.overlay(self.A_overlay_currentVol, self.imv6)
+        if win == 0:
+            self.bgItem_imv1 = self.overlay(self.maxProjection(self.A_overlay_currentVol), self.imv1)
+            self.bgItem_imv3 = self.overlay(self.roi3.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv3)
+            self.bgItem_imv2 = self.overlay(np.rot90(self.roi2.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), axes=(1,0)), self.imv2)
+            #self.bgItem_imv4 = self.overlay(self.roi1.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv4)
+            #self.bgItem_imv6 = self.overlay(self.A_overlay_currentVol, self.imv6)        
+                
+        elif win == 1:
+            self.bgItem_imv1 = self.overlay(self.maxProjection(self.A_overlay_currentVol), self.imv1)
+        elif win== 3:
+            self.bgItem_imv3 = self.overlay(self.roi3.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv3)
+        elif win == 2:
+            self.bgItem_imv2 = self.overlay(np.rot90(self.roi2.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), axes=(1,0)), self.imv2)
+        #elif win == 4:   
+            #self.bgItem_imv4 = self.overlay(self.roi1.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv4)
+        #elif win == 6:    
+            #self.bgItem_imv6 = self.overlay(self.A_overlay_currentVol, self.imv6)
         return
+
+    def resetImages(self):
+        #add max projection data to main window
+        self.imv1.setImage(self.maxProjection(self.data))
+        #add sliceable data to side window
+        self.imv6.setImage(self.data)
+        #update to populate roi windows
+        self.update()
+        self.update_2()
+        self.update_3()        
+        #correct roi4 position
+        self.update_6()
+
 
     def overlayScaleOptions(self):
-        self.scaleBarOptions = overlayScaleOptions_win()
-        self.scaleBarOptions.show()
-        return
-
-    def showScaleBar(self):
-        return
-    
-    def hideScaleBar(self):
+        scale_bar=Scale_Bar_volumeView(self.imv1)
+        scale_bar.gui()
         return
 
 
-class overlayScaleOptions_win(QtWidgets.QDialog):
-    def __init__(self, parent = None):
-        super(overlayScaleOptions_win, self).__init__(parent)
-
-        #window geometry
-        self.left = 300
-        self.top = 300
-        self.width = 300
-        self.height = 200
-
-        #buttons
-        self.button1 = QtWidgets.QPushButton("Show Scale Bars")
-        self.button2 = QtWidgets.QPushButton("Hide Scale Bars")
-
-        #grid layout
-        layout = QtWidgets.QGridLayout()
-        layout.setSpacing(5)
-        layout.addWidget(self.button1, 0, 0)
-        layout.addWidget(self.button2, 1, 0)
-
-        self.setLayout(layout)
-        self.setGeometry(self.left, self.top, self.width, self.height)
-
-        #add window title
-        self.setWindowTitle("Scale Bar Options")
-
-        #connect buttons
-        self.button1.clicked.connect(self.showScaleBars)
-        self.button2.clicked.connect(self.hideScaleBars)
-        return
-    
-    def showScaleBars(self):
-        return
-    
-    def hideScaleBars(self):
-        return
 
 #########################################################################################
 #############                  volumeViewer class                ########################
