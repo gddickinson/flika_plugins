@@ -214,11 +214,29 @@ class SliceViewer(BaseProcess):
         self.overlayArrayOff.triggered.connect(self.overlayOff)
         self.fileMenu5.addAction(self.overlayArrayOff)
 
-        self.overlayScale = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options')
-        self.overlayScale.setShortcut('Ctrl+S')
-        self.overlayScale.setStatusTip('Overlay Scale Bar')
-        self.overlayScale.triggered.connect(self.overlayScaleOptions)
-        self.fileMenu5.addAction(self.overlayScale)
+        self.overlayScale_win1 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (Top)')
+        #self.overlayScale.setShortcut('Ctrl+S')
+        self.overlayScale_win1.setStatusTip('Overlay Scale Bar')
+        self.overlayScale_win1.triggered.connect(self.overlayScaleOptions_win1)
+        self.fileMenu5.addAction(self.overlayScale_win1)
+        
+        self.overlayScale_win2 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (Y)')
+        #self.overlayScale.setShortcut('Ctrl+S')
+        self.overlayScale_win2.setStatusTip('Overlay Scale Bar')
+        self.overlayScale_win2.triggered.connect(self.overlayScaleOptions_win2)
+        self.fileMenu5.addAction(self.overlayScale_win2)        
+        
+        self.overlayScale_win3 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (X)')
+        #self.overlayScale.setShortcut('Ctrl+S')
+        self.overlayScale_win3.setStatusTip('Overlay Scale Bar')
+        self.overlayScale_win3.triggered.connect(self.overlayScaleOptions_win3)
+        self.fileMenu5.addAction(self.overlayScale_win3) 
+
+        self.overlayScale_win6 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (Z)')
+        #self.overlayScale.setShortcut('Ctrl+S')
+        self.overlayScale_win6.setStatusTip('Overlay Scale Bar')
+        self.overlayScale_win6.triggered.connect(self.overlayScaleOptions_win6)
+        self.fileMenu5.addAction(self.overlayScale_win6)         
         
         self.fileMenu6 = self.menubar.addMenu('&Quit')
         self.quit = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Quit')
@@ -249,14 +267,17 @@ class SliceViewer(BaseProcess):
         self.dash = mkPen('w', width=1,style=QtCore.Qt.DashLine)
         self.roi2 = pg.LineSegmentROI([[0, int(self.height/2)], [self.width, int(self.height/2)]], pen='y', maxBounds=QtCore.QRect(0,-int(self.height/2),0,self.height))
         self.roi2b = pg.LineSegmentROI([[0, int(self.height/2)], [self.width, int(self.height/2)]], pen=self.dash, maxBounds=QtCore.QRect(0,-int(self.height/2),0,self.height),movable=False)
+        self.roi2c = pg.LineSegmentROI([[0, int(self.height/2)], [int(self.width/6), int(self.height/2)]], pen=self.dash, maxBounds=QtCore.QRect(0,-int(self.height/2),0,self.height),movable=False)       
         self.imv1.addItem(self.roi2)
         self.imv6.addItem(self.roi2b)
+        self.imv3.addItem(self.roi2c)        
 
         self.roi3 = pg.LineSegmentROI([[int(self.width/2), 0], [int(self.width/2), self.height]], pen='y', maxBounds=QtCore.QRect(-int(self.width/2),0,self.width,0))
         self.roi3b = pg.LineSegmentROI([[int(self.width/2), 0], [int(self.width/2), self.height]], pen=self.dash, maxBounds=QtCore.QRect(-int(self.width/2),0,self.width,0),movable=False)
+        self.roi3c = pg.LineSegmentROI([[int(self.width/2), 0], [int(self.width/2), self.height]], pen=self.dash, maxBounds=QtCore.QRect(-int(self.width/2),0,self.width,0),movable=False)
         self.imv1.addItem(self.roi3)
         self.imv6.addItem(self.roi3b)
-
+        self.imv2.addItem(self.roi3c)
 
         #define height indicator rois
         self.dash2 = mkPen('r', width=1,style=QtCore.Qt.DashLine)
@@ -264,6 +285,7 @@ class SliceViewer(BaseProcess):
         self.imv2.addItem(self.roi4)
         self.roi5 = pg.LineSegmentROI([[0, 0], [0, self.height]], pen=self.dash2, maxBounds=QtCore.QRect(-int(self.width/2),0,self.width,0),movable=False)
         self.imv3.addItem(self.roi5)
+
 
         #hide default imageview buttons
         def hideButtons(imv):
@@ -286,7 +308,9 @@ class SliceViewer(BaseProcess):
         disconnectHandles(self.roi2)
         disconnectHandles(self.roi3)
         disconnectHandles(self.roi2b)
+        disconnectHandles(self.roi2c)        
         disconnectHandles(self.roi3b)
+        disconnectHandles(self.roi3c)        
         disconnectHandles(self.roi4)
         disconnectHandles(self.roi5)
 
@@ -318,6 +342,7 @@ class SliceViewer(BaseProcess):
         
         #correct roi4 position
         self.update_6()
+        
 
     #define update calls for each roi
     def update(self):
@@ -334,6 +359,7 @@ class SliceViewer(BaseProcess):
         self.d2 = np.rot90(self.roi2.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2)), axes=(1,0))
         self.imv2.setImage(self.d2, autoRange=False, autoLevels=False, levels=levels)
         self.roi2b.setPos(self.roi2.pos(), finish=False)
+        self.roi2c.setPos(self.roi2.pos(), finish=False)        
         
         if self.overlayFlag:
             self.runOverlayUpdate(2)
@@ -343,6 +369,7 @@ class SliceViewer(BaseProcess):
         self.d3 = self.roi3.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2))
         self.imv3.setImage(self.d3, autoRange=False, autoLevels=False, levels=levels)
         self.roi3b.setPos(self.roi3.pos(),finish=False)
+        self.roi3c.setPos(self.roi3.pos(),finish=False)        
         
         if self.overlayFlag:
             self.runOverlayUpdate(3)
@@ -399,14 +426,18 @@ class SliceViewer(BaseProcess):
 
     def hide_cursors(self):
         self.roi2b.setPen(None)
+        self.roi2c.setPen(None)        
         self.roi3b.setPen(None)
+        self.roi3c.setPen(None)        
         self.roi4.setPen(None)
         self.roi5.setPen(None)
         return
 
     def show_cursors(self):
         self.roi2b.setPen(self.dash)
+        self.roi2c.setPen(self.dash)        
         self.roi3b.setPen(self.dash)
+        self.roi3c.setPen(self.dash)        
         self.roi4.setPen(self.dash2)
         self.roi5.setPen(self.dash2)
         return
@@ -670,12 +701,25 @@ class SliceViewer(BaseProcess):
         self.update_6()
 
 
-    def overlayScaleOptions(self):
-        scale_bar=Scale_Bar_volumeView(self.imv1)
-        scale_bar.gui()
+    def overlayScaleOptions_win1(self):
+        scale_bar_1=Scale_Bar_volumeView(self.imv1, self.imv1.image.shape[1], self.imv1.image.shape[0])
+        scale_bar_1.gui()
         return
 
-
+    def overlayScaleOptions_win2(self):
+        scale_bar_2=Scale_Bar_volumeView(self.imv2, self.imv2.image.shape[1], self.imv2.image.shape[0])
+        scale_bar_2.gui()
+        return
+    
+    def overlayScaleOptions_win3(self):
+        scale_bar_3=Scale_Bar_volumeView(self.imv3, self.imv3.image.shape[1], self.imv3.image.shape[0])
+        scale_bar_3.gui()
+        return
+    
+    def overlayScaleOptions_win6(self):
+        scale_bar_6=Scale_Bar_volumeView(self.imv6, self.imv6.image.shape[1], self.imv6.image.shape[0])
+        scale_bar_6.gui()
+        return
 
 #########################################################################################
 #############                  volumeViewer class                ########################
