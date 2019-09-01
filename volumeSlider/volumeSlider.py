@@ -279,6 +279,11 @@ class SliceViewer(BaseProcess):
         self.imv6.addItem(self.roi3b)
         self.imv2.addItem(self.roi3c)
 
+        #define crosshair center roi
+        self.roiCenter = pg.CircleROI([int(self.width/2)-10,int(self.height/2)-10], [20, 20], pen=(4,9))
+        self.roiCenter.setPen(None)
+        self.imv1.addItem(self.roiCenter)
+
         #define height indicator rois
         self.dash2 = mkPen('r', width=1,style=QtCore.Qt.DashLine)
         self.roi4 = pg.LineSegmentROI([[0, 0], [self.width, 0]], pen=self.dash2, maxBounds=QtCore.QRect(0,-int(self.height/2),0,self.height),movable=False)
@@ -298,12 +303,18 @@ class SliceViewer(BaseProcess):
         #disconnect roi handles
         def disconnectHandles(roi):
             handles = roi.getHandles()
-            handles[0].disconnectROI(roi)
-            handles[1].disconnectROI(roi)
-            handles[0].currentPen = mkPen(None)
-            handles[1].currentPen = mkPen(None)
-            handles[0].pen = mkPen(None)
-            handles[1].pen = mkPen(None)
+            if len(handles) == 2:
+                handles[0].disconnectROI(roi)
+                handles[1].disconnectROI(roi)
+                handles[0].currentPen = mkPen(None)
+                handles[1].currentPen = mkPen(None)
+                handles[0].pen = mkPen(None)
+                handles[1].pen = mkPen(None)
+            elif len(handles) == 1:
+                #handles[0].disconnectROI(roi)
+                #handles[0].currentPen = mkPen(None)
+                #handles[0].pen = mkPen(None)
+                roi.removeHandle(-1)
 
         disconnectHandles(self.roi2)
         disconnectHandles(self.roi3)
@@ -313,6 +324,7 @@ class SliceViewer(BaseProcess):
         disconnectHandles(self.roi3c)        
         disconnectHandles(self.roi4)
         disconnectHandles(self.roi5)
+        disconnectHandles(self.roiCenter)        
 
         #add max projection data to main window
         self.imv1.setImage(self.maxProjection(self.data)) #display topview (max of slices)
@@ -326,6 +338,10 @@ class SliceViewer(BaseProcess):
         self.roi3.sigRegionChanged.connect(self.update_3)
 
         self.imv6.sigTimeChanged.connect(self.update_6)
+
+        self.roi2.sigRegionChangeFinished.connect(self.update_center_fromLines)
+        self.roi3.sigRegionChangeFinished.connect(self.update_center_fromLines)        
+        self.roiCenter.sigRegionChanged.connect(self.update_center)
 
         #initial update to populate roi windows
         self.update()
@@ -359,7 +375,7 @@ class SliceViewer(BaseProcess):
         self.d2 = np.rot90(self.roi2.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2)), axes=(1,0))
         self.imv2.setImage(self.d2, autoRange=False, autoLevels=False, levels=levels)
         self.roi2b.setPos(self.roi2.pos(), finish=False)
-        self.roi2c.setPos(self.roi2.pos(), finish=False)        
+        self.roi2c.setPos(self.roi2.pos(), finish=False)    
         
         if self.overlayFlag:
             self.runOverlayUpdate(2)
@@ -369,7 +385,7 @@ class SliceViewer(BaseProcess):
         self.d3 = self.roi3.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2))
         self.imv3.setImage(self.d3, autoRange=False, autoLevels=False, levels=levels)
         self.roi3b.setPos(self.roi3.pos(),finish=False)
-        self.roi3c.setPos(self.roi3.pos(),finish=False)        
+        self.roi3c.setPos(self.roi3.pos(),finish=False) 
         
         if self.overlayFlag:
             self.runOverlayUpdate(3)
@@ -383,6 +399,16 @@ class SliceViewer(BaseProcess):
 
         if self.overlayFlag:
             self.runOverlayUpdate(6)
+
+    def update_center_fromLines(self):
+        #move center roi after cursor lines moved
+        self.roiCenter.setPos((self.roi3.pos()[0]+int(self.width/2)-10,self.roi2.pos()[1]+int(self.height/2)-10), finish=False)  
+        self.roiCenter.setPos((self.roi3.pos()[0]+int(self.width/2)-10,self.roi2.pos()[1]+int(self.height/2)-10), finish=False)  
+        
+    def update_center(self):
+        #move cursor lines as center roi is moved
+        self.roi2.setPos((self.roi2.pos()[0],self.roiCenter.pos()[1]-int(self.height/2)+10), finish=False)
+        self.roi3.setPos((self.roiCenter.pos()[0]-int(self.width/2)+10,self.roi3.pos()[1]), finish=False)
 
     def runOverlayUpdate(self, win):
             self.overlayOff_temp(win)
