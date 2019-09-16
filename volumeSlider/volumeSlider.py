@@ -34,9 +34,10 @@ else:
 from .helperFunctions import *
 from .pyqtGraph_classOverwrites import *
 from .scalebar_classOverwrite import Scale_Bar_volumeView
+from .histogramExtension import HistogramLUTWidget_Overlay
 
 dataType = np.float16
-
+from matplotlib import cm
 #########################################################################################
 #############                  slice viewer (3D Display)                #################
 #########################################################################################
@@ -213,7 +214,13 @@ class SliceViewer(BaseProcess):
         self.overlayArrayOff.setStatusTip('OverlayOff')
         self.overlayArrayOff.triggered.connect(self.overlayOff)
         self.fileMenu5.addAction(self.overlayArrayOff)
-
+        
+        self.overlayArrayWin = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Overlay Options')
+        #self.overlayArrayWin.setShortcut('Ctrl+L')
+        self.overlayArrayWin.setStatusTip('OverlayOff')
+        self.overlayArrayWin.triggered.connect(self.overlayOptions)
+        self.fileMenu5.addAction(self.overlayArrayWin)
+        
         self.overlayScale_win1 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (Top)')
         #self.overlayScale.setShortcut('Ctrl+S')
         self.overlayScale_win1.setStatusTip('Overlay Scale Bar')
@@ -359,6 +366,15 @@ class SliceViewer(BaseProcess):
         #correct roi4 position
         self.update_6()
         
+        self.OverlayLUT = 'inferno'
+        self.OverlayMODE = QtGui.QPainter.CompositionMode_SourceOver
+        self.OverlayOPACITY = 0.5
+        self.useOverlayLUT = False
+        
+        #init overlay levels 
+        self.levels_1 = self.imv1.getHistogramWidget().getLevels()
+        self.levels_2 = self.imv2.getHistogramWidget().getLevels()
+        self.levels_3 = self.imv3.getHistogramWidget().getLevels()
 
     #define update calls for each roi
     def update(self):
@@ -411,6 +427,7 @@ class SliceViewer(BaseProcess):
         self.roi3.setPos((self.roiCenter.pos()[0]-int(self.width/2)+10,self.roi3.pos()[1]), finish=False)
 
     def runOverlayUpdate(self, win):
+            self.updateOverlayLevels()
             self.overlayOff_temp(win)
             self.overlayFlag = True
             self.overlayUpdate(win) 
@@ -625,21 +642,40 @@ class SliceViewer(BaseProcess):
         self.overlayUpdate(0)
         return
 
-    def overlay(self, overlayImage, imv):        
-        bgItem = pg.ImageItem(overlayImage)
-        bgItem.setOpacity(0.5)
+
+    def getLUT(self, lutNAME = "nipy_spectral"):
+        colormap = cm.get_cmap(lutNAME)  # cm.get_cmap("CMRmap")
+        colormap._init()
+        lut = (colormap._lut * 255).view(np.ndarray)  # Convert matplotlib colormap from 0-1 to 0 -255 for Qt
+        return lut
+
+    def overlay(self, overlayImage, imv, levels):
+        bgItem = pg.ImageItem()        
+        bgItem.setImage(overlayImage, autoRange=False, autoLevels=False, levels=levels,opacity=self.OverlayOPACITY)
+        bgItem.setCompositionMode(self.OverlayMODE)
         imv.view.addItem(bgItem)
-        bgItem.hist_luttt = pg.HistogramLUTWidget()
+
+        bgItem.hist_luttt = HistogramLUTWidget_Overlay()
         bgItem.hist_luttt.setMinimumWidth(110)
         bgItem.hist_luttt.setImageItem(bgItem)
+        bgItem.hist_luttt.item.fillHistogram = False
+        #bgItem.hist_luttt.item.levelMode = 'rgba'
         
-        
-        #unlinked LUT as placeholder to stop imahe resizing on update
-        bgItem.blank_luttt = pg.HistogramLUTWidget()
+        #unlinked LUT as placeholder to stop image resizing on update
+        bgItem.blank_luttt = HistogramLUTWidget_Overlay()
         bgItem.blank_luttt.setMinimumWidth(110)
+        bgItem.blank_luttt.item.fillHistogram = False
+        bgItem.blank_luttt.item.autoHistogramRange = False
+        
         imv.ui.gridLayout.addWidget(bgItem.blank_luttt, 0, 4, 1, 4)
         
         imv.ui.gridLayout.addWidget(bgItem.hist_luttt, 0, 4, 1, 4)
+        
+        bgItem.setLevels(levels)
+        bgItem.hist_luttt.item.setLevels(levels[0],levels[1])
+        
+        if self.useOverlayLUT:
+            bgItem.hist_luttt.setLUT(self.getLUT(lutNAME = self.OverlayLUT))
         return bgItem
 
 
@@ -691,27 +727,45 @@ class SliceViewer(BaseProcess):
             
         return
 
+    def updateOverlayLevels(self):
+        self.levels_1 = self.bgItem_imv1.getLevels()
+        self.levels_2 = self.bgItem_imv2.getLevels()   
+        self.levels_3 = self.bgItem_imv3.getLevels() 
 
     def overlayUpdate(self,win):
         self.A_overlay_currentVol =self.A_overlay[:,0,:,:] #first volume
+          
         #overlay images
         if win == 0:
-            self.bgItem_imv1 = self.overlay(self.maxProjection(self.A_overlay_currentVol), self.imv1)
-            self.bgItem_imv3 = self.overlay(self.roi3.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv3)
-            self.bgItem_imv2 = self.overlay(np.rot90(self.roi2.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), axes=(1,0)), self.imv2)
+            self.bgItem_imv1 = self.overlay(self.maxProjection(self.A_overlay_currentVol), self.imv1, self.levels_1)
+            self.bgItem_imv3 = self.overlay(self.roi3.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv3, self.levels_3)
+            self.bgItem_imv2 = self.overlay(np.rot90(self.roi2.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), axes=(1,0)), self.imv2,self.levels_2)
             #self.bgItem_imv4 = self.overlay(self.roi1.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv4)
             #self.bgItem_imv6 = self.overlay(self.A_overlay_currentVol, self.imv6)        
                 
         elif win == 1:
-            self.bgItem_imv1 = self.overlay(self.maxProjection(self.A_overlay_currentVol), self.imv1)
+            self.bgItem_imv1 = self.overlay(self.maxProjection(self.A_overlay_currentVol), self.imv1,self.levels_1)
         elif win== 3:
-            self.bgItem_imv3 = self.overlay(self.roi3.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv3)
-        elif win == 2:
-            self.bgItem_imv2 = self.overlay(np.rot90(self.roi2.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), axes=(1,0)), self.imv2)
+            self.bgItem_imv3 = self.overlay(self.roi3.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv3,self.levels_3)
+        elif win == 2:  
+            self.bgItem_imv2 = self.overlay(np.rot90(self.roi2.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), axes=(1,0)), self.imv2,self.levels_2)
         #elif win == 4:   
             #self.bgItem_imv4 = self.overlay(self.roi1.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv4)
         #elif win == 6:    
             #self.bgItem_imv6 = self.overlay(self.A_overlay_currentVol, self.imv6)
+        return
+
+    def updateAllOverlayWins(self):
+        self.runOverlayUpdate(1)
+        self.runOverlayUpdate(2)        
+        self.runOverlayUpdate(3)
+
+    def setOverlayLUT(self, lut):
+        self.OverlayLUT = lut
+
+    def overlayOptions(self):
+        self.overlayOptionsWin = OverlayOptions()   
+        self.overlayOptionsWin.show()
         return
 
     def resetImages(self):
@@ -1424,7 +1478,71 @@ class exportDialog_win(QtWidgets.QDialog):
         self.y_displayWindow = Window(camVolumeSlider.viewer.getYWin(),'Y view')
         return
 
+class OverlayOptions(QtWidgets.QDialog):
+    def __init__(self, parent = None):
+        super(OverlayOptions, self).__init__(parent)
 
+        #window geometry
+        self.left = 300
+        self.top = 300
+        self.width = 300
+        self.height = 200
+
+        self.opacity = 50
+
+        #buttons
+        self.button1 = QtWidgets.QPushButton("Set Color Map")
+        self.button2 = QtWidgets.QPushButton("Set Mode")
+
+        #combo boxes
+        self.cmSelectorBox = QtWidgets.QComboBox()
+        self.cmSelectorBox.addItems(["inferno", "magma", "plasma","viridis","Reds","Greens","Blues", "binary","bone","Greys",
+                                     "hot","Set1","RdBu"])
+        self.cmSelectorBox.setCurrentIndex(0)
+        self.cmSelectorBox.currentIndexChanged.connect(self.setColorMap)
+
+        #sliders
+        self.slider1 = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.slider1.setFocusPolicy(QtCore.Qt.StrongFocus)
+        self.slider1.setTickPosition(QtWidgets.QSlider.TicksBothSides)
+        self.slider1.setMinimum(0)
+        self.slider1.setMaximum(100)
+        self.slider1.setTickInterval(10)
+        self.slider1.setSingleStep(1)
+        self.slider1.setValue(self.opacity)
+        
+        #grid layout
+        layout = QtWidgets.QGridLayout()
+        layout.setSpacing(5)
+        layout.addWidget(self.cmSelectorBox, 1, 0)
+        layout.addWidget(self.button2, 2, 0)
+        layout.addWidget(self.slider1, 3, 0)        
+
+
+
+        self.setLayout(layout)
+        self.setGeometry(self.left, self.top, self.width, self.height)
+
+        #add window title
+        self.setWindowTitle("Overlay Options")
+
+
+        return
+
+    def setColorMap(self):
+        camVolumeSlider.viewer.useOverlayLUT = True
+        lut = self.cmSelectorBox.currentText()
+        camVolumeSlider.viewer.setOverlayLUT(lut)
+        camVolumeSlider.viewer.updateAllOverlayWins()
+        return
+    
+    def setMode(self):
+        return
+    
+    def setOpacity(self):
+        return
+    
+    
 #########################################################################################
 #############            3D Texture plot            #####################################
 #########################################################################################
