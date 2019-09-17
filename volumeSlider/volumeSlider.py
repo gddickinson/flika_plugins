@@ -768,6 +768,14 @@ class SliceViewer(BaseProcess):
         self.overlayOptionsWin.show()
         return
 
+    def setOverlayMode(self,keyText):
+        modeDict = {"Source Overlay" : QtGui.QPainter.CompositionMode_SourceOver,
+                    "Overlay" : QtGui.QPainter.CompositionMode_Overlay,
+                    "Plus" : QtGui.QPainter.CompositionMode_Plus,
+                    "Mutiply" : QtGui.QPainter.CompositionMode_Multiply}
+        
+        self.OverlayMODE = modeDict[keyText]
+
     def resetImages(self):
         #add max projection data to main window
         self.imv1.setImage(self.maxProjection(self.data))
@@ -1490,16 +1498,17 @@ class OverlayOptions(QtWidgets.QDialog):
 
         self.opacity = 50
 
-        #buttons
-        self.button1 = QtWidgets.QPushButton("Set Color Map")
-        self.button2 = QtWidgets.QPushButton("Set Mode")
-
         #combo boxes
         self.cmSelectorBox = QtWidgets.QComboBox()
         self.cmSelectorBox.addItems(["inferno", "magma", "plasma","viridis","Reds","Greens","Blues", "binary","bone","Greys",
-                                     "hot","Set1","RdBu"])
+                                     "hot","Set1","RdBu","Accent","autumn","jet","hsv","Spectral"])
         self.cmSelectorBox.setCurrentIndex(0)
         self.cmSelectorBox.currentIndexChanged.connect(self.setColorMap)
+
+        self.modeSelectorBox = QtWidgets.QComboBox()
+        self.modeSelectorBox.addItems(["Source Overlay", "Overlay", "Plus", "Mutiply"])
+        self.modeSelectorBox.setCurrentIndex(0)
+        self.modeSelectorBox.currentIndexChanged.connect(self.setMode)
 
         #sliders
         self.slider1 = QtWidgets.QSlider(QtCore.Qt.Horizontal)
@@ -1510,15 +1519,23 @@ class OverlayOptions(QtWidgets.QDialog):
         self.slider1.setTickInterval(10)
         self.slider1.setSingleStep(1)
         self.slider1.setValue(self.opacity)
+        self.slider1.valueChanged.connect(self.setOpacity)
+        
+        #labels
+        self.label1 = QtWidgets.QLabel("Color Map")
+        self.label2 = QtWidgets.QLabel("Overlay Mode")
+        self.label3 = QtWidgets.QLabel("Opacity (%)")
+        
         
         #grid layout
         layout = QtWidgets.QGridLayout()
         layout.setSpacing(5)
-        layout.addWidget(self.cmSelectorBox, 1, 0)
-        layout.addWidget(self.button2, 2, 0)
-        layout.addWidget(self.slider1, 3, 0)        
-
-
+        layout.addWidget(self.label1, 1, 0)
+        layout.addWidget(self.cmSelectorBox, 1, 1)
+        layout.addWidget(self.label2, 2, 0)
+        layout.addWidget(self.modeSelectorBox, 2, 1)
+        layout.addWidget(self.label3, 3, 0)
+        layout.addWidget(self.slider1, 3, 1)        
 
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -1537,9 +1554,14 @@ class OverlayOptions(QtWidgets.QDialog):
         return
     
     def setMode(self):
+        camVolumeSlider.viewer.setOverlayMode(self.modeSelectorBox.currentText())
+        camVolumeSlider.viewer.updateAllOverlayWins()
         return
     
-    def setOpacity(self):
+    def setOpacity(self,value):
+        self.opacity = value
+        camVolumeSlider.viewer.OverlayOPACITY = (value/100)
+        camVolumeSlider.viewer.updateAllOverlayWins()
         return
     
     
