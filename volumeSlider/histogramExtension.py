@@ -10,8 +10,8 @@ class HistogramLUTItem_Overlay(HistogramLUTItem):
         HistogramLUTItem.__init__(self, **kwds)    
         self.overlay = True
 
-    def gradientChanged(self):
-        pass
+    #def gradientChanged(self):
+    #    pass
 
 
 class HistogramLUTWidget_Overlay(HistogramLUTWidget):
@@ -23,7 +23,10 @@ class HistogramLUTWidget_Overlay(HistogramLUTWidget):
 
         self.item = HistogramLUTItem_Overlay(*args, **kargs)
         self.setCentralItem(self.item)
-        self.setMinimumWidth(95)
+        self.setMinimumWidth(110)
+        self.item.fillHistogram = False
+        self.item.autoHistogramRange = False
+        #self.item.gradient.hide()
 
         
     def setLUT(self,lut):

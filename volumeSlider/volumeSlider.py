@@ -36,6 +36,8 @@ from .pyqtGraph_classOverwrites import *
 from .scalebar_classOverwrite import Scale_Bar_volumeView
 from .histogramExtension import HistogramLUTWidget_Overlay
 
+from pyqtgraph import HistogramLUTWidget
+
 dataType = np.float16
 from matplotlib import cm
 #########################################################################################
@@ -362,7 +364,9 @@ class SliceViewer(BaseProcess):
         self.imv6.autoLevels()
 
         self.slider1.valueChanged.connect(self.timeUpdate)
-        
+
+        #initialize time index for z-slice
+        self.index6 = 0        
         #correct roi4 position
         self.update_6()
         
@@ -371,10 +375,20 @@ class SliceViewer(BaseProcess):
         self.OverlayOPACITY = 0.5
         self.useOverlayLUT = False
         
+        self.gradientPreset = 'grey' #  'thermal','flame','yellowy','bipolar','spectrum','cyclic','greyclip','grey'
+        self.gradientState_1 = None
+        self.gradientState_2 = None
+        self.gradientState_3 = None
+        self.gradientState_4 = None
+        
+               
         #init overlay levels 
         self.levels_1 = self.imv1.getHistogramWidget().getLevels()
         self.levels_2 = self.imv2.getHistogramWidget().getLevels()
         self.levels_3 = self.imv3.getHistogramWidget().getLevels()
+        self.levels_4 = self.imv4.getHistogramWidget().getLevels()     
+        
+
 
     #define update calls for each roi
     def update(self):
@@ -384,7 +398,7 @@ class SliceViewer(BaseProcess):
         
         if self.overlayFlag:
             self.runOverlayUpdate(1)
-            
+            self.runOverlayUpdate(4)            
 
     def update_2(self):
         levels = self.imv2.getHistogramWidget().getLevels()
@@ -407,11 +421,11 @@ class SliceViewer(BaseProcess):
             self.runOverlayUpdate(3)
 
     def update_6(self):
-        self.index = self.imv6.currentIndex
+        #self.index6 = self.imv6.currentIndex
         roi4_x, roi4_y = self.roi4.pos()
         roi5_x, roi5_y = self.roi5.pos()
-        self.roi4.setPos((roi4_x, self.imv2.imageItem.height()-self.index)) #check this is starting at right end
-        self.roi5.setPos((self.index, roi5_y))
+        self.roi4.setPos((roi4_x, self.imv2.imageItem.height()-self.index6)) #check this is starting at right end
+        self.roi5.setPos((self.index6, roi5_y))
 
         if self.overlayFlag:
             self.runOverlayUpdate(6)
@@ -436,13 +450,13 @@ class SliceViewer(BaseProcess):
 
     #connect time slider
     def timeUpdate(self,value):
-        self.index = self.imv6.currentIndex
+        self.index6 = self.imv6.currentIndex
         levels1 = self.imv1.getHistogramWidget().getLevels()
         levels6 = self.imv6.getHistogramWidget().getLevels()
         self.data = self.originalData[:,value,:,:]
         self.imv1.setImage(self.maxProjection(self.data),autoRange=False, levels=levels1)
         self.imv6.setImage(self.data,autoRange=False, levels=levels6)
-        self.imv6.setCurrentIndex(self.index)
+        self.imv6.setCurrentIndex(self.index6)
         self.update()
         self.update_2()
         self.update_3()
@@ -649,23 +663,27 @@ class SliceViewer(BaseProcess):
         lut = (colormap._lut * 255).view(np.ndarray)  # Convert matplotlib colormap from 0-1 to 0 -255 for Qt
         return lut
 
-    def overlay(self, overlayImage, imv, levels):
+    def overlay(self, overlayImage, imv, levels, gradientState):
         bgItem = pg.ImageItem()        
         bgItem.setImage(overlayImage, autoRange=False, autoLevels=False, levels=levels,opacity=self.OverlayOPACITY)
         bgItem.setCompositionMode(self.OverlayMODE)
         imv.view.addItem(bgItem)
 
-        bgItem.hist_luttt = HistogramLUTWidget_Overlay()
+        bgItem.hist_luttt = HistogramLUTWidget()
+        if gradientState == None:
+            bgItem.hist_luttt.item.gradient.loadPreset(self.gradientPreset)
+        else:
+            bgItem.hist_luttt.item.gradient.restoreState(gradientState)
         bgItem.hist_luttt.setMinimumWidth(110)
         bgItem.hist_luttt.setImageItem(bgItem)
         bgItem.hist_luttt.item.fillHistogram = False
         #bgItem.hist_luttt.item.levelMode = 'rgba'
         
         #unlinked LUT as placeholder to stop image resizing on update
+        state = bgItem.hist_luttt.item.gradient.saveState()
         bgItem.blank_luttt = HistogramLUTWidget_Overlay()
-        bgItem.blank_luttt.setMinimumWidth(110)
-        bgItem.blank_luttt.item.fillHistogram = False
-        bgItem.blank_luttt.item.autoHistogramRange = False
+
+        bgItem.blank_luttt.item.gradient.restoreState(state)
         
         imv.ui.gridLayout.addWidget(bgItem.blank_luttt, 0, 4, 1, 4)
         
@@ -694,8 +712,8 @@ class SliceViewer(BaseProcess):
                 overlay_hide_temp(self.bgItem_imv2,self.imv2) 
             elif win == 3:
                 overlay_hide_temp(self.bgItem_imv3,self.imv3)
-            #elif win == 4:    
-                #overlay_hide_temp(self.bgItem_imv4,self.imv4) 
+            elif win == 4:    
+                overlay_hide_temp(self.bgItem_imv4,self.imv4) 
             #elif win == 6:
                 #overlay_hide_temp(self.bgItem_imv6,self.imv6)
             self.overlayFlag = False            
@@ -719,7 +737,7 @@ class SliceViewer(BaseProcess):
             overlay_hide(self.bgItem_imv1,self.imv1)
             overlay_hide(self.bgItem_imv2,self.imv2) 
             overlay_hide(self.bgItem_imv3,self.imv3)
-            #overlay_hide(self.bgItem_imv4,self.imv4) 
+            overlay_hide(self.bgItem_imv4,self.imv4) 
             #overlay_hide(self.bgItem_imv6,self.imv6)
             self.overlayFlag = False   
             
@@ -731,26 +749,31 @@ class SliceViewer(BaseProcess):
         self.levels_1 = self.bgItem_imv1.getLevels()
         self.levels_2 = self.bgItem_imv2.getLevels()   
         self.levels_3 = self.bgItem_imv3.getLevels() 
+        self.levels_4 = self.bgItem_imv4.getLevels()         
+        self.gradientState_1 = self.bgItem_imv1.hist_luttt.item.gradient.saveState()
+        self.gradientState_2 = self.bgItem_imv2.hist_luttt.item.gradient.saveState()
+        self.gradientState_3 = self.bgItem_imv3.hist_luttt.item.gradient.saveState()
+        self.gradientState_4 = self.bgItem_imv4.hist_luttt.item.gradient.saveState()
 
     def overlayUpdate(self,win):
         self.A_overlay_currentVol =self.A_overlay[:,0,:,:] #first volume
           
         #overlay images
         if win == 0:
-            self.bgItem_imv1 = self.overlay(self.maxProjection(self.A_overlay_currentVol), self.imv1, self.levels_1)
-            self.bgItem_imv3 = self.overlay(self.roi3.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv3, self.levels_3)
-            self.bgItem_imv2 = self.overlay(np.rot90(self.roi2.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), axes=(1,0)), self.imv2,self.levels_2)
-            #self.bgItem_imv4 = self.overlay(self.roi1.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv4)
+            self.bgItem_imv1 = self.overlay(self.maxProjection(self.A_overlay_currentVol), self.imv1, self.levels_1, self.gradientState_1)
+            self.bgItem_imv3 = self.overlay(self.roi3.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv3, self.levels_3,self.gradientState_3)
+            self.bgItem_imv2 = self.overlay(np.rot90(self.roi2.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), axes=(1,0)), self.imv2,self.levels_2,self.gradientState_2)
+            self.bgItem_imv4 = self.overlay(self.roi1.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv4, self.levels_4,self.gradientState_4)
             #self.bgItem_imv6 = self.overlay(self.A_overlay_currentVol, self.imv6)        
                 
         elif win == 1:
-            self.bgItem_imv1 = self.overlay(self.maxProjection(self.A_overlay_currentVol), self.imv1,self.levels_1)
+            self.bgItem_imv1 = self.overlay(self.maxProjection(self.A_overlay_currentVol), self.imv1,self.levels_1,self.gradientState_1)
         elif win== 3:
-            self.bgItem_imv3 = self.overlay(self.roi3.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv3,self.levels_3)
+            self.bgItem_imv3 = self.overlay(self.roi3.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv3,self.levels_3,self.gradientState_3)
         elif win == 2:  
-            self.bgItem_imv2 = self.overlay(np.rot90(self.roi2.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), axes=(1,0)), self.imv2,self.levels_2)
-        #elif win == 4:   
-            #self.bgItem_imv4 = self.overlay(self.roi1.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv4)
+            self.bgItem_imv2 = self.overlay(np.rot90(self.roi2.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), axes=(1,0)), self.imv2,self.levels_2,self.gradientState_2)
+        elif win == 4:   
+            self.bgItem_imv4 = self.overlay(self.roi1.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv4, self.levels_4,self.gradientState_4)
         #elif win == 6:    
             #self.bgItem_imv6 = self.overlay(self.A_overlay_currentVol, self.imv6)
         return
@@ -759,6 +782,7 @@ class SliceViewer(BaseProcess):
         self.runOverlayUpdate(1)
         self.runOverlayUpdate(2)        
         self.runOverlayUpdate(3)
+        self.runOverlayUpdate(4)
 
     def setOverlayLUT(self, lut):
         self.OverlayLUT = lut
@@ -784,7 +808,8 @@ class SliceViewer(BaseProcess):
         #update to populate roi windows
         self.update()
         self.update_2()
-        self.update_3()        
+        self.update_3() 
+        self.update_4() 
         #correct roi4 position
         self.update_6()
 
@@ -803,6 +828,12 @@ class SliceViewer(BaseProcess):
         scale_bar_3=Scale_Bar_volumeView(self.imv3, self.imv3.image.shape[1], self.imv3.image.shape[0])
         scale_bar_3.gui()
         return
+
+    def overlayScaleOptions_win4(self):
+        scale_bar_4=Scale_Bar_volumeView(self.imv4, self.imv4.image.shape[1], self.imv4.image.shape[0])
+        scale_bar_4.gui()
+        return
+
     
     def overlayScaleOptions_win6(self):
         scale_bar_6=Scale_Bar_volumeView(self.imv6, self.imv6.image.shape[1], self.imv6.image.shape[0])
@@ -1530,8 +1561,8 @@ class OverlayOptions(QtWidgets.QDialog):
         #grid layout
         layout = QtWidgets.QGridLayout()
         layout.setSpacing(5)
-        layout.addWidget(self.label1, 1, 0)
-        layout.addWidget(self.cmSelectorBox, 1, 1)
+        #layout.addWidget(self.label1, 1, 0)
+        #layout.addWidget(self.cmSelectorBox, 1, 1)
         layout.addWidget(self.label2, 2, 0)
         layout.addWidget(self.modeSelectorBox, 2, 1)
         layout.addWidget(self.label3, 3, 0)
