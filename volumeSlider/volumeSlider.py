@@ -380,14 +380,14 @@ class SliceViewer(BaseProcess):
         self.gradientState_2 = None
         self.gradientState_3 = None
         self.gradientState_4 = None
-        
+        self.gradientState_6 = None        
                
         #init overlay levels 
         self.levels_1 = self.imv1.getHistogramWidget().getLevels()
         self.levels_2 = self.imv2.getHistogramWidget().getLevels()
         self.levels_3 = self.imv3.getHistogramWidget().getLevels()
         self.levels_4 = self.imv4.getHistogramWidget().getLevels()     
-        
+        self.levels_6 = self.imv6.getHistogramWidget().getLevels()          
 
 
     #define update calls for each roi
@@ -714,8 +714,8 @@ class SliceViewer(BaseProcess):
                 overlay_hide_temp(self.bgItem_imv3,self.imv3)
             elif win == 4:    
                 overlay_hide_temp(self.bgItem_imv4,self.imv4) 
-            #elif win == 6:
-                #overlay_hide_temp(self.bgItem_imv6,self.imv6)
+            elif win == 6:
+                overlay_hide_temp(self.bgItem_imv6,self.imv6)
             self.overlayFlag = False            
         return
 
@@ -738,7 +738,7 @@ class SliceViewer(BaseProcess):
             overlay_hide(self.bgItem_imv2,self.imv2) 
             overlay_hide(self.bgItem_imv3,self.imv3)
             overlay_hide(self.bgItem_imv4,self.imv4) 
-            #overlay_hide(self.bgItem_imv6,self.imv6)
+            overlay_hide(self.bgItem_imv6,self.imv6)
             self.overlayFlag = False   
             
         self.resetImages()
@@ -749,22 +749,24 @@ class SliceViewer(BaseProcess):
         self.levels_1 = self.bgItem_imv1.getLevels()
         self.levels_2 = self.bgItem_imv2.getLevels()   
         self.levels_3 = self.bgItem_imv3.getLevels() 
-        self.levels_4 = self.bgItem_imv4.getLevels()         
+        self.levels_4 = self.bgItem_imv4.getLevels()    
+        self.levels_6 = self.bgItem_imv6.getLevels()          
         self.gradientState_1 = self.bgItem_imv1.hist_luttt.item.gradient.saveState()
         self.gradientState_2 = self.bgItem_imv2.hist_luttt.item.gradient.saveState()
         self.gradientState_3 = self.bgItem_imv3.hist_luttt.item.gradient.saveState()
         self.gradientState_4 = self.bgItem_imv4.hist_luttt.item.gradient.saveState()
+        self.gradientState_6 = self.bgItem_imv6.hist_luttt.item.gradient.saveState()
 
     def overlayUpdate(self,win):
         self.A_overlay_currentVol =self.A_overlay[:,0,:,:] #first volume
-          
+
         #overlay images
         if win == 0:
             self.bgItem_imv1 = self.overlay(self.maxProjection(self.A_overlay_currentVol), self.imv1, self.levels_1, self.gradientState_1)
             self.bgItem_imv3 = self.overlay(self.roi3.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv3, self.levels_3,self.gradientState_3)
             self.bgItem_imv2 = self.overlay(np.rot90(self.roi2.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), axes=(1,0)), self.imv2,self.levels_2,self.gradientState_2)
             self.bgItem_imv4 = self.overlay(self.roi1.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv4, self.levels_4,self.gradientState_4)
-            #self.bgItem_imv6 = self.overlay(self.A_overlay_currentVol, self.imv6)        
+            self.bgItem_imv6 = self.overlay(self.A_overlay_currentVol[self.index6], self.imv6, self.levels_6,self.gradientState_6)        
                 
         elif win == 1:
             self.bgItem_imv1 = self.overlay(self.maxProjection(self.A_overlay_currentVol), self.imv1,self.levels_1,self.gradientState_1)
@@ -774,8 +776,8 @@ class SliceViewer(BaseProcess):
             self.bgItem_imv2 = self.overlay(np.rot90(self.roi2.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), axes=(1,0)), self.imv2,self.levels_2,self.gradientState_2)
         elif win == 4:   
             self.bgItem_imv4 = self.overlay(self.roi1.getArrayRegion(self.A_overlay_currentVol, self.imv1.imageItem, axes=(1,2)), self.imv4, self.levels_4,self.gradientState_4)
-        #elif win == 6:    
-            #self.bgItem_imv6 = self.overlay(self.A_overlay_currentVol, self.imv6)
+        elif win == 6:    
+            self.bgItem_imv6 = self.overlay(self.A_overlay_currentVol[self.imv6.currentIndex], self.imv6, self.levels_6,self.gradientState_6)
         return
 
     def updateAllOverlayWins(self):
@@ -783,6 +785,7 @@ class SliceViewer(BaseProcess):
         self.runOverlayUpdate(2)        
         self.runOverlayUpdate(3)
         self.runOverlayUpdate(4)
+        self.runOverlayUpdate(6)
 
     def setOverlayLUT(self, lut):
         self.OverlayLUT = lut
