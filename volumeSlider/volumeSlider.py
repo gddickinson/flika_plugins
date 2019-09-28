@@ -84,6 +84,8 @@ class SliceViewer(BaseProcess):
         self.height = self.dataShape[3]
         self.width = self.dataShape[2]
 
+        self.currentVolume = 0
+
         self.data = self.originalData[:,0,:,:]
 
         ## Create window with 4 docks
@@ -433,8 +435,8 @@ class SliceViewer(BaseProcess):
         #self.index6 = self.imv6.currentIndex
         roi4_x, roi4_y = self.roi4.pos()
         roi5_x, roi5_y = self.roi5.pos()
-        self.roi4.setPos((roi4_x, self.imv2.imageItem.height()-self.index6)) #check this is starting at right end
-        self.roi5.setPos((self.index6, roi5_y))
+        self.roi4.setPos((roi4_x, self.imv2.imageItem.height()-self.imv6.currentIndex)) #check this is starting at right end
+        self.roi5.setPos((self.imv6.currentIndex, roi5_y))
 
         if self.overlayFlag:
             self.runOverlayUpdate(6)
@@ -459,6 +461,7 @@ class SliceViewer(BaseProcess):
 
     #connect time slider
     def timeUpdate(self,value):
+        self.currentVolume = value
         self.index6 = self.imv6.currentIndex
         levels1 = self.imv1.getHistogramWidget().getLevels()
         levels6 = self.imv6.getHistogramWidget().getLevels()
@@ -610,8 +613,8 @@ class SliceViewer(BaseProcess):
     def exportCurrentVolToArray(self):
         arraySavePath = QtWidgets.QFileDialog.getSaveFileName(self.win,'Save File', os.path.expanduser("~/Desktop"), 'Numpy array (*.npy)')
         arraySavePath = str(arraySavePath[0])
-        camVolumeSlider.exportArray()
-        np.save(arraySavePath, self.data)
+        camVolumeSlider.savePath = arraySavePath
+        camVolumeSlider.exportArray(vol=self.currentVolume)
         return
 
 
@@ -1021,8 +1024,12 @@ class CamVolumeSlider(BaseProcess):
         Window(np.reshape(self.B, (self.nFrames, self.x, self.y), order='F'))
         return
 
-    def exportArray(self):
-        np.save(self.savePath, self.B)
+    def exportArray(self, vol='None'):
+        if vol == 'None':
+            np.save(self.savePath, self.B)
+        else:
+            f,v,x,y = self.B.shape
+            np.save(self.savePath, self.B[:,vol,:,:].reshape((f,1,x,y)))
         return
 
     def getMaxPixel(self):
@@ -1562,20 +1569,12 @@ class OverlayOptions(QtWidgets.QDialog):
         self.linkOverlayButton = QtWidgets.QPushButton("Set All Overlays") 
         self.linkOverlayButton.clicked.connect(self.setOverlays)
 
-        self.transferButton1 = QtWidgets.QPushButton("Transfer Top") 
+        self.transferButton1 = QtWidgets.QPushButton("Transfer Top Main") 
         self.transferButton1.clicked.connect(self.transfer1)        
         
-        self.transferButton2 = QtWidgets.QPushButton("Transfer Y") 
+        self.transferButton2 = QtWidgets.QPushButton("Transfer Top Overlay") 
         self.transferButton2.clicked.connect(self.transfer2)   
 
-        self.transferButton3 = QtWidgets.QPushButton("Transfer X") 
-        self.transferButton3.clicked.connect(self.transfer3)   
-
-        self.transferButton4 = QtWidgets.QPushButton("Transfer Free") 
-        self.transferButton4.clicked.connect(self.transfer4)   
-
-        self.transferButton5 = QtWidgets.QPushButton("Transfer Z") 
-        self.transferButton5.clicked.connect(self.transfer5) 
 
         #combo boxes
         self.cmSelectorBox = QtWidgets.QComboBox()
@@ -1602,7 +1601,7 @@ class OverlayOptions(QtWidgets.QDialog):
         self.slider1.valueChanged.connect(self.setOpacity)
         
         #labels
-        self.label1 = QtWidgets.QLabel("Color Map")
+        self.label1 = QtWidgets.QLabel("Color Map Presets")
         self.label2 = QtWidgets.QLabel("Overlay Mode")
         self.label3 = QtWidgets.QLabel("Opacity (%)")
          
@@ -1616,9 +1615,6 @@ class OverlayOptions(QtWidgets.QDialog):
         
         layout.addWidget(self.transferButton1, 3, 0)  
         layout.addWidget(self.transferButton2, 3, 1)          
-        layout.addWidget(self.transferButton3, 3, 2)  
-        layout.addWidget(self.transferButton4, 3, 3)  
-        layout.addWidget(self.transferButton5, 3, 4)  
         
         layout.addWidget(self.label2, 5, 0)
         layout.addWidget(self.modeSelectorBox, 5, 1)
@@ -1651,35 +1647,15 @@ class OverlayOptions(QtWidgets.QDialog):
         return
 
     def transfer1(self):
-        camVolumeSlider.viewer.sharedState = camVolumeSlider.viewer.bgItem_imv1.hist_luttt.item.gradient.saveState()
-        camVolumeSlider.viewer.useSharedState = True
-        camVolumeSlider.viewer.updateAllOverlayWins()
-        camVolumeSlider.viewer.useSharedStatet = False
+        lut = camVolumeSlider.viewer.imv1.getHistogramWidget().item.gradient.saveState()
+        camVolumeSlider.viewer.imv2.getHistogramWidget().item.gradient.restoreState(lut)
+        camVolumeSlider.viewer.imv3.getHistogramWidget().item.gradient.restoreState(lut)
+        camVolumeSlider.viewer.imv4.getHistogramWidget().item.gradient.restoreState(lut)
+        camVolumeSlider.viewer.imv6.getHistogramWidget().item.gradient.restoreState(lut)        
         return
 
     def transfer2(self):
-        camVolumeSlider.viewer.sharedState = camVolumeSlider.viewer.bgItem_imv2.hist_luttt.item.gradient.saveState()
-        camVolumeSlider.viewer.useSharedState = True
-        camVolumeSlider.viewer.updateAllOverlayWins()
-        camVolumeSlider.viewer.useSharedStatet = False
-        return
-
-    def transfer3(self):
-        camVolumeSlider.viewer.sharedState = camVolumeSlider.viewer.bgItem_imv3.hist_luttt.item.gradient.saveState()
-        camVolumeSlider.viewer.useSharedState = True
-        camVolumeSlider.viewer.updateAllOverlayWins()
-        camVolumeSlider.viewer.useSharedStatet = False
-        return
-
-    def transfer4(self):
-        camVolumeSlider.viewer.sharedState = camVolumeSlider.viewer.bgItem_imv4.hist_luttt.item.gradient.saveState()
-        camVolumeSlider.viewer.useSharedState = True
-        camVolumeSlider.viewer.updateAllOverlayWins()
-        camVolumeSlider.viewer.useSharedStatet = False
-        return
-
-    def transfer5(self):
-        camVolumeSlider.viewer.sharedState = camVolumeSlider.viewer.bgItem_imv5.hist_luttt.item.gradient.saveState()
+        camVolumeSlider.viewer.sharedState = camVolumeSlider.viewer.bgItem_imv1.hist_luttt.item.gradient.saveState()
         camVolumeSlider.viewer.useSharedState = True
         camVolumeSlider.viewer.updateAllOverlayWins()
         camVolumeSlider.viewer.useSharedStatet = False
