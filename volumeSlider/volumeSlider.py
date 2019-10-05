@@ -40,6 +40,15 @@ from pyqtgraph import HistogramLUTWidget
 
 dataType = np.float16
 from matplotlib import cm
+
+### disable messages from PyQt ################
+def handler(msg_type, msg_log_context, msg_string):
+    pass
+
+QtCore.qInstallMessageHandler(handler)
+#####################################################
+
+
 #########################################################################################
 #############                  slice viewer (3D Display)                #################
 #########################################################################################
@@ -188,13 +197,13 @@ class SliceViewer(BaseProcess):
 
         self.fileMenu3 = self.menubar.addMenu('&Texture Plot')
         self.texturePlot = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Texture Plot')
-        self.texturePlot.setShortcut('Ctrl+T')
+        #self.texturePlot.setShortcut('Ctrl+T')
         self.texturePlot.setStatusTip('Texture Plot')
         self.texturePlot.triggered.connect(self.plotTexture)
         self.fileMenu3.addAction(self.texturePlot)
 
         self.texturePlotControl = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Texture Plot Control')
-        self.texturePlotControl.setShortcut('Ctrl+M')
+        #self.texturePlotControl.setShortcut('Ctrl+M')
         self.texturePlotControl.setStatusTip('Texture Plot')
         self.texturePlotControl.triggered.connect(self.plotTexture_control)
         self.fileMenu3.addAction(self.texturePlotControl)
@@ -219,11 +228,11 @@ class SliceViewer(BaseProcess):
         self.overlayArray.triggered.connect(self.overlayArray_start)
         self.fileMenu5.addAction(self.overlayArray)
         
-        self.overlayArrayOff = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Remove Overlay')
-        self.overlayArrayOff.setShortcut('Ctrl+L')
-        self.overlayArrayOff.setStatusTip('OverlayOff')
-        self.overlayArrayOff.triggered.connect(self.overlayOff)
-        self.fileMenu5.addAction(self.overlayArrayOff)
+        self.overlayToggle = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Toggle Overlay')
+        self.overlayToggle.setShortcut('Ctrl+T')
+        self.overlayToggle.setStatusTip('OverlayOff')
+        self.overlayToggle.triggered.connect(self.toggleOverlay)
+        self.fileMenu5.addAction(self.overlayToggle)
         
         self.overlayArrayWin = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Overlay Options')
         #self.overlayArrayWin.setShortcut('Ctrl+L')
@@ -333,15 +342,11 @@ class SliceViewer(BaseProcess):
                 #handles[0].pen = mkPen(None)
                 roi.removeHandle(-1)
 
-        disconnectHandles(self.roi2)
-        disconnectHandles(self.roi3)
-        disconnectHandles(self.roi2b)
-        disconnectHandles(self.roi2c)        
-        disconnectHandles(self.roi3b)
-        disconnectHandles(self.roi3c)        
-        disconnectHandles(self.roi4)
-        disconnectHandles(self.roi5)
-        disconnectHandles(self.roiCenter)        
+        self.MainROIList = [self.roi2,self.roi3,self.roi2b,self.roi2c,self.roi3b,self.roi3c,self.roi4,self.roi5,self.roiCenter]
+
+        for roi in self.MainROIList:
+            disconnectHandles(roi)
+       
 
         #add max projection data to main window
         self.imv1.setImage(self.maxProjection(self.data)) #display topview (max of slices)
@@ -365,11 +370,9 @@ class SliceViewer(BaseProcess):
         self.update_2()
         self.update_3()
 
-        #autolevel roi windows at start
-        self.imv2.autoLevels()
-        self.imv3.autoLevels()
-        self.imv4.autoLevels()
-        self.imv6.autoLevels()
+        #autolevel roi windows (not main) at start
+        for imv in self.imageWidgits[1:]:
+            imv.autoLevels()
 
         self.slider1.valueChanged.connect(self.timeUpdate)
 
@@ -392,6 +395,7 @@ class SliceViewer(BaseProcess):
         self.gradientState_6 = None   
         self.useSharedState = False
         self.sharedState = None
+        self.sharedLevels = None
                
         #init overlay levels 
         self.levels_1 = self.imv1.getHistogramWidget().getLevels()
@@ -399,6 +403,18 @@ class SliceViewer(BaseProcess):
         self.levels_3 = self.imv3.getHistogramWidget().getLevels()
         self.levels_4 = self.imv4.getHistogramWidget().getLevels()     
         self.levels_6 = self.imv6.getHistogramWidget().getLevels()          
+
+        self.overlayFlag = False
+        self.overlayArrayLoaded = False
+        
+        #create lists of objects
+        self.dockList = [self.d1, self.d2, self.d3, self.d4, self.d6]
+        self.roiList = [self.roi2b, self.roi2c, self.roi3b, self.roi3c, self.roi4, self.roi5]
+
+        #link TOP overlay histgramLUT to other windows
+        self.imv1.getHistogramWidget().item.sigLevelsChanged.connect(self.setMainLevels)
+
+
 
 
     #define update calls for each roi
@@ -480,26 +496,17 @@ class SliceViewer(BaseProcess):
         self.area.restoreState(self.state)
 
     def hide_titles(self,_):
-        self.d1.hideTitleBar()
-        self.d2.hideTitleBar()
-        self.d3.hideTitleBar()
-        self.d4.hideTitleBar()
-        self.d6.hideTitleBar()
+        for dock in self.dockList:
+            dock.hideTitleBar()
 
     def show_titles(self):
-        self.d1.showTitleBar()
-        self.d2.showTitleBar()
-        self.d3.showTitleBar()
-        self.d4.showTitleBar()
-        self.d6.showTitleBar()
+        for dock in self.dockList:
+            dock.d1.showTitleBar()
+        return
 
     def hide_cursors(self):
-        self.roi2b.setPen(None)
-        self.roi2c.setPen(None)        
-        self.roi3b.setPen(None)
-        self.roi3c.setPen(None)        
-        self.roi4.setPen(None)
-        self.roi5.setPen(None)
+        for roi in self.roiList:
+            roi.setPen(None)
         return
 
     def show_cursors(self):
@@ -576,11 +583,10 @@ class SliceViewer(BaseProcess):
         self.roi1.sigRegionChanged.disconnect(self.update)
         self.roi2.sigRegionChanged.disconnect(self.update_2)
         self.roi3.sigRegionChanged.disconnect(self.update_3)
-        self.imv1.close()
-        self.imv2.close()
-        self.imv3.close()
-        self.imv4.close()
-        self.imv6.close()
+        
+        for imv in self.imageWidgits:
+            imv.close()
+        
         self.exportDialogWin.close()
         self.win.close()
         self.win.destroy()
@@ -616,7 +622,6 @@ class SliceViewer(BaseProcess):
         camVolumeSlider.savePath = arraySavePath
         camVolumeSlider.exportArray(vol=self.currentVolume)
         return
-
 
     def getXWin(self):
         return self.data.swapaxes(0,1)
@@ -670,10 +675,13 @@ class SliceViewer(BaseProcess):
         self.A_overlay = np.load(str(A_path))
         #perform transform
         self.A_overlay= perform_shear_transform(self.A_overlay, self.shift_factor, self.interpolate, self.originalData.dtype, self.theta, inputArrayOrder=self.inputArrayOrder,displayArrayOrder=self.displayArrayOrder)
-        #set flag
-        self.overlayFlag = True       
+        #set flags
+        self.overlayFlag = True      
+        self.overlayArrayLoaded = True
         #update overlay
         self.overlayUpdate(0)
+        #link TOP overlay histgramLUT to other windows
+        self.bgItem_imv1.hist_luttt.item.sigLevelsChanged.connect(self.setOverlayLevels)
         return
 
 
@@ -689,35 +697,37 @@ class SliceViewer(BaseProcess):
         bgItem.setCompositionMode(self.OverlayMODE)
         imv.view.addItem(bgItem)
 
-        bgItem.hist_luttt = HistogramLUTWidget()
+        bgItem.hist_luttt = HistogramLUTWidget(fillHistogram = False)
+        
         if gradientState == None or self.usePreset == True:
             bgItem.hist_luttt.item.gradient.loadPreset(self.gradientPreset)
         else:
             
             if self.useSharedState:
                 bgItem.hist_luttt.item.gradient.restoreState(self.sharedState)
+                levels = self.sharedLevels
+
             else:    
                 bgItem.hist_luttt.item.gradient.restoreState(gradientState)
+        
         bgItem.hist_luttt.setMinimumWidth(110)
         bgItem.hist_luttt.setImageItem(bgItem)
-        bgItem.hist_luttt.item.fillHistogram = False
+
         #bgItem.hist_luttt.item.levelMode = 'rgba'
         
         #unlinked LUT as placeholder to stop image resizing on update
         state = bgItem.hist_luttt.item.gradient.saveState()
         bgItem.blank_luttt = HistogramLUTWidget_Overlay()
-
-        bgItem.blank_luttt.item.gradient.restoreState(state)
+        bgItem.blank_luttt.item.gradient.restoreState(state)        
         
-        imv.ui.gridLayout.addWidget(bgItem.blank_luttt, 0, 4, 1, 4)
-        
-        imv.ui.gridLayout.addWidget(bgItem.hist_luttt, 0, 4, 1, 4)
-        
+        imv.ui.gridLayout.addWidget(bgItem.blank_luttt, 0, 4, 1, 4)       
+        imv.ui.gridLayout.addWidget(bgItem.hist_luttt, 0, 4, 1, 4)        
         bgItem.setLevels(levels)
         bgItem.hist_luttt.item.setLevels(levels[0],levels[1])
         
         if self.useOverlayLUT:
             bgItem.hist_luttt.setLUT(self.getLUT(lutNAME = self.OverlayLUT))
+        
         return bgItem
 
 
@@ -765,8 +775,35 @@ class SliceViewer(BaseProcess):
             overlay_hide(self.bgItem_imv6,self.imv6)
             self.overlayFlag = False   
             
-        self.resetImages()
-            
+        self.resetImages()            
+        return
+
+
+    def toggleOverlay(self):
+        if self.overlayArrayLoaded == False:
+            print('load array first!')
+            return
+        
+        if self.overlayFlag:
+            self.overlayOff()        
+        else:
+            self.overlayFlag = True
+            self.updateAllOverlayWins()
+        return
+
+
+    def setOverlayLevels(self):        
+        levels = self.bgItem_imv1.getLevels()
+        bgItemList = [self.bgItem_imv2,self.bgItem_imv3,self.bgItem_imv4,self.bgItem_imv6]
+        for bgItem in bgItemList:
+            bgItem.hist_luttt.item.setLevels(levels[0],levels[1])
+        return
+
+    def setMainLevels(self):
+        levels = self.imv1.getLevels()
+        imvList = [self.imv2,self.imv3,self.imv4,self.imv6]
+        for imv in imvList:
+            imv.getHistogramWidget().item.setLevels(levels[0],levels[1])
         return
 
     def updateOverlayLevels(self):
@@ -780,6 +817,8 @@ class SliceViewer(BaseProcess):
         self.gradientState_3 = self.bgItem_imv3.hist_luttt.item.gradient.saveState()
         self.gradientState_4 = self.bgItem_imv4.hist_luttt.item.gradient.saveState()
         self.gradientState_6 = self.bgItem_imv6.hist_luttt.item.gradient.saveState()
+        #reconnect link TOP overlay histgramLUT to other windows
+        self.bgItem_imv1.hist_luttt.item.sigLevelsChanged.connect(self.setOverlayLevels)
 
     def overlayUpdate(self,win):
         self.A_overlay_currentVol =self.A_overlay[:,0,:,:] #first volume
@@ -805,16 +844,16 @@ class SliceViewer(BaseProcess):
         return
 
     def updateAllOverlayWins(self):
-        self.runOverlayUpdate(1)
-        self.runOverlayUpdate(2)        
-        self.runOverlayUpdate(3)
-        self.runOverlayUpdate(4)
-        self.runOverlayUpdate(6)
+        for winNumber in [1,2,3,4,6]:
+            self.runOverlayUpdate(winNumber)
 
     def setOverlayLUT(self, lut):
         self.OverlayLUT = lut
 
     def overlayOptions(self):
+        if self.overlayArrayLoaded == False:
+            print('load array first!')
+            return
         self.overlayOptionsWin = OverlayOptions()   
         self.overlayOptionsWin.show()
         return
@@ -1648,17 +1687,25 @@ class OverlayOptions(QtWidgets.QDialog):
 
     def transfer1(self):
         lut = camVolumeSlider.viewer.imv1.getHistogramWidget().item.gradient.saveState()
+        levels = camVolumeSlider.viewer.imv1.getHistogramWidget().item.getLevels()
+        #set lut
         camVolumeSlider.viewer.imv2.getHistogramWidget().item.gradient.restoreState(lut)
         camVolumeSlider.viewer.imv3.getHistogramWidget().item.gradient.restoreState(lut)
         camVolumeSlider.viewer.imv4.getHistogramWidget().item.gradient.restoreState(lut)
-        camVolumeSlider.viewer.imv6.getHistogramWidget().item.gradient.restoreState(lut)        
+        camVolumeSlider.viewer.imv6.getHistogramWidget().item.gradient.restoreState(lut)    
+        #set levels
+        camVolumeSlider.viewer.imv2.getHistogramWidget().item.setLevels(levels[0],levels[1])
+        camVolumeSlider.viewer.imv3.getHistogramWidget().item.setLevels(levels[0],levels[1])
+        camVolumeSlider.viewer.imv4.getHistogramWidget().item.setLevels(levels[0],levels[1])
+        camVolumeSlider.viewer.imv6.getHistogramWidget().item.setLevels(levels[0],levels[1])           
         return
 
     def transfer2(self):
         camVolumeSlider.viewer.sharedState = camVolumeSlider.viewer.bgItem_imv1.hist_luttt.item.gradient.saveState()
+        camVolumeSlider.viewer.sharedLevels = camVolumeSlider.viewer.bgItem_imv1.hist_luttt.item.getLevels()
         camVolumeSlider.viewer.useSharedState = True
         camVolumeSlider.viewer.updateAllOverlayWins()
-        camVolumeSlider.viewer.useSharedStatet = False
+        camVolumeSlider.viewer.useSharedState = False
         return
 
     
@@ -1828,6 +1875,7 @@ class textureDialog_win(QtWidgets.QDialog):
         camVolumeSlider.viewer.texturePlot.slice3 = value
         camVolumeSlider.viewer.texturePlot.updateXY()
         return
+
 
 #########################################################################################
 #############          FLIKA Base Menu             #####################################
