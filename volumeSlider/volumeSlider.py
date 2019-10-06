@@ -1141,6 +1141,8 @@ class Form2(QtWidgets.QDialog):
     def __init__(self, parent = None):
         super(Form2, self).__init__(parent)
 
+        self.s = g.settings['volumeSlider']
+
         self.arraySavePath = camVolumeSlider.savePath
         self.arrayImportPath = "None"
 
@@ -1150,9 +1152,18 @@ class Form2(QtWidgets.QDialog):
         self.width = 600
         self.height = 400
 
-        self.theta = 45
-        self.shiftFactor = 1
-        self.trim_last_frame = False
+        self.slicesPerVolume = self.s['slicesPerVolume']
+        self.baselineValue = self.s['baselineValue']
+        self.f0Start = self.s['f0Start']
+        self.f0End = self.s['f0End']
+        self.multiplicationFactor = self.s['multiplicationFactor']
+        self.currentDataType = self.s['currentDataType']
+        self.newDataType = self.s['newDataType']
+        self.inputArrayOrder = self.s['inputArrayOrder']
+        self.displayArrayOrder = self.s['displayArrayOrder'] = 16
+        self.theta = self.s['theta']
+        self.shiftFactor = self.s['shiftFactor']
+        self.trim_last_frame = self.s['trimLastFrame']
 
         #spinboxes
         self.spinLabel1 = QtWidgets.QLabel("Slice #")
@@ -1163,27 +1174,39 @@ class Form2(QtWidgets.QDialog):
         self.spinLabel2 = QtWidgets.QLabel("# of slices per volume: ")
         self.SpinBox2 = QtWidgets.QSpinBox()
         self.SpinBox2.setRange(0,camVolumeSlider.getNFrames())
-        self.SpinBox2.setValue(camVolumeSlider.getNFrames())
+        if self.slicesPerVolume < camVolumeSlider.getNFrames():
+            self.SpinBox2.setValue(self.slicesPerVolume)
+        else:
+            self.SpinBox2.setValue(1)
 
         self.spinLabel4 = QtWidgets.QLabel("baseline value: ")
         self.SpinBox4 = QtWidgets.QSpinBox()
         self.SpinBox4.setRange(0,camVolumeSlider.getMaxPixel())
-        self.SpinBox4.setValue(0)
+        if self.baselineValue < camVolumeSlider.getMaxPixel():
+            self.SpinBox4.setValue(self.baselineValue)
+        else:
+            self.SpinBox4.setValue(0)           
 
         self.spinLabel6 = QtWidgets.QLabel("F0 start volume: ")
         self.SpinBox6 = QtWidgets.QSpinBox()
         self.SpinBox6.setRange(0,camVolumeSlider.getNVols())
-        self.SpinBox6.setValue(0)
+        if self.f0Start < camVolumeSlider.getNVols():
+            self.SpinBox6.setValue(self.f0Start)
+        else:
+            self.SpinBox6.setValue(0)            
 
         self.spinLabel7 = QtWidgets.QLabel("F0 end volume: ")
         self.SpinBox7 = QtWidgets.QSpinBox()
         self.SpinBox7.setRange(0,camVolumeSlider.getNVols())
-        self.SpinBox7.setValue(0)
+        if self.f0End < camVolumeSlider.getNVols():
+            self.SpinBox7.setValue(self.f0End)
+        else:
+            self.SpinBox7.setValue(0)
 
         self.spinLabel8 = QtWidgets.QLabel("factor to multiply by: ")
         self.SpinBox8 = QtWidgets.QSpinBox()
         self.SpinBox8.setRange(0,10000)
-        self.SpinBox8.setValue(100)
+        self.SpinBox8.setValue(self.multiplicationFactor)
 
         self.spinLabel9 = QtWidgets.QLabel("theta: ")
         self.SpinBox9 = QtWidgets.QSpinBox()
@@ -1360,20 +1383,20 @@ class Form2(QtWidgets.QDialog):
         return
 
     def updateVolumeValue(self):
-        value = self.SpinBox2.value()
-        noVols = int(camVolumeSlider.getNFrames()/value)
-        camVolumeSlider.updateVolsandFramesPerVol(noVols, value)
+        self.slicesPerVolume = self.SpinBox2.value()
+        noVols = int(camVolumeSlider.getNFrames()/self.slicesPerVolume)
+        camVolumeSlider.updateVolsandFramesPerVol(noVols, self.slicesPerVolume)
         self.volumeText.setText(str(noVols))
 
         camVolumeSlider.updateDisplay_volumeSizeChange()
         self.shapeText.setText(str(camVolumeSlider.getArrayShape()))
 
-        if (value)%2 == 0:
-            self.SpinBox1.setRange(0,value-1) #if even, display the last volume
-            self.slider1.setMaximum(value-1)
+        if (self.slicesPerVolume)%2 == 0:
+            self.SpinBox1.setRange(0,self.slicesPerVolume-1) #if even, display the last volume
+            self.slider1.setMaximum(self.slicesPerVolume-1)
         else:
-            self.SpinBox1.setRange(0,value-2) #else, don't display the last volume
-            self.slider1.setMaximum(value-2)
+            self.SpinBox1.setRange(0,self.slicesPerVolume-2) #else, don't display the last volume
+            self.slider1.setMaximum(self.slicesPerVolume-2)
 
         self.updateVolSpinBoxes()
         return
@@ -1422,6 +1445,7 @@ class Form2(QtWidgets.QDialog):
         return
 
     def startViewer(self):
+        self.saveSettings()
         camVolumeSlider.startViewer()
         return
 
@@ -1446,7 +1470,25 @@ class Form2(QtWidgets.QDialog):
         camVolumeSlider.setDisplayArrayOrder(self.displayArraySelectorBox.currentText())
         return
 
+    def saveSettings(self):
+        self.s['theta'] = self.theta
+        self.s['slicesPerVolume'] = self.slicesPerVolume
+        self.s['baselineValue'] = self.baselineValue
+        self.s['f0Start'] = self.f0Start
+        self.s['f0End'] = self.f0End
+        self.s['multiplicationFactor'] = self.multiplicationFactor
+        self.s['currentDataType'] = self.currentDataType
+        self.s['newDataType'] = self.newDataType
+        self.s['shiftFactor'] = self.shiftFactor
+        self.s['trimLastFrame'] = self.trim_last_frame        
+        
+        g.settings['volumeSlider'] = self.s
+        
+        return
+
+
     def close(self):
+        self.saveSettings()
         camVolumeSlider.closeViewer()
         camVolumeSlider.displayWindow.close()
         camVolumeSlider.dialogbox.destroy()
@@ -1891,10 +1933,23 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
     """
     
     def __init__(self):
-        if g.settings['volumeSlider'] is None or 'inputChoice' not in g.settings['volumeSlider']:
+        if g.settings['volumeSlider'] is None or 'displayArrayOrder' not in g.settings['volumeSlider']:
             s = dict() 
             s['inputChoice'] = 'Current Window'              
-            s['keepOriginalWindow'] = False                                  
+            s['keepOriginalWindow'] = False   
+            s['slicesPerVolume'] =    1
+            s['baselineValue'] = 0
+            s['f0Start'] = 0
+            s['f0End'] = 0
+            s['multiplicationFactor'] = 100
+            s['currentDataType'] = 0
+            s['newDataType'] = 0
+            s['theta'] = 45
+            s['shiftFactor'] = 1
+            s['trimLastFrame'] = False
+            s['inputArrayOrder'] = 4
+            s['displayArrayOrder'] = 16
+                            
             g.settings['volumeSlider'] = s
                 
         BaseProcess_noPriorWindow.__init__(self)
