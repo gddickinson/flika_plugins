@@ -13,7 +13,7 @@
 	<dependencies>
 	</dependencies>
 	<menu_layout>
-		<action location="volumeSlider" function="volumeSliderBase.gui">volume slider</action>
+		<action location="volumeSlider_Start" function="volumeSliderBase.gui">volume slider</action>
         
 	</menu_layout>
 </plugin>

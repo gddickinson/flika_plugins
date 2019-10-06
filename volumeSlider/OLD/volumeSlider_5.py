@@ -413,6 +413,7 @@ class SliceViewer(BaseProcess):
 
         #link TOP overlay histgramLUT to other windows
         self.imv1.getHistogramWidget().item.sigLevelsChanged.connect(self.setMainLevels)
+        self.histogramsLinked = True
 
 
 
@@ -792,7 +793,9 @@ class SliceViewer(BaseProcess):
         return
 
 
-    def setOverlayLevels(self):        
+    def setOverlayLevels(self):  
+        if self.histogramsLinked == False:
+            return
         levels = self.bgItem_imv1.getLevels()
         bgItemList = [self.bgItem_imv2,self.bgItem_imv3,self.bgItem_imv4,self.bgItem_imv6]
         for bgItem in bgItemList:
@@ -800,6 +803,8 @@ class SliceViewer(BaseProcess):
         return
 
     def setMainLevels(self):
+        if self.histogramsLinked == False:
+            return
         levels = self.imv1.getLevels()
         imvList = [self.imv2,self.imv3,self.imv4,self.imv6]
         for imv in imvList:
@@ -1671,36 +1676,43 @@ class OverlayOptions(QtWidgets.QDialog):
         self.modeSelectorBox.currentIndexChanged.connect(self.setMode)
 
         #sliders
-        self.slider1 = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.slider1.setFocusPolicy(QtCore.Qt.StrongFocus)
-        self.slider1.setTickPosition(QtWidgets.QSlider.TicksBothSides)
-        self.slider1.setMinimum(0)
-        self.slider1.setMaximum(100)
-        self.slider1.setTickInterval(10)
-        self.slider1.setSingleStep(1)
-        self.slider1.setValue(self.opacity)
-        self.slider1.valueChanged.connect(self.setOpacity)
+        self.sliderOpacity = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.sliderOpacity.setFocusPolicy(QtCore.Qt.StrongFocus)
+        self.sliderOpacity.setTickPosition(QtWidgets.QSlider.TicksBothSides)
+        self.sliderOpacity.setMinimum(0)
+        self.sliderOpacity.setMaximum(100)
+        self.sliderOpacity.setTickInterval(10)
+        self.sliderOpacity.setSingleStep(1)
+        self.sliderOpacity.setValue(self.opacity)
+        self.sliderOpacity.valueChanged.connect(self.setOpacity)
+
+        #checkboxes
+        self.linkCheck = QtWidgets.QCheckBox()
+        self.linkCheck.setChecked(True)
+        self.linkCheck.stateChanged.connect(self.linkCheckValueChange)
         
         #labels
-        self.label1 = QtWidgets.QLabel("Color Map Presets")
-        self.label2 = QtWidgets.QLabel("Overlay Mode")
-        self.label3 = QtWidgets.QLabel("Opacity (%)")
-         
+        self.labelCM = QtWidgets.QLabel("Color Map Presets")
+        self.labelOverlayMode = QtWidgets.QLabel("Overlay Mode")
+        self.labelOpacity = QtWidgets.QLabel("Opacity (%)")
+        self.labelLinkCheck = QtWidgets.QLabel("Link Histogram Sliders")         
         
         #grid layout
         layout = QtWidgets.QGridLayout()
         layout.setSpacing(5)
-        layout.addWidget(self.label1, 1, 0)
+        layout.addWidget(self.labelCM, 1, 0)
         layout.addWidget(self.cmSelectorBox, 1, 1)
         layout.addWidget(self.linkOverlayButton, 1, 2)  
         
         layout.addWidget(self.transferButton1, 3, 0)  
         layout.addWidget(self.transferButton2, 3, 1)          
         
-        layout.addWidget(self.label2, 5, 0)
+        layout.addWidget(self.labelOverlayMode, 5, 0)
         layout.addWidget(self.modeSelectorBox, 5, 1)
-        layout.addWidget(self.label3, 6, 0)
-        layout.addWidget(self.slider1, 6, 1,1,4)        
+        layout.addWidget(self.labelOpacity, 6, 0)
+        layout.addWidget(self.sliderOpacity, 6, 1,1,4)  
+        layout.addWidget(self.labelLinkCheck, 7, 0)    
+        layout.addWidget(self.linkCheck, 7, 1)          
 
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -1761,7 +1773,10 @@ class OverlayOptions(QtWidgets.QDialog):
         camVolumeSlider.viewer.OverlayOPACITY = (value/100)
         camVolumeSlider.viewer.updateAllOverlayWins()
         return
-    
+
+    def linkCheckValueChange(self, value):
+        camVolumeSlider.viewer.histogramsLinked = value
+        return
     
 #########################################################################################
 #############            3D Texture plot            #####################################
