@@ -193,15 +193,27 @@ class CamVolumeSlider(BaseProcess):
 
     def ratioDFF0(self):
         index = self.displayWindow.imageview.currentIndex
-        ratioStart, ratioEnd = self.dialogbox.getF0()
+        ratioStart, ratioEnd , volStart, volEnd = self.dialogbox.getF0()
+        
         if ratioStart >= ratioEnd:
             print('invalid F0 selection')
             return
+        
+        if volStart >= volEnd:
+            print('invalid F0 Volume selection')
+            return
 
+        #get mean of vols used to make ratio
         ratioVol = self.B[:,ratioStart:ratioEnd,:,]
-        ratioVol = np.mean(ratioVol, axis=1,keepdims=True)
+        ratioVolmean = np.mean(ratioVol, axis=1,keepdims=True)
+        #get vols to be ratio-ed
+        volsToRatio = self.B[:,volStart:volEnd,:,]
+        #make ratio
+        ratio = np.divide(volsToRatio, ratioVolmean, out=np.zeros_like(volsToRatio), where=ratioVolmean!=0, dtype=self.dataType)
+        #replace original array data with raio values
+        self.B[:,volStart:volEnd,:,] = ratio
 
-        self.B = np.divide(self.B, ratioVol, dtype=self.dataType)
+        #self.B = np.divide(self.B, ratioVolmean, dtype=self.dataType)
         self.displayWindow.imageview.setImage(self.B[index],autoLevels=False)
         return
 

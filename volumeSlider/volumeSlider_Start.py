@@ -47,7 +47,7 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
     """
     
     def __init__(self):
-        if g.settings['volumeSlider'] is None or 'displayArrayOrder' not in g.settings['volumeSlider']:
+        if g.settings['volumeSlider'] is None or 'f0VolEnd' not in g.settings['volumeSlider']:
             s = dict() 
             s['inputChoice'] = 'Current Window'              
             s['keepOriginalWindow'] = False   
@@ -63,6 +63,8 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
             s['trimLastFrame'] = False
             s['inputArrayOrder'] = 4
             s['displayArrayOrder'] = 16
+            s['f0VolStart'] = 0
+            s['f0VolEnd'] = 0            
                             
             g.settings['volumeSlider'] = s
                 

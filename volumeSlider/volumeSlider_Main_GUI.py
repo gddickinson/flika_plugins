@@ -67,6 +67,8 @@ class Form2(QtWidgets.QDialog):
         self.baselineValue = self.s['baselineValue']
         self.f0Start = self.s['f0Start']
         self.f0End = self.s['f0End']
+        self.f0VolStart = self.s['f0VolStart']
+        self.f0VolEnd = self.s['f0VolEnd']                
         self.multiplicationFactor = self.s['multiplicationFactor']
         self.currentDataType = self.s['currentDataType']
         self.newDataType = self.s['newDataType']
@@ -130,6 +132,23 @@ class Form2(QtWidgets.QDialog):
         self.SpinBox10.setValue(self.shiftFactor)
 
 
+        self.SpinBox11 = QtWidgets.QSpinBox()
+        self.SpinBox11.setRange(0,self.viewer.getNVols())
+        if self.f0Start < self.viewer.getNVols():
+            self.SpinBox11.setValue(self.f0VolStart)
+        else:
+            self.SpinBox6.setValue(0)            
+
+
+        self.SpinBox12 = QtWidgets.QSpinBox()
+        self.SpinBox12.setRange(0,self.viewer.getNVols())
+        if self.f0End <= self.viewer.getNVols():
+            self.SpinBox12.setValue(self.f0VolEnd)
+        else:
+            self.SpinBox12.setValue(self.viewer.getNVols())
+
+
+
         #sliders
         self.slider1 = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.slider1.setFocusPolicy(QtCore.Qt.StrongFocus)
@@ -167,6 +186,8 @@ class Form2(QtWidgets.QDialog):
         self.button13 = QtWidgets.QPushButton("close 3D viewer")
 
         #labels
+        self.ratioVolStartLabel = QtWidgets.QLabel("ratio start volume: ")
+        self.ratioVolEndLabel = QtWidgets.QLabel("ratio End volume: ")        
         self.volumeLabel = QtWidgets.QLabel("# of volumes: ")
         self.volumeText = QtWidgets.QLabel("  ")
 
@@ -211,45 +232,50 @@ class Form2(QtWidgets.QDialog):
         layout.addWidget(self.SpinBox7, 7, 3)
         layout.addWidget(self.button5, 7, 4)
 
-        layout.addWidget(self.volumeLabel, 8, 0)
-        layout.addWidget(self.volumeText, 8, 1)
-        layout.addWidget(self.shapeLabel, 9, 0)
-        layout.addWidget(self.shapeText, 9, 1)
+        layout.addWidget(self.ratioVolStartLabel, 8, 0)
+        layout.addWidget(self.SpinBox11, 8, 1)
+        layout.addWidget(self.ratioVolEndLabel, 8, 2)
+        layout.addWidget(self.SpinBox12, 8, 3)
 
-        layout.addWidget(self.spinLabel8, 10, 0)
-        layout.addWidget(self.SpinBox8, 10, 1)
-        layout.addWidget(self.button8, 10, 2)
+        layout.addWidget(self.volumeLabel, 9, 0)
+        layout.addWidget(self.volumeText, 9, 1)
+        layout.addWidget(self.shapeLabel, 10, 0)
+        layout.addWidget(self.shapeText, 10, 1)
 
-        layout.addWidget(self.dataTypeLabel, 11, 0)
-        layout.addWidget(self.dataTypeText, 11, 1)
-        layout.addWidget(self.dataTypeChangeLabel, 11, 2)
-        layout.addWidget(self.dTypeSelectorBox, 11,3)
-        layout.addWidget(self.button7, 11, 4)
+        layout.addWidget(self.spinLabel8, 11, 0)
+        layout.addWidget(self.SpinBox8, 11, 1)
+        layout.addWidget(self.button8, 11, 2)
 
-        layout.addWidget(self.button6, 13, 0)
-        layout.addWidget(self.button1, 13, 4)
-        layout.addWidget(self.button6, 13, 0)
-        layout.addWidget(self.button1, 13, 4)
-        layout.addWidget(self.button9, 14, 0)
-        layout.addWidget(self.arraySavePathLabel, 14, 1, 1, 4)      
+        layout.addWidget(self.dataTypeLabel, 12, 0)
+        layout.addWidget(self.dataTypeText, 12, 1)
+        layout.addWidget(self.dataTypeChangeLabel, 12, 2)
+        layout.addWidget(self.dTypeSelectorBox, 12,3)
+        layout.addWidget(self.button7, 12, 4)
+
+        layout.addWidget(self.button6, 14, 0)
+        layout.addWidget(self.button1, 14, 4)
+        layout.addWidget(self.button6, 14, 0)
+        layout.addWidget(self.button1, 14, 4)
+        layout.addWidget(self.button9, 15, 0)
+        layout.addWidget(self.arraySavePathLabel, 15, 1, 1, 4)      
         
         
-        layout.addWidget(self.spinLabel9, 16, 0)
-        layout.addWidget(self.SpinBox9, 16, 1)
+        layout.addWidget(self.spinLabel9, 17, 0)
+        layout.addWidget(self.SpinBox9, 17, 1)
 
-        layout.addWidget(self.spinLabel10, 17, 0)
-        layout.addWidget(self.SpinBox10, 17, 1)
-        layout.addWidget(self.trim_last_frameLabel, 18, 0)
-        layout.addWidget(self.trim_last_frame_checkbox, 18, 1)
+        layout.addWidget(self.spinLabel10, 18, 0)
+        layout.addWidget(self.SpinBox10, 18, 1)
+        layout.addWidget(self.trim_last_frameLabel, 19, 0)
+        layout.addWidget(self.trim_last_frame_checkbox, 19, 1)
 
-        layout.addWidget(self.inputArrayLabel, 19, 0)
-        layout.addWidget(self.inputArraySelectorBox, 19, 1)
+        layout.addWidget(self.inputArrayLabel, 20, 0)
+        layout.addWidget(self.inputArraySelectorBox, 20, 1)
 
-        layout.addWidget(self.displayArrayLabel, 19, 2)
-        layout.addWidget(self.displayArraySelectorBox, 19, 3)
+        layout.addWidget(self.displayArrayLabel, 20, 2)
+        layout.addWidget(self.displayArraySelectorBox, 20, 3)
 
-        layout.addWidget(self.button12, 20, 0)
-        layout.addWidget(self.button13, 20, 1)
+        layout.addWidget(self.button12, 21, 0)
+        layout.addWidget(self.button13, 21, 1)
 
 
         self.setLayout(layout)
@@ -314,16 +340,18 @@ class Form2(QtWidgets.QDialog):
 
     def updateVolSpinBoxes(self):
         #self.SpinBox3.setRange(0,self.viewer.getNVols())
-
-        self.SpinBox6.setRange(0,self.viewer.getNVols())
-        self.SpinBox7.setRange(0,self.viewer.getNVols())
+        self.SpinBox6.setRange(0,self.viewer.getNVols()-1)
+        self.SpinBox7.setRange(0,self.viewer.getNVols()-1)
+        self.SpinBox11.setRange(0,self.viewer.getNVols()-1)
+        self.SpinBox12.setRange(0,self.viewer.getNVols()-1) 
+        self.SpinBox12.setValue(self.viewer.getNVols()-1)             
         return
 
     def getBaseline(self):
         return self.SpinBox4.value()
 
     def getF0(self):
-        return self.SpinBox6.value(), self.SpinBox7.value()
+        return self.SpinBox6.value(), self.SpinBox7.value(), self.SpinBox11.value(), self.SpinBox12.value()
 
     def subtractBaseline(self):
         self.viewer.subtractBaseline()
@@ -391,7 +419,9 @@ class Form2(QtWidgets.QDialog):
         self.s['currentDataType'] = self.currentDataType
         self.s['newDataType'] = self.newDataType
         self.s['shiftFactor'] = self.shiftFactor
-        self.s['trimLastFrame'] = self.trim_last_frame        
+        self.s['trimLastFrame'] = self.trim_last_frame      
+        self.s['f0VolStart'] = self.f0VolStart
+        self.s['f0VolEnd'] = self.f0VolEnd 
         
         g.settings['volumeSlider'] = self.s
         
