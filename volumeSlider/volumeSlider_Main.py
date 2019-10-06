@@ -229,6 +229,10 @@ class CamVolumeSlider(BaseProcess):
             np.save(self.savePath, self.B[:,vol,:,:].reshape((f,1,x,y)))
         return
 
+    def getVolumeArray(self, vol):
+        f,v,x,y = self.B.shape
+        return self.B[:,vol,:,:].reshape((f,1,x,y))
+
     def getMaxPixel(self):
         if self.B == []:
             return np.max(self.A)

@@ -107,8 +107,9 @@ class SliceViewer(BaseProcess):
         self.dock2 = Dock("X Slice", size=(500,400), closable=True)
         self.dock3 = Dock("Y Slice", size=(500,400), closable=True)
         self.dock4 = Dock("Free ROI", size=(500,400), closable=True)
-        self.dock5 = Dock("Time Slider", size=(1000,50))
+        self.dock5 = Dock("Time Slider", size=(950,50))
         self.dock6 = Dock("Z Slice", size=(500,400), closable=True)
+        self.dock7 = Dock("Quick Buttons",size=(50,50))
 
         #add docks to area
         self.area.addDock(self.dock1, 'left')              ## place d1 at left edge of dock area
@@ -117,6 +118,7 @@ class SliceViewer(BaseProcess):
         self.area.addDock(self.dock4, 'bottom', self.dock2)   ## place d4 at bottom edge of d2
         self.area.addDock(self.dock5, 'bottom')            ## place d4 at bottom edge of d2
         self.area.addDock(self.dock6, 'below', self.dock4)    ## tab below d4
+        self.area.addDock(self.dock7, 'right', self.dock5)  
 
         #initialise image widgets
         self.imv1 = pg.ImageView()
@@ -142,6 +144,7 @@ class SliceViewer(BaseProcess):
 
         #hide dock title-bars at start
         self.dock5.hideTitleBar()
+        self.dock7.hideTitleBar()
 
         #add menu functions
         self.state = self.area.saveState()
@@ -277,6 +280,11 @@ class SliceViewer(BaseProcess):
         self.slider1.setSingleStep(1)
 
         self.dock5.addWidget(self.slider1)
+
+        #add buttons to 'quick button' dock
+        self.quickOverlayButton = QtWidgets.QPushButton("Overlay") 
+        self.dock7.addWidget(self.quickOverlayButton)
+        self.quickOverlayButton.clicked.connect(self.quickOverlay)
 
         #display window
         self.win.show()
@@ -905,6 +913,24 @@ class SliceViewer(BaseProcess):
         scale_bar_6=Scale_Bar_volumeView(self.imv6, self.imv6.image.shape[1], self.imv6.image.shape[0])
         scale_bar_6.gui()
         return
+
+    def quickOverlay(self):
+        if self.overlayArrayLoaded:
+            print('Array already loaded')
+            return
+        else:                        
+            self.A_overlay = self.viewer.getVolumeArray(self.currentVolume)
+            #perform transform
+            self.A_overlay= perform_shear_transform(self.A_overlay, self.shift_factor, self.interpolate, self.originalData.dtype, self.theta, inputArrayOrder=self.inputArrayOrder,displayArrayOrder=self.displayArrayOrder)
+            #set flags
+            self.overlayFlag = True      
+            self.overlayArrayLoaded = True
+            #update overlay
+            self.overlayUpdate(0)
+            #link TOP overlay histgramLUT to other windows
+            self.bgItem_imv1.hist_luttt.item.sigLevelsChanged.connect(self.setOverlayLevels)
+        return
+
     
 class exportDialog_win(QtWidgets.QDialog):
     def __init__(self, viewerInstance, parent = None):
