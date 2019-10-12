@@ -24,6 +24,7 @@ import copy
 import pyqtgraph.opengl as gl
 from OpenGL.GL import *
 from qtpy.QtCore import Signal
+from scipy.ndimage import gaussian_filter
 
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
@@ -43,6 +44,7 @@ from pyqtgraph import HistogramLUTWidget
 
 dataType = np.float16
 from matplotlib import cm
+
 
 #########################################################################################
 #############                  slice viewer (3D Display)                #################
@@ -262,13 +264,20 @@ class SliceViewer(BaseProcess):
         self.overlayScale_win6.setStatusTip('Overlay Scale Bar')
         self.overlayScale_win6.triggered.connect(self.overlayScaleOptions_win6)
         self.fileMenu5.addAction(self.overlayScale_win6)         
+
+        self.fileMenu6 = self.menubar.addMenu('&Filters')
+        self.gaussian = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Gaussian')
+        self.gaussian.setShortcut('Ctrl+F')
+        self.gaussian.setStatusTip('Gaussian')
+        self.gaussian.triggered.connect(self.gaussianOptions)
+        self.fileMenu6.addAction(self.gaussian)
         
-        self.fileMenu6 = self.menubar.addMenu('&Quit')
+        self.fileMenu7 = self.menubar.addMenu('&Quit')
         self.quit = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Quit')
         self.quit.setShortcut('Ctrl+Q')
         self.quit.setStatusTip('Quit')
         self.quit.triggered.connect(self.close)
-        self.fileMenu6.addAction(self.quit)
+        self.fileMenu7.addAction(self.quit)
 
         #add time slider
         self.slider1 = QtWidgets.QSlider(QtCore.Qt.Horizontal)
@@ -351,6 +360,9 @@ class SliceViewer(BaseProcess):
         for roi in self.MainROIList:
             disconnectHandles(roi)
        
+        #set filter flags
+        self.gaussianFlag = False
+        self.sigma = 10 #is divided by 10 during filter (this helps with the slider bar)
 
         #add max projection data to main window
         self.imv1.setImage(self.maxProjection(self.data)) #display topview (max of slices)
@@ -478,7 +490,13 @@ class SliceViewer(BaseProcess):
             self.overlayFlag = True
             self.overlayUpdate(win) 
             return
-    
+
+    def updateAllMainWins(self):
+        self.update()
+        self.update_2()
+        self.update_3()
+        self.update_6()
+        self.update_center()
 
     #connect time slider
     def timeUpdate(self,value):
@@ -486,7 +504,12 @@ class SliceViewer(BaseProcess):
         self.index6 = self.imv6.currentIndex
         levels1 = self.imv1.getHistogramWidget().getLevels()
         levels6 = self.imv6.getHistogramWidget().getLevels()
-        self.data = self.originalData[:,value,:,:]
+
+        if self.gaussianFlag:
+            self.data = gaussian_filter(self.originalData[:,value,:,:], self.sigma/10)
+        else:
+            self.data = self.originalData[:,value,:,:]
+            
         self.imv1.setImage(self.maxProjection(self.data),autoRange=False, levels=levels1)
         self.imv6.setImage(self.data,autoRange=False, levels=levels6)
         self.imv6.setCurrentIndex(self.index6)
@@ -854,6 +877,8 @@ class SliceViewer(BaseProcess):
     def updateAllOverlayWins(self):
         for winNumber in [1,2,3,4,6]:
             self.runOverlayUpdate(winNumber)
+        
+
 
     def setOverlayLUT(self, lut):
         self.OverlayLUT = lut
@@ -931,6 +956,10 @@ class SliceViewer(BaseProcess):
             self.bgItem_imv1.hist_luttt.item.sigLevelsChanged.connect(self.setOverlayLevels)
         return
 
+    def gaussianOptions(self):
+        self.gaussianDialogWin = gaussianDialog_win(self.viewer)
+        self.gaussianDialogWin.show()
+        return
     
 class exportDialog_win(QtWidgets.QDialog):
     def __init__(self, viewerInstance, parent = None):
@@ -980,3 +1009,76 @@ class exportDialog_win(QtWidgets.QDialog):
         self.y_displayWindow = Window(self.viewer.viewer.getYWin(),'Y view')
         return
 
+
+class gaussianDialog_win(QtWidgets.QDialog):
+    def __init__(self, viewerInstance, parent = None):
+        super(gaussianDialog_win, self).__init__(parent)
+
+        self.viewer = viewerInstance
+        self.originalArray = copy.deepcopy(self.viewer.viewer.data)
+        self.sigma = float(self.viewer.viewer.sigma)
+        
+
+        #window geometry
+        self.left = 300
+        self.top = 300
+        self.width = 600
+        self.height = 200
+
+        #sliders
+        self.sigmaSlider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.sigmaSlider.setFocusPolicy(QtCore.Qt.StrongFocus)
+        self.sigmaSlider.setTickPosition(QtWidgets.QSlider.TicksBothSides)
+        self.sigmaSlider.setMinimum(0)
+        self.sigmaSlider.setMaximum(500)
+        self.sigmaSlider.setTickInterval(100)
+        self.sigmaSlider.setSingleStep(1)
+        self.sigmaSlider.setValue(self.sigma)
+        self.sigmaSlider.valueChanged.connect(self.sigmaValueChange)
+        self.sigmaSliderLabel = QtWidgets.QLabel("Sigma: ")
+        self.sigmaValueLabel = QtWidgets.QLabel("{:.1f}".format(self.sigma/10))
+
+        #buttons
+        self.applyGauss = QtWidgets.QPushButton("Apply Gaussian")
+        self.undoGauss = QtWidgets.QPushButton("Undo Gaussian")
+
+        #grid layout
+        layout = QtWidgets.QGridLayout()
+        layout.setSpacing(5)
+        layout.addWidget(self.sigmaSliderLabel, 0, 0)
+        layout.addWidget(self.sigmaValueLabel, 0, 1)       
+        layout.addWidget(self.sigmaSlider, 0, 2)        
+        layout.addWidget(self.applyGauss, 1, 2)        
+        layout.addWidget(self.undoGauss, 2, 2)
+
+        self.setLayout(layout)
+        self.setGeometry(self.left, self.top, self.width, self.height)
+
+        #add window title
+        self.setWindowTitle("Gaussian Filter Options")
+
+        #connect buttons
+        self.applyGauss.clicked.connect(self.applyGaussian)
+        self.undoGauss.clicked.connect(self.undoGaussian)
+        return
+
+    def applyGaussian(self):
+        #self.viewer.viewer.data = gaussian_filter(self.originalArray, self.sigma/10)
+        self.viewer.viewer.gaussianFlag = True
+        self.viewer.viewer.sigma = self.sigma
+        self.viewer.viewer.timeUpdate(self.viewer.viewer.currentVolume)
+        #self.viewer.viewer.updateAllOverlayWins()
+        return
+
+    def undoGaussian(self):
+        #self.viewer.viewer.data = self.originalArray
+        self.viewer.viewer.gaussianFlag = False
+        self.viewer.viewer.sigma = self.sigma
+        self.viewer.viewer.timeUpdate(self.viewer.viewer.currentVolume)        
+        #self.viewer.viewer.updateAllOverlayWins()
+        return
+
+    def sigmaValueChange(self):
+        self.sigma = self.sigmaSlider.value()
+        self.sigmaValueLabel.setText("{:.1f}".format(self.sigma/10))
+        return
