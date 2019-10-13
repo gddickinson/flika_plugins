@@ -69,6 +69,7 @@ class SliceViewer(BaseProcess):
         print('theta: ' + str(self.theta))
         print('input Array Order: '+ str(self.inputArrayOrder))
         print('display Array Order: ' + str(self.displayArrayOrder))
+        g.m.statusBar().showMessage("3D viewer starting...")
 
         #3D plot params
         self.prob = 0.001
@@ -363,6 +364,7 @@ class SliceViewer(BaseProcess):
         #set filter flags
         self.gaussianFlag = False
         self.sigma = 10 #is divided by 10 during filter (this helps with the slider bar)
+        self.gaussData = None
 
         #add max projection data to main window
         self.imv1.setImage(self.maxProjection(self.data)) #display topview (max of slices)
@@ -429,6 +431,7 @@ class SliceViewer(BaseProcess):
 
         #link TOP overlay histgramLUT to other windows
         self.imv1.getHistogramWidget().item.sigLevelsChanged.connect(self.setMainLevels)
+        self.imv1.getHistogramWidget().item.sigLookupTableChanged.connect(self.setMainLUTs)        
         self.histogramsLinked = True
 
 
@@ -506,7 +509,7 @@ class SliceViewer(BaseProcess):
         levels6 = self.imv6.getHistogramWidget().getLevels()
 
         if self.gaussianFlag:
-            self.data = gaussian_filter(self.originalData[:,value,:,:], self.sigma/10)
+            self.data = self.gaussData[:,value,:,:]
         else:
             self.data = self.originalData[:,value,:,:]
             
@@ -709,6 +712,7 @@ class SliceViewer(BaseProcess):
         self.overlayUpdate(0)
         #link TOP overlay histgramLUT to other windows
         self.bgItem_imv1.hist_luttt.item.sigLevelsChanged.connect(self.setOverlayLevels)
+        self.bgItem_imv1.hist_luttt.item.sigLookupTableChanged.connect(self.setOverlayLUTs)        
         return
 
 
@@ -828,6 +832,16 @@ class SliceViewer(BaseProcess):
             bgItem.hist_luttt.item.setLevels(levels[0],levels[1])
         return
 
+    def setOverlayLUTs(self):
+        if self.histogramsLinked == False:
+            return
+        lut = self.bgItem_imv1.hist_luttt.item.gradient.saveState()
+        bgItemList = [self.bgItem_imv2,self.bgItem_imv3,self.bgItem_imv4,self.bgItem_imv6]
+        for bgItem in bgItemList:
+            bgItem.hist_luttt.item.gradient.restoreState(lut)
+        return
+
+
     def setMainLevels(self):
         if self.histogramsLinked == False:
             return
@@ -836,6 +850,17 @@ class SliceViewer(BaseProcess):
         for imv in imvList:
             imv.getHistogramWidget().item.setLevels(levels[0],levels[1])
         return
+
+    def setMainLUTs(self):
+        if self.histogramsLinked == False:
+            return
+        lut = self.imv1.getHistogramWidget().item.gradient.saveState()
+        imvList = [self.imv2,self.imv3,self.imv4,self.imv6]
+        for imv in imvList:
+            imv.getHistogramWidget().item.gradient.restoreState(lut)
+        return
+
+
 
     def updateOverlayLevels(self):
         self.levels_1 = self.bgItem_imv1.getLevels()
@@ -886,6 +911,7 @@ class SliceViewer(BaseProcess):
     def overlayOptions(self):
         if self.overlayArrayLoaded == False:
             print('load array first!')
+            g.m.statusBar().showMessage("load array first!")
             return
         self.overlayOptionsWin = OverlayOptions(self.viewer)   
         self.overlayOptionsWin.show()
@@ -942,6 +968,7 @@ class SliceViewer(BaseProcess):
     def quickOverlay(self):
         if self.overlayArrayLoaded:
             print('Array already loaded')
+            g.m.statusBar().showMessage("Array already loaded")
             return
         else:                        
             self.A_overlay = self.viewer.getVolumeArray(self.currentVolume)
@@ -1015,10 +1042,8 @@ class gaussianDialog_win(QtWidgets.QDialog):
         super(gaussianDialog_win, self).__init__(parent)
 
         self.viewer = viewerInstance
-        self.originalArray = copy.deepcopy(self.viewer.viewer.data)
         self.sigma = float(self.viewer.viewer.sigma)
         
-
         #window geometry
         self.left = 300
         self.top = 300
@@ -1062,20 +1087,28 @@ class gaussianDialog_win(QtWidgets.QDialog):
         self.undoGauss.clicked.connect(self.undoGaussian)
         return
 
+    def gaussByVol(self,A):
+        zeroArray = np.zeros_like(A)
+        nVols = A.shape[1]
+        for i in range(0,nVols):
+            g.m.statusBar().showMessage("3D Gaussian running...Vol:{}".format(i))
+            zeroArray[:,i,:,:] = gaussian_filter(self.viewer.viewer.originalData[:,i,:,:], self.sigma/10)
+        return zeroArray
+
+
     def applyGaussian(self):
-        #self.viewer.viewer.data = gaussian_filter(self.originalArray, self.sigma/10)
+        g.m.statusBar().showMessage("3D Gaussian running...")
+        self.viewer.viewer.gaussData = self.gaussByVol(self.viewer.viewer.originalData)
         self.viewer.viewer.gaussianFlag = True
         self.viewer.viewer.sigma = self.sigma
         self.viewer.viewer.timeUpdate(self.viewer.viewer.currentVolume)
-        #self.viewer.viewer.updateAllOverlayWins()
+        g.m.statusBar().showMessage("3D Gaussian finished")
         return
 
     def undoGaussian(self):
-        #self.viewer.viewer.data = self.originalArray
         self.viewer.viewer.gaussianFlag = False
         self.viewer.viewer.sigma = self.sigma
         self.viewer.viewer.timeUpdate(self.viewer.viewer.currentVolume)        
-        #self.viewer.viewer.updateAllOverlayWins()
         return
 
     def sigmaValueChange(self):

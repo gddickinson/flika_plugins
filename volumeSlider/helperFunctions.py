@@ -60,6 +60,7 @@ def perform_shear_transform(A, shift_factor, interpolate, datatype, theta, input
         A_rescaled = np.zeros((m1*int(shift_factor), m2, m3, m4))
         for v in np.arange(m4):
             print('Upsampling Volume #{}/{}'.format(v+1, m4))
+            g.m.statusBar().showMessage('Upsampling Volume #{}/{}'.format(v+1, m4))
             A_rescaled[:, :, :, v] = rescale(A[:, :, :, v], (shift_factor, 1.), mode='constant', preserve_range=True)
     else:
         A_rescaled = np.repeat(A, shift_factor, axis=1)

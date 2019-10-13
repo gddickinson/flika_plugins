@@ -43,6 +43,7 @@ from pyqtgraph import HistogramLUTWidget
 dataType = np.float16
 from matplotlib import cm
 
+
 #########################################################################################
 #############                  volumeViewer GUI setup            ########################
 #########################################################################################
@@ -339,12 +340,13 @@ class Form2(QtWidgets.QDialog):
         return
 
     def updateVolSpinBoxes(self):
-        #self.SpinBox3.setRange(0,self.viewer.getNVols())
-        self.SpinBox6.setRange(0,self.viewer.getNVols()-1)
-        self.SpinBox7.setRange(0,self.viewer.getNVols()-1)
-        self.SpinBox11.setRange(0,self.viewer.getNVols()-1)
-        self.SpinBox12.setRange(0,self.viewer.getNVols()-1) 
-        self.SpinBox12.setValue(self.viewer.getNVols()-1)             
+        rangeValue = self.viewer.getNVols()-1
+        #self.SpinBox3.setRange(0,self.viewer.getNVols())        
+        self.SpinBox6.setRange(0,rangeValue)
+        self.SpinBox7.setRange(0,rangeValue)
+        self.SpinBox11.setRange(0,rangeValue)
+        self.SpinBox12.setRange(0,rangeValue) 
+        self.SpinBox12.setValue(rangeValue)             
         return
 
     def getBaseline(self):
@@ -376,6 +378,10 @@ class Form2(QtWidgets.QDialog):
         return
 
     def exportArray(self):
+        if self.viewer.B == []:
+            print('first set number of frames per volume')
+            g.m.statusBar().showMessage("first set number of frames per volume")
+            return
         self.arraySavePath = QtWidgets.QFileDialog.getSaveFileName(self, 'Save File', self.arraySavePath, 'Numpy array (*.npy)')
         self.arraySavePath = str(self.arraySavePath[0])
         self.viewer.savePath = self.arraySavePath

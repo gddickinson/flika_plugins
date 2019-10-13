@@ -44,6 +44,7 @@ from pyqtgraph import HistogramLUTWidget
 dataType = np.float16
 from matplotlib import cm
 
+
 ### disable messages from PyQt ################
 def handler(msg_type, msg_log_context, msg_string):
     pass
@@ -181,6 +182,7 @@ class CamVolumeSlider(BaseProcess):
         baseline = self.dialogbox.getBaseline()
         if self.B == []:
             print('first set number of frames per volume')
+            g.m.statusBar().showMessage('first set number of frames per volume')
             return
         else:
             self.B = self.B - baseline
@@ -197,10 +199,12 @@ class CamVolumeSlider(BaseProcess):
         
         if ratioStart >= ratioEnd:
             print('invalid F0 selection')
+            g.m.statusBar().showMessage('invalid F0 selection')
             return
         
         if volStart >= volEnd:
             print('invalid F0 Volume selection')
+            g.m.statusBar().showMessage('invalid F0 Volume selection')
             return
 
         #get mean of vols used to make ratio
@@ -218,7 +222,11 @@ class CamVolumeSlider(BaseProcess):
         return
 
     def exportToWindow(self):
-        Window(np.reshape(self.B, (self.nFrames, self.x, self.y), order='F'))
+        if self.B == []:
+            print('first set number of frames per volume')
+            g.m.statusBar().showMessage("first set number of frames per volume")
+        else:
+            Window(np.reshape(self.B, (self.nFrames, self.x, self.y), order='F'))
         return
 
     def exportArray(self, vol='None'):
@@ -243,6 +251,7 @@ class CamVolumeSlider(BaseProcess):
         index = self.displayWindow.imageview.currentIndex
         if self.B == []:
             print('first set number of frames per volume')
+            g.m.statusBar().showMessage("first set number of frames per volume")
             return
         else:
             self.dataType = self.dTypeDict[newDataType]
@@ -275,6 +284,7 @@ class CamVolumeSlider(BaseProcess):
         index = self.displayWindow.imageview.currentIndex
         if self.B == []:
             print('first set number of frames per volume')
+            g.m.statusBar().showMessage("first set number of frames per volume")
             return
         else:
             self.B = self.B * float(factor)
@@ -283,7 +293,11 @@ class CamVolumeSlider(BaseProcess):
         return
 
     def startViewer(self):
-        self.viewer = SliceViewer(camVolumeSlider, self.B)
+        if self.B == []:
+            print('first set number of frames per volume')
+            g.m.statusBar().showMessage("first set number of frames per volume")
+        else:
+            self.viewer = SliceViewer(camVolumeSlider, self.B)
         return
 
     def closeViewer(self):
