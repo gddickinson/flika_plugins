@@ -1,12 +1,39 @@
 import numpy as np
+from qtpy import QtWidgets, QtCore, QtGui
 from numpy import moveaxis
 from skimage.transform import rescale
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+#import matplotlib.pyplot as plt
+#from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
 
 
 ##############       Helper functions        ###########################################
+
+def windowGeometry(instance, left=300, top=300, height=600, width=400):
+    instance.left = left
+    instance.top = top
+    instance.height = height
+    instance.width = width
+    return
+
+
+def setSliderUp(slider, minimum=0, maximum=100, tickInterval=1, singleStep=1, value=0):
+    slider.setFocusPolicy(QtCore.Qt.StrongFocus)
+    slider.setTickPosition(QtWidgets.QSlider.TicksBothSides)
+    slider.setMinimum(minimum)
+    slider.setMaximum(maximum)
+    slider.setTickInterval(tickInterval)
+    slider.setSingleStep(singleStep)
+    slider.setValue(value)
+    return
+
+def setMenuUp(menuItem,menu,shortcut='Ctrl+X',statusTip='Exit',connection=None):
+    if shortcut != None:
+        menuItem.setShortcut(shortcut)
+    menuItem.setStatusTip(statusTip)
+    menuItem.triggered.connect(connection)
+    menu.addAction(menuItem)
+    return
 
 def get_transformation_matrix(theta=45):
     """

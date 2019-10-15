@@ -32,7 +32,7 @@ else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, FileSelector
 
 from .volumeSlider_Main import *
-
+from .helperFunctions import *
 #########################################################################################
 #############          FLIKA Base Menu             #####################################
 #########################################################################################

@@ -1,30 +1,14 @@
-import numpy as np
-from qtpy import QtWidgets, QtCore, QtGui
-import flika
-from flika import global_vars as g
-from flika.window import Window
-from flika.utils.io import tifffile
-from flika.process.file_ import get_permutation_tuple
-from flika.utils.misc import open_file_gui
-import pyqtgraph as pg
-import time
-import os
-from os import listdir
-from os.path import expanduser, isfile, join
-from distutils.version import StrictVersion
-from copy import deepcopy
-from numpy import moveaxis
-from skimage.transform import rescale
+from qtpy import QtWidgets
 from pyqtgraph.dockarea import *
-from pyqtgraph import mkPen
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
-import copy
-import pyqtgraph.opengl as gl
+#from pyqtgraph import mkPen
+#import matplotlib.pyplot as plt
+#from mpl_toolkits.mplot3d import Axes3D
+#from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
+#import copy
+#import pyqtgraph.opengl as gl
 from OpenGL.GL import *
-from qtpy.QtCore import Signal
-
+#from qtpy.QtCore import Signal
+from .helperFunctions import *
 #########################################################################################
 #############            3D Matlibplot scatter plot            ##########################
 #########################################################################################
@@ -38,10 +22,7 @@ class plot3D_options(QtWidgets.QDialog):
         self.threshold = threshold
 
         #window geometry
-        self.left = 300
-        self.top = 300
-        self.width = 300
-        self.height = 200
+        windowGeometry(self, left=300, top=300, height=300, width=200)
 
         #spinboxes
         self.spinLabel1 = QtWidgets.QLabel("Amount of downsampling (0-1)")
@@ -60,6 +41,7 @@ class plot3D_options(QtWidgets.QDialog):
         self.checkBox1 = QtWidgets.QCheckBox()
         self.checkBox2_label = QtWidgets.QLabel("Display plot axis")
         self.checkBox2 = QtWidgets.QCheckBox()
+        
         #buttons
         #self.button1 = QtWidgets.QPushButton("Close")
 
@@ -83,7 +65,7 @@ class plot3D_options(QtWidgets.QDialog):
         #add window title
         self.setWindowTitle("3D Plot Options")
 
-        #connect sliders & spinboxes
+        #connect spinboxes
         self.SpinBox1.valueChanged.connect(self.spinBox1ValueChange)
         self.SpinBox2.valueChanged.connect(self.spinBox2ValueChange)
 

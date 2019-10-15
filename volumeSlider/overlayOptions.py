@@ -50,10 +50,7 @@ class OverlayOptions(QtWidgets.QDialog):
         self.viewer = viewerInstance
 
         #window geometry
-        self.left = 300
-        self.top = 300
-        self.width = 300
-        self.height = 200
+        windowGeometry(self, left=300, top=300, height=300, width=200)
 
         self.opacity = 50
         self.lut = 'grey'
@@ -88,13 +85,7 @@ class OverlayOptions(QtWidgets.QDialog):
 
         #sliders
         self.sliderOpacity = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.sliderOpacity.setFocusPolicy(QtCore.Qt.StrongFocus)
-        self.sliderOpacity.setTickPosition(QtWidgets.QSlider.TicksBothSides)
-        self.sliderOpacity.setMinimum(0)
-        self.sliderOpacity.setMaximum(100)
-        self.sliderOpacity.setTickInterval(10)
-        self.sliderOpacity.setSingleStep(1)
-        self.sliderOpacity.setValue(self.opacity)
+        setSliderUp(self.sliderOpacity, minimum=0, maximum=100, tickInterval=10, singleStep=1, value=self.opacity)
         self.sliderOpacity.valueChanged.connect(self.setOpacity)
 
         #checkboxes
@@ -130,8 +121,6 @@ class OverlayOptions(QtWidgets.QDialog):
 
         #add window title
         self.setWindowTitle("Overlay Options")
-
-
         return
 
     def setColorMap(self):
@@ -167,7 +156,6 @@ class OverlayOptions(QtWidgets.QDialog):
         self.viewer.viewer.updateAllOverlayWins()
         self.viewer.viewer.useSharedState = False
         return
-
     
     def setMode(self):
         self.viewer.viewer.setOverlayMode(self.modeSelectorBox.currentText())

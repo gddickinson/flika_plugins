@@ -3,23 +3,23 @@ from qtpy import QtWidgets, QtCore, QtGui
 import flika
 from flika import global_vars as g
 from flika.window import Window
-from flika.utils.io import tifffile
-from flika.process.file_ import get_permutation_tuple
+#from flika.utils.io import tifffile
+#from flika.process.file_ import get_permutation_tuple
 from flika.utils.misc import open_file_gui
 import pyqtgraph as pg
-import time
+#import time
 import os
-from os import listdir
-from os.path import expanduser, isfile, join
+#from os import listdir
+#from os.path import expanduser, isfile, join
 from distutils.version import StrictVersion
-from copy import deepcopy
-from numpy import moveaxis
-from skimage.transform import rescale
+#from copy import deepcopy
+#from numpy import moveaxis
+#from skimage.transform import rescale
 from pyqtgraph.dockarea import *
 from pyqtgraph import mkPen
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
+#from mpl_toolkits.mplot3d import Axes3D
+#from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
 import copy
 import pyqtgraph.opengl as gl
 from OpenGL.GL import *
@@ -151,144 +151,88 @@ class SliceViewer(BaseProcess):
 
         #add menu functions
         self.state = self.area.saveState()
-
         self.menubar = self.win.menuBar()
-
+        
+        #=================================================================================================================
         self.fileMenu1 = self.menubar.addMenu('&Options')
+        
         self.resetLayout = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Reset Layout')
-        self.resetLayout.setShortcut('Ctrl+R')
-        self.resetLayout.setStatusTip('Reset Layout')
-        self.resetLayout.triggered.connect(self.reset_layout)
-        self.fileMenu1.addAction(self.resetLayout)
+        setMenuUp(self.resetLayout,self.fileMenu1,shortcut='Ctrl+R',statusTip='Reset Layout',connection=self.reset_layout)
 
         self.showTitles = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Show Titles')
-        self.showTitles.setShortcut('Ctrl+G')
-        self.showTitles.setStatusTip('Show Titles')
-        self.showTitles.triggered.connect(self.show_titles)
-        self.fileMenu1.addAction(self.showTitles)
+        setMenuUp(self.showTitles,self.fileMenu1,shortcut='Ctrl+G',statusTip='Show Titles',connection=self.show_titles)
 
         self.hideTitles = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Hide Titles')
-        self.hideTitles.setShortcut('Ctrl+H')
-        self.hideTitles.setStatusTip('Hide Titles')
-        self.hideTitles.triggered.connect(self.hide_titles)
-        self.fileMenu1.addAction(self.hideTitles)
+        setMenuUp(self.hideTitles,self.fileMenu1,shortcut='Ctrl+H',statusTip='Hide Titles',connection=self.hide_titles)        
 
         self.hideCursors = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Hide Cursors')
-        #self.hideCursors.setShortcut('Ctrl+H')
-        self.hideCursors.setStatusTip('Hide Titles')
-        self.hideCursors.triggered.connect(self.hide_cursors)
-        self.fileMenu1.addAction(self.hideCursors)
+        setMenuUp(self.hideCursors,self.fileMenu1,shortcut=None,statusTip='Hide Cursors',connection=self.hide_cursors)         
 
         self.showCursors = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Show Cursors')
-        #self.showCursors.setShortcut('Ctrl+H')
-        self.showCursors.setStatusTip('Hide Titles')
-        self.showCursors.triggered.connect(self.show_cursors)
-        self.fileMenu1.addAction(self.showCursors)
-
+        setMenuUp(self.showCursors,self.fileMenu1,shortcut=None,statusTip='Show Cursors',connection=self.show_cursors)                  
+        #================================================================================================================
         self.fileMenu2 = self.menubar.addMenu('&3D Plot')
+
         self.plot = QtWidgets.QAction(QtGui.QIcon('open.png'), '3D Plot')
-        self.plot.setShortcut('Ctrl+P')
-        self.plot.setStatusTip('3D Plot')
-        self.plot.triggered.connect(self.plot3D)
-        self.fileMenu2.addAction(self.plot)
+        setMenuUp(self.plot,self.fileMenu2,shortcut='Ctrl+P',statusTip='3D Plot',connection=self.plot3D)
 
         self.plotOptions = QtWidgets.QAction(QtGui.QIcon('open.png'), '3D Plot Options')
-        self.plotOptions.setStatusTip('3D Plot Options')
-        self.plotOptions.triggered.connect(self.plot3D_options)
-        self.fileMenu2.addAction(self.plotOptions)
+        setMenuUp(self.plotOptions,self.fileMenu2,shortcut=None,statusTip='3D Plot Options',connection=self.plot3D_options)        
 
+        #================================================================================================================
         self.fileMenu3 = self.menubar.addMenu('&Texture Plot')
+        
         self.texturePlot = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Texture Plot')
-        #self.texturePlot.setShortcut('Ctrl+T')
-        self.texturePlot.setStatusTip('Texture Plot')
-        self.texturePlot.triggered.connect(self.plotTexture)
-        self.fileMenu3.addAction(self.texturePlot)
+        setMenuUp(self.texturePlot,self.fileMenu3,shortcut=None,statusTip='Texture Plot',connection=self.plotTexture) 
 
         self.texturePlotControl = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Texture Plot Control')
-        #self.texturePlotControl.setShortcut('Ctrl+M')
-        self.texturePlotControl.setStatusTip('Texture Plot')
-        self.texturePlotControl.triggered.connect(self.plotTexture_control)
-        self.fileMenu3.addAction(self.texturePlotControl)
-
+        setMenuUp(self.texturePlotControl,self.fileMenu3,shortcut=None,statusTip='Texture Plot Control',connection=self.plotTexture_control)
+        #================================================================================================================
         self.fileMenu4 = self.menubar.addMenu('&Export')
+        
         self.exportFlika = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Export to flika')
-        #self.exportFlika.setShortcut('Ctrl+E')
-        self.exportFlika.setStatusTip('Export to Flika')
-        self.exportFlika.triggered.connect(self.exportDialog)
-        self.fileMenu4.addAction(self.exportFlika)
+        setMenuUp(self.exportFlika,self.fileMenu4,shortcut=None,statusTip='Export to Flikal',connection=self.exportDialog)
         
         self.export = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Export Volume to Array')
-        self.export.setShortcut('Ctrl+E')
-        self.export.setStatusTip('Export to Array')
-        self.export.triggered.connect(self.exportCurrentVolToArray)
-        self.fileMenu4.addAction(self.export)                       
-                
+        setMenuUp(self.export,self.fileMenu4,shortcut='Ctrl+E',statusTip='Export to Array',connection=self.exportCurrentVolToArray)                    
+        #================================================================================================================                
         self.fileMenu5 = self.menubar.addMenu('&Overlay')
+        
         self.overlayArray = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Overlay (from Array)')
-        self.overlayArray.setShortcut('Ctrl+O')
-        self.overlayArray.setStatusTip('OverlayArray')
-        self.overlayArray.triggered.connect(self.overlayArray_start)
-        self.fileMenu5.addAction(self.overlayArray)
+        setMenuUp(self.overlayArray,self.fileMenu5,shortcut='Ctrl+O',statusTip='OverlayArray',connection=self.overlayArray_start)          
         
         self.overlayToggle = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Toggle Overlay')
-        self.overlayToggle.setShortcut('Ctrl+T')
-        self.overlayToggle.setStatusTip('OverlayOff')
-        self.overlayToggle.triggered.connect(self.toggleOverlay)
-        self.fileMenu5.addAction(self.overlayToggle)
+        setMenuUp(self.overlayToggle,self.fileMenu5,shortcut='Ctrl+T',statusTip='OverlayOff',connection=self.toggleOverlay)         
         
         self.overlayArrayWin = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Overlay Options')
-        #self.overlayArrayWin.setShortcut('Ctrl+L')
-        self.overlayArrayWin.setStatusTip('OverlayOff')
-        self.overlayArrayWin.triggered.connect(self.overlayOptions)
-        self.fileMenu5.addAction(self.overlayArrayWin)
+        setMenuUp(self.overlayArrayWin,self.fileMenu5,shortcut=None,statusTip='Overlay Options',connection=self.overlayOptions)         
         
         self.overlayScale_win1 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (Top)')
-        #self.overlayScale.setShortcut('Ctrl+S')
-        self.overlayScale_win1.setStatusTip('Overlay Scale Bar')
-        self.overlayScale_win1.triggered.connect(self.overlayScaleOptions_win1)
-        self.fileMenu5.addAction(self.overlayScale_win1)
+        setMenuUp(self.overlayScale_win1,self.fileMenu5,shortcut=None,statusTip='Overlay Scale Bar',connection=self.overlayScaleOptions_win1)
         
         self.overlayScale_win2 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (Y)')
-        #self.overlayScale.setShortcut('Ctrl+S')
-        self.overlayScale_win2.setStatusTip('Overlay Scale Bar')
-        self.overlayScale_win2.triggered.connect(self.overlayScaleOptions_win2)
-        self.fileMenu5.addAction(self.overlayScale_win2)        
+        setMenuUp(self.overlayScale_win2,self.fileMenu5,shortcut=None,statusTip='Overlay Scale Bar',connection=self.overlayScaleOptions_win2)              
         
         self.overlayScale_win3 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (X)')
-        #self.overlayScale.setShortcut('Ctrl+S')
-        self.overlayScale_win3.setStatusTip('Overlay Scale Bar')
-        self.overlayScale_win3.triggered.connect(self.overlayScaleOptions_win3)
-        self.fileMenu5.addAction(self.overlayScale_win3) 
+        setMenuUp(self.overlayScale_win3,self.fileMenu5,shortcut=None,statusTip='Overlay Scale Bar',connection=self.overlayScaleOptions_win3)
 
         self.overlayScale_win6 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (Z)')
-        #self.overlayScale.setShortcut('Ctrl+S')
-        self.overlayScale_win6.setStatusTip('Overlay Scale Bar')
-        self.overlayScale_win6.triggered.connect(self.overlayScaleOptions_win6)
-        self.fileMenu5.addAction(self.overlayScale_win6)         
-
+        setMenuUp(self.overlayScale_win6,self.fileMenu5,shortcut=None,statusTip='Overlay Scale Bar',connection=self.overlayScaleOptions_win6)        
+        #================================================================================================================
         self.fileMenu6 = self.menubar.addMenu('&Filters')
-        self.gaussian = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Gaussian')
-        self.gaussian.setShortcut('Ctrl+F')
-        self.gaussian.setStatusTip('Gaussian')
-        self.gaussian.triggered.connect(self.gaussianOptions)
-        self.fileMenu6.addAction(self.gaussian)
         
+        self.gaussian = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Gaussian')
+        setMenuUp(self.gaussian,self.fileMenu6,shortcut='Ctrl+F',statusTip='Gaussian',connection=self.gaussianOptions)                
+        #================================================================================================================        
         self.fileMenu7 = self.menubar.addMenu('&Quit')
+        
         self.quit = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Quit')
-        self.quit.setShortcut('Ctrl+Q')
-        self.quit.setStatusTip('Quit')
-        self.quit.triggered.connect(self.close)
-        self.fileMenu7.addAction(self.quit)
+        setMenuUp(self.quit,self.fileMenu7,shortcut='Ctrl+Q',statusTip='Quit',connection=self.close)                
+        #================================================================================================================  
 
         #add time slider
         self.slider1 = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.slider1.setFocusPolicy(QtCore.Qt.StrongFocus)
-        self.slider1.setTickPosition(QtWidgets.QSlider.TicksBothSides)
-        self.slider1.setMinimum(0)
-        self.slider1.setMaximum(self.nVols)
-        self.slider1.setTickInterval(1)
-        self.slider1.setSingleStep(1)
-
+        setSliderUp(self.slider1, minimum=0, maximum=self.nVols, tickInterval=1, singleStep=1, value=0)
         self.dock5.addWidget(self.slider1)
 
         #add buttons to 'quick button' dock
@@ -995,10 +939,7 @@ class exportDialog_win(QtWidgets.QDialog):
         self.viewer = viewerInstance
 
         #window geometry
-        self.left = 300
-        self.top = 300
-        self.width = 300
-        self.height = 200
+        windowGeometry(self, left=300, top=300, height=300, width=200)
 
         #buttons
         self.button1 = QtWidgets.QPushButton("Export Z view")
@@ -1045,20 +986,11 @@ class gaussianDialog_win(QtWidgets.QDialog):
         self.sigma = float(self.viewer.viewer.sigma)
         
         #window geometry
-        self.left = 300
-        self.top = 300
-        self.width = 600
-        self.height = 200
+        windowGeometry(self, left=300, top=300, height=300, width=600)
 
         #sliders
         self.sigmaSlider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.sigmaSlider.setFocusPolicy(QtCore.Qt.StrongFocus)
-        self.sigmaSlider.setTickPosition(QtWidgets.QSlider.TicksBothSides)
-        self.sigmaSlider.setMinimum(0)
-        self.sigmaSlider.setMaximum(500)
-        self.sigmaSlider.setTickInterval(100)
-        self.sigmaSlider.setSingleStep(1)
-        self.sigmaSlider.setValue(self.sigma)
+        setSliderUp(self.sigmaSlider, minimum=0, maximum=500, tickInterval=100, singleStep=1, value=self.sigma)
         self.sigmaSlider.valueChanged.connect(self.sigmaValueChange)
         self.sigmaSliderLabel = QtWidgets.QLabel("Sigma: ")
         self.sigmaValueLabel = QtWidgets.QLabel("{:.1f}".format(self.sigma/10))

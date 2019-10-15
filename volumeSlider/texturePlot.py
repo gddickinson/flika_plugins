@@ -131,38 +131,17 @@ class textureDialog_win(QtWidgets.QDialog):
         self.viewer = viewerInstance
 
         #window geometry
-        self.left = 300
-        self.top = 300
-        self.width = 500
-        self.height = 200
+        windowGeometry(self, left=300, top=300, height=200, width=500)
 
         #sliders
         self.sliderX = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.sliderX.setFocusPolicy(QtCore.Qt.StrongFocus)
-        self.sliderX.setTickPosition(QtWidgets.QSlider.TicksBothSides)
-        self.sliderX.setMinimum(0)
-        self.sliderX.setMaximum(shape[0])
-        self.sliderX.setTickInterval(1)
-        self.sliderX.setSingleStep(1)
-        self.sliderX.setValue(X)
+        setSliderUp(self.sliderX, minimum=0, maximum=shape[0], tickInterval=1, singleStep=1, value=X)
 
         self.sliderY = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.sliderY.setFocusPolicy(QtCore.Qt.StrongFocus)
-        self.sliderY.setTickPosition(QtWidgets.QSlider.TicksBothSides)
-        self.sliderY.setMinimum(0)
-        self.sliderY.setMaximum(shape[1])
-        self.sliderY.setTickInterval(1)
-        self.sliderY.setSingleStep(1)
-        self.sliderY.setValue(Y)
+        setSliderUp(self.sliderY, minimum=0, maximum=shape[1], tickInterval=1, singleStep=1, value=Y)        
 
         self.sliderZ = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.sliderZ.setFocusPolicy(QtCore.Qt.StrongFocus)
-        self.sliderZ.setTickPosition(QtWidgets.QSlider.TicksBothSides)
-        self.sliderZ.setMinimum(0)
-        self.sliderZ.setMaximum(shape[2])
-        self.sliderZ.setTickInterval(1)
-        self.sliderZ.setSingleStep(1)
-        self.sliderZ.setValue(Z)
+        setSliderUp(self.sliderZ, minimum=0, maximum=shape[2], tickInterval=1, singleStep=1, value=Z)
 
         #grid layout
         layout = QtWidgets.QGridLayout()

@@ -59,10 +59,7 @@ class Form2(QtWidgets.QDialog):
         self.arrayImportPath = "None"
 
         #window geometry
-        self.left = 300
-        self.top = 300
-        self.width = 600
-        self.height = 400
+        windowGeometry(self, left=300, top=300, height=600, width=400)
 
         self.slicesPerVolume = self.s['slicesPerVolume']
         self.baselineValue = self.s['baselineValue']
@@ -149,15 +146,10 @@ class Form2(QtWidgets.QDialog):
             self.SpinBox12.setValue(self.viewer.getNVols())
 
 
-
         #sliders
         self.slider1 = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.slider1.setFocusPolicy(QtCore.Qt.StrongFocus)
-        self.slider1.setTickPosition(QtWidgets.QSlider.TicksBothSides)
-        self.slider1.setMinimum(0)
-        self.slider1.setMaximum(self.viewer.getNFrames())
-        self.slider1.setTickInterval(1)
-        self.slider1.setSingleStep(1)
+        setSliderUp(self.slider1, minimum=0, maximum=self.viewer.getNFrames(), tickInterval=1, singleStep=1, value=0)
+
 
         #ComboBox
         self.dTypeSelectorBox = QtWidgets.QComboBox()
