@@ -5,17 +5,17 @@ from skimage.transform import rescale
 #import matplotlib.pyplot as plt
 #from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
-
+from flika import global_vars as g
 
 ##############       Helper functions        ###########################################
 
+#============GUI SETUP===========================================================
 def windowGeometry(instance, left=300, top=300, height=600, width=400):
     instance.left = left
     instance.top = top
     instance.height = height
     instance.width = width
     return
-
 
 def setSliderUp(slider, minimum=0, maximum=100, tickInterval=1, singleStep=1, value=0):
     slider.setFocusPolicy(QtCore.Qt.StrongFocus)
@@ -34,11 +34,11 @@ def setMenuUp(menuItem,menu,shortcut='Ctrl+X',statusTip='Exit',connection=None):
     menuItem.triggered.connect(connection)
     menu.addAction(menuItem)
     return
+#=================================================================================
 
 def get_transformation_matrix(theta=45):
     """
     theta is the angle of the light sheet
-    Look at the pdf in this folder.
     """
 
     theta = theta/360 * 2 * np.pi # in radians
@@ -126,20 +126,11 @@ def getCorners(vol):
 
 def getDimensions(vol):
     z,x,y = vol.nonzero()
-    z_min = np.min(z)
-    z_max = np.max(z)
-    x_min = np.min(x)
-    x_max = np.max(x)
-    y_min = np.min(y)
-    y_max = np.max(y)
-    return x_min,x_max,y_min,y_max,z_min,z_max
+    return np.min(x),np.max(x),np.min(y),np.max(y),np.min(z),np.max(z)
 
 def getMaxDimension(vol):
     z,x,y = vol.nonzero()
-    z_max = np.max(z)
-    x_max = np.max(x)
-    y_max = np.max(y)
-    return np.max([x_max,y_max,z_max])
+    return np.max([np.max(x),np.max(y),np.max(z)])
 
 def plot_cube(ax, cube_definition):
     cube_definition_array = [

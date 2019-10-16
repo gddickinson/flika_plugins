@@ -115,13 +115,13 @@ class SliceViewer(BaseProcess):
         self.dock7 = Dock("Quick Buttons",size=(50,50))
 
         #add docks to area
-        self.area.addDock(self.dock1, 'left')              ## place d1 at left edge of dock area
-        self.area.addDock(self.dock2, 'right')             ## place d2 at right edge of dock area
-        self.area.addDock(self.dock3, 'bottom', self.dock1)   ## place d3 at bottom edge of d1
-        self.area.addDock(self.dock4, 'bottom', self.dock2)   ## place d4 at bottom edge of d2
-        self.area.addDock(self.dock5, 'bottom')            ## place d4 at bottom edge of d2
-        self.area.addDock(self.dock6, 'below', self.dock4)    ## tab below d4
-        self.area.addDock(self.dock7, 'right', self.dock5)  
+        self.area.addDock(self.dock1, 'left')                   ## place d1 at left edge of dock area
+        self.area.addDock(self.dock2, 'right')                  ## place d2 at right edge of dock area
+        self.area.addDock(self.dock3, 'bottom', self.dock1)     ## place d3 at bottom edge of d1
+        self.area.addDock(self.dock4, 'bottom', self.dock2)     ## place d4 at bottom edge of d2
+        self.area.addDock(self.dock5, 'bottom')                 ## place d4 at bottom edge of d2
+        self.area.addDock(self.dock6, 'below', self.dock4)      ## tab below d4
+        self.area.addDock(self.dock7, 'right', self.dock5)      ## d7 right of d5
 
         #initialise image widgets
         self.imv1 = pg.ImageView()
@@ -208,16 +208,16 @@ class SliceViewer(BaseProcess):
         setMenuUp(self.overlayArrayWin,self.fileMenu5,shortcut=None,statusTip='Overlay Options',connection=self.overlayOptions)         
         
         self.overlayScale_win1 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (Top)')
-        setMenuUp(self.overlayScale_win1,self.fileMenu5,shortcut=None,statusTip='Overlay Scale Bar',connection=self.overlayScaleOptions_win1)
+        setMenuUp(self.overlayScale_win1,self.fileMenu5,shortcut=None,statusTip='Overlay Scale Bar',connection=(lambda: self.overlayScaleOptions(1)))  
         
         self.overlayScale_win2 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (Y)')
-        setMenuUp(self.overlayScale_win2,self.fileMenu5,shortcut=None,statusTip='Overlay Scale Bar',connection=self.overlayScaleOptions_win2)              
+        setMenuUp(self.overlayScale_win2,self.fileMenu5,shortcut=None,statusTip='Overlay Scale Bar',connection=(lambda: self.overlayScaleOptions(2)))               
         
         self.overlayScale_win3 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (X)')
-        setMenuUp(self.overlayScale_win3,self.fileMenu5,shortcut=None,statusTip='Overlay Scale Bar',connection=self.overlayScaleOptions_win3)
+        setMenuUp(self.overlayScale_win3,self.fileMenu5,shortcut=None,statusTip='Overlay Scale Bar',connection=(lambda: self.overlayScaleOptions(3)))  
 
         self.overlayScale_win6 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (Z)')
-        setMenuUp(self.overlayScale_win6,self.fileMenu5,shortcut=None,statusTip='Overlay Scale Bar',connection=self.overlayScaleOptions_win6)        
+        setMenuUp(self.overlayScale_win6,self.fileMenu5,shortcut=None,statusTip='Overlay Scale Bar',connection=(lambda: self.overlayScaleOptions(6)))     
         #================================================================================================================
         self.fileMenu6 = self.menubar.addMenu('&Filters')
         
@@ -232,7 +232,7 @@ class SliceViewer(BaseProcess):
 
         #add time slider
         self.slider1 = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        setSliderUp(self.slider1, minimum=0, maximum=self.nVols, tickInterval=1, singleStep=1, value=0)
+        setSliderUp(self.slider1, minimum=0, maximum=self.nVols-1, tickInterval=1, singleStep=1, value=0)
         self.dock5.addWidget(self.slider1)
 
         #add buttons to 'quick button' dock
@@ -317,20 +317,20 @@ class SliceViewer(BaseProcess):
         self.imv6.setImage(self.data)
 
         #connect roi updates
-        self.roi1.sigRegionChanged.connect(self.update)
-        self.roi2.sigRegionChanged.connect(self.update_2)
-        self.roi3.sigRegionChanged.connect(self.update_3)
+        self.roi1.sigRegionChanged.connect(lambda: self.update(1))
+        self.roi2.sigRegionChanged.connect(lambda: self.update(2))
+        self.roi3.sigRegionChanged.connect(lambda: self.update(3))
 
-        self.imv6.sigTimeChanged.connect(self.update_6)
+        self.imv6.sigTimeChanged.connect(lambda: self.update(6))
 
         self.roi2.sigRegionChangeFinished.connect(self.update_center_fromLines)
         self.roi3.sigRegionChangeFinished.connect(self.update_center_fromLines)        
         self.roiCenter.sigRegionChanged.connect(self.update_center)
 
         #initial update to populate roi windows
-        self.update()
-        self.update_2()
-        self.update_3()
+        self.update(1)
+        self.update(2)
+        self.update(3)
 
         #autolevel roi windows (not main) at start
         for imv in self.imageWidgits[1:]:
@@ -341,7 +341,7 @@ class SliceViewer(BaseProcess):
         #initialize time index for z-slice
         self.index6 = 0        
         #correct roi4 position
-        self.update_6()
+        self.update(6)
         
         self.OverlayLUT = 'inferno'
         self.OverlayMODE = QtGui.QPainter.CompositionMode_SourceOver
@@ -382,44 +382,45 @@ class SliceViewer(BaseProcess):
 
 
     #define update calls for each roi
-    def update(self):
-        levels = self.imv4.getHistogramWidget().getLevels()
-        self.d1 = self.roi1.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2))
-        self.imv4.setImage(self.d1, autoRange=False, autoLevels=False, levels=levels)
-        
-        if self.overlayFlag:
-            self.runOverlayUpdate(1)
-            self.runOverlayUpdate(4)            
+    def update(self, win):
+        if win ==1:
+            levels = self.imv4.getHistogramWidget().getLevels()
+            self.d1 = self.roi1.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2))
+            self.imv4.setImage(self.d1, autoRange=False, autoLevels=False, levels=levels)
+            
+            if self.overlayFlag:
+                self.runOverlayUpdate(1)
+                self.runOverlayUpdate(4)            
 
-    def update_2(self):
-        levels = self.imv2.getHistogramWidget().getLevels()
-        self.d2 = np.rot90(self.roi2.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2)), axes=(1,0))
-        self.imv2.setImage(self.d2, autoRange=False, autoLevels=False, levels=levels)
-        self.roi2b.setPos(self.roi2.pos(), finish=False)
-        self.roi2c.setPos(self.roi2.pos(), finish=False)    
-        
-        if self.overlayFlag:
-            self.runOverlayUpdate(2)
+        elif win ==2:
+            levels = self.imv2.getHistogramWidget().getLevels()
+            self.d2 = np.rot90(self.roi2.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2)), axes=(1,0))
+            self.imv2.setImage(self.d2, autoRange=False, autoLevels=False, levels=levels)
+            self.roi2b.setPos(self.roi2.pos(), finish=False)
+            self.roi2c.setPos(self.roi2.pos(), finish=False)    
+            
+            if self.overlayFlag:
+                self.runOverlayUpdate(2)
 
-    def update_3(self):
-        levels = self.imv3.getHistogramWidget().getLevels()
-        self.d3 = self.roi3.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2))
-        self.imv3.setImage(self.d3, autoRange=False, autoLevels=False, levels=levels)
-        self.roi3b.setPos(self.roi3.pos(),finish=False)
-        self.roi3c.setPos(self.roi3.pos(),finish=False) 
-        
-        if self.overlayFlag:
-            self.runOverlayUpdate(3)
+        elif win ==3:
+            levels = self.imv3.getHistogramWidget().getLevels()
+            self.d3 = self.roi3.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2))
+            self.imv3.setImage(self.d3, autoRange=False, autoLevels=False, levels=levels)
+            self.roi3b.setPos(self.roi3.pos(),finish=False)
+            self.roi3c.setPos(self.roi3.pos(),finish=False) 
+            
+            if self.overlayFlag:
+                self.runOverlayUpdate(3)
 
-    def update_6(self):
-        #self.index6 = self.imv6.currentIndex
-        roi4_x, roi4_y = self.roi4.pos()
-        roi5_x, roi5_y = self.roi5.pos()
-        self.roi4.setPos((roi4_x, self.imv2.imageItem.height()-self.imv6.currentIndex)) #check this is starting at right end
-        self.roi5.setPos((self.imv6.currentIndex, roi5_y))
-
-        if self.overlayFlag:
-            self.runOverlayUpdate(6)
+        elif win ==6:
+            #self.index6 = self.imv6.currentIndex
+            roi4_x, roi4_y = self.roi4.pos()
+            roi5_x, roi5_y = self.roi5.pos()
+            self.roi4.setPos((roi4_x, self.imv2.imageItem.height()-self.imv6.currentIndex)) #check this is starting at right end
+            self.roi5.setPos((self.imv6.currentIndex, roi5_y))
+    
+            if self.overlayFlag:
+                self.runOverlayUpdate(6)
 
     def update_center_fromLines(self):
         #move center roi after cursor lines moved
@@ -439,10 +440,8 @@ class SliceViewer(BaseProcess):
             return
 
     def updateAllMainWins(self):
-        self.update()
-        self.update_2()
-        self.update_3()
-        self.update_6()
+        for win in [1,2,3,6]:
+            self.update(win)
         self.update_center()
 
     #connect time slider
@@ -460,10 +459,8 @@ class SliceViewer(BaseProcess):
         self.imv1.setImage(self.maxProjection(self.data),autoRange=False, levels=levels1)
         self.imv6.setImage(self.data,autoRange=False, levels=levels6)
         self.imv6.setCurrentIndex(self.index6)
-        self.update()
-        self.update_2()
-        self.update_3()
-        self.update_6()
+        for win in [1,2,3,6]:
+            self.update(win)
         return
 
     def reset_layout(self):
@@ -555,8 +552,8 @@ class SliceViewer(BaseProcess):
 
     def close(self):
         self.roi1.sigRegionChanged.disconnect(self.update)
-        self.roi2.sigRegionChanged.disconnect(self.update_2)
-        self.roi3.sigRegionChanged.disconnect(self.update_3)
+        self.roi2.sigRegionChanged.disconnect(self.update)
+        self.roi3.sigRegionChanged.disconnect(self.update)
         
         for imv in self.imageWidgits:
             imv.close()
@@ -805,7 +802,6 @@ class SliceViewer(BaseProcess):
         return
 
 
-
     def updateOverlayLevels(self):
         self.levels_1 = self.bgItem_imv1.getLevels()
         self.levels_2 = self.bgItem_imv2.getLevels()   
@@ -847,8 +843,6 @@ class SliceViewer(BaseProcess):
         for winNumber in [1,2,3,4,6]:
             self.runOverlayUpdate(winNumber)
         
-
-
     def setOverlayLUT(self, lut):
         self.OverlayLUT = lut
 
@@ -875,38 +869,30 @@ class SliceViewer(BaseProcess):
         #add sliceable data to side window
         self.imv6.setImage(self.data)
         #update to populate roi windows
-        self.update()
-        self.update_2()
-        self.update_3() 
+        self.update(1)
+        self.update(2)
+        self.update(3) 
         #self.update_4() 
         #correct roi4 position
-        self.update_6()
+        self.update(6)
 
 
-    def overlayScaleOptions_win1(self):
-        scale_bar_1=Scale_Bar_volumeView(self.imv1, self.imv1.image.shape[1], self.imv1.image.shape[0])
-        scale_bar_1.gui()
-        return
-
-    def overlayScaleOptions_win2(self):
-        scale_bar_2=Scale_Bar_volumeView(self.imv2, self.imv2.image.shape[1], self.imv2.image.shape[0])
-        scale_bar_2.gui()
-        return
-    
-    def overlayScaleOptions_win3(self):
-        scale_bar_3=Scale_Bar_volumeView(self.imv3, self.imv3.image.shape[1], self.imv3.image.shape[0])
-        scale_bar_3.gui()
-        return
-
-    def overlayScaleOptions_win4(self):
-        scale_bar_4=Scale_Bar_volumeView(self.imv4, self.imv4.image.shape[1], self.imv4.image.shape[0])
-        scale_bar_4.gui()
-        return
-
-    
-    def overlayScaleOptions_win6(self):
-        scale_bar_6=Scale_Bar_volumeView(self.imv6, self.imv6.image.shape[1], self.imv6.image.shape[0])
-        scale_bar_6.gui()
+    def overlayScaleOptions(self, win):
+        if win == 1:
+            scale_bar_1=Scale_Bar_volumeView(self.imv1, self.imv1.image.shape[1], self.imv1.image.shape[0])
+            scale_bar_1.gui()
+        elif win == 2:
+            scale_bar_2=Scale_Bar_volumeView(self.imv2, self.imv2.image.shape[1], self.imv2.image.shape[0])
+            scale_bar_2.gui()    
+        elif win == 3:
+            scale_bar_3=Scale_Bar_volumeView(self.imv3, self.imv3.image.shape[1], self.imv3.image.shape[0])
+            scale_bar_3.gui()
+        elif win == 4:
+            scale_bar_4=Scale_Bar_volumeView(self.imv4, self.imv4.image.shape[1], self.imv4.image.shape[0])
+            scale_bar_4.gui()    
+        elif win == 6:
+            scale_bar_6=Scale_Bar_volumeView(self.imv6, self.imv6.image.shape[1], self.imv6.image.shape[0])
+            scale_bar_6.gui()
         return
 
     def quickOverlay(self):
@@ -942,16 +928,16 @@ class exportDialog_win(QtWidgets.QDialog):
         windowGeometry(self, left=300, top=300, height=300, width=200)
 
         #buttons
-        self.button1 = QtWidgets.QPushButton("Export Z view")
-        self.button2 = QtWidgets.QPushButton("Export X view")
-        self.button3 = QtWidgets.QPushButton("Export Y view")
+        self.buttonZ = QtWidgets.QPushButton("Export Z view")
+        self.buttonX = QtWidgets.QPushButton("Export X view")
+        self.buttonY = QtWidgets.QPushButton("Export Y view")
 
         #grid layout
         layout = QtWidgets.QGridLayout()
         layout.setSpacing(5)
-        layout.addWidget(self.button1, 0, 0)
-        layout.addWidget(self.button2, 1, 0)
-        layout.addWidget(self.button3, 2, 0)
+        layout.addWidget(self.buttonZ, 0, 0)
+        layout.addWidget(self.buttonX, 1, 0)
+        layout.addWidget(self.buttonY, 2, 0)
 
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -960,21 +946,18 @@ class exportDialog_win(QtWidgets.QDialog):
         self.setWindowTitle("Export Options")
 
         #connect buttons
-        self.button1.clicked.connect(self.exportZ)
-        self.button2.clicked.connect(self.exportX)
-        self.button3.clicked.connect(self.exportY)
+        self.buttonZ.clicked.connect(lambda: self.export('Z'))
+        self.buttonX.clicked.connect(lambda: self.export('X'))
+        self.buttonY.clicked.connect(lambda: self.export('Y'))
         return
 
-    def exportZ(self):
-        self.z_displayWindow = Window(self.viewer.viewer.getZWin(),'Z view')
-        return
-
-    def exportX(self):
-        self.x_displayWindow = Window(self.viewer.viewer.getXWin(),'X view')
-        return
-
-    def exportY(self):
-        self.y_displayWindow = Window(self.viewer.viewer.getYWin(),'Y view')
+    def export(self, axis):
+        if axis == 'Z':
+            self.z_displayWindow = Window(self.viewer.viewer.getZWin(),'Z view')
+        elif axis == 'X':
+            self.x_displayWindow = Window(self.viewer.viewer.getXWin(),'X view')
+        elif axis == 'Y':
+            self.y_displayWindow = Window(self.viewer.viewer.getYWin(),'Y view')
         return
 
 
