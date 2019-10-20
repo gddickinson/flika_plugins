@@ -90,7 +90,7 @@ class OverlayOptions(QtWidgets.QDialog):
 
         #checkboxes
         self.linkCheck = QtWidgets.QCheckBox()
-        self.linkCheck.setChecked(True)
+        self.linkCheck.setChecked(self.viewer.viewer.histogramsLinked)
         self.linkCheck.stateChanged.connect(self.linkCheckValueChange)
         
         #labels
