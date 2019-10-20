@@ -169,7 +169,10 @@ class SliceViewer(BaseProcess):
         setMenuUp(self.hideCursors,self.fileMenu1,shortcut=None,statusTip='Hide Cursors',connection=self.hide_cursors)         
 
         self.showCursors = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Show Cursors')
-        setMenuUp(self.showCursors,self.fileMenu1,shortcut=None,statusTip='Show Cursors',connection=self.show_cursors)                  
+        setMenuUp(self.showCursors,self.fileMenu1,shortcut=None,statusTip='Show Cursors',connection=self.show_cursors)   
+
+        self.winOptions = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Window Options')
+        setMenuUp(self.winOptions,self.fileMenu1,shortcut=None,statusTip='Window Options',connection=self.win_options)                 
         #================================================================================================================
         self.fileMenu2 = self.menubar.addMenu('&3D Plot')
 
@@ -183,7 +186,7 @@ class SliceViewer(BaseProcess):
         self.fileMenu3 = self.menubar.addMenu('&Texture Plot')
         
         self.texturePlot = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Texture Plot')
-        setMenuUp(self.texturePlot,self.fileMenu3,shortcut=None,statusTip='Texture Plot',connection=self.plotTexture) 
+        setMenuUp(self.texturePlot,self.fileMenu3,shortcut=None,statusTip='Texture Plot',connection=(lambda: self.plotTexture())) 
 
         self.texturePlotControl = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Texture Plot Control')
         setMenuUp(self.texturePlotControl,self.fileMenu3,shortcut=None,statusTip='Texture Plot Control',connection=self.plotTexture_control)
@@ -377,8 +380,6 @@ class SliceViewer(BaseProcess):
         self.imv1.getHistogramWidget().item.sigLevelsChanged.connect(self.setMainLevels)
         self.imv1.getHistogramWidget().item.sigLookupTableChanged.connect(self.setMainLUTs)        
         self.histogramsLinked = True
-
-
 
 
     #define update calls for each roi
@@ -594,14 +595,17 @@ class SliceViewer(BaseProcess):
         self.viewer.exportArray(vol=self.currentVolume)
         return
 
-    def getXWin(self):
-        return self.data.swapaxes(0,1)
-
-    def getYWin(self):
-        return self.data.swapaxes(2,0)
-
-    def getZWin(self):
-        return self.data.swapaxes(1,2)
+    def getWin(self,win):
+        if win == 'X':
+            return self.data.swapaxes(0,1)
+        elif win =='Y':
+            return self.data.swapaxes(2,0)
+        elif win =='Z':
+            return self.data.swapaxes(1,2)
+        elif win =='Top':
+            return self.data
+       # elif win =='Free':
+       #     return self.roi3.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2))
 
     def mouseMoved(self, point, imv):
         '''mouseMoved(self,point)
@@ -917,6 +921,12 @@ class SliceViewer(BaseProcess):
         self.gaussianDialogWin = gaussianDialog_win(self.viewer)
         self.gaussianDialogWin.show()
         return
+
+
+    def win_options(self):
+        self.optionsDialogWin = optionsDialog_win(self.viewer)
+        self.optionsDialogWin.show()
+        return        
     
 class exportDialog_win(QtWidgets.QDialog):
     def __init__(self, viewerInstance, parent = None):
@@ -928,16 +938,20 @@ class exportDialog_win(QtWidgets.QDialog):
         windowGeometry(self, left=300, top=300, height=300, width=200)
 
         #buttons
+        self.buttonTop = QtWidgets.QPushButton("Export Top view")        
         self.buttonZ = QtWidgets.QPushButton("Export Z view")
         self.buttonX = QtWidgets.QPushButton("Export X view")
         self.buttonY = QtWidgets.QPushButton("Export Y view")
+        #self.buttonFree = QtWidgets.QPushButton("Export Free view")        
 
         #grid layout
         layout = QtWidgets.QGridLayout()
         layout.setSpacing(5)
-        layout.addWidget(self.buttonZ, 0, 0)
+        layout.addWidget(self.buttonTop, 0, 0)        
         layout.addWidget(self.buttonX, 1, 0)
         layout.addWidget(self.buttonY, 2, 0)
+        layout.addWidget(self.buttonZ, 3, 0)
+        #layout.addWidget(self.buttonFree, 4, 0)        
 
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -946,20 +960,47 @@ class exportDialog_win(QtWidgets.QDialog):
         self.setWindowTitle("Export Options")
 
         #connect buttons
+        self.buttonTop.clicked.connect(lambda: self.export('Top'))        
         self.buttonZ.clicked.connect(lambda: self.export('Z'))
         self.buttonX.clicked.connect(lambda: self.export('X'))
         self.buttonY.clicked.connect(lambda: self.export('Y'))
+        #self.buttonFree.clicked.connect(lambda: self.export('Free'))        
         return
 
     def export(self, axis):
-        if axis == 'Z':
-            self.z_displayWindow = Window(self.viewer.viewer.getZWin(),'Z view')
-        elif axis == 'X':
-            self.x_displayWindow = Window(self.viewer.viewer.getXWin(),'X view')
-        elif axis == 'Y':
-            self.y_displayWindow = Window(self.viewer.viewer.getYWin(),'Y view')
+        self.displayWindow = Window(self.viewer.viewer.getWin(axis),'{} view'.format(axis))             
         return
 
+class optionsDialog_win(QtWidgets.QDialog):
+    def __init__(self, viewerInstance, parent = None):
+        super(optionsDialog_win, self).__init__(parent)
+
+        self.viewer = viewerInstance
+        
+        #window geometry
+        windowGeometry(self, left=300, top=300, height=300, width=200)
+        
+        #checkboxes
+        self.linkCheck = QtWidgets.QCheckBox()
+        self.linkCheck.setChecked(self.viewer.viewer.histogramsLinked)
+        self.linkCheck.stateChanged.connect(self.linkCheckValueChange)   
+        
+        #labels
+        self.labelLinkCheck = QtWidgets.QLabel("Link Histogram Sliders") 
+        
+        #grid layout
+        layout = QtWidgets.QGridLayout()
+        layout.setSpacing(5)
+        layout.addWidget(self.labelLinkCheck, 1, 0)    
+        layout.addWidget(self.linkCheck, 1, 1) 
+        self.setLayout(layout)
+
+        #add window title
+        self.setWindowTitle("Window Options")        
+        
+    def linkCheckValueChange(self, value):
+        self.viewer.viewer.histogramsLinked = value
+        return
 
 class gaussianDialog_win(QtWidgets.QDialog):
     def __init__(self, viewerInstance, parent = None):

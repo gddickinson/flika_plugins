@@ -46,7 +46,7 @@ from matplotlib import cm
 #########################################################################################
 class plotTexture(QtWidgets.QDialog):
     def __init__(self, data, parent = None):
-        super(plotTexture, self).__init__(parent)
+        super(plotTexture, self).__init__()
 
         self.data = data
 
@@ -78,7 +78,8 @@ class plotTexture(QtWidgets.QDialog):
             pass
         tex1 = pg.makeRGBA(self.data[self.slice1], levels=self.levels)[0]       # yz plane
         self.v1 = gl.GLImageItem(tex1)
-        self.v1.translate(-self.slice2, -self.slice3, 0)
+        #self.v1.translate(-self.slice2, -self.slice3, int(self.shape[0]/2)-self.slice1)
+        self.v1.translate(-self.slice2, -self.slice3, int(self.shape[0]/2)-self.slice1)        
         self.v1.rotate(90, 0,0,1)
         self.v1.rotate(-90, 0,1,0)
         self.w.addItem(self.v1)
@@ -91,7 +92,8 @@ class plotTexture(QtWidgets.QDialog):
             pass
         tex2 = pg.makeRGBA(self.data[:,self.slice2], levels=self.levels)[0]     # xz plane
         self.v2 = gl.GLImageItem(tex2)
-        self.v2.translate(-self.slice1, -self.slice3, 0)
+        #self.v2.translate(-self.slice1, -self.slice3, int(self.shape[1]/2)-self.slice2)
+        self.v2.translate(-self.slice1, -self.slice3, -int(self.shape[1]/2)+self.slice2)        
         self.v2.rotate(-90, 1,0,0)
         self.w.addItem(self.v2)
         return
@@ -103,7 +105,8 @@ class plotTexture(QtWidgets.QDialog):
             pass
         tex3 = pg.makeRGBA(self.data[:,:,self.slice3], levels=self.levels)[0]   # xy plane
         self.v3 = gl.GLImageItem(tex3)
-        self.v3.translate(-self.slice1, -self.slice2, 0)
+        #self.v3.translate(-self.slice1, -self.slice2, int(self.shape[2]/2)-self.slice3)
+        self.v3.translate(-self.slice1, -self.slice2, 0)        
         self.w.addItem(self.v3)
         return
 
@@ -143,12 +146,20 @@ class textureDialog_win(QtWidgets.QDialog):
         self.sliderZ = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         setSliderUp(self.sliderZ, minimum=0, maximum=shape[2], tickInterval=1, singleStep=1, value=Z)
 
+        #labels
+        self.label_X = QtWidgets.QLabel("X:")
+        self.label_Y = QtWidgets.QLabel("Y:")
+        self.label_Z = QtWidgets.QLabel("Z:")
+
         #grid layout
         layout = QtWidgets.QGridLayout()
         layout.setSpacing(5)
-        layout.addWidget(self.sliderX, 0, 0)
-        layout.addWidget(self.sliderY, 1, 0)
-        layout.addWidget(self.sliderZ, 2, 0)
+        layout.addWidget(self.label_X, 0, 0)
+        layout.addWidget(self.label_Y, 1, 0)
+        layout.addWidget(self.label_Z, 2, 0)   
+        layout.addWidget(self.sliderX, 0, 1)
+        layout.addWidget(self.sliderY, 1, 1)
+        layout.addWidget(self.sliderZ, 2, 1)
 
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
