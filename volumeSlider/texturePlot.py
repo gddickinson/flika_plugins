@@ -95,6 +95,7 @@ class plotTexture(QtWidgets.QDialog):
         #self.v2.translate(-self.slice1, -self.slice3, int(self.shape[1]/2)-self.slice2)
         self.v2.translate(-self.slice1, -self.slice3, -int(self.shape[1]/2)+self.slice2)        
         self.v2.rotate(-90, 1,0,0)
+        #self.v2.scale(-1, 1, 1, local=False) #fliplr
         self.w.addItem(self.v2)
         return
 
