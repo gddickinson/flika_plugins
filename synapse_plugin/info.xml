@@ -1,0 +1,16 @@
+<plugin name="Synapse">
+	<author>
+		Brett Settle (adapted by George Dickinson)
+	</author>
+	<directory>
+		synapse_plugin
+	</directory>
+	<version>
+		2019.10.26
+	</version>
+	<url>
+	</url>
+	<menu_layout>
+		<action location="synapse_Start" function="synapseStart.gui">synapse</action>
+	</menu_layout>
+</plugin>
