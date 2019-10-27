@@ -6,6 +6,9 @@
 """
 from .Tools import *
 from .ROIs import *
+import flika
+from flika import global_vars as g
+from flika.window import Window
 
 class DataWidget(pg.TableWidget):
 	__name__ = "Data Widget"
@@ -268,6 +271,7 @@ class ROIViewBox(pg.ViewBox):
 		pos = self.mapToView(pos)
 		self.mouse_x = pos.x()
 		self.mouse_y = pos.y()
+		g.m.statusBar().showMessage('x={}, y={}'.format(int(self.mouse_x),int(self.mouse_y)))
 
 	def clear_rois(self):
 		for roi in self.addedItems[::-1]:
