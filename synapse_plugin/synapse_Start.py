@@ -6,14 +6,14 @@ from flika.window import Window
 from flika.utils.io import tifffile
 from flika.utils.misc import open_file_gui
 import pyqtgraph as pg
-import time
-import os
-from os import listdir
-from os.path import expanduser, isfile, join
+#import time
+#import os
+#from os import listdir
+#from os.path import expanduser, isfile, join
 from distutils.version import StrictVersion
 
-import pyqtgraph.opengl as gl
-from OpenGL.GL import *
+#import pyqtgraph.opengl as gl
+#from OpenGL.GL import *
 from qtpy.QtCore import Signal
 
 flika_version = flika.__version__
@@ -26,6 +26,7 @@ from .BioDocks import *
 #from Channels import *
 #from ClusterMath import *
 from .Synapse3D import *
+from .Synapse import *
 
 #########################################################################################
 #############          FLIKA Base Menu             #####################################
@@ -39,7 +40,7 @@ class SynapseStart(BaseProcess_noPriorWindow):
     def __init__(self):
         if g.settings['synapse'] is None:
             s = dict() 
-            s['version'] = '3D'                        
+            s['version'] = 'synapse3D'                        
                             
             g.settings['synapse'] = s
                 
@@ -50,15 +51,14 @@ class SynapseStart(BaseProcess_noPriorWindow):
 
         g.m.statusBar().showMessage("Starting Synapse...")
         
-        if version == '3D':
-            #start 3D GUI
+        if version == 'synapse3D':
+            #start synapse3D GUI
             self.synapse3D_app = Synapse3D()
             self.synapse3D_app.start()
-        elif inputChoice == '2D':
-            #start 2D GUI
-            self.synapse3D_app = Synapse3D()
-            self.synapse3D_app.start()
-            
+        elif version == 'synapse':
+            #start synapse GUI
+            self.synapse_app = Synapse()
+            self.synapse_app.start()            
         return
 
     def closeEvent(self, event):
@@ -69,8 +69,8 @@ class SynapseStart(BaseProcess_noPriorWindow):
                        
         #combobox
         versionChoice = ComboBox()
-        versionChoice.addItem('3D')
-        versionChoice.addItem('2D')
+        versionChoice.addItem('synapse3D')
+        versionChoice.addItem('synapse')
                          
         #populate GUI
         self.items.append({'name': 'version', 'string': 'Choose Version:', 'object': versionChoice})                                    

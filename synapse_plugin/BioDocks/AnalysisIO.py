@@ -192,10 +192,14 @@ def importDictionary(filename='', mode='columns'):
 	elif mode == 'rows':
 		return [dict(zip(keys, i)) for i in data]
 
-def importFile(filename, delimiter="\t", columns=[]):
+def importFile(filename, delimiter="\t", columns=[], evaluateLines=True):
 	'''read info from a file, into a list of columns (specified by args) or dictionaries (specified by kargs)'''
 	data = []
-	lines = [[evaluate(i) for i in line.split(delimiter)] for line in open(filename, 'r')]
+	if evaluateLines: 
+		lines = [[evaluate(i) for i in line.split(delimiter)] for line in open(filename, 'r')]
+	else:
+		lines = [[i for i in line.split(delimiter)] for line in open(filename, 'r')]        
+
 	if len(columns) == 0: # no columns given, return data as it is read from file
 		return lines
 	else:

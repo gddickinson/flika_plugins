@@ -102,7 +102,7 @@ class Synapse3D(BaseProcess):
     		print('Must select exactly 2 channels to calculate distance. Ignoring ROI %d' % roi.id)
     	self.displayData()
     
-    def plotROIChannels(self,roi):
+    def plotROIChannels(self,roi):      
     	if not self.synapseDock.isVisible():
     		self.synapseDock.float()
     		self.synapseDock.window().setGeometry(20, 100, 500, 500)
@@ -127,12 +127,12 @@ class Synapse3D(BaseProcess):
     	if filename == '':
     		filename = getFilename(filter='Text Files (*.txt)')
     	self.clear()
-    	data = importFile(filename)
+    	data = importFile(filename,evaluateLines=False)
     	data = {d[0]: d[1:] for d in np.transpose(data)}
     	for k in data:
     		if k != 'Channel Name':
     			data[k] = data[k].astype(float)
-    	print('Gathering channels...')
+    	print('Gathering channels...')      
     	names = set(data['Channel Name'].astype(str)) - self.ignore
     	print('Channels Found: %s' % ', '.join(names))
     
