@@ -13,6 +13,10 @@ from qtpy.QtGui import *
 from qtpy import QtWidgets
 import xlrd, re, os
 import numpy as np
+import flika
+from flika import global_vars as g
+from flika.window import Window
+
 try:
 	from scipy.ndimage import imread
 except:
@@ -31,6 +35,21 @@ def export3DArray(fname, arr, header = '', fmt='%-7.2f'):
 		for sub in arr:
 			for row in sub:
 				outfile.write(['\t'.join([fmt % i for i in row])])
+
+def export3DArray_2(fname, arr, header = '', fmt='%-7.2f'):
+	with open(fname, 'w') as outfile:
+		outfile.write('%s\n' % header)
+		for sub in arr:   
+			sub = np.array2string(sub, separator='\t',formatter={'float_kind':lambda x: fmt % x}).replace("[", "").replace("]","")  
+			#sub = np.array2string(sub, precision=4, separator='\t',suppress_small=True).replace("[", "").replace("]","")                        
+			outfile.write('%s\n' % sub)
+
+
+def export_arr(arr, header = '', fmt='%-7.2f'):
+	savename = getSaveFilename()
+	export3DArray_2(savename, arr, header = header, fmt=fmt)
+	g.m.statusBar().showMessage('coordiates exported') #send completion message to flika
+	return
 
 def exportDictionaryList(filename, dict_list, delimiter="\t", order=None):
 	'''export a list of dictionaries with similar keys '''
@@ -62,7 +81,7 @@ def getSaveFilename(title='Save to file...', initial='', **args):
 	global last_dir
 	if initial != '':
 		last_dir = os.path.join(last_dir, initial) if "\\" not in initial else initial
-	savename = str(QtWidgets.QFileDialog.getSaveFileName(caption=title, directory = last_dir, **args))
+	savename = str(QtWidgets.QFileDialog.getSaveFileName(caption=title, directory = last_dir, **args)[0])
 	last_dir = os.path.dirname(savename)
 	return savename
 

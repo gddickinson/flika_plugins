@@ -271,7 +271,7 @@ class ROIViewBox(pg.ViewBox):
 		pos = self.mapToView(pos)
 		self.mouse_x = pos.x()
 		self.mouse_y = pos.y()
-		g.m.statusBar().showMessage('x={}, y={}'.format(int(self.mouse_x),int(self.mouse_y)))
+		g.m.statusBar().showMessage('x={}, y={}'.format(int(self.mouse_x),int(self.mouse_y))) #send positions to flika
 
 	def clear_rois(self):
 		for roi in self.addedItems[::-1]:

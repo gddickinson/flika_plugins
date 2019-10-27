@@ -7,7 +7,7 @@
 import os,sys
 from .BioDocks import *
 from .BioDocks.DockWindow import * 
-from .Channels import *
+from .BioDocks.AnalysisIO import *
 from pyqtgraph.dockarea import *
 from scipy.spatial import ConvexHull
 from collections import OrderedDict
@@ -88,7 +88,8 @@ class Synapse3D(BaseProcess):
     			roi.synapse_data['%s Volume (%s^3)' % (ch.__name__, self.unit_prefixes[self.unit])] = convex_volume(ch.getPoints(True))
     		else:
     			print('Cannot get Volume of %s in roi %d with %d points' % (ch.__name__, roi.id, ch.getCount()))
-    
+    			g.m.statusBar().showMessage('Cannot get Volume of %s in roi %d with %d points' % (ch.__name__, roi.id, ch.getCount())) 
+                
     	if hasattr(roi, 'mean_line'):
     		self.plotWidget.removeItem(roi.mean_line)
     
@@ -100,6 +101,7 @@ class Synapse3D(BaseProcess):
     	else:
     		del roi.synapse_data
     		print('Must select exactly 2 channels to calculate distance. Ignoring ROI %d' % roi.id)
+    		g.m.statusBar().showMessage('Must select exactly 2 channels to calculate distance. Ignoring ROI %d' % roi.id)            
     	self.displayData()
     
     def plotROIChannels(self,roi):      
@@ -132,9 +134,11 @@ class Synapse3D(BaseProcess):
     	for k in data:
     		if k != 'Channel Name':
     			data[k] = data[k].astype(float)
-    	print('Gathering channels...')      
+    	print('Gathering channels...')
+    	g.m.statusBar().showMessage('Gathering channels...')        
     	names = set(data['Channel Name'].astype(str)) - self.ignore
     	print('Channels Found: %s' % ', '.join(names))
+    	g.m.statusBar().showMessage('Channels Found: %s' % ', '.join(names))
     
     	data['Xc'] /= self.units[self.unit]
     	data['Yc'] /= self.units[self.unit]
@@ -224,7 +228,7 @@ class Synapse3D(BaseProcess):
         self.synapseWidget.load_file = self.open_file
         self.layout.addWidget(self.synapseWidget, 0, 0, 6, 6)
         self.export_synapse = QtWidgets.QPushButton('Export Coordinates')
-        self.export_synapse.pressed.connect(lambda : self.export_arr(self.synapseWidget.synapse.pos, header='X\tY\tZ'))
+        self.export_synapse.pressed.connect(lambda : export_arr(self.synapseWidget.synapse.pos, header='X\tY\tZ'))
         self.layout.addWidget(self.export_synapse, 6, 0)
         self.no_mesh = QtWidgets.QRadioButton('No Mesh', checked=True)
         self.no_mesh.pressed.connect(lambda : self.show_mesh(None))

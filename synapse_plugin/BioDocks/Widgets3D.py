@@ -28,11 +28,11 @@ class Plot3DWidget(gl.GLViewWidget):
 	def _make_menu(self):
 		menu = QtWidgets.QMenu(self.__name__)
 		fileMenu = menu.addMenu('&File')
-		fileMenu.addAction(QtGui.QAction('&Open', fileMenu, triggered=self.load_file))
+		fileMenu.addAction(QtWidgets.QAction('&Open', fileMenu, triggered=self.load_file))
 		itemsMenu = menu.addMenu('&Items')
 		for i in self.items:
 			itemsMenu.addMenu(i.menu)
-		menu.addAction(QtGui.QAction('&Clear Items', itemsMenu, triggered=self.clear))
+		menu.addAction(QtWidgets.QAction('&Clear Items', itemsMenu, triggered=self.clear))
 		if not self.addedMenu.isEmpty():
 			menu.addMenu(self.addedMenu)
 		return menu
@@ -40,7 +40,7 @@ class Plot3DWidget(gl.GLViewWidget):
 	def add_to_menu(self, item):
 		if isinstance(item, QtWidgets.QMenu):
 			self.addedMenu.addMenu(item)
-		elif isinstance(item, QtGui.QAction):
+		elif isinstance(item, QtWidgets.QAction):
 			self.addedMenu.addAction(item)
 
 	def contextMenuEvent(self, ev):
@@ -62,11 +62,11 @@ class Plot3DWidget(gl.GLViewWidget):
 
 	def make_menu_for(self, item):
 		item.menu = QtWidgets.QMenu(item.__name__)
-		item.menu.addAction(QtGui.QAction('Goto', item.menu, triggered=lambda : self.moveTo(item=item)))
-		item.menu.addAction(QtGui.QAction('Hide Item', item.menu, triggered=lambda f: item.setVisible(not f), checkable=True))
-		item.menu.addAction(QtGui.QAction('&Copy Data', item.menu, triggered=lambda : self.copy.emit(item.pos, "%s copy" % item.__name__)))
-		item.menu.addAction(QtGui.QAction('Properties', item.menu, triggered=lambda : self.editItem(item)))
-		item.menu.addAction(QtGui.QAction('&Remove', item.menu, triggered=lambda : self.removeItem(item)))
+		item.menu.addAction(QtWidgets.QAction('Goto', item.menu, triggered=lambda : self.moveTo(item=item)))
+		item.menu.addAction(QtWidgets.QAction('Hide Item', item.menu, triggered=lambda f: item.setVisible(not f), checkable=True))
+		item.menu.addAction(QtWidgets.QAction('&Copy Data', item.menu, triggered=lambda : self.copy.emit(item.pos, "%s copy" % item.__name__)))
+		item.menu.addAction(QtWidgets.QAction('Properties', item.menu, triggered=lambda : self.editItem(item)))
+		item.menu.addAction(QtWidgets.QAction('&Remove', item.menu, triggered=lambda : self.removeItem(item)))
 
 	def add_item_from_array(self, array, name=''):
 		if isinstance(array, (list, tuple, np.ndarray)):

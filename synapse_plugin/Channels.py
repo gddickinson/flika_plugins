@@ -4,6 +4,8 @@ import numpy as np
 from qtpy.QtGui import *
 from qtpy.QtWidgets import *
 
+from .BioDocks.AnalysisIO import *
+
 class ActivePoint():
 	def __init__(self, data):
 		self.pos = np.array([data['Xc'], data['Yc'], data['Zc']])
