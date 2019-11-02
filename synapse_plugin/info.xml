@@ -8,6 +8,24 @@
 	<version>
 		2019.10.26
 	</version>
+    <dependencies>
+		<dependency name='scipy.spatial'></dependency>
+ 		<dependency name='collections'></dependency>       
+		<dependency name='xlrd'></dependency>
+		<dependency name='struct'></dependency>
+		<dependency name='types'></dependency>
+		<dependency name='glob'></dependency>
+		<dependency name='zlib'></dependency>
+		<dependency name='warnings'></dependency>
+		<dependency name='datetime'></dependency>
+		<dependency name='fractions'></dependency>
+		<dependency name='xml'></dependency>
+		<dependency name='types'></dependency>        
+		<dependency name='math'></dependency>          
+		<dependency name='re'></dependency>   
+		<dependency name='difflib'></dependency>                
+	</dependencies>
+
 	<url>
 	</url>
 	<menu_layout>

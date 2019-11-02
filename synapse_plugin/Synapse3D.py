@@ -22,6 +22,9 @@ from flika.window import Window
 from distutils.version import StrictVersion
 import numpy as np
 
+from matplotlib import pyplot as plt
+from .dbscan import *
+
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
     from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, FileSelector
@@ -61,6 +64,11 @@ class Synapse3D(BaseProcess):
         
         self.Channels = []
         self.empty_channel = Channel('Empty', [], (1, 1, 1))
+        
+        #clustering option
+        self.eps = 400
+        self.min_samples = 10
+        self.plot = True
         
     def displayData(self):
     	self.dataWidget.setData(sorted([roi.synapse_data for roi in self.plotWidget.items() if \
@@ -195,12 +203,63 @@ class Synapse3D(BaseProcess):
     		if isinstance(i, Freehand):
     			i.delete()
 
+    def getHulls(self,points,labels):
+        n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+        hulls = []
+        centeroids = []
+        groupPoints = []
+        for i in range(n_clusters):
+            clusterPoints = points[labels==i]
+            groupPoints.append(clusterPoints) 
+            hulls.append(ConvexHull(clusterPoints).simplices)
+            centeroids.append(np.average(clusterPoints))  
+        return np.array(hulls), np.array(centeroids), np.array(groupPoints)
+
+    def plotHull(self,points,hull): 
+        plt.plot(points[:,0], points[:,1], 'o')          
+        for simplex in hull:
+            print(points[simplex, 0],points[simplex, 1])
+            plt.plot(points[simplex, 0], points[simplex, 1], 'k-')
+            plt.show()            
+                        
+    def createROI(self,hull):
+        #TODO
+        pass
+        
+    def getClusters(self):
+        ch1Points = self.Channels[0].getPoints(z=False)
+        ch2Points = self.Channels[1].getPoints(z=False)
+        #get cluster labels for each channel
+        print('--- channel 1 ---')
+        ch1_labels = dbscan(ch1Points, eps=self.eps, min_samples=self.min_samples, plot=False)
+        print('--- channel 2 ---')
+        ch2_labels = dbscan(ch2Points, eps=self.eps, min_samples=self.min_samples, plot=False)    
+        print('-----------------')
+        #get hulls for each channels clusters
+        ch1_hulls, ch1_centeroids, ch1_groupPoints = self.getHulls(ch1Points,ch1_labels)
+        print('number of channel 1 hulls: {}'.format(len(ch1_hulls)))
+        self.plotHull(ch1_groupPoints[0],ch1_hulls[0])
+        ch2_hulls, ch2_centeroids, ch2_groupPoints = self.getHulls(ch2Points,ch2_labels)
+        print('number of channel 2 hulls: {}'.format(len(ch2_hulls)))
+        #draw rois around each cluster (channel 2)        
+        #draw rois around nearest rois between channels
+        
+        #add rois between channels to synapse roi list
+        return
+
+    def clusterOptions(self):
+        self.clusterOptionDialog = ClusterOptions_win(self)
+        self.clusterOptionDialog.show()
+        return
+
     def start(self):        
         self.menu = self.win.menuBar()
         
         self.fileMenu =self. menu.addMenu('&File')
         self.fileMenu.addAction(QtWidgets.QAction('&Import Channels', self.fileMenu, triggered = lambda : self.open_file()))
         self.fileMenu.addAction(QtWidgets.QAction('&Close', self.fileMenu, triggered = self.win.close))
+        self.optionMenu =self. menu.addMenu('&Options')
+        self.optionMenu.addAction(QtWidgets.QAction('&Clustering', self.optionMenu, triggered = lambda : self.clusterOptions()))            
         
         self.plotWidget.getViewBox().roiCreated.connect(self.roiCreated)
         self.plotWidget.load_file = self.open_file
@@ -213,9 +272,12 @@ class Synapse3D(BaseProcess):
         self.show_ch1.pressed.connect(lambda : self.hide_channel(1))
         self.show_ch2 = QtWidgets.QRadioButton('Channel 2')
         self.show_ch2.pressed.connect(lambda : self.hide_channel(0))
+        self.getClusters_button = QtWidgets.QPushButton('Get Clusters')
+        self.getClusters_button.pressed.connect(lambda : self.getClusters())               
         self.layout.addWidget(self.show_all, 0, 0)
         self.layout.addWidget(self.show_ch1, 0, 1)
         self.layout.addWidget(self.show_ch2, 0, 2)
+        self.layout.addWidget(self.getClusters_button, 0, 3)        
         self.layout.addItem(QtWidgets.QSpacerItem(400, 20), 0, 3, 1, 8)
         
         self.plotWidget.__name__ = '2D Plotted Channels'
@@ -258,5 +320,62 @@ class Synapse3D(BaseProcess):
         
         self.win.show()
         #sys.exit(self.app.exec_())
+
+
+class ClusterOptions_win(QtWidgets.QDialog):
+    def __init__(self, viewerInstance, parent = None):
+        super(ClusterOptions_win, self).__init__(parent)
+
+        self.viewer = viewerInstance
+        self.eps  = self.viewer.eps
+        self.min_samples = self.viewer.min_samples
+        
+        #window geometry
+        self.left = 300
+        self.top = 300
+        self.width = 300
+        self.height = 200
+
+        #labels
+        self.label_eps = QtWidgets.QLabel("max distance between points:") 
+        self.label_minSamples = QtWidgets.QLabel("minimum number of points:") 
+        #self.label_displayPlot = QtWidgets.QLabel("show plot")         
+
+        #spinboxes
+        self.epsBox = QtWidgets.QSpinBox()
+        self.epsBox.setRange(0,10000)
+        self.epsBox.setValue(self.eps)
+        self.minSampleBox = QtWidgets.QSpinBox()    
+        self.minSampleBox.setRange(0,10000)
+        self.minSampleBox.setValue(self.min_samples)
+
+        #grid layout
+        layout = QtWidgets.QGridLayout()
+        layout.setSpacing(5)
+        layout.addWidget(self.label_eps, 0, 0)
+        layout.addWidget(self.epsBox, 0, 1)       
+        layout.addWidget(self.label_minSamples, 1, 0)        
+        layout.addWidget(self.minSampleBox, 1, 1)        
+
+        self.setLayout(layout)
+        self.setGeometry(self.left, self.top, self.width, self.height)
+
+        #add window title
+        self.setWindowTitle("Clustering Options")
+
+        #connect spinboxes
+        self.epsBox.valueChanged.connect(self.epsValueChange)
+        self.minSampleBox.valueChanged.connect(self.minSampleChange)  
+        
+    def epsValueChange(self,value):
+        self.epsBox = value
+        self.viewer.eps = self.epsBox
+        return
+    
+    def minSampleChange(self,value):
+        self.min_samples = value
+        self.viewer.min_samples = self.min_samples 
+        return
+        
 
 
