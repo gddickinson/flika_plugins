@@ -8,6 +8,7 @@ import os,sys
 from .BioDocks import *
 from .BioDocks.DockWindow import * 
 from .BioDocks.AnalysisIO import *
+from .BioDocks.Tools import *
 from pyqtgraph.dockarea import *
 from scipy.spatial import ConvexHull
 from collections import OrderedDict
@@ -210,7 +211,7 @@ class Synapse3D(BaseProcess):
         groupPoints = []
         for i in range(n_clusters):
             clusterPoints = points[labels==i]
-            groupPoints.append(clusterPoints) 
+            groupPoints.append(clusterPoints)           
             hulls.append(ConvexHull(clusterPoints).simplices)
             centeroids.append(np.average(clusterPoints))  
         return np.array(hulls), np.array(centeroids), np.array(groupPoints)
@@ -218,23 +219,19 @@ class Synapse3D(BaseProcess):
     def plotHull(self,points,hull): 
         plt.plot(points[:,0], points[:,1], 'o')          
         for simplex in hull:
-            print(points[simplex, 0],points[simplex, 1])
+            #print(points[simplex, 0],points[simplex, 1])
             plt.plot(points[simplex, 0], points[simplex, 1], 'k-')
             plt.show()            
                         
     def createROIFromHull(self,points, hull):
         '''add roi to display from hull points'''
-        print(points, type(points), points.shape)
-        print(hull, type(hull), hull.shape)
-        pointsList = []
-        pointsList2 = []        
+        pointsList = []     
         for simplex in hull:
             pointsList.append((points[simplex][0])) 
         for simplex in hull:            
-            pointsList.append((points[simplex][1]))            
-        pointsList = np.array(pointsList)
-        print(pointsList, type(pointsList), pointsList.shape)
-        print(hull)
+            pointsList.append((points[simplex][1]))       
+        pointsList = order_points(pointsList)
+        pointsList = np.array(pointsList) 
         self.plotWidget.getViewBox().createROIFromPoints(pointsList)
 
         
@@ -251,14 +248,18 @@ class Synapse3D(BaseProcess):
         #get hulls for each channels clusters
         ch1_hulls, ch1_centeroids, ch1_groupPoints = self.getHulls(ch1Points,ch1_labels)
         print('number of channel 1 hulls: {}'.format(len(ch1_hulls)))
-        self.plotHull(ch1_groupPoints[0],ch1_hulls[0])
+        #self.plotHull(ch1_groupPoints[0],ch1_hulls[0])
         ch2_hulls, ch2_centeroids, ch2_groupPoints = self.getHulls(ch2Points,ch2_labels)
         print('number of channel 2 hulls: {}'.format(len(ch2_hulls)))
+        
+        #combine nearest rois between channels
+        
         #draw rois around each cluster (channel 2)        
         #draw rois around nearest rois between channels
-        self.createROIFromHull(ch1_groupPoints[0],ch1_hulls[0])
+        for i in range(len(ch1_hulls)):
+            self.createROIFromHull(ch1_groupPoints[i],ch1_hulls[i])
         
-        #add rois between channels to synapse roi list
+
         return
 
     def clusterOptions(self):

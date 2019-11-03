@@ -7,7 +7,7 @@ Created on Sat Nov  2 16:00:56 2019
 import numpy as np
 
 from scipy.spatial import ConvexHull, convex_hull_plot_2d
-points = np.random.rand(3, 2)   # 30 random points in 2-D
+points = np.random.rand(20, 2)   # 30 random points in 2-D
 hull = ConvexHull(points)
 
 import matplotlib.pyplot as plt
