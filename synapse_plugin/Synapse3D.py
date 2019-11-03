@@ -69,7 +69,8 @@ class Synapse3D(BaseProcess):
         #clustering option
         self.eps = 400
         self.min_samples = 10
-        self.plot = True
+        self.maxDistance = 400
+        
         
     def displayData(self):
     	self.dataWidget.setData(sorted([roi.synapse_data for roi in self.plotWidget.items() if \
@@ -213,7 +214,7 @@ class Synapse3D(BaseProcess):
             clusterPoints = points[labels==i]
             groupPoints.append(clusterPoints)           
             hulls.append(ConvexHull(clusterPoints).simplices)
-            centeroids.append(np.average(clusterPoints))  
+            centeroids.append(np.average(clusterPoints,axis=0)) 
         return np.array(hulls), np.array(centeroids), np.array(groupPoints)
 
     def plotHull(self,points,hull): 
@@ -233,7 +234,6 @@ class Synapse3D(BaseProcess):
         pointsList = order_points(pointsList)
         pointsList = np.array(pointsList) 
         self.plotWidget.getViewBox().createROIFromPoints(pointsList)
-
         
     def getClusters(self):
         #get 2D points
@@ -251,15 +251,13 @@ class Synapse3D(BaseProcess):
         #self.plotHull(ch1_groupPoints[0],ch1_hulls[0])
         ch2_hulls, ch2_centeroids, ch2_groupPoints = self.getHulls(ch2Points,ch2_labels)
         print('number of channel 2 hulls: {}'.format(len(ch2_hulls)))
-        
-        #combine nearest rois between channels
-        
-        #draw rois around each cluster (channel 2)        
-        #draw rois around nearest rois between channels
-        for i in range(len(ch1_hulls)):
-            self.createROIFromHull(ch1_groupPoints[i],ch1_hulls[i])
-        
-
+        #combine nearest roi between channels
+        combinedHulls, combinedPoints = combineClosestHulls(ch1_hulls,ch1_centeroids,ch1_groupPoints,ch2_hulls,ch2_centeroids,ch2_groupPoints, self.maxDistance)
+        self.plotHull(combinedPoints[0],combinedHulls[0])       
+        #draw rois around combined hulls
+        #self.createROIFromHull(combinedPoints[0],combinedHulls[0])
+        for i in range(len(combinedHulls)):
+            self.createROIFromHull(combinedPoints[i],combinedHulls[i])    #TODO Ordering of roi points needs to be fixed    
         return
 
     def clusterOptions(self):
@@ -344,6 +342,7 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.viewer = viewerInstance
         self.eps  = self.viewer.eps
         self.min_samples = self.viewer.min_samples
+        self.maxDistance = self.viewer.maxDistance
         
         #window geometry
         self.left = 300
@@ -354,6 +353,7 @@ class ClusterOptions_win(QtWidgets.QDialog):
         #labels
         self.label_eps = QtWidgets.QLabel("max distance between points:") 
         self.label_minSamples = QtWidgets.QLabel("minimum number of points:") 
+        self.label_maxDistance = QtWidgets.QLabel("max distance between clusters:") 
         #self.label_displayPlot = QtWidgets.QLabel("show plot")         
 
         #spinboxes
@@ -363,6 +363,10 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.minSampleBox = QtWidgets.QSpinBox()    
         self.minSampleBox.setRange(0,10000)
         self.minSampleBox.setValue(self.min_samples)
+        self.maxDistanceBox = QtWidgets.QSpinBox()    
+        self.maxDistanceBox.setRange(0,10000)
+        self.maxDistanceBox.setValue(self.maxDistance)        
+        
 
         #grid layout
         layout = QtWidgets.QGridLayout()
@@ -370,7 +374,9 @@ class ClusterOptions_win(QtWidgets.QDialog):
         layout.addWidget(self.label_eps, 0, 0)
         layout.addWidget(self.epsBox, 0, 1)       
         layout.addWidget(self.label_minSamples, 1, 0)        
-        layout.addWidget(self.minSampleBox, 1, 1)        
+        layout.addWidget(self.minSampleBox, 1, 1)     
+        layout.addWidget(self.label_maxDistance, 2, 0)        
+        layout.addWidget(self.maxDistanceBox, 2, 1)         
 
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -380,7 +386,8 @@ class ClusterOptions_win(QtWidgets.QDialog):
 
         #connect spinboxes
         self.epsBox.valueChanged.connect(self.epsValueChange)
-        self.minSampleBox.valueChanged.connect(self.minSampleChange)  
+        self.minSampleBox.valueChanged.connect(self.minSampleChange) 
+        self.maxDistance.valueChanged.connect(self.maxDistanceChange)         
         
     def epsValueChange(self,value):
         self.epsBox = value
@@ -392,5 +399,8 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.viewer.min_samples = self.min_samples 
         return
         
-
+    def maxDistanceChange(self,value):
+        self.maxDistance = value
+        self.viewer.maxDistance = self.maxDistance
+        return
 

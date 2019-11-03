@@ -15,6 +15,7 @@ from .tifffile import *
 from .SettingsWidgets import *
 from math import atan2
 from scipy.spatial import distance as dist
+from scipy.spatial import KDTree
 import math
 
 item_name = ""
@@ -72,6 +73,21 @@ def order_points(pts):
         
     return sorted(pts, key=clockwiseangle_and_distance)
 
+
+def combineClosestHulls(ch1_hulls,ch1_centeroids,ch1_groupPoints,ch2_hulls,ch2_centeroids,ch2_groupPoints, maxDistance):
+    combinedHullList = []
+    combinedPointsList = []
+    for i in range(len(ch1_centeroids)):
+        pt = ch1_centeroids[i]
+        distance,index = KDTree(ch2_centeroids).query(pt)
+        if distance <= maxDistance:
+            ch1_hull = ch1_hulls[i]
+            ch2_hull = ch2_hulls[index]
+            ch1_points = ch1_groupPoints[i]
+            ch2_points = ch2_groupPoints[index]                     
+            combinedHullList.append(np.concatenate((ch1_hull,ch2_hull)))   
+            combinedPointsList.append(np.concatenate((ch1_points,ch2_points)))               
+    return combinedHullList, combinedPointsList
 
 class AnalysisException(Exception):
     def __init__(self, parent, title='Analysis Error', s='Something went wrong'):
