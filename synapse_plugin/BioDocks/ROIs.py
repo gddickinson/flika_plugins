@@ -137,6 +137,17 @@ class Freehand(pg.GraphicsObject):
 			else:
 				pts.append([float(i) for i in line.split()])
 
+	@staticmethod
+	def add_roi(pts):
+		print(pts)        
+		cur_roi = Freehand(QPointF(*pts[0]))
+		for p in pts[1:]:
+				cur_roi.extend(QPointF(*p)) 				                     
+		cur_roi.drawFinished() 
+		print(cur_roi.getPoints())        
+		return cur_roi
+
+
 	def __repr__(self):
 		return 'freehand\n' + '\n'.join(['%.2f\t%.2f' % (x, y) for x,y in self.getPoints()]) + '\n\n'
 

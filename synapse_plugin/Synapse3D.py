@@ -222,11 +222,24 @@ class Synapse3D(BaseProcess):
             plt.plot(points[simplex, 0], points[simplex, 1], 'k-')
             plt.show()            
                         
-    def createROI(self,hull):
-        #TODO
-        pass
+    def createROIFromHull(self,points, hull):
+        '''add roi to display from hull points'''
+        print(points, type(points), points.shape)
+        print(hull, type(hull), hull.shape)
+        pointsList = []
+        pointsList2 = []        
+        for simplex in hull:
+            pointsList.append((points[simplex][0])) 
+        for simplex in hull:            
+            pointsList.append((points[simplex][1]))            
+        pointsList = np.array(pointsList)
+        print(pointsList, type(pointsList), pointsList.shape)
+        print(hull)
+        self.plotWidget.getViewBox().createROIFromPoints(pointsList)
+
         
     def getClusters(self):
+        #get 2D points
         ch1Points = self.Channels[0].getPoints(z=False)
         ch2Points = self.Channels[1].getPoints(z=False)
         #get cluster labels for each channel
@@ -243,6 +256,7 @@ class Synapse3D(BaseProcess):
         print('number of channel 2 hulls: {}'.format(len(ch2_hulls)))
         #draw rois around each cluster (channel 2)        
         #draw rois around nearest rois between channels
+        self.createROIFromHull(ch1_groupPoints[0],ch1_hulls[0])
         
         #add rois between channels to synapse roi list
         return

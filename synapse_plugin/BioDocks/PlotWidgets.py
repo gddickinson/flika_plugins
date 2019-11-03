@@ -316,3 +316,13 @@ class ROIViewBox(pg.ViewBox):
 			ev.accept()
 			difference = self.mapToView(ev.lastScenePos().toQPoint()) - self.mapToView(ev.scenePos().toQPoint())
 			self.translateBy(difference)
+
+	def createROIFromPoints(self,hull):
+		roi = Freehand.add_roi(hull)
+		self.addItem(roi)
+		self.roiCreated.emit(roi)
+        
+        
+        
+        
+        
