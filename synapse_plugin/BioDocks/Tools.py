@@ -45,6 +45,8 @@ def sortXY_aroundCircle(XYList):
    
 def order_points(pts): 
     #get leftmost point for origin
+    
+    pts = sortXY(pts)
     xSorted = sorted(pts, key=lambda x: x[0])
     leftMost = xSorted[0]   
     origin = leftMost

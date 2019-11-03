@@ -217,6 +217,13 @@ class Synapse3D(BaseProcess):
             centeroids.append(np.average(clusterPoints,axis=0)) 
         return np.array(hulls), np.array(centeroids), np.array(groupPoints)
 
+    def getHulls2(self,pointList):
+        hullList = []
+        for points in pointList:
+            hullList.append(ConvexHull(points).simplices)
+        return hullList
+            
+
     def plotHull(self,points,hull): 
         plt.plot(points[:,0], points[:,1], 'o')          
         for simplex in hull:
@@ -247,17 +254,17 @@ class Synapse3D(BaseProcess):
         print('-----------------')
         #get hulls for each channels clusters
         ch1_hulls, ch1_centeroids, ch1_groupPoints = self.getHulls(ch1Points,ch1_labels)
-        print('number of channel 1 hulls: {}'.format(len(ch1_hulls)))
         #self.plotHull(ch1_groupPoints[0],ch1_hulls[0])
         ch2_hulls, ch2_centeroids, ch2_groupPoints = self.getHulls(ch2Points,ch2_labels)
-        print('number of channel 2 hulls: {}'.format(len(ch2_hulls)))
         #combine nearest roi between channels
         combinedHulls, combinedPoints = combineClosestHulls(ch1_hulls,ch1_centeroids,ch1_groupPoints,ch2_hulls,ch2_centeroids,ch2_groupPoints, self.maxDistance)
-        self.plotHull(combinedPoints[0],combinedHulls[0])       
+        #get new hulls for combined points
+        newHulls = self.getHulls2(combinedPoints)        
+        #self.plotHull(combinedPoints[0],newHulls[0])       
         #draw rois around combined hulls
-        #self.createROIFromHull(combinedPoints[0],combinedHulls[0])
+        #self.createROIFromHull(combinedPoints[0],newHulls[0])
         for i in range(len(combinedHulls)):
-            self.createROIFromHull(combinedPoints[i],combinedHulls[i])    #TODO Ordering of roi points needs to be fixed    
+            self.createROIFromHull(combinedPoints[i],newHulls[i])  
         return
 
     def clusterOptions(self):
@@ -387,7 +394,7 @@ class ClusterOptions_win(QtWidgets.QDialog):
         #connect spinboxes
         self.epsBox.valueChanged.connect(self.epsValueChange)
         self.minSampleBox.valueChanged.connect(self.minSampleChange) 
-        self.maxDistance.valueChanged.connect(self.maxDistanceChange)         
+        self.maxDistanceBox.valueChanged.connect(self.maxDistanceChange)         
         
     def epsValueChange(self,value):
         self.epsBox = value
