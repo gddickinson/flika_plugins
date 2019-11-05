@@ -45,8 +45,11 @@ class Synapse3D(BaseProcess):
         self.win.setWindowTitle('Main Window')
         self.plotWidget = PlotWidget(viewBox=ROIViewBox(creatingROI=True, roiSnap=False))
         
+        #camera option
+        self.unitPerPixel = 166
+        
         # data is loaded in nanometers, divided by # according to units
-        self.units = {'Pixels': 166, 'Nanometers': 1}
+        self.units = {'Pixels': self.unitPerPixel, 'Nanometers': 1}
         self.unit_prefixes = {'Pixels': 'px', 'Nanometers': 'nm'}
         self.unit = 'Nanometers'
         
@@ -67,9 +70,9 @@ class Synapse3D(BaseProcess):
         self.empty_channel = Channel('Empty', [], (1, 1, 1))
         
         #clustering option
-        self.eps = 400
-        self.min_samples = 10
-        self.maxDistance = 400
+        self.eps = 100          #max distance between points within a cluster
+        self.min_samples = 10   #min number of points to form a cluster
+        self.maxDistance = 100  #max distance between clusters in differnt channels when forming combined ROI
         
         
     def displayData(self):
@@ -263,15 +266,19 @@ class Synapse3D(BaseProcess):
         #self.plotHull(combinedPoints[0],newHulls[0])       
         #draw rois around combined hulls
         #self.createROIFromHull(combinedPoints[0],newHulls[0])
+        print('--- combined channels ---')
         for i in range(len(combinedHulls)):
             self.createROIFromHull(combinedPoints[i],newHulls[i])  
+        print('{} ROI created'.format(str(len(combinedHulls))))
+        g.m.statusBar().showMessage('{} ROI created'.format(str(len(combinedHulls))))
         return
 
 
     def clearClusters(self):
-        for i in self.plotWidget.getViewBox().addedItems:
-            if isinstance(i, Freehand):
-                i.delete()
+        while (len(self.plotWidget.getViewBox().addedItems)) > 2:
+            for i in self.plotWidget.getViewBox().addedItems:
+                if isinstance(i, Freehand):
+                    i.delete()
         return
 
     def clusterOptions(self):
@@ -286,7 +293,7 @@ class Synapse3D(BaseProcess):
         self.fileMenu.addAction(QtWidgets.QAction('&Import Channels', self.fileMenu, triggered = lambda : self.open_file()))
         self.fileMenu.addAction(QtWidgets.QAction('&Close', self.fileMenu, triggered = self.win.close))
         self.optionMenu =self. menu.addMenu('&Options')
-        self.optionMenu.addAction(QtWidgets.QAction('&Clustering', self.optionMenu, triggered = lambda : self.clusterOptions()))            
+        self.optionMenu.addAction(QtWidgets.QAction('&Settings', self.optionMenu, triggered = lambda : self.clusterOptions()))            
         
         self.plotWidget.getViewBox().roiCreated.connect(self.roiCreated)
         self.plotWidget.load_file = self.open_file
@@ -360,6 +367,7 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.eps  = self.viewer.eps
         self.min_samples = self.viewer.min_samples
         self.maxDistance = self.viewer.maxDistance
+        self.unitPerPixel = self.viewer.unitPerPixel
         
         #window geometry
         self.left = 300
@@ -368,9 +376,12 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.height = 200
 
         #labels
+        self.clusterTitle = QtWidgets.QLabel("----- Cluster Parameters -----") 
         self.label_eps = QtWidgets.QLabel("max distance between points:") 
         self.label_minSamples = QtWidgets.QLabel("minimum number of points:") 
         self.label_maxDistance = QtWidgets.QLabel("max distance between clusters:") 
+        self.displayTitle = QtWidgets.QLabel("----- Display Parameters -----") 
+        self.label_unitPerPixel = QtWidgets.QLabel("nanometers/pixel:")         
         #self.label_displayPlot = QtWidgets.QLabel("show plot")         
 
         #spinboxes
@@ -382,19 +393,26 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.minSampleBox.setValue(self.min_samples)
         self.maxDistanceBox = QtWidgets.QSpinBox()    
         self.maxDistanceBox.setRange(0,10000)
-        self.maxDistanceBox.setValue(self.maxDistance)        
+        self.maxDistanceBox.setValue(self.maxDistance)    
+        self.unitPerPixelBox = QtWidgets.QSpinBox()    
+        self.unitPerPixelBox.setRange(0,1000)
+        self.unitPerPixelBox.setValue(self.unitPerPixel)  
         
 
         #grid layout
         layout = QtWidgets.QGridLayout()
         layout.setSpacing(5)
-        layout.addWidget(self.label_eps, 0, 0)
-        layout.addWidget(self.epsBox, 0, 1)       
-        layout.addWidget(self.label_minSamples, 1, 0)        
-        layout.addWidget(self.minSampleBox, 1, 1)     
-        layout.addWidget(self.label_maxDistance, 2, 0)        
-        layout.addWidget(self.maxDistanceBox, 2, 1)         
-
+        layout.addWidget(self.clusterTitle, 0, 0, 1, 2)        
+        layout.addWidget(self.label_eps, 1, 0)
+        layout.addWidget(self.epsBox, 1, 1)       
+        layout.addWidget(self.label_minSamples, 2, 0)        
+        layout.addWidget(self.minSampleBox, 2, 1)     
+        layout.addWidget(self.label_maxDistance, 3, 0)        
+        layout.addWidget(self.maxDistanceBox, 3, 1)
+        layout.addWidget(self.displayTitle, 4, 0, 1, 2)          
+        layout.addWidget(self.label_unitPerPixel, 5, 0)  
+        layout.addWidget(self.unitPerPixelBox, 5, 1) 
+        
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
 
@@ -404,7 +422,8 @@ class ClusterOptions_win(QtWidgets.QDialog):
         #connect spinboxes
         self.epsBox.valueChanged.connect(self.epsValueChange)
         self.minSampleBox.valueChanged.connect(self.minSampleChange) 
-        self.maxDistanceBox.valueChanged.connect(self.maxDistanceChange)         
+        self.maxDistanceBox.valueChanged.connect(self.maxDistanceChange)    
+        self.unitPerPixelBox.valueChanged.connect(self.unitPerPixelChange)  
         
     def epsValueChange(self,value):
         self.epsBox = value
@@ -421,3 +440,7 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.viewer.maxDistance = self.maxDistance
         return
 
+    def unitPerPixelChange(self,value):
+        self.unitPerPixel = value
+        self.viewer.unitPerPixel = self.unitPerPixel
+        return
