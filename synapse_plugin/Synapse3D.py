@@ -267,6 +267,13 @@ class Synapse3D(BaseProcess):
             self.createROIFromHull(combinedPoints[i],newHulls[i])  
         return
 
+
+    def clearClusters(self):
+        for i in self.plotWidget.getViewBox().addedItems:
+            if isinstance(i, Freehand):
+                i.delete()
+        return
+
     def clusterOptions(self):
         self.clusterOptionDialog = ClusterOptions_win(self)
         self.clusterOptionDialog.show()
@@ -293,11 +300,14 @@ class Synapse3D(BaseProcess):
         self.show_ch2 = QtWidgets.QRadioButton('Channel 2')
         self.show_ch2.pressed.connect(lambda : self.hide_channel(0))
         self.getClusters_button = QtWidgets.QPushButton('Get Clusters')
-        self.getClusters_button.pressed.connect(lambda : self.getClusters())               
+        self.getClusters_button.pressed.connect(lambda : self.getClusters()) 
+        self.clearClusters_button = QtWidgets.QPushButton('Clear Clusters')
+        self.clearClusters_button.pressed.connect(lambda : self.clearClusters())               
         self.layout.addWidget(self.show_all, 0, 0)
         self.layout.addWidget(self.show_ch1, 0, 1)
         self.layout.addWidget(self.show_ch2, 0, 2)
-        self.layout.addWidget(self.getClusters_button, 0, 3)        
+        self.layout.addWidget(self.getClusters_button, 0, 3)    
+        self.layout.addWidget(self.clearClusters_button, 0, 4)            
         self.layout.addItem(QtWidgets.QSpacerItem(400, 20), 0, 3, 1, 8)
         
         self.plotWidget.__name__ = '2D Plotted Channels'
