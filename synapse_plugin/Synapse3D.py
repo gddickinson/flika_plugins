@@ -74,6 +74,9 @@ class Synapse3D(BaseProcess):
         self.min_samples = 10   #min number of points to form a cluster
         self.maxDistance = 100  #max distance between clusters in differnt channels when forming combined ROI
         
+        #display options
+        self.centroidSymbolSize = 10
+        
         
     def displayData(self):
     	self.dataWidget.setData(sorted([roi.synapse_data for roi in self.plotWidget.items() if \
@@ -108,7 +111,7 @@ class Synapse3D(BaseProcess):
     
     	if all([ch.getCount() > 0 for ch in channels]):
     		roi.synapse_data['Mean Distance (%s)' % self.unit_prefixes[self.unit]] = np.linalg.norm(channels[1].getCenter(z=True) - channels[0].getCenter(z=True))
-    		roi.mean_line = pg.PlotDataItem(np.array([channels[1].getCenter(), channels[0].getCenter()]), symbol='d')
+    		roi.mean_line = pg.PlotDataItem(np.array([channels[1].getCenter(), channels[0].getCenter()]), symbol='d', symbolSize=self.centroidSymbolSize )
     		roi.mean_line.setParentItem(roi)
     		roi.mean_line.setVisible(False)
     	else:
@@ -197,6 +200,12 @@ class Synapse3D(BaseProcess):
     	self.Channels[1].setVisible(True)
     	if i != None:
     		self.Channels[i].setVisible(False)
+
+    def show_centroids(self):
+    	self.Channels[0].setVisible(False)
+    	self.Channels[1].setVisible(False)        
+
+
     
     def clear(self):
     	#global Channels
@@ -306,6 +315,8 @@ class Synapse3D(BaseProcess):
         self.show_ch1.pressed.connect(lambda : self.hide_channel(1))
         self.show_ch2 = QtWidgets.QRadioButton('Channel 2')
         self.show_ch2.pressed.connect(lambda : self.hide_channel(0))
+        self.show_cent = QtWidgets.QRadioButton('Only Centroids')
+        self.show_cent.pressed.connect(lambda : self.show_centroids())                
         self.getClusters_button = QtWidgets.QPushButton('Get Clusters')
         self.getClusters_button.pressed.connect(lambda : self.getClusters()) 
         self.clearClusters_button = QtWidgets.QPushButton('Clear Clusters')
@@ -313,8 +324,9 @@ class Synapse3D(BaseProcess):
         self.layout.addWidget(self.show_all, 0, 0)
         self.layout.addWidget(self.show_ch1, 0, 1)
         self.layout.addWidget(self.show_ch2, 0, 2)
-        self.layout.addWidget(self.getClusters_button, 0, 3)    
-        self.layout.addWidget(self.clearClusters_button, 0, 4)            
+        self.layout.addWidget(self.show_cent, 0, 3)        
+        self.layout.addWidget(self.getClusters_button, 0, 4)    
+        self.layout.addWidget(self.clearClusters_button, 0, 5)            
         self.layout.addItem(QtWidgets.QSpacerItem(400, 20), 0, 3, 1, 8)
         
         self.plotWidget.__name__ = '2D Plotted Channels'
@@ -368,6 +380,7 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.min_samples = self.viewer.min_samples
         self.maxDistance = self.viewer.maxDistance
         self.unitPerPixel = self.viewer.unitPerPixel
+        self.centroidSymbolSize = self.viewer.centroidSymbolSize
         
         #window geometry
         self.left = 300
@@ -381,7 +394,8 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.label_minSamples = QtWidgets.QLabel("minimum number of points:") 
         self.label_maxDistance = QtWidgets.QLabel("max distance between clusters:") 
         self.displayTitle = QtWidgets.QLabel("----- Display Parameters -----") 
-        self.label_unitPerPixel = QtWidgets.QLabel("nanometers/pixel:")         
+        self.label_unitPerPixel = QtWidgets.QLabel("nanometers/pixel:") 
+        self.label_centroidSymbolSize = QtWidgets.QLabel("centroid symbol size:")         
         #self.label_displayPlot = QtWidgets.QLabel("show plot")         
 
         #spinboxes
@@ -397,7 +411,9 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.unitPerPixelBox = QtWidgets.QSpinBox()    
         self.unitPerPixelBox.setRange(0,1000)
         self.unitPerPixelBox.setValue(self.unitPerPixel)  
-        
+        self.centroidSymbolSizeBox = QtWidgets.QSpinBox()    
+        self.centroidSymbolSizeBox.setRange(0,1000)
+        self.centroidSymbolSizeBox.setValue(self.centroidSymbolSize)          
 
         #grid layout
         layout = QtWidgets.QGridLayout()
@@ -412,6 +428,8 @@ class ClusterOptions_win(QtWidgets.QDialog):
         layout.addWidget(self.displayTitle, 4, 0, 1, 2)          
         layout.addWidget(self.label_unitPerPixel, 5, 0)  
         layout.addWidget(self.unitPerPixelBox, 5, 1) 
+        layout.addWidget(self.label_centroidSymbolSize, 6, 0)  
+        layout.addWidget(self.centroidSymbolSizeBox, 6, 1) 
         
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -423,7 +441,8 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.epsBox.valueChanged.connect(self.epsValueChange)
         self.minSampleBox.valueChanged.connect(self.minSampleChange) 
         self.maxDistanceBox.valueChanged.connect(self.maxDistanceChange)    
-        self.unitPerPixelBox.valueChanged.connect(self.unitPerPixelChange)  
+        self.unitPerPixelBox.valueChanged.connect(self.unitPerPixelChange) 
+        self.centroidSymbolSizeBox.valueChanged.connect(self.centroidSymbolSizeChange)        
         
     def epsValueChange(self,value):
         self.epsBox = value
@@ -444,3 +463,8 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.unitPerPixel = value
         self.viewer.unitPerPixel = self.unitPerPixel
         return
+    
+    def centroidSymbolSizeChange(self,value):
+        self.centroidSymbolSize = value
+        self.viewer.centroidSymbolSize = self.centroidSymbolSize
+        return    
