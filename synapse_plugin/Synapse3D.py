@@ -200,12 +200,21 @@ class Synapse3D(BaseProcess):
     	self.Channels[1].setVisible(True)
     	if i != None:
     		self.Channels[i].setVisible(False)
+    	self.connectROIMeanLines(connect=False)
 
+    def connectROIMeanLines(self,connect=True):
+        for roi in self.plotWidget.items():
+            if isinstance(roi, Freehand) and hasattr(roi, 'synapse_data'):
+                roi.mean_line.setVisible(connect)
+                if connect :
+                    roi.sigHoverChanged.connect(lambda r, h: r.mean_line.setVisible(True) if hasattr(r, 'mean_line') else None) 
+                else:
+                    roi.sigHoverChanged.connect(lambda r, h: r.mean_line.setVisible(h) if hasattr(r, 'mean_line') else None) 
+        
     def show_centroids(self):
     	self.Channels[0].setVisible(False)
-    	self.Channels[1].setVisible(False)        
-
-
+    	self.Channels[1].setVisible(False)    
+    	self.connectROIMeanLines(connect=True)       
     
     def clear(self):
     	#global Channels
@@ -295,6 +304,10 @@ class Synapse3D(BaseProcess):
         self.clusterOptionDialog.show()
         return
 
+    def show_scaleBar(self,value):
+        print('scaleBar')
+        return
+
     def start(self):        
         self.menu = self.win.menuBar()
         
@@ -315,7 +328,7 @@ class Synapse3D(BaseProcess):
         self.show_ch1.pressed.connect(lambda : self.hide_channel(1))
         self.show_ch2 = QtWidgets.QRadioButton('Channel 2')
         self.show_ch2.pressed.connect(lambda : self.hide_channel(0))
-        self.show_cent = QtWidgets.QRadioButton('Only Centroids')
+        self.show_cent = QtWidgets.QRadioButton('ROIs only')
         self.show_cent.pressed.connect(lambda : self.show_centroids())                
         self.getClusters_button = QtWidgets.QPushButton('Get Clusters')
         self.getClusters_button.pressed.connect(lambda : self.getClusters()) 
@@ -347,9 +360,15 @@ class Synapse3D(BaseProcess):
         self.ch1_mesh.pressed.connect(lambda : self.show_mesh(0))
         self.ch2_mesh = QtWidgets.QRadioButton('Channel 2')
         self.ch2_mesh.pressed.connect(lambda : self.show_mesh(1))
+        self.scaleBar_tickLabel = QtWidgets.QLabel('Display Scale Bar')
+        self.scaleBar_tickBox = QtWidgets.QCheckBox()         
+        self.scaleBar_tickBox.stateChanged.connect(self.show_scaleBar)        
         self.layout.addWidget(self.no_mesh, 6, 1)
         self.layout.addWidget(self.ch1_mesh, 6, 2)
         self.layout.addWidget(self.ch2_mesh, 6, 3)
+        self.layout.addWidget(self.scaleBar_tickLabel, 6, 4)
+        self.layout.addWidget(self.scaleBar_tickBox, 6, 5)        
+        
         self.layout.addWidget(QtWidgets.QLabel(\
         '''
         ROI Plot 3D Widget Controls
