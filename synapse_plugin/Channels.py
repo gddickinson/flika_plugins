@@ -6,6 +6,9 @@ from qtpy.QtWidgets import *
 
 from .BioDocks.AnalysisIO import *
 
+import flika
+from flika import global_vars as g
+
 class ActivePoint():
 	def __init__(self, data):
 		self.pos = np.array([data['Xc'], data['Yc'], data['Zc']])
@@ -28,9 +31,20 @@ class Synapse(gl.GLScatterPlotItem):
 		self.mesh = gl.GLMeshItem()
 		self.mesh.setParentItem(self)
 		self.mesh.setVisible(False)
+		self.scaleBar_x = gl.GLLinePlotItem()
+		self.scaleBar_x.setParentItem(self)
+		self.scaleBar_x.setVisible(False)
+		self.scaleBar_y = gl.GLLinePlotItem()
+		self.scaleBar_y.setParentItem(self)
+		self.scaleBar_y.setVisible(False)        
+		self.scaleBar_z = gl.GLLinePlotItem()
+		self.scaleBar_z.setParentItem(self)
+		self.scaleBar_z.setVisible(False)        
+        
 		self.setChannels(channelA, channelB)
-		self._make_menu()
+		self._make_menu()              
 
+        
 	def setChannels(self, channelA, channelB):
 		self.channels = {ch.__name__: ch for ch in [channelA, channelB]}
 		colors = [QColor.getRgbF(channelA.color()) for i in range(channelA.getCount())]
@@ -42,9 +56,28 @@ class Synapse(gl.GLScatterPlotItem):
 		if channelA.getCount() > 0 and channelB.getCount() > 0:
 			self.centers.setData(pos=np.array([channelA.getCenter(z=True), channelB.getCenter(z=True)]), color=(1, 1, 1, 1))
 
+		#scale bar    
+		ch_A_xMax,ch_A_yMax, ch_A_zMax = channelA.getMax()
+		ch_A_xMin,ch_A_yMin, ch_A_zMin = channelA.getMin()        
+		ch_B_xMax,ch_B_yMax, ch_B_zMax = channelB.getMax()
+        
+		#print(ch_A_xMax,ch_A_yMax, ch_A_zMax)
+		#print(ch_A_xMin,ch_A_yMin, ch_A_zMin)        
+		if channelA.getCount() > 0 and channelB.getCount() > 0:        
+			self.scaleBar_x.setData(pos=np.array([[ch_A_xMax,ch_A_yMin,ch_A_zMin], [ch_A_xMax-100,ch_A_yMin,ch_A_zMin]]), color=(1, 1, 1, 1))
+			self.scaleBar_y.setData(pos=np.array([[ch_A_xMax,ch_A_yMin,ch_A_zMin], [ch_A_xMax,ch_A_yMin+100,ch_A_zMin]]), color=(2, 2, 2, 1))
+			self.scaleBar_z.setData(pos=np.array([[ch_A_xMax,ch_A_yMin,ch_A_zMin], [ch_A_xMax,ch_A_yMin,ch_A_zMin+100]]), color=(3, 3, 3, 1))
+
+	def centersTriggered(self):
+		self.centers.setVisible(self.centerShow.isChecked()) 
+		distance = np.linalg.norm(self.centers.pos[0]-self.centers.pos[1])
+		if self.centerShow.isChecked():
+			g.m.statusBar().showMessage('center line = {:.2f} nm'.format(distance))
+			print('center line = {:.2f} nm'.format(distance))
+        
 	def _make_menu(self):
 		self.menu = QMenu('Synapse 3D Plot Options')
-		self.centerShow = QAction('Show Center Distance', self.menu, triggered=lambda : self.centers.setVisible(self.centerShow.isChecked()), checkable=True)
+		self.centerShow = QAction('Show Center Distance', self.menu, triggered=lambda : self.centersTriggered(), checkable=True)
 		self.menu.addAction(self.centerShow)
 		self.menu.addAction(QAction('Export Coordinates', self.menu, triggered=lambda : export_arr(np.transpose(self.pos), header='X\tY\tZ', comments='')))
 
@@ -70,3 +103,13 @@ class Channel(pg.ScatterPlotItem):
 
 	def color(self):
 		return self.opts['brush'].color()
+    
+	def getMax(self):
+		pts = self.getPoints(z=True)        
+		return np.max(pts,axis=0)
+    
+	def getMin(self):
+		pts = self.getPoints(z=True) 
+		return np.min(pts,axis=0)    
+    
+    

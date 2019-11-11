@@ -305,7 +305,10 @@ class Synapse3D(BaseProcess):
         return
 
     def show_scaleBar(self,value):
-        print('scaleBar')
+        self.synapseWidget.synapse.scaleBar_x.setVisible(value)
+        self.synapseWidget.synapse.scaleBar_y.setVisible(value)
+        self.synapseWidget.synapse.scaleBar_z.setVisible(value)        
+        self.synapseWidget.synapse.update()        
         return
 
     def start(self):        
@@ -349,7 +352,7 @@ class Synapse3D(BaseProcess):
         self.synapseFrame = QtWidgets.QWidget()
         self.layout = QtWidgets.QGridLayout(self.synapseFrame)
         self.synapseWidget = Plot3DWidget()
-        self.synapseWidget.load_file = self.open_file
+        self.synapseWidget.load_file = self.open_file        
         self.layout.addWidget(self.synapseWidget, 0, 0, 6, 6)
         self.export_synapse = QtWidgets.QPushButton('Export Coordinates')
         self.export_synapse.pressed.connect(lambda : export_arr(self.synapseWidget.synapse.pos, header='X\tY\tZ'))

@@ -11,6 +11,7 @@ import math
 import pyqtgraph.opengl as gl
 #from PyQt4 import QtCore, QtGui
 from qtpy import QtCore, QtGui, QtWidgets
+import numpy as np
 
 class Plot3DWidget(gl.GLViewWidget):
 	status = QtCore.Signal(str)
