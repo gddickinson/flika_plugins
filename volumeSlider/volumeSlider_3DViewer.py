@@ -596,6 +596,7 @@ class SliceViewer(BaseProcess):
         return
 
     def getWin(self,win):
+        '''Sends window data to Flika (for selected windows time volume)'''
         if win == 'X':
             return self.data.swapaxes(0,1)
         elif win =='Y':
@@ -606,6 +607,35 @@ class SliceViewer(BaseProcess):
             return self.data
        # elif win =='Free':
        #     return self.roi3.getArrayRegion(self.data, self.imv1.imageItem, axes=(1,2))
+
+
+    def getTimeSeries(self,win):
+        '''Sends time series data to Flika (for selected view)''' 
+        timeSeries = []
+        nVols = self.originalDataShape[1]
+        
+        if win == 'X':
+            for i in range(nVols):
+                data = self.originalData[:,i,:,:]
+                timeSeries.append(self.maxProjection(data.swapaxes(0,1)))            
+        
+        elif win =='Y':
+            for i in range(nVols):
+                data = self.originalData[:,i,:,:]
+                timeSeries.append(self.maxProjection(data.swapaxes(2,0)))            
+        
+        elif win =='Z':
+            for i in range(nVols):
+                data = self.originalData[:,i,:,:]
+                timeSeries.append(self.maxProjection(data.swapaxes(1,2)))            
+        
+        elif win =='Top':
+            for i in range(nVols):
+                data = self.originalData[:,i,:,:]
+                timeSeries.append(self.maxProjection(data))
+        
+        return np.array(timeSeries)
+
 
     def mouseMoved(self, point, imv):
         '''mouseMoved(self,point)
@@ -935,22 +965,38 @@ class exportDialog_win(QtWidgets.QDialog):
         self.viewer = viewerInstance
 
         #window geometry
-        windowGeometry(self, left=300, top=300, height=300, width=200)
+        windowGeometry(self, left=300, top=300, height=200, width=200)
+
+        #labels
+        self.spaceLabel = QtWidgets.QLabel("|-- Stack in space (displayed vol) --|")
+        self.timeLabel = QtWidgets.QLabel("|-- Stack in time (max projections) --|")
 
         #buttons
-        self.buttonTop = QtWidgets.QPushButton("Export Top view")        
-        self.buttonZ = QtWidgets.QPushButton("Export Z view")
-        self.buttonX = QtWidgets.QPushButton("Export X view")
-        self.buttonY = QtWidgets.QPushButton("Export Y view")
+        self.buttonTop_space = QtWidgets.QPushButton("Top view")        
+        self.buttonZ_space = QtWidgets.QPushButton("Z view")
+        self.buttonX_space = QtWidgets.QPushButton("X view")
+        self.buttonY_space = QtWidgets.QPushButton("Y view")
+        self.buttonTop_time = QtWidgets.QPushButton("Top view")        
+        self.buttonZ_time = QtWidgets.QPushButton("Z view")
+        self.buttonX_time = QtWidgets.QPushButton("X view")
+        self.buttonY_time = QtWidgets.QPushButton("Y view")        
+        
+        
         #self.buttonFree = QtWidgets.QPushButton("Export Free view")        
 
         #grid layout
         layout = QtWidgets.QGridLayout()
-        layout.setSpacing(5)
-        layout.addWidget(self.buttonTop, 0, 0)        
-        layout.addWidget(self.buttonX, 1, 0)
-        layout.addWidget(self.buttonY, 2, 0)
-        layout.addWidget(self.buttonZ, 3, 0)
+        #layout.setSpacing(5)
+        layout.addWidget(self.spaceLabel, 0, 0)         
+        layout.addWidget(self.buttonTop_space, 1, 0)        
+        layout.addWidget(self.buttonX_space, 2, 0)
+        layout.addWidget(self.buttonY_space, 3, 0)
+        layout.addWidget(self.buttonZ_space, 4, 0)
+        layout.addWidget(self.timeLabel, 0, 1)         
+        layout.addWidget(self.buttonTop_time, 1, 1)        
+        layout.addWidget(self.buttonX_time, 2, 1)
+        layout.addWidget(self.buttonY_time, 3, 1)
+        layout.addWidget(self.buttonZ_time, 4, 1)        
         #layout.addWidget(self.buttonFree, 4, 0)        
 
         self.setLayout(layout)
@@ -960,16 +1006,27 @@ class exportDialog_win(QtWidgets.QDialog):
         self.setWindowTitle("Export Options")
 
         #connect buttons
-        self.buttonTop.clicked.connect(lambda: self.export('Top'))        
-        self.buttonZ.clicked.connect(lambda: self.export('Z'))
-        self.buttonX.clicked.connect(lambda: self.export('X'))
-        self.buttonY.clicked.connect(lambda: self.export('Y'))
+        self.buttonTop_space.clicked.connect(lambda: self.exportSpace('Top'))        
+        self.buttonZ_space.clicked.connect(lambda: self.exportSpace('Z'))
+        self.buttonX_space.clicked.connect(lambda: self.exportSpace('X'))
+        self.buttonY_space.clicked.connect(lambda: self.exportSpace('Y'))
+        
+        self.buttonTop_time.clicked.connect(lambda: self.exportTime('Top'))        
+        self.buttonZ_time.clicked.connect(lambda: self.exportTime('Z'))
+        self.buttonX_time.clicked.connect(lambda: self.exportTime('X'))
+        self.buttonY_time.clicked.connect(lambda: self.exportTime('Y'))        
+        
+       
         #self.buttonFree.clicked.connect(lambda: self.export('Free'))        
         return
 
-    def export(self, axis):
+    def exportSpace(self, axis):
         self.displayWindow = Window(self.viewer.viewer.getWin(axis),'{} view'.format(axis))             
         return
+    
+    def exportTime(self, axis):
+        self.displayWindow = Window(self.viewer.viewer.getTimeSeries(axis),'{} view'.format(axis))             
+        return    
 
 class optionsDialog_win(QtWidgets.QDialog):
     def __init__(self, viewerInstance, parent = None):
