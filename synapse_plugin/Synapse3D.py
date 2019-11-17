@@ -22,6 +22,7 @@ from flika import global_vars as g
 from flika.window import Window
 from distutils.version import StrictVersion
 import numpy as np
+import pyqtgraph as pg
 
 from matplotlib import pyplot as plt
 from .dbscan import *
@@ -76,6 +77,7 @@ class Synapse3D(BaseProcess):
         
         #display options
         self.centroidSymbolSize = 10
+        
         
         
     def displayData(self):
@@ -176,6 +178,52 @@ class Synapse3D(BaseProcess):
     	self.show_ch2.setText(self.Channels[1].__name__)
     	self.ch1_mesh.setText(self.Channels[0].__name__)
     	self.ch2_mesh.setText(self.Channels[1].__name__)
+        
+    	#3D window ROI
+    	#print('min Xc: {}, max Xc: {} | min Yc: {}, max Yc: {}'.format(min(data['Xc']),max(data['Xc']),min(data['Yc']),max(data['Yc'])))     
+    	self.ROI_3Dview = pg.RectROI([min(data['Xc']), min(data['Yc'])], [5000,5000], pen='r')
+    	self.plotWidget.addItem(self.ROI_3Dview)
+    	self.viewerDock.show()
+    	self.viewerDock.float()
+    	self.viewerDock.window().setGeometry(20, 100, 500, 500)   
+    	self.update3D_viewer()  
+    	self.ROI_3Dview.sigRegionChanged.connect(self.update3D_viewer)       
+
+    def update3D_viewer(self):
+    	if self.viewBox_tickBox.checkState == False:
+    		return     	       
+    	self.viewerWidget.clear()
+    	#print('pos',self.ROI_3Dview.pos()) 
+    	x = self.ROI_3Dview.parentBounds().x()
+    	y = self.ROI_3Dview.parentBounds().y()
+    	        
+    	xSize = self.ROI_3Dview.parentBounds().width()        
+    	ySize = self.ROI_3Dview.parentBounds().height()  
+        
+    	print(x, y, xSize, ySize)   
+        
+    	ch1 =self.Channels[0].getPoints(z=True)
+    	ch2 =self.Channels[1].getPoints(z=True)          	  
+
+    	#filter x
+    	displayCh1 = ch1[(ch1[:,0] > x)]
+    	displayCh2 = ch2[(ch2[:,0] > x)]
+    	displayCh1 = displayCh1[(displayCh1[:,0] < (x+xSize))]
+    	displayCh2 = displayCh2[(displayCh2[:,0] < (x+xSize))]
+        
+    	#filter y
+    	displayCh1 = displayCh1[(displayCh1[:,1] > y)]
+    	displayCh2 = displayCh2[(displayCh2[:,1] > y)]
+    	displayCh1 = displayCh1[(displayCh1[:,1] < y+ySize)]
+    	displayCh2 = displayCh2[(displayCh2[:,1] < y+ySize)]        
+
+    	print(ch1.shape)        
+    	print(displayCh1.shape)
+    	#print(displayCh1)         
+         
+    	self.viewerWidget.addArray(displayCh1,color=QColor(255, 0, 0)) 
+    	self.viewerWidget.addArray(displayCh2,color=QColor(0, 255, 0))    	        
+
     
     def show_mesh(self,i):
     	if i == None:
@@ -311,6 +359,15 @@ class Synapse3D(BaseProcess):
         self.synapseWidget.synapse.update()        
         return
 
+    def show_viewBox(self,value):
+        if value == False:
+            self.viewerDock.hide()
+            self.ROI_3Dview.setPen(None)
+        else:
+            self.viewerDock.show()
+            self.ROI_3Dview.setPen('r')
+        return
+
     def start(self):        
         self.menu = self.win.menuBar()
         
@@ -336,13 +393,21 @@ class Synapse3D(BaseProcess):
         self.getClusters_button = QtWidgets.QPushButton('Get Clusters')
         self.getClusters_button.pressed.connect(lambda : self.getClusters()) 
         self.clearClusters_button = QtWidgets.QPushButton('Clear Clusters')
-        self.clearClusters_button.pressed.connect(lambda : self.clearClusters())               
+        self.clearClusters_button.pressed.connect(lambda : self.clearClusters()) 
+        
+        self.viewBox_tickLabel = QtWidgets.QLabel('Display 3D viewer')
+        self.viewBox_tickBox = QtWidgets.QCheckBox()  
+        self.viewBox_tickBox.setChecked(True)
+        self.viewBox_tickBox.stateChanged.connect(self.show_viewBox)  
+           
         self.layout.addWidget(self.show_all, 0, 0)
         self.layout.addWidget(self.show_ch1, 0, 1)
         self.layout.addWidget(self.show_ch2, 0, 2)
         self.layout.addWidget(self.show_cent, 0, 3)        
         self.layout.addWidget(self.getClusters_button, 0, 4)    
-        self.layout.addWidget(self.clearClusters_button, 0, 5)            
+        self.layout.addWidget(self.clearClusters_button, 0, 5) 
+        self.layout.addWidget(self.viewBox_tickLabel, 0, 6) 
+        self.layout.addWidget(self.viewBox_tickBox, 0, 7)           
         self.layout.addItem(QtWidgets.QSpacerItem(400, 20), 0, 3, 1, 8)
         
         self.plotWidget.__name__ = '2D Plotted Channels'
@@ -386,9 +451,50 @@ class Synapse3D(BaseProcess):
         self.plotDock.window().setGeometry(340, 100, 1400, 800)
         
         self.dataWidget = DataWidget()
-        self.win.addWidget(self.dataWidget, where=('right', self.plotDock), size=(100, 500))
-        self.win.closeEvent = lambda f: self.app.exit()
         
+        
+        #################################################
+        #3D viewer dock
+        self.viewerFrame = QtWidgets.QWidget()
+        self.layout = QtWidgets.QGridLayout(self.viewerFrame)
+        self.viewerWidget = Plot3DWidget()
+        self.viewerWidget.load_file = self.open_file        
+        self.layout.addWidget(self.viewerWidget, 0, 0, 6, 6)
+        #self.export_viewer = QtWidgets.QPushButton('Export Coordinates')
+        #self.export_viewer.pressed.connect(lambda : export_arr(self.viewerWidget.synapse.pos, header='X\tY\tZ'))
+        #self.layout.addWidget(self.export_viewer, 6, 0)
+        #self.no_mesh = QtWidgets.QRadioButton('No Mesh', checked=True)
+        #self.no_mesh.pressed.connect(lambda : self.show_mesh(None))
+        #self.ch1_mesh = QtWidgets.QRadioButton('Channel 1')
+        #self.ch1_mesh.pressed.connect(lambda : self.show_mesh(0))
+        #self.ch2_mesh = QtWidgets.QRadioButton('Channel 2')
+        #self.ch2_mesh.pressed.connect(lambda : self.show_mesh(1))
+        #self.scaleBar_tickLabel = QtWidgets.QLabel('Display Scale Bar')
+        #self.scaleBar_tickBox = QtWidgets.QCheckBox()         
+        #self.scaleBar_tickBox.stateChanged.connect(self.show_scaleBar)        
+        #self.layout.addWidget(self.no_mesh, 6, 1)
+        #self.layout.addWidget(self.ch1_mesh, 6, 2)
+        #self.layout.addWidget(self.ch2_mesh, 6, 3)
+        #self.layout.addWidget(self.scaleBar_tickLabel, 6, 4)
+        #self.layout.addWidget(self.scaleBar_tickBox, 6, 5)        
+        
+        self.layout.addWidget(QtWidgets.QLabel(\
+        '''
+        ROI Plot 3D Widget Controls
+        	Arrow Keys or Left click and drag to rotate camera
+        	Middle click and drag to pan
+        	Scroll mouse wheel to zoom
+        	Right Click for plotted item options
+        '''), 7, 0, 2, 3)
+        
+        self.viewerDock = self.win.addWidget(size=(300, 100), widget=self.viewerFrame)
+        self.viewerDock.hide()
+
+
+        #####################################################################################
+
+        self.win.addWidget(self.dataWidget, where=('right', self.plotDock), size=(100, 500))
+        self.win.closeEvent = lambda f: self.app.exit()        
         self.win.show()
         #sys.exit(self.app.exec_())
 

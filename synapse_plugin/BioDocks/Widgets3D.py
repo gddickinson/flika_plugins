@@ -69,20 +69,33 @@ class Plot3DWidget(gl.GLViewWidget):
 		item.menu.addAction(QtWidgets.QAction('Properties', item.menu, triggered=lambda : self.editItem(item)))
 		item.menu.addAction(QtWidgets.QAction('&Remove', item.menu, triggered=lambda : self.removeItem(item)))
 
-	def add_item_from_array(self, array, name=''):
-		if isinstance(array, (list, tuple, np.ndarray)):
-			if np.shape(array)[0] == 3:
-				array = np.transpose(array)
-			item = gl.GLScatterPlotItem(pos=array)
-			item.__name__ = name
-		elif type(array) == dict:
-			cols = array.keys()
-			self.op = ParameterWidget('Select the columns to use:', [{'key': 'Name', 'value': name}, \
-				{'key': 'X Column', 'value': sort_closest(cols, 'X0')}, {'key':'Y Column', 'value': sort_closest(cols, 'Y1')}, \
-				{'key':'Z Column', 'value': sort_closest(cols, 'Z2')}, {'key': 'Size', 'value': 4}, {'key': 'Color', 'value': QColor(0, 255, 0)}],\
-				about='''Importing a file to a plot widget. Select the options below for how to read the file data''', doneButton=True)
-			self.op.done.connect(lambda d: self.addItem(gl.GLScatterPlotItem(pos=np.transpose([array[d['X Column']], array[d['Y Column']], array[d['Z Column']]]), color=d['Color'].getRgbF(), size=d['Size']), name=d['Name']))
-			self.op.show()
+	def add_item_from_array(self, array, name='',test=True):
+		if test:    
+			if isinstance(array, (list, tuple, np.ndarray)):
+				if np.shape(array)[0] == 3:
+					array = np.transpose(array)
+				item = gl.GLScatterPlotItem(pos=array)
+				item.__name__ = name
+			elif type(array) == dict:
+				cols = array.keys()
+				self.op = ParameterWidget('Select the columns to use:', [{'key': 'Name', 'value': name}, \
+					{'key': 'X Column', 'value': sort_closest(cols, 'X0')}, {'key':'Y Column', 'value': sort_closest(cols, 'Y1')}, \
+					{'key':'Z Column', 'value': sort_closest(cols, 'Z2')}, {'key': 'Size', 'value': 4}, {'key': 'Color', 'value': QColor(0, 255, 0)}],\
+					about='''Importing a file to a plot widget. Select the options below for how to read the file data''', doneButton=True)
+				self.op.done.connect(lambda d: self.addItem(gl.GLScatterPlotItem(pos=np.transpose([array[d['X Column']], array[d['Y Column']], array[d['Z Column']]]), color=d['Color'].getRgbF(), size=d['Size']), name=d['Name']))
+				self.op.show()
+		else:
+				if type(array) == dict:
+					self.addItem(gl.GLScatterPlotItem(pos=np.transpose([array['Xc'], array['Yc'], array['Zc']]), color=QColor(0, 255, 0).getRgbF(), size=4))
+
+
+	def addArray(self, array, color=QColor(0, 255, 0),size=4,name=''):
+		#print(array[:,0])        
+		array = np.transpose([array[:,0],array[:,1],array[:,2]])
+		item = gl.GLScatterPlotItem(pos=array, color=color.getRgbF(), size=size)
+		#item.__name__ = name
+		self.addItem(item)  
+        
 
 	def addItem(self, item, name=''):
 		if name == '':
