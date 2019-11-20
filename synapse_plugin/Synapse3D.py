@@ -23,7 +23,7 @@ from flika.window import Window
 from distutils.version import StrictVersion
 import numpy as np
 import pyqtgraph as pg
-
+from pyqtgraph import mkPen
 from matplotlib import pyplot as plt
 from .dbscan import *
 
@@ -180,7 +180,7 @@ class Synapse3D(BaseProcess):
     	self.ch2_mesh.setText(self.Channels[1].__name__)
         
     	#3D window ROI
-    	#print('min Xc: {}, max Xc: {} | min Yc: {}, max Yc: {}'.format(min(data['Xc']),max(data['Xc']),min(data['Yc']),max(data['Yc'])))     
+    	#print('min Xc: {}, max Xc: {} | min Yc: {}, max Yc: {}'.format(min(data['Xc']),max(data['Xc']),min(data['Yc']),max(data['Yc'])))          
     	self.ROI_3Dview = pg.RectROI([min(data['Xc']), min(data['Yc'])], [5000,5000], pen='r')
     	self.plotWidget.addItem(self.ROI_3Dview)
     	self.viewerDock.show()
@@ -193,14 +193,12 @@ class Synapse3D(BaseProcess):
     	if self.viewBox_tickBox.checkState == False:
     		return     	       
     	self.viewerWidget.clear()
-    	#print('pos',self.ROI_3Dview.pos()) 
+
     	x = self.ROI_3Dview.parentBounds().x()
     	y = self.ROI_3Dview.parentBounds().y()
     	        
     	xSize = self.ROI_3Dview.parentBounds().width()        
     	ySize = self.ROI_3Dview.parentBounds().height()  
-        
-    	print(x, y, xSize, ySize)   
         
     	ch1 =self.Channels[0].getPoints(z=True)
     	ch2 =self.Channels[1].getPoints(z=True)          	  
@@ -217,10 +215,6 @@ class Synapse3D(BaseProcess):
     	displayCh1 = displayCh1[(displayCh1[:,1] < y+ySize)]
     	displayCh2 = displayCh2[(displayCh2[:,1] < y+ySize)]        
 
-    	print(ch1.shape)        
-    	print(displayCh1.shape)
-    	#print(displayCh1)         
-         
     	self.viewerWidget.addArray(displayCh1,color=QColor(255, 0, 0)) 
     	self.viewerWidget.addArray(displayCh2,color=QColor(0, 255, 0))    	        
 
@@ -362,10 +356,16 @@ class Synapse3D(BaseProcess):
     def show_viewBox(self,value):
         if value == False:
             self.viewerDock.hide()
-            self.ROI_3Dview.setPen(None)
+            self.ROIState = self.ROI_3Dview.getState()
+            self.ROI_3Dview.parentItem().getViewBox().removeItem(self.ROI_3Dview)
+
         else:
             self.viewerDock.show()
-            self.ROI_3Dview.setPen('r')
+            self.ROI_3Dview = pg.RectROI([0, 0], [5000,5000], pen='r')
+            self.ROI_3Dview.setState(self.ROIState)            
+            self.plotWidget.addItem(self.ROI_3Dview)
+            self.ROI_3Dview.sigRegionChanged.connect(self.update3D_viewer)             
+           
         return
 
     def start(self):        
@@ -494,7 +494,8 @@ class Synapse3D(BaseProcess):
         #####################################################################################
 
         self.win.addWidget(self.dataWidget, where=('right', self.plotDock), size=(100, 500))
-        self.win.closeEvent = lambda f: self.app.exit()        
+        #self.win.closeEvent = lambda f: self.app.exit() 
+        self.win.closeEvent = lambda f: self.app.closeAllWindows()
         self.win.show()
         #sys.exit(self.app.exec_())
 

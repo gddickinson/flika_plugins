@@ -53,7 +53,8 @@ class SliceViewer(BaseProcess):
 
     def __init__(self, viewerInstance, A):
         super().__init__()
-
+        self.app = QtWidgets.QApplication([])
+        
         self.viewer = viewerInstance
         self.overlayFlag = False
 
@@ -278,6 +279,9 @@ class SliceViewer(BaseProcess):
         self.roi5 = pg.LineSegmentROI([[0, 0], [0, self.height]], pen=self.dash2, maxBounds=QtCore.QRect(-int(self.width/2),0,self.width,0),movable=False)
         self.imv3.addItem(self.roi5)
 
+        #self.win.closeEvent = lambda f: self.app.closeAllWindows()
+        #self.win.closeEvent = lambda f: self.app.quitOnLastWindowClosed()
+        self.win.closeEvent = lambda f: self.closeEvent(f) 
 
         #hide default imageview buttons
         def hideButtons(imv):
@@ -552,20 +556,34 @@ class SliceViewer(BaseProcess):
         return
 
     def close(self):
-        self.roi1.sigRegionChanged.disconnect(self.update)
-        self.roi2.sigRegionChanged.disconnect(self.update)
-        self.roi3.sigRegionChanged.disconnect(self.update)
+        try:
+            self.roi1.sigRegionChanged.disconnect(self.update)
+        except:
+            pass
+        try:        
+            self.roi2.sigRegionChanged.disconnect(self.update)
+        except:
+            pass
+        try:        
+            self.roi3.sigRegionChanged.disconnect(self.update)
+        except:
+            pass            
         
         for imv in self.imageWidgits:
             imv.close()
-        
-        self.exportDialogWin.close()
-        self.win.close()
-        self.win.destroy()
+
+        try:        
+            self.exportDialogWin.close()
+        except:
+            pass
+                
         return
 
     def closeEvent(self, event):
+        self.close()
         event.accept()
+        self.app.closeAllWindows()
+        self.app.quitOnLastWindowClosed()
 
     def setProb(self, prob):
         self.prob = prob
