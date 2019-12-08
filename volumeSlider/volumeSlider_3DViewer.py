@@ -39,6 +39,7 @@ from .histogramExtension import HistogramLUTWidget_Overlay
 from .texturePlot import *
 from .scatterPlot import *
 from .overlayOptions import *
+from .exportIMS import *
 
 from pyqtgraph import HistogramLUTWidget
 
@@ -198,7 +199,11 @@ class SliceViewer(BaseProcess):
         setMenuUp(self.exportFlika,self.fileMenu4,shortcut=None,statusTip='Export to Flikal',connection=self.exportDialog)
         
         self.export = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Export Volume to Array')
-        setMenuUp(self.export,self.fileMenu4,shortcut='Ctrl+E',statusTip='Export to Array',connection=self.exportCurrentVolToArray)                    
+        setMenuUp(self.export,self.fileMenu4,shortcut='Ctrl+E',statusTip='Export to Array',connection=self.exportCurrentVolToArray) 
+
+        self.exportIMS = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Export to Imaris')
+        setMenuUp(self.exportIMS,self.fileMenu4,shortcut=None,statusTip='Export to Imaris',connection=self.exportIMSDialog)
+                   
         #================================================================================================================                
         self.fileMenu5 = self.menubar.addMenu('&Overlay')
         
@@ -605,6 +610,12 @@ class SliceViewer(BaseProcess):
         self.exportDialogWin = exportDialog_win(self.viewer)
         self.exportDialogWin.show()
         return
+
+    def exportIMSDialog(self):
+        self.exportIMSdialogWin = exportIMSdialog_win(self.viewer, self.originalData)
+        self.exportIMSdialogWin.show()
+        return
+
 
     def exportCurrentVolToArray(self):
         arraySavePath = QtWidgets.QFileDialog.getSaveFileName(self.win,'Save File', os.path.expanduser("~/Desktop"), 'Numpy array (*.npy)')
@@ -1146,3 +1157,42 @@ class gaussianDialog_win(QtWidgets.QDialog):
         self.sigma = self.sigmaSlider.value()
         self.sigmaValueLabel.setText("{:.1f}".format(self.sigma/10))
         return
+
+class exportIMSdialog_win(QtWidgets.QDialog):
+    def __init__(self, viewerInstance, A, parent = None):
+        super(exportIMSdialog_win, self).__init__(parent)
+
+        self.viewer = viewerInstance
+        self.A = A
+
+        #window geometry
+        windowGeometry(self, left=300, top=300, height=200, width=200)
+
+        #labels
+
+        #buttons
+        self.buttonExport = QtWidgets.QPushButton("Export")               
+        
+        
+        #self.buttonFree = QtWidgets.QPushButton("Export Free view")        
+
+        #grid layout
+        layout = QtWidgets.QGridLayout()
+        #layout.setSpacing(5)
+        layout.addWidget(self.buttonExport, 0, 0)         
+       
+        self.setLayout(layout)
+        self.setGeometry(self.left, self.top, self.width, self.height)
+
+        #add window title
+        self.setWindowTitle("Imaris Export Options")
+
+        #connect buttons
+        self.buttonExport.clicked.connect(lambda: self.export())               
+             
+        return
+
+    def export(self):
+        makeIMS_flika(self.A) 
+        return
+ 
