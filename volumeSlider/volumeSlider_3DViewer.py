@@ -45,7 +45,7 @@ from pyqtgraph import HistogramLUTWidget
 
 dataType = np.float16
 from matplotlib import cm
-
+from pathlib import Path
 
 #########################################################################################
 #############                  slice viewer (3D Display)                #################
@@ -1165,21 +1165,122 @@ class exportIMSdialog_win(QtWidgets.QDialog):
         self.viewer = viewerInstance
         self.A = A
 
+        subsamp_options = ['((1, 1, 1), (1, 2, 2))']
+        chunks_options = ['((16, 128, 128), (64, 64, 64))']
+        compression_options = ['gzip', 'lzf', 'szip']
+        thumbsize_options = ['256','128']
+        dx = g.settings['volumeSlider']['IMS_dx']
+        dz = g.settings['volumeSlider']['IMS_dz']
+        Unit_options = ['m','mm','um','nm']
+        GammaCorrection = g.settings['volumeSlider']['IMS_GammaCorrection']
+        ColorRange_options = ['0 255']
+        LSMEmissionWavelength = g.settings['volumeSlider']['IMS_LSMEmissionWavelength']
+        LSMExcitationWavelength = g.settings['volumeSlider']['IMS_LSMExcitationWavelength']
+
         #window geometry
-        windowGeometry(self, left=300, top=300, height=200, width=200)
+        windowGeometry(self, left=300, top=300, height=200, width=500)
 
         #labels
-
+        self.labelPath = QtWidgets.QLabel('Save Path: ') 
+        self.label_IMS_SavePath = QtWidgets.QLabel(str(shorten_path(g.settings['volumeSlider']['IMS_fname'],4))) 
+        self.label_IMS_subsamp = QtWidgets.QLabel('subsamp: ') 
+        self.label_IMS_chunks = QtWidgets.QLabel('chunks: ') 
+        self.label_IMS_compression = QtWidgets.QLabel('compression: ') 
+        self.label_IMS_thumbsize = QtWidgets.QLabel('thumbsize: ') 
+        self.label_IMS_dx = QtWidgets.QLabel('dx & dy: ') 
+        self.label_IMS_dz = QtWidgets.QLabel('dz: ') 
+        self.label_IMS_Unit = QtWidgets.QLabel('Unit: ') 
+        self.label_IMS_GammaCorrection = QtWidgets.QLabel('Gamma Correction: ') 
+        self.label_IMS_ColorRange = QtWidgets.QLabel('Color Range: ') 
+        self.label_IMS_LSMEmissionWavelength = QtWidgets.QLabel('LSM Emission Wavelength: ') 
+        self.label_IMS_LSMExcitationWavelength = QtWidgets.QLabel('LSM Excitation Wavelength: ') 
+        
         #buttons
+        self.buttonPath = QtWidgets.QPushButton("Set Path") 
         self.buttonExport = QtWidgets.QPushButton("Export")               
-        
-        
-        #self.buttonFree = QtWidgets.QPushButton("Export Free view")        
+
+        #ComboBox
+        self.subsampSelectorBox = QtWidgets.QComboBox()
+        self.subsampSelectorBox.addItems(subsamp_options)
+        self.subsampSelectorBox.setCurrentText(g.settings['volumeSlider']['IMS_subsamp'])
+        self.subsampSelectorBox.currentIndexChanged.connect(self.subsampSelectionChange)        
+
+        self.chunksSelectorBox = QtWidgets.QComboBox()
+        self.chunksSelectorBox.addItems(chunks_options)
+        self.chunksSelectorBox.setCurrentText(g.settings['volumeSlider']['IMS_chunks'])
+        self.chunksSelectorBox.currentIndexChanged.connect(self.chunksSelectionChange) 
+
+        self.compressionSelectorBox = QtWidgets.QComboBox()
+        self.compressionSelectorBox.addItems(compression_options)
+        self.compressionSelectorBox.setCurrentText(g.settings['volumeSlider']['IMS_compression'])
+        self.compressionSelectorBox.currentIndexChanged.connect(self.compressionSelectionChange) 
+
+        self.thumbsizeSelectorBox = QtWidgets.QComboBox()
+        self.thumbsizeSelectorBox.addItems(thumbsize_options)
+        self.thumbsizeSelectorBox.setCurrentText(g.settings['volumeSlider']['IMS_thumbsize'])
+        self.thumbsizeSelectorBox.currentIndexChanged.connect(self.thumbsizeSelectionChange) 
+
+        self.unitSelectorBox = QtWidgets.QComboBox()
+        self.unitSelectorBox.addItems(Unit_options)
+        self.unitSelectorBox.setCurrentText(g.settings['volumeSlider']['IMS_Unit'])
+        self.unitSelectorBox.currentIndexChanged.connect(self.unitSelectionChange)
+
+        self.colorRangeSelectorBox = QtWidgets.QComboBox()
+        self.colorRangeSelectorBox.addItems(ColorRange_options)
+        self.colorRangeSelectorBox.setCurrentText(g.settings['volumeSlider']['IMS_ColorRange'])
+        self.colorRangeSelectorBox.currentIndexChanged.connect(self.colorRangeSelectionChange)
+
+
+        #spinboxes
+        self.dxSpinBox = QtWidgets.QDoubleSpinBox()
+        self.dxSpinBox.setRange(0.00,100.00)
+        self.dxSpinBox.setValue(g.settings['volumeSlider']['IMS_dx'])
+        self.dxSpinBox.setSingleStep(0.05)
+        self.dxSpinBox.valueChanged.connect(self.dxSpinBoxValueChange)
+
+        self.dzSpinBox = QtWidgets.QDoubleSpinBox()
+        self.dzSpinBox.setRange(0.00,100.00)
+        self.dzSpinBox.setValue(g.settings['volumeSlider']['IMS_dz'])
+        self.dzSpinBox.setSingleStep(0.05)
+        self.dzSpinBox.valueChanged.connect(self.dzSpinBoxValueChange)
+
+        self.gammaCorrectionSelectorBox = QtWidgets.QDoubleSpinBox()
+        self.gammaCorrectionSelectorBox.setRange(0.0,5.0)
+        self.gammaCorrectionSelectorBox.setValue(g.settings['volumeSlider']['IMS_GammaCorrection'])
+        self.gammaCorrectionSelectorBox.setSingleStep(0.01)
+        self.gammaCorrectionSelectorBox.valueChanged.connect(self.gammaCorrectionBoxValueChange)
+
 
         #grid layout
         layout = QtWidgets.QGridLayout()
         #layout.setSpacing(5)
-        layout.addWidget(self.buttonExport, 0, 0)         
+        layout.addWidget(self.labelPath, 0, 0) 
+        layout.addWidget(self.label_IMS_SavePath, 0, 1) 
+        layout.addWidget(self.buttonPath, 0, 2) 
+        layout.addWidget(self.label_IMS_subsamp, 1,0)
+        layout.addWidget(self.subsampSelectorBox, 1,1)        
+        layout.addWidget(self.label_IMS_chunks, 2,0)
+        layout.addWidget(self.chunksSelectorBox, 2,1)          
+        layout.addWidget(self.label_IMS_compression, 3,0) 
+        layout.addWidget(self.compressionSelectorBox, 3,1)          
+        layout.addWidget(self.label_IMS_thumbsize, 4,0) 
+        layout.addWidget(self.thumbsizeSelectorBox, 4,1)          
+        layout.addWidget(self.label_IMS_dx, 5,0) 
+        layout.addWidget(self.dxSpinBox, 5,1)            
+        layout.addWidget(self.label_IMS_dz, 6,0) 
+        layout.addWidget(self.dzSpinBox, 6,1)         
+        layout.addWidget(self.label_IMS_Unit, 7,0) 
+        layout.addWidget(self.unitSelectorBox, 7,1)         
+        layout.addWidget(self.label_IMS_GammaCorrection, 8,0) 
+        layout.addWidget(self.gammaCorrectionSelectorBox, 8,1)         
+        layout.addWidget(self.label_IMS_ColorRange, 9,0) 
+        layout.addWidget(self.colorRangeSelectorBox, 9,1)           
+        layout.addWidget(self.label_IMS_LSMEmissionWavelength, 10,0) 
+        
+        layout.addWidget(self.label_IMS_LSMExcitationWavelength, 11,0) 
+        
+        
+        layout.addWidget(self.buttonExport, 14, 0)         
        
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -1188,11 +1289,65 @@ class exportIMSdialog_win(QtWidgets.QDialog):
         self.setWindowTitle("Imaris Export Options")
 
         #connect buttons
-        self.buttonExport.clicked.connect(lambda: self.export())               
+        self.buttonExport.clicked.connect(lambda: self.export())  
+        self.buttonPath.clicked.connect(lambda: self.getSavePath())               
              
         return
 
     def export(self):
         makeIMS_flika(self.A) 
         return
- 
+
+    def getSavePath(self): 
+        imsSavePath = QtWidgets.QFileDialog.getSaveFileName(None,'Save File', os.path.expanduser("~/Desktop"), 'IMS file (*.ims)')
+        g.settings['volumeSlider']['IMS_fname'] = str(imsSavePath[0])
+        self.label_IMS_SavePath.setText(str(shorten_path(g.settings['volumeSlider']['IMS_fname'],4))) 
+        return
+    
+    def subsampSelectionChange(self):
+        g.settings['volumeSlider']['IMS_subsamp'] = self.subsampSelectorBox.currentText()
+        print(g.settings['volumeSlider']['IMS_subsamp'])
+        return
+    
+    def chunksSelectionChange(self):
+        g.settings['volumeSlider']['IMS_chunks'] = self.chunksSelectorBox.currentText()
+        print(g.settings['volumeSlider']['IMS_chunks'])        
+        return
+    
+    def compressionSelectionChange(self):
+        g.settings['volumeSlider']['IMS_compression'] = self.compressionSelectorBox.currentText()
+        print(g.settings['volumeSlider']['IMS_compression'])           
+        return
+    
+    def thumbsizeSelectionChange(self,value):
+        g.settings['volumeSlider']['IMS_thumbsize'] = self.thumbsizeSelectorBox.currentText()
+        print(g.settings['volumeSlider']['IMS_thumbsize'])         
+        return
+    
+    def dxSpinBoxValueChange(self,value):
+        print(value)
+        g.settings['volumeSlider']['IMS_dx'] = value        
+        return
+    
+    def dzSpinBoxValueChange(self,value):
+        print(value)
+        g.settings['volumeSlider']['IMS_dz'] = value        
+        return    
+    
+    def unitSelectionChange(self):
+        g.settings['volumeSlider']['IMS_Unit'] = self.unitSelectorBox.currentText()
+        print(g.settings['volumeSlider']['IMS_Unit'])          
+        return    
+
+    def gammaCorrectionBoxValueChange(self,value):
+        print(value)
+        g.settings['volumeSlider']['IMS_GammaCorrection'] = value
+        return   
+    
+    def colorRangeSelectionChange(self):
+        g.settings['volumeSlider']['IMS_ColorRange'] = self.colorRangeSelectorBox.currentText()
+        print(g.settings['volumeSlider']['IMS_ColorRange'])         
+        return    
+    
+    
+    

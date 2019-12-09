@@ -102,20 +102,27 @@ print(B.shape)
 
 B = B.astype(A.dtype)
 
+#def make_thumbnail(array, size=256):
+#    """ array should be 4D array """
+#    # TODO: don't just crop to the upper left corner
+#    mip = np.squeeze(array).max(1)[:3, :size, :size].astype(np.float)
+#    for i in range(mip.shape[0]):
+#        mip[i] -= np.min(mip[i])
+#        mip[i] *= 255 / np.max(mip[i])
+#    mip = np.pad(mip, ((0, 3 - mip.shape[0]),
+#                       (0, size - mip.shape[1]),
+#                       (0, size - mip.shape[2])
+#                       ), 'constant', constant_values=0)
+#    mip = np.pad(mip, ((0, 1), (0, 0), (0, 0)), 'constant',
+#                 constant_values=255).astype('|u1')
+#    return np.squeeze(mip.T.reshape(1, size, size * 4)).astype('|u1')
+
 def make_thumbnail(array, size=256):
-    """ array should be 4D array """
-    # TODO: don't just crop to the upper left corner
-    mip = np.squeeze(array).max(1)[:3, :size, :size].astype(np.float)
-    for i in range(mip.shape[0]):
-        mip[i] -= np.min(mip[i])
-        mip[i] *= 255 / np.max(mip[i])
-    mip = np.pad(mip, ((0, 3 - mip.shape[0]),
-                       (0, size - mip.shape[1]),
-                       (0, size - mip.shape[2])
-                       ), 'constant', constant_values=0)
-    mip = np.pad(mip, ((0, 1), (0, 0), (0, 0)), 'constant',
-                 constant_values=255).astype('|u1')
-    return np.squeeze(mip.T.reshape(1, size, size * 4)).astype('|u1')
+    empty = np.zeros((size,size))
+    clip = array[0][0].astype(np.float)[0:size,0:size]   
+    #TODO
+    mip = empty
+    return mip.astype('|u1')
 
 
 def h5str(s, coding='ASCII', dtype='S1'):
@@ -125,12 +132,13 @@ def h5str(s, coding='ASCII', dtype='S1'):
 def subsample_data(data, subsamp):
     return data[0::int(subsamp[0]), 0::int(subsamp[1]), 0::int(subsamp[2])]
 
-
-#B_thumb = make_thumbnail(B)
-#plt.imshow(B_thumb)
+C = np.squeeze(B,axis=1)
+B_thumb = make_thumbnail(C)
+plt.imshow(B_thumb)
 
 
 ########################
+
 
 def np_to_ims(array, fname='myfile.ims',
               subsamp=((1, 1, 1), (1, 2, 2)),
@@ -204,9 +212,9 @@ def np_to_ims(array, fname='myfile.ims',
         ATTRS.append((grp, ('GammaCorrection', 1)))
         ATTRS.append((grp, ('ColorRange', '0 255')))
         ATTRS.append((grp, ('Name', 'Channel %s' % c)))
-        # ATTRS.append(grp, ('LSMEmissionWavelength', 0))
-        # ATTRS.append(grp, ('LSMExcitationWavelength', ''))
-        # ATTRS.append(grp, ('Description', '(description not specified)'))
+        ATTRS.append((grp, ('LSMEmissionWavelength', 0)))
+        ATTRS.append((grp, ('LSMExcitationWavelength', '')))
+        ATTRS.append((grp, ('Description', '(description not specified)')))
 
     # TODO: create accurate timestamps
     for t in range(nt):
@@ -258,4 +266,11 @@ def unmap_bdv_from_imaris(hf):
             del hf[i]
     return
 
-testIMS = np_to_ims(B)
+kwargs = {'fname':'myfile.ims',
+              'subsamp':((1, 1, 1), (1, 2, 2)),
+              'chunks':((16, 128, 128), (64, 64, 64)),
+              'compression':'gzip',
+              'thumbsize':256,
+              'dx':0.1, 'dz':0.25}
+
+testIMS = np_to_ims(B, **kwargs)

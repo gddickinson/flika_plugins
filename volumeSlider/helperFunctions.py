@@ -6,6 +6,7 @@ from skimage.transform import rescale
 #from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
 from flika import global_vars as g
+from pathlib import Path
 
 ##############       Helper functions        ###########################################
 
@@ -172,3 +173,8 @@ def plot_cube(ax, cube_definition):
     ax.scatter(points[:,0], points[:,1], points[:,2], s=0)
 
     ax.set_aspect('equal')
+    
+
+
+def shorten_path(file_path, length):
+    return Path(*Path(file_path).parts[-length:])

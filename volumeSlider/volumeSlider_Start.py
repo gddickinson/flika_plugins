@@ -47,7 +47,7 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
     """
     
     def __init__(self):
-        if g.settings['volumeSlider'] is None or 'f0VolEnd' not in g.settings['volumeSlider']:
+        if g.settings['volumeSlider'] is None or 'UPDATE' not in g.settings['volumeSlider']:
             s = dict() 
             s['inputChoice'] = 'Current Window'              
             s['keepOriginalWindow'] = False   
@@ -64,7 +64,19 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
             s['inputArrayOrder'] = 4
             s['displayArrayOrder'] = 16
             s['f0VolStart'] = 0
-            s['f0VolEnd'] = 0            
+            s['f0VolEnd'] = 0  
+            s['IMS_fname'] ='IMS_export.ims'
+            s['IMS_subsamp'] = '((1, 1, 1), (1, 2, 2))'
+            s['IMS_chunks'] = '((16, 128, 128), (64, 64, 64))'
+            s['IMS_compression'] = 'gzip'
+            s['IMS_thumbsize'] = '256'
+            s['IMS_dx'] = 0.1
+            s['IMS_dz'] = 0.25
+            s['IMS_Unit'] = 'um'
+            s['IMS_GammaCorrection'] = 1
+            s['IMS_ColorRange'] =  '0 255'
+            s['IMS_LSMEmissionWavelength'] = 0
+            s['IMS_LSMExcitationWavelength'] = 0
                             
             g.settings['volumeSlider'] = s
                 
