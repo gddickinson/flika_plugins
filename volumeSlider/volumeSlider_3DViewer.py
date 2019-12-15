@@ -1167,7 +1167,7 @@ class exportIMSdialog_win(QtWidgets.QDialog):
 
         subsamp_options = ['((1, 1, 1), (1, 2, 2))']
         chunks_options = ['((16, 128, 128), (64, 64, 64))']
-        compression_options = ['gzip', 'lzf', 'szip']
+        compression_options = ['gzip', 'lzf', 'szip','None']
         thumbsize_options = ['256','128']
         dx = g.settings['volumeSlider']['IMS_dx']
         dz = g.settings['volumeSlider']['IMS_dz']

@@ -65,6 +65,9 @@ def np_to_ims(array, fname='myfile.ims',
     chunks = literal_eval(chunks) 
     thumbsize = literal_eval(thumbsize) 
     
+    if compression == 'None':
+        compression = None
+    
     assert len(subsamp) == len(chunks)
     assert all([len(i) == 3 for i in subsamp]), 'Only deal with 3D chunks'
     assert all([len(i) == len(x) for i, x in zip(subsamp, chunks)])

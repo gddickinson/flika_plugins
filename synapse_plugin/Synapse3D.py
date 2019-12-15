@@ -78,6 +78,9 @@ class Synapse3D(BaseProcess):
         #display options
         self.centroidSymbolSize = 10
         
+        #data state
+        self.dataLoaded = False
+        self.ROI3D_Initiated = False
         
         
     def displayData(self):
@@ -147,25 +150,25 @@ class Synapse3D(BaseProcess):
     	if filename == '':
     		filename = getFilename(filter='Text Files (*.txt)')
     	self.clear()
-    	data = importFile(filename,evaluateLines=False)
-    	data = {d[0]: d[1:] for d in np.transpose(data)}
-    	for k in data:
+    	self.data = importFile(filename,evaluateLines=False)
+    	self.data = {d[0]: d[1:] for d in np.transpose(self.data)}
+    	for k in self.data:
     		if k != 'Channel Name':
-    			data[k] = data[k].astype(float)
+    			self.data[k] = self.data[k].astype(float)
     	print('Gathering channels...')
     	g.m.statusBar().showMessage('Gathering channels...')        
-    	names = set(data['Channel Name'].astype(str)) - self.ignore
+    	names = set(self.data['Channel Name'].astype(str)) - self.ignore
     	print('Channels Found: %s' % ', '.join(names))
     	g.m.statusBar().showMessage('Channels Found: %s' % ', '.join(names))
     
-    	data['Xc'] /= self.units[self.unit]
-    	data['Yc'] /= self.units[self.unit]
-    	data['Zc'] /= self.units[self.unit]
+    	self.data['Xc'] /= self.units[self.unit]
+    	self.data['Yc'] /= self.units[self.unit]
+    	self.data['Zc'] /= self.units[self.unit]
     
     	#global Channels
     	self.Channels = []
     	self.plotWidget.clear()
-    	pts = [ActivePoint(data={k: data[k][i] for k in data}) for i in range(len(data['Channel Name']))]
+    	pts = [ActivePoint(data={k: self.data[k][i] for k in self.data}) for i in range(len(self.data['Channel Name']))]
     	for i, n in enumerate(names):
     		if n in self.color_dict:
     			color = self.color_dict[n]
@@ -178,16 +181,26 @@ class Synapse3D(BaseProcess):
     	self.show_ch2.setText(self.Channels[1].__name__)
     	self.ch1_mesh.setText(self.Channels[0].__name__)
     	self.ch2_mesh.setText(self.Channels[1].__name__)
+
+    	self.dataLoaded = True
         
+    	if self.viewBox_tickBox.checkState() == 2:
+            self.make3DROI()
+
+
+    def make3DROI(self):        
     	#3D window ROI
     	#print('min Xc: {}, max Xc: {} | min Yc: {}, max Yc: {}'.format(min(data['Xc']),max(data['Xc']),min(data['Yc']),max(data['Yc'])))          
-    	self.ROI_3Dview = pg.RectROI([min(data['Xc']), min(data['Yc'])], [5000,5000], pen='r')
+    	self.ROI_3Dview = pg.RectROI([min(self.data['Xc']), min(self.data['Yc'])], [5000,5000], pen='r')
     	self.plotWidget.addItem(self.ROI_3Dview)
     	self.viewerDock.show()
     	self.viewerDock.float()
     	self.viewerDock.window().setGeometry(20, 100, 500, 500)   
     	self.update3D_viewer()  
-    	self.ROI_3Dview.sigRegionChanged.connect(self.update3D_viewer)       
+    	self.ROI_3Dview.sigRegionChanged.connect(self.update3D_viewer)  
+    	self.ROIState = self.ROI_3Dview.getState()
+    	self.ROI3D_Initiated = True
+    	return    
 
     def update3D_viewer(self):
     	if self.viewBox_tickBox.checkState == False:
@@ -354,19 +367,39 @@ class Synapse3D(BaseProcess):
         return
 
     def show_viewBox(self,value):
+        if self.dataLoaded == False:
+            return
+        
         if value == False:
-            self.viewerDock.hide()
+            #self.viewerDock.hide()
+            self.viewerDock.close()
             self.ROIState = self.ROI_3Dview.getState()
             self.ROI_3Dview.parentItem().getViewBox().removeItem(self.ROI_3Dview)
 
         else:
+
             self.viewerDock.show()
-            self.ROI_3Dview = pg.RectROI([0, 0], [5000,5000], pen='r')
-            self.ROI_3Dview.setState(self.ROIState)            
-            self.plotWidget.addItem(self.ROI_3Dview)
-            self.ROI_3Dview.sigRegionChanged.connect(self.update3D_viewer)             
+            self.viewerDock.float()
+            
+            if self.ROI3D_Initiated == False:
+                self.make3DROI()
+            
+            else:
+                self.ROI_3Dview = pg.RectROI([0, 0], [5000,5000], pen='r')
+                self.ROI_3Dview.setState(self.ROIState)            
+                self.plotWidget.addItem(self.ROI_3Dview)
+                self.ROI_3Dview.sigRegionChanged.connect(self.update3D_viewer)             
            
         return
+
+    def viewerFrameCloseAction(self):
+        print('Viewer closed')
+        #self.viewerDock.close()
+        self.ROIState = self.ROI_3Dview.getState()
+        self.ROI_3Dview.parentItem().getViewBox().removeItem(self.ROI_3Dview)
+        self.viewBox_tickBox.stateChanged.disconnect(self.show_viewBox)
+        self.viewBox_tickBox.setChecked(False)
+        self.viewBox_tickBox.stateChanged.connect(self.show_viewBox)
 
     def start(self):        
         self.menu = self.win.menuBar()
@@ -397,8 +430,9 @@ class Synapse3D(BaseProcess):
         
         self.viewBox_tickLabel = QtWidgets.QLabel('Display 3D viewer')
         self.viewBox_tickBox = QtWidgets.QCheckBox()  
-        self.viewBox_tickBox.setChecked(True)
-        self.viewBox_tickBox.stateChanged.connect(self.show_viewBox)  
+        self.viewBox_tickBox.setChecked(False)
+        self.viewBox_tickBox.stateChanged.connect(self.show_viewBox)
+        
            
         self.layout.addWidget(self.show_all, 0, 0)
         self.layout.addWidget(self.show_ch1, 0, 1)
@@ -456,13 +490,13 @@ class Synapse3D(BaseProcess):
         #################################################
         #3D viewer dock
         self.viewerFrame = QtWidgets.QWidget()
-        self.layout = QtWidgets.QGridLayout(self.viewerFrame)
+        self.layout2 = QtWidgets.QGridLayout(self.viewerFrame)
         self.viewerWidget = Plot3DWidget()
         self.viewerWidget.load_file = self.open_file        
-        self.layout.addWidget(self.viewerWidget, 0, 0, 6, 6)
+        self.layout2.addWidget(self.viewerWidget, 0, 0, 6, 6)
         #self.export_viewer = QtWidgets.QPushButton('Export Coordinates')
         #self.export_viewer.pressed.connect(lambda : export_arr(self.viewerWidget.synapse.pos, header='X\tY\tZ'))
-        #self.layout.addWidget(self.export_viewer, 6, 0)
+        #self.layout2.addWidget(self.export_viewer, 6, 0)
         #self.no_mesh = QtWidgets.QRadioButton('No Mesh', checked=True)
         #self.no_mesh.pressed.connect(lambda : self.show_mesh(None))
         #self.ch1_mesh = QtWidgets.QRadioButton('Channel 1')
@@ -472,13 +506,13 @@ class Synapse3D(BaseProcess):
         #self.scaleBar_tickLabel = QtWidgets.QLabel('Display Scale Bar')
         #self.scaleBar_tickBox = QtWidgets.QCheckBox()         
         #self.scaleBar_tickBox.stateChanged.connect(self.show_scaleBar)        
-        #self.layout.addWidget(self.no_mesh, 6, 1)
-        #self.layout.addWidget(self.ch1_mesh, 6, 2)
-        #self.layout.addWidget(self.ch2_mesh, 6, 3)
-        #self.layout.addWidget(self.scaleBar_tickLabel, 6, 4)
-        #self.layout.addWidget(self.scaleBar_tickBox, 6, 5)        
+        #self.layout2.addWidget(self.no_mesh, 6, 1)
+        #self.layout2.addWidget(self.ch1_mesh, 6, 2)
+        #self.layout2.addWidget(self.ch2_mesh, 6, 3)
+        #self.layout2.addWidget(self.scaleBar_tickLabel, 6, 4)
+        #self.layout2.addWidget(self.scaleBar_tickBox, 6, 5)        
         
-        self.layout.addWidget(QtWidgets.QLabel(\
+        self.layout2.addWidget(QtWidgets.QLabel(\
         '''
         ROI Plot 3D Widget Controls
         	Arrow Keys or Left click and drag to rotate camera
@@ -490,6 +524,8 @@ class Synapse3D(BaseProcess):
         self.viewerDock = self.win.addWidget(size=(300, 100), widget=self.viewerFrame)
         self.viewerDock.hide()
 
+        #TODO Get this to work
+        #self.viewerDock.close = lambda : self.viewerFrameCloseAction()
 
         #####################################################################################
 
