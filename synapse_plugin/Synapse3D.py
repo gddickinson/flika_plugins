@@ -26,6 +26,7 @@ import pyqtgraph as pg
 from pyqtgraph import mkPen
 from matplotlib import pyplot as plt
 from .dbscan import *
+import copy
 
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
@@ -81,6 +82,8 @@ class Synapse3D(BaseProcess):
         #data state
         self.dataLoaded = False
         self.ROI3D_Initiated = False
+        self.dataDisplayed = 'original'
+        self.clustersGeneated = False
         
         
     def displayData(self):
@@ -150,16 +153,17 @@ class Synapse3D(BaseProcess):
     	if filename == '':
     		filename = getFilename(filter='Text Files (*.txt)')
     	self.clear()
-    	self.data = importFile(filename,evaluateLines=False)
+    	self.data = importFile(filename,evaluateLines=False)        
     	self.data = {d[0]: d[1:] for d in np.transpose(self.data)}
+        
     	for k in self.data:
     		if k != 'Channel Name':
     			self.data[k] = self.data[k].astype(float)
     	print('Gathering channels...')
     	g.m.statusBar().showMessage('Gathering channels...')        
-    	names = set(self.data['Channel Name'].astype(str)) - self.ignore
-    	print('Channels Found: %s' % ', '.join(names))
-    	g.m.statusBar().showMessage('Channels Found: %s' % ', '.join(names))
+    	self.names = set(self.data['Channel Name'].astype(str)) - self.ignore
+    	print('Channels Found: %s' % ', '.join(self.names))
+    	g.m.statusBar().showMessage('Channels Found: %s' % ', '.join(self.names))
     
     	self.data['Xc'] /= self.units[self.unit]
     	self.data['Yc'] /= self.units[self.unit]
@@ -168,13 +172,13 @@ class Synapse3D(BaseProcess):
     	#global Channels
     	self.Channels = []
     	self.plotWidget.clear()
-    	pts = [ActivePoint(data={k: self.data[k][i] for k in self.data}) for i in range(len(self.data['Channel Name']))]
-    	for i, n in enumerate(names):
+    	self.pts = [ActivePoint(data={k: self.data[k][i] for k in self.data}) for i in range(len(self.data['Channel Name']))]
+    	for i, n in enumerate(self.names):
     		if n in self.color_dict:
     			color = self.color_dict[n]
     		else:
     			color = self.colors[i]
-    		self.Channels.append(Channel(n, [p for p in pts if p['Channel Name'] == n], color))
+    		self.Channels.append(Channel(n, [p for p in self.pts if p['Channel Name'] == n], color))
     		self.plotWidget.addItem(self.Channels[-1])
     		self.legend.addItem(self.Channels[-1], n)
     	self.show_ch1.setText(self.Channels[0].__name__)
@@ -187,6 +191,34 @@ class Synapse3D(BaseProcess):
     	if self.viewBox_tickBox.checkState() == 2:
             self.make3DROI()
 
+
+    def updateClusterData(self):
+    	'''filter data points by cluster labels'''
+    	self.clusterChannels = [] 
+
+    	ch1_Name, ch1_pts, ch1_color = self.Channels[0].filterPts(self.ch1_labels)     
+    	ch2_Name, ch2_pts, ch2_color = self.Channels[1].filterPts(self.ch2_labels) 
+              
+    	self.clusterChannels.append(Channel(ch1_Name, ch1_pts, ch1_color))
+    	self.clusterChannels.append(Channel(ch2_Name, ch2_pts, ch2_color))       
+    	return
+
+
+    def refreshData(self):
+    	'''Update main window with either clustered or all points '''
+        
+    	if self.dataDisplayed == 'original':        
+        	self.plotWidget.clear()
+        	self.plotWidget.addItem(self.Channels[0])
+        	self.plotWidget.addItem(self.Channels[1])            
+      
+    	if self.dataDisplayed == 'cluster':        
+        	self.plotWidget.clear()
+        	self.plotWidget.addItem(self.clusterChannels[0])
+        	self.plotWidget.addItem(self.clusterChannels[1])             
+        
+    	return
+        
 
     def make3DROI(self):        
     	#3D window ROI
@@ -324,14 +356,14 @@ class Synapse3D(BaseProcess):
         ch2Points = self.Channels[1].getPoints(z=False)
         #get cluster labels for each channel
         print('--- channel 1 ---')
-        ch1_labels = dbscan(ch1Points, eps=self.eps, min_samples=self.min_samples, plot=False)
+        self.ch1_labels = dbscan(ch1Points, eps=self.eps, min_samples=self.min_samples, plot=False)
         print('--- channel 2 ---')
-        ch2_labels = dbscan(ch2Points, eps=self.eps, min_samples=self.min_samples, plot=False)    
+        self.ch2_labels = dbscan(ch2Points, eps=self.eps, min_samples=self.min_samples, plot=False)    
         print('-----------------')
         #get hulls for each channels clusters
-        ch1_hulls, ch1_centeroids, ch1_groupPoints = self.getHulls(ch1Points,ch1_labels)
+        ch1_hulls, ch1_centeroids, ch1_groupPoints = self.getHulls(ch1Points,self.ch1_labels)
         #self.plotHull(ch1_groupPoints[0],ch1_hulls[0])
-        ch2_hulls, ch2_centeroids, ch2_groupPoints = self.getHulls(ch2Points,ch2_labels)
+        ch2_hulls, ch2_centeroids, ch2_groupPoints = self.getHulls(ch2Points,self.ch2_labels)
         #combine nearest roi between channels
         combinedHulls, combinedPoints = combineClosestHulls(ch1_hulls,ch1_centeroids,ch1_groupPoints,ch2_hulls,ch2_centeroids,ch2_groupPoints, self.maxDistance)
         #get new hulls for combined points
@@ -344,6 +376,9 @@ class Synapse3D(BaseProcess):
             self.createROIFromHull(combinedPoints[i],newHulls[i])  
         print('{} ROI created'.format(str(len(combinedHulls))))
         g.m.statusBar().showMessage('{} ROI created'.format(str(len(combinedHulls))))
+        self.updateClusterData()
+        if len(combinedHulls) > 0:
+            self.clustersGeneated = True
         return
 
 
@@ -352,6 +387,7 @@ class Synapse3D(BaseProcess):
             for i in self.plotWidget.getViewBox().addedItems:
                 if isinstance(i, Freehand):
                     i.delete()
+        self.clustersGeneated = False
         return
 
     def clusterOptions(self):
@@ -400,6 +436,21 @@ class Synapse3D(BaseProcess):
         self.viewBox_tickBox.stateChanged.disconnect(self.show_viewBox)
         self.viewBox_tickBox.setChecked(False)
         self.viewBox_tickBox.stateChanged.connect(self.show_viewBox)
+        return
+
+    def toggleClusters(self):
+        if self.clustersGeneated:
+            print('toggle: ', self.dataDisplayed)
+            if self.dataDisplayed == 'original':
+                self.dataDisplayed = 'cluster'
+            else:
+               self.dataDisplayed = 'original' 
+            self.refreshData()
+        
+        else:
+            print('no clusters!')        
+        return
+
 
     def start(self):        
         self.menu = self.win.menuBar()
@@ -427,6 +478,9 @@ class Synapse3D(BaseProcess):
         self.getClusters_button.pressed.connect(lambda : self.getClusters()) 
         self.clearClusters_button = QtWidgets.QPushButton('Clear Clusters')
         self.clearClusters_button.pressed.connect(lambda : self.clearClusters()) 
+        self.toggleClusters_button = QtWidgets.QPushButton('Toggle Cluster Points')
+        self.toggleClusters_button.pressed.connect(lambda : self.toggleClusters()) 
+
         
         self.viewBox_tickLabel = QtWidgets.QLabel('Display 3D viewer')
         self.viewBox_tickBox = QtWidgets.QCheckBox()  
@@ -441,7 +495,8 @@ class Synapse3D(BaseProcess):
         self.layout.addWidget(self.getClusters_button, 0, 4)    
         self.layout.addWidget(self.clearClusters_button, 0, 5) 
         self.layout.addWidget(self.viewBox_tickLabel, 0, 6) 
-        self.layout.addWidget(self.viewBox_tickBox, 0, 7)           
+        self.layout.addWidget(self.viewBox_tickBox, 0, 7) 
+        self.layout.addWidget(self.toggleClusters_button, 0, 8)           
         self.layout.addItem(QtWidgets.QSpacerItem(400, 20), 0, 3, 1, 8)
         
         self.plotWidget.__name__ = '2D Plotted Channels'

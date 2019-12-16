@@ -86,6 +86,7 @@ class Channel(pg.ScatterPlotItem):
 		super(Channel, self).__init__(x=[p[0] for p in points], y=[p[1] for p in points], brush=color, pen=color, size=2)
 		self.__name__ = name
 		self.pts = points
+		self.__color__ = color        
 
 	def getPoints(self, z=False):
 		if self.getCount() == 0:
@@ -112,4 +113,10 @@ class Channel(pg.ScatterPlotItem):
 		pts = self.getPoints(z=True) 
 		return np.min(pts,axis=0)    
     
-    
+	def filterPts(self, filterList):		    
+		pts = []
+		for i in range(len(filterList)):
+				if filterList[i] != -1:
+						pts.append(self.pts[i])
+      
+		return self.__name__, pts, self.__color__
