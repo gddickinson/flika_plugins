@@ -85,6 +85,7 @@ class Synapse3D(BaseProcess):
         self.dataDisplayed = 'original'
         self.clustersGeneated = False
         
+        self.clusterIndex = []
         
     def displayData(self):
     	self.dataWidget.setData(sorted([roi.synapse_data for roi in self.plotWidget.items() if \
@@ -100,6 +101,11 @@ class Synapse3D(BaseProcess):
     				pts_in.append(syn_pt)
     		channels.append(Channel(ch.__name__, pts_in, ch.color()))
     	return channels
+
+
+    def getROI_pts(self, roi):
+        ch1,ch2 = self.subchannels_in_roi(roi)
+        return ch1.pts, ch2.pts
     
     def analyze_roi(self,roi):
     	channels = self.subchannels_in_roi(roi)
@@ -187,20 +193,41 @@ class Synapse3D(BaseProcess):
     	self.ch2_mesh.setText(self.Channels[1].__name__)
 
     	self.dataLoaded = True
-        
+              
     	if self.viewBox_tickBox.checkState() == 2:
             self.make3DROI()
 
 
     def updateClusterData(self):
     	'''filter data points by cluster labels'''
-    	self.clusterChannels = [] 
+    	#clusters & noise    	
+    	if self.dataDisplayed == 'cluster':
+    	    	self.clusterChannels = [] 
 
-    	ch1_Name, ch1_pts, ch1_color = self.Channels[0].filterPts(self.ch1_labels)     
-    	ch2_Name, ch2_pts, ch2_color = self.Channels[1].filterPts(self.ch2_labels) 
+    	    	ch1_Name, ch1_pts, ch1_color = self.Channels[0].filterPts(self.ch1_labels)     
+    	    	ch2_Name, ch2_pts, ch2_color = self.Channels[1].filterPts(self.ch2_labels) 
               
-    	self.clusterChannels.append(Channel(ch1_Name, ch1_pts, ch1_color))
-    	self.clusterChannels.append(Channel(ch2_Name, ch2_pts, ch2_color))       
+    	    	self.clusterChannels.append(Channel(ch1_Name, ch1_pts, ch1_color))
+    	    	self.clusterChannels.append(Channel(ch2_Name, ch2_pts, ch2_color)) 
+
+    	else:
+    	    	#combined clusters        
+    	    	self.combinedClusterChannels = []
+    	    	ch1_Name = self.Channels[0].__name__
+    	    	ch2_Name = self.Channels[1].__name__
+    	    	ch1_color = self.Channels[0].__color__
+    	    	ch2_color = self.Channels[1].__color__                
+    	    	ch1_list = []
+    	    	ch2_list = []
+ 	        
+    	    	for roi in self.plotWidget.items():
+    	    	    	if isinstance(roi, Freehand) and hasattr(roi, 'synapse_data'):	    	
+    	    	            ch1_ROI_pts, ch2_ROI_pts = self.getROI_pts(roi)
+    	    	            ch1_list.extend(ch1_ROI_pts)
+    	    	            ch2_list.extend(ch2_ROI_pts)
+
+    	    	self.combinedClusterChannels.append(Channel(ch1_Name, np.array(ch1_list), ch1_color))
+    	    	self.combinedClusterChannels.append(Channel(ch2_Name, np.array(ch2_list), ch2_color))          
     	return
 
 
@@ -212,11 +239,19 @@ class Synapse3D(BaseProcess):
         	self.plotWidget.addItem(self.Channels[0])
         	self.plotWidget.addItem(self.Channels[1])            
       
-    	if self.dataDisplayed == 'cluster':        
+    	if self.dataDisplayed == 'cluster':  
+        	self.updateClusterData()
         	self.plotWidget.clear()
         	self.plotWidget.addItem(self.clusterChannels[0])
-        	self.plotWidget.addItem(self.clusterChannels[1])             
+        	self.plotWidget.addItem(self.clusterChannels[1])
+             
         
+    	if self.dataDisplayed == 'combined':   
+        	self.updateClusterData()
+        	self.plotWidget.clear()
+        	self.plotWidget.addItem(self.combinedClusterChannels[0])
+        	self.plotWidget.addItem(self.combinedClusterChannels[1]) 
+
     	return
         
 
@@ -376,7 +411,7 @@ class Synapse3D(BaseProcess):
             self.createROIFromHull(combinedPoints[i],newHulls[i])  
         print('{} ROI created'.format(str(len(combinedHulls))))
         g.m.statusBar().showMessage('{} ROI created'.format(str(len(combinedHulls))))
-        self.updateClusterData()
+        #self.updateClusterData()
         if len(combinedHulls) > 0:
             self.clustersGeneated = True
         return
@@ -438,19 +473,37 @@ class Synapse3D(BaseProcess):
         self.viewBox_tickBox.stateChanged.connect(self.show_viewBox)
         return
 
-    def toggleClusters(self):
+    def toggleNoise(self):
+        
+        oldSetting = self.dataDisplayed
+        
         if self.clustersGeneated:
-            print('toggle: ', self.dataDisplayed)
-            if self.dataDisplayed == 'original':
+            #print('toggle: ', self.dataDisplayed)
+            if self.dataDisplayed == 'original' or self.dataDisplayed == 'combined':
                 self.dataDisplayed = 'cluster'
             else:
-               self.dataDisplayed = 'original' 
+                self.dataDisplayed = 'original'                                      
             self.refreshData()
         
         else:
             print('no clusters!')        
         return
 
+    def toggleClusters(self):
+        
+        oldSetting = self.dataDisplayed
+        
+        if self.clustersGeneated:
+            #print('toggle: ', self.dataDisplayed)
+            if self.dataDisplayed == 'original' or self.dataDisplayed == 'cluster':
+                self.dataDisplayed = 'combined'
+            else:
+               self.dataDisplayed = 'original'
+            self.refreshData()
+        
+        else:
+            print('no clusters!')        
+        return
 
     def start(self):        
         self.menu = self.win.menuBar()
@@ -478,9 +531,10 @@ class Synapse3D(BaseProcess):
         self.getClusters_button.pressed.connect(lambda : self.getClusters()) 
         self.clearClusters_button = QtWidgets.QPushButton('Clear Clusters')
         self.clearClusters_button.pressed.connect(lambda : self.clearClusters()) 
-        self.toggleClusters_button = QtWidgets.QPushButton('Toggle Cluster Points')
-        self.toggleClusters_button.pressed.connect(lambda : self.toggleClusters()) 
-
+        self.toggleClusters_button = QtWidgets.QPushButton('Toggle Noise Points')
+        self.toggleClusters_button.pressed.connect(lambda : self.toggleNoise()) 
+        self.toggleClusters2_button = QtWidgets.QPushButton('Toggle Cluster Points')
+        self.toggleClusters2_button.pressed.connect(lambda : self.toggleClusters()) 
         
         self.viewBox_tickLabel = QtWidgets.QLabel('Display 3D viewer')
         self.viewBox_tickBox = QtWidgets.QCheckBox()  
@@ -496,7 +550,8 @@ class Synapse3D(BaseProcess):
         self.layout.addWidget(self.clearClusters_button, 0, 5) 
         self.layout.addWidget(self.viewBox_tickLabel, 0, 6) 
         self.layout.addWidget(self.viewBox_tickBox, 0, 7) 
-        self.layout.addWidget(self.toggleClusters_button, 0, 8)           
+        self.layout.addWidget(self.toggleClusters_button, 0, 8)  
+        self.layout.addWidget(self.toggleClusters2_button, 0, 9)           
         self.layout.addItem(QtWidgets.QSpacerItem(400, 20), 0, 3, 1, 8)
         
         self.plotWidget.__name__ = '2D Plotted Channels'

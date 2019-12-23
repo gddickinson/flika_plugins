@@ -113,7 +113,8 @@ class Channel(pg.ScatterPlotItem):
 		pts = self.getPoints(z=True) 
 		return np.min(pts,axis=0)    
     
-	def filterPts(self, filterList):		    
+	def filterPts(self, filterList):
+		'''filter by labels in filterList'''		    
 		pts = []
 		for i in range(len(filterList)):
 				if filterList[i] != -1:
