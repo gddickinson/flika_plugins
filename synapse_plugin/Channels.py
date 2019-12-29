@@ -121,3 +121,12 @@ class Channel(pg.ScatterPlotItem):
 						pts.append(self.pts[i])
       
 		return self.__name__, pts, self.__color__
+    
+	def getDataAsDict(self):
+		'''combine Active pts in channel to one dict'''
+		d = {}
+		for k in self.pts[0].data.keys():
+				d[k] = tuple(d[k] for d in self.pts)       
+		return d
+      
+    

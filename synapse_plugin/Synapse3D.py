@@ -27,6 +27,8 @@ from pyqtgraph import mkPen
 from matplotlib import pyplot as plt
 from .dbscan import *
 import copy
+import pandas as pd
+
 
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
@@ -159,7 +161,17 @@ class Synapse3D(BaseProcess):
     	if filename == '':
     		filename = getFilename(filter='Text Files (*.txt)')
     	self.clear()
-    	self.data = importFile(filename,evaluateLines=False)        
+    	self.data = importFile(filename,evaluateLines=False)
+    	try:        
+    	    	for i in range(len(self.data[0])):
+    	    		if '\n' in self.data[0][i]:
+    	    			self.data[0][i] = self.data[0][i].split('\n')[0]                
+    	
+    	except:
+            pass
+
+    	self.colNames = list(self.data[0])
+    	
     	self.data = {d[0]: d[1:] for d in np.transpose(self.data)}
         
     	for k in self.data:
@@ -320,8 +332,32 @@ class Synapse3D(BaseProcess):
     	#global Channels
     	self.Channels[0].setVisible(True)
     	self.Channels[1].setVisible(True)
+    	try:  
+    	    	self.clusterChannels[0].setVisible(True)
+    	    	self.clusterChannels[1].setVisible(True)
+    	except:    
+    	    	pass            
+                
+    	try:
+    	    	self.combinedClusterChannels[0].setVisible(True)  
+    	    	self.combinedClusterChannels[1].setVisible(True)         
+    	except:    
+    	    	pass            
+        
     	if i != None:
     		self.Channels[i].setVisible(False)
+            
+    		try:  
+    	    	    	self.clusterChannels[i].setVisible(False)
+    		except:    
+    	    	    	pass            
+                
+    		try:
+    	    	    	self.combinedClusterChannels[i].setVisible(False)        
+    		except:    
+    	    	    	pass             
+            
+            
     	self.connectROIMeanLines(connect=False)
 
     def connectROIMeanLines(self,connect=True):
@@ -474,8 +510,12 @@ class Synapse3D(BaseProcess):
         return
 
     def toggleNoise(self):
-        
-        oldSetting = self.dataDisplayed
+        '''Toggle man window view between data points identified as noise by clustering and all imported points'''
+        #oldSetting = self.dataDisplayed
+        if self.dataLoaded == False:
+            print('No data loaded')
+            g.m.statusBar().showMessage('No data loaded')
+            return
         
         if self.clustersGeneated:
             #print('toggle: ', self.dataDisplayed)
@@ -486,12 +526,17 @@ class Synapse3D(BaseProcess):
             self.refreshData()
         
         else:
-            print('no clusters!')        
+            print('no clusters!')
+            g.m.statusBar().showMessage('no clusters!')
         return
 
     def toggleClusters(self):
-        
-        oldSetting = self.dataDisplayed
+        '''Toggle main window view between data points in ROIs and all imported points'''
+        #oldSetting = self.dataDisplayed
+        if self.dataLoaded == False:
+            print('No data loaded')
+            g.m.statusBar().showMessage('No data loaded')
+            return
         
         if self.clustersGeneated:
             #print('toggle: ', self.dataDisplayed)
@@ -502,8 +547,49 @@ class Synapse3D(BaseProcess):
             self.refreshData()
         
         else:
-            print('no clusters!')        
+            print('no clusters!')
+            g.m.statusBar().showMessage('no clusters!')
         return
+
+    def dictToCSV(self, dict_data_A, dict_data_B, filePath = "export.csv"):
+        try:                        
+               df_A = pd.DataFrame.from_dict(dict_data_A)
+               df_B = pd.DataFrame.from_dict(dict_data_B)
+               df = df_A.append(df_B)
+               #self.colNames = ['Channel Name', 'X', 'Y', 'Xc', 'Yc', 'Height', 'Area', 'Width', 'Phi', 'Ax', 'BG', 'I', 'Frame', 'Length', 'Link', 'Valid', 'Z', 'Zc', 'Photons', 'Lateral Localization Accuracy', 'Xw', 'Yw', 'Xwc', 'Ywc', 'Zw', 'Zwc']
+               df = df = df.ix[:, self.colNames]
+               #print(df.head())                                    
+               export_csv = df.to_csv (filePath, index = None, header=True)
+               print('Export finished')
+               g.m.statusBar().showMessage('Export finished')                                 
+        except IOError:
+                print("I/O error")                
+        return
+
+
+
+    def exportWindow(self):
+        '''Export data points shown in main window'''
+        #Get saveName
+        saveName = getSaveFilename()
+        
+        #Get main window data
+        if self.dataDisplayed == 'original':
+            data1 = self.Channels[0].getDataAsDict() 
+            data2 = self.Channels[1].getDataAsDict()             
+        
+        if self.dataDisplayed == 'cluster':
+            data1 = self.clusterChannels[0].getDataAsDict()  
+            data2 = self.clusterChannels[1].getDataAsDict()              
+        
+        if self.dataDisplayed == 'combined':            
+            data1 = self.combinedClusterChannels[0].getDataAsDict()
+            data2 = self.combinedClusterChannels[1].getDataAsDict()            
+        
+        #Export     
+        self.dictToCSV(data1,data2,filePath=saveName)
+        return
+
 
     def start(self):        
         self.menu = self.win.menuBar()
@@ -535,6 +621,8 @@ class Synapse3D(BaseProcess):
         self.toggleClusters_button.pressed.connect(lambda : self.toggleNoise()) 
         self.toggleClusters2_button = QtWidgets.QPushButton('Toggle Cluster Points')
         self.toggleClusters2_button.pressed.connect(lambda : self.toggleClusters()) 
+        self.export_button = QtWidgets.QPushButton('Export Window Data')
+        self.export_button.pressed.connect(lambda : self.exportWindow()) 
         
         self.viewBox_tickLabel = QtWidgets.QLabel('Display 3D viewer')
         self.viewBox_tickBox = QtWidgets.QCheckBox()  
@@ -551,7 +639,8 @@ class Synapse3D(BaseProcess):
         self.layout.addWidget(self.viewBox_tickLabel, 0, 6) 
         self.layout.addWidget(self.viewBox_tickBox, 0, 7) 
         self.layout.addWidget(self.toggleClusters_button, 0, 8)  
-        self.layout.addWidget(self.toggleClusters2_button, 0, 9)           
+        self.layout.addWidget(self.toggleClusters2_button, 0, 9)
+        self.layout.addWidget(self.export_button, 0, 10)           
         self.layout.addItem(QtWidgets.QSpacerItem(400, 20), 0, 3, 1, 8)
         
         self.plotWidget.__name__ = '2D Plotted Channels'
