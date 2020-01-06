@@ -33,6 +33,7 @@ else:
 
 from .volumeSlider_Main import *
 from .helperFunctions import *
+from .tiffLoader import openTiff
 #########################################################################################
 #############          FLIKA Base Menu             #####################################
 #########################################################################################
@@ -96,7 +97,11 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
             g.m.statusBar().showMessage("Importing Array: " + A_path)
             A = np.load(str(A_path))
             camVolumeSlider.startVolumeSlider(A=A,keepWindow=keepOriginalWindow)
-            
+
+        elif inputChoice == 'Batch Process':
+            g.m.statusBar().showMessage("Starting Batch Processing...")            
+            camVolumeSlider.startVolumeSlider(batch=True)
+                        
         return
 
     def closeEvent(self, event):
@@ -109,6 +114,7 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
         inputChoice = ComboBox()
         inputChoice.addItem('Current Window')
         inputChoice.addItem('Numpy Array')
+        inputChoice.addItem('Batch Process')        
         
         #checkbox
         self.keepOriginalWindow = CheckBox()
@@ -121,3 +127,8 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
         
         
 volumeSliderBase = VolumeSliderBase()
+
+
+
+
+  

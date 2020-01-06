@@ -24,6 +24,7 @@ import copy
 import pyqtgraph.opengl as gl
 from OpenGL.GL import *
 from qtpy.QtCore import Signal
+import glob
 
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
@@ -38,6 +39,7 @@ from .histogramExtension import HistogramLUTWidget_Overlay
 from .texturePlot import *
 from .volumeSlider_3DViewer import *
 from .volumeSlider_Main_GUI import *
+from .tiffLoader import openTiff
 
 from pyqtgraph import HistogramLUTWidget
 
@@ -73,6 +75,8 @@ class CamVolumeSlider(BaseProcess):
                 'int64': np.uint64                                  }
 
         self.dataType = dataType
+        
+        self.batch = False
 
         #create array order dict
         self.arrayDict = {
@@ -109,7 +113,13 @@ class CamVolumeSlider(BaseProcess):
         self.savePath = ''
         return
 
-    def startVolumeSlider(self, A=[], keepWindow=False):
+    def startVolumeSlider(self, A=[], keepWindow=False, batch=False):
+        if batch:
+            self.batch = True
+            self.batchOptions = BatchOptions()
+            self.batchOptions.start()
+            return
+        
         if A == []:
             #copy selected window
             self.A =  np.array(deepcopy(g.win.image),dtype=self.dataType)
@@ -133,6 +143,36 @@ class CamVolumeSlider(BaseProcess):
         #open gui
         self.dialogbox = Form2(camVolumeSlider)
         self.dialogbox.show()        
+        return
+
+
+    def batchProcess(self, paramDict):
+        print(paramDict)
+        #get filenames from import folder
+        tiffFiles = []
+        for file in glob.glob(os.path.join(paramDict['inputDirectory'],"*.tiff")):
+            tiffFiles.append(file)
+        for file in glob.glob(os.path.join(paramDict['inputDirectory'],"*.tif")):
+            tiffFiles.append(file)
+        print(tiffFiles)
+        #loop through files
+        for tiff_file in tiffFiles:
+            #load tiff
+            self.A, _, _ = openTiff(tiff_file)
+            self.B = []
+            #get shape
+            self.nFrames, self.x, self.y = self.A.shape
+            self.framesPerVol = paramDict['slicesPerVolume']
+            self.nVols = int(self.nFrames/self.framesPerVol)
+            self.displayWindow = Window(self.A,'Volume Slider Window') 
+            self.dialogbox = Form2(camVolumeSlider)
+            self.dialogbox.show() 
+            #shape tiff to 4D
+            self.updateDisplay_volumeSizeChange()
+            #self.B = A
+            #self.nFrames, self.nVols, self.x, self.y = self.B.shape
+            #self.dialogbox = Form2(camVolumeSlider)
+            #self.viewer = SliceViewer(camVolumeSlider, self.B)  
         return
 
     def updateDisplay_volumeSizeChange(self):
@@ -306,5 +346,196 @@ class CamVolumeSlider(BaseProcess):
 
 camVolumeSlider = CamVolumeSlider()
 
+class BatchOptions(QtWidgets.QDialog):
+    def __init__(self, parent = None):
+        super(BatchOptions, self).__init__(parent)
 
+        self.s = g.settings['volumeSlider']
+        
+        self.slicesPerVolume = self.s['slicesPerVolume']
+        self.baselineValue = self.s['baselineValue']
+        self.f0Start = self.s['f0Start']
+        self.f0End = self.s['f0End']
+        self.f0VolStart = self.s['f0VolStart']
+        self.f0VolEnd = self.s['f0VolEnd']                
+        self.multiplicationFactor = self.s['multiplicationFactor']
+        self.currentDataType = self.s['currentDataType']
+        self.newDataType = self.s['newDataType']
+        self.inputArrayOrder = self.s['inputArrayOrder']
+        self.displayArrayOrder = self.s['displayArrayOrder'] = 16
+        self.theta = self.s['theta']
+        self.shiftFactor = self.s['shiftFactor']
+        self.trim_last_frame = self.s['trimLastFrame']  
+
+        self.inputDirectory = ''
+        
+        #window geometry
+        self.left = 300
+        self.top = 300
+        self.width = 300
+        self.height = 200
+
+        #labels
+        self.label_slicesPerVolume = QtWidgets.QLabel("slices per volume:") 
+        self.label_theta = QtWidgets.QLabel("theta:") 
+        self.label_baselineValue = QtWidgets.QLabel('baselineValue:')
+        self.label_f0Start = QtWidgets.QLabel('f0Start:')
+        self.label_f0End = QtWidgets.QLabel('f0End:')
+        self.label_f0VolStart = QtWidgets.QLabel('f0VolStart:')
+        self.label_f0VolEnd = QtWidgets.QLabel('f0VolEnd:')            
+        self.label_multiplicationFactor = QtWidgets.QLabel('multiplicationFactor:')
+        self.label_shiftFactor = QtWidgets.QLabel('shiftFactor:')
+        self.label_trim_last_frame = QtWidgets.QLabel('trimLastFrame:') 
+        self.label_inputDirectory = QtWidgets.QLabel('input directory:') 
+      
+        #spinboxes/comboboxes
+        self.volBox = QtWidgets.QSpinBox()
+        self.volBox.setRange(0,10000)
+        self.volBox.setValue(self.slicesPerVolume)
+
+        self.thetaBox = QtWidgets.QSpinBox()
+        self.thetaBox.setRange(0,360)
+        self.thetaBox.setValue(self.theta)
+
+        self.baselineBox = QtWidgets.QSpinBox()
+        self.baselineBox.setRange(0,100000)
+        self.baselineBox.setValue(self.baselineValue)
+
+        self.f0StartBox = QtWidgets.QSpinBox()
+        self.f0StartBox.setRange(0,100000)
+        self.f0StartBox.setValue(self.f0Start)
+
+        self.f0EndBox = QtWidgets.QSpinBox()
+        self.f0EndBox.setRange(0,100000)
+        self.f0EndBox.setValue(self.f0End)
+
+        self.f0VolStartBox = QtWidgets.QSpinBox()
+        self.f0VolStartBox.setRange(0,100000)
+        self.f0VolStartBox.setValue(self.f0VolStart)
+
+        self.f0VolEndBox = QtWidgets.QSpinBox()
+        self.f0VolEndBox.setRange(0,100000)
+        self.f0VolEndBox.setValue(self.f0VolEnd) 
+        
+        self.multiplicationFactorBox = QtWidgets.QSpinBox()
+        self.multiplicationFactorBox.setRange(0,100000)
+        self.multiplicationFactorBox.setValue(self.multiplicationFactor)         
+        
+        self.shiftFactorBox = QtWidgets.QSpinBox()
+        self.shiftFactorBox.setRange(0,100000)
+        self.shiftFactorBox.setValue(self.shiftFactor)         
+
+        self.trim_last_frame_checkbox = CheckBox()
+        self.trim_last_frame_checkbox.setChecked(self.trim_last_frame)
+        
+        self.inputDirectory_display = QtWidgets.QLabel(self.inputDirectory)
+
+        #buttons
+        self.button_setInputDirectory = QtWidgets.QPushButton("Set Folder")
+        self.button_startBatch = QtWidgets.QPushButton("Go")
+
+        #grid layout
+        layout = QtWidgets.QGridLayout()
+        layout.setSpacing(5)
+        layout.addWidget(self.label_slicesPerVolume, 0, 0)        
+        layout.addWidget(self.volBox, 0, 1)
+        layout.addWidget(self.label_theta, 1, 0)        
+        layout.addWidget(self.thetaBox, 1, 1)
+        layout.addWidget(self.label_baselineValue, 2, 0)        
+        layout.addWidget(self.baselineBox, 2, 1)        
+        layout.addWidget(self.label_f0Start, 3, 0)        
+        layout.addWidget(self.f0StartBox, 3, 1)         
+        layout.addWidget(self.label_f0End, 4, 0)        
+        layout.addWidget(self.f0EndBox, 4, 1)         
+        layout.addWidget(self.label_f0VolStart, 5, 0)        
+        layout.addWidget(self.f0VolStartBox, 5, 1)         
+        layout.addWidget(self.label_f0VolEnd, 6, 0)        
+        layout.addWidget(self.f0VolEndBox, 6, 1)  
+        layout.addWidget(self.label_multiplicationFactor, 7, 0)        
+        layout.addWidget(self.multiplicationFactorBox, 7, 1)  
+        layout.addWidget(self.label_shiftFactor, 8, 0)        
+        layout.addWidget(self.shiftFactorBox, 8, 1) 
+        layout.addWidget(self.label_trim_last_frame, 9, 0)        
+        layout.addWidget(self.trim_last_frame_checkbox, 9, 1) 
+        layout.addWidget(self.label_inputDirectory, 10, 0)        
+        layout.addWidget(self.inputDirectory_display, 10, 1) 
+        layout.addWidget(self.button_setInputDirectory, 10, 2) 
+        layout.addWidget(self.button_startBatch, 11, 2) 
+        
+        self.setLayout(layout)
+        self.setGeometry(self.left, self.top, self.width, self.height)
+
+        #add window title
+        self.setWindowTitle("Batch Options")
+
+        #connect spinboxes/comboboxes
+        self.volBox.valueChanged.connect(self.set_slicesPerVolume) 
+        self.thetaBox.valueChanged.connect(self.set_theta) 
+        self.baselineBox.valueChanged.connect(self.set_baselineValue) 
+        self.f0StartBox.valueChanged.connect(self.set_f0Start) 
+        self.f0EndBox.valueChanged.connect(self.set_f0End) 
+        self.f0VolStartBox.valueChanged.connect(self.set_f0VolStart) 
+        self.f0VolEndBox.valueChanged.connect(self.set_f0VolEnd)  
+        self.multiplicationFactorBox.valueChanged.connect(self.set_multiplicationFactor) 
+        self.shiftFactorBox.valueChanged.connect(self.set_shiftFactor) 
+        self.trim_last_frame_checkbox.stateChanged.connect(self.set_trim_last_frame)
+        self.button_setInputDirectory.pressed.connect(lambda: self.setInput_button())
+        self.button_startBatch.pressed.connect(lambda: self.start_button())        
+        return
+
+
+    def set_slicesPerVolume(self,value):
+        self.slicesPerVolume = value
+        
+    def set_baselineValue(self,value):        
+        self.baselineValue = value
+
+    def set_f0Start (self,value):                  
+        self.f0Start = value
+        
+    def set_f0End (self,value):        
+        self.f0End = value
+        
+    def set_f0VolStart (self,value):        
+        self.f0VolStart = value
+                
+    def set_f0VolEnd(self,value):            
+        self.f0VolEnd = value
+
+    def set_multiplicationFactor(self,value):               
+        self.multiplicationFactor = value
+
+    def set_theta(self,value):  
+        self.theta = value
+
+    def set_shiftFactor(self,value):         
+        self.shiftFactor = value
+        
+    def set_trim_last_frame(self):           
+        self.trim_last_frame = self.trim_last_frame_checkbox.isChecked()     
+        
+    def setInput_button(self):
+        self.inputDirectory = QtWidgets.QFileDialog.getExistingDirectory()
+        self.inputDirectory_display.setText('...\\' + os.path.basename(self.inputDirectory))
+        return
+
+    def start_button(self):
+        paramDict = {'slicesPerVolume': self.slicesPerVolume,
+                     'theta': self.theta,
+                     'baselineValue': self.baselineValue,
+                     'f0Start': self.f0Start,
+                     'f0End': self.f0End,
+                     'f0VolStart': self.f0VolStart,
+                     'f0VolEnd': self.f0VolEnd   ,      
+                     'multiplicationFactor': self.multiplicationFactor,
+                     'shiftFactor': self.shiftFactor ,
+                     'trim_last_frame': self.trim_last_frame,
+                     'inputDirectory': self.inputDirectory }
+        
+        self.hide()
+        camVolumeSlider.batchProcess(paramDict)
+        return
+    
+    def start(self):
+        self.show()
 
