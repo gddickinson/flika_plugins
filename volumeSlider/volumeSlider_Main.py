@@ -163,16 +163,21 @@ class CamVolumeSlider(BaseProcess):
             #get shape
             self.nFrames, self.x, self.y = self.A.shape
             self.framesPerVol = paramDict['slicesPerVolume']
-            self.nVols = int(self.nFrames/self.framesPerVol)
+            #self.nVols = int(self.nFrames/self.framesPerVol)
             self.displayWindow = Window(self.A,'Volume Slider Window') 
             self.dialogbox = Form2(camVolumeSlider)
             self.dialogbox.show() 
             #shape tiff to 4D
-            self.updateDisplay_volumeSizeChange()
+            self.dialogbox.slicesPerVolume = self.framesPerVol
+            self.dialogbox.SpinBox2.setValue(self.framesPerVol)
+            self.dialogbox.button2.click()
+            #self.updateDisplay_volumeSizeChange()
+            
             #self.B = A
             #self.nFrames, self.nVols, self.x, self.y = self.B.shape
             #self.dialogbox = Form2(camVolumeSlider)
             #self.viewer = SliceViewer(camVolumeSlider, self.B)  
+        g.m.statusBar().showMessage('finished batch processing')   
         return
 
     def updateDisplay_volumeSizeChange(self):
@@ -367,6 +372,8 @@ class BatchOptions(QtWidgets.QDialog):
         self.shiftFactor = self.s['shiftFactor']
         self.trim_last_frame = self.s['trimLastFrame']  
 
+        self.subtractBaseline = False 
+
         self.inputDirectory = ''
         
         #window geometry
@@ -378,16 +385,19 @@ class BatchOptions(QtWidgets.QDialog):
         #labels
         self.label_slicesPerVolume = QtWidgets.QLabel("slices per volume:") 
         self.label_theta = QtWidgets.QLabel("theta:") 
-        self.label_baselineValue = QtWidgets.QLabel('baselineValue:')
-        self.label_f0Start = QtWidgets.QLabel('f0Start:')
-        self.label_f0End = QtWidgets.QLabel('f0End:')
-        self.label_f0VolStart = QtWidgets.QLabel('f0VolStart:')
-        self.label_f0VolEnd = QtWidgets.QLabel('f0VolEnd:')            
-        self.label_multiplicationFactor = QtWidgets.QLabel('multiplicationFactor:')
-        self.label_shiftFactor = QtWidgets.QLabel('shiftFactor:')
-        self.label_trim_last_frame = QtWidgets.QLabel('trimLastFrame:') 
+        self.label_baselineValue = QtWidgets.QLabel('baseline Value:')
+        self.label_f0Start = QtWidgets.QLabel('f0 Start:')
+        self.label_f0End = QtWidgets.QLabel('f0 End:')
+        self.label_f0VolStart = QtWidgets.QLabel('f0Vol Start:')
+        self.label_f0VolEnd = QtWidgets.QLabel('f0Vol End:')            
+        self.label_multiplicationFactor = QtWidgets.QLabel('multiplication Factor:')
+        self.label_shiftFactor = QtWidgets.QLabel('shift Factor:')
+        self.label_trim_last_frame = QtWidgets.QLabel('trim Last Frame:') 
         self.label_inputDirectory = QtWidgets.QLabel('input directory:') 
       
+        self.label_subtractBaseline = QtWidgets.QLabel('subtract baseline:') 
+        
+        
         #spinboxes/comboboxes
         self.volBox = QtWidgets.QSpinBox()
         self.volBox.setRange(0,10000)
@@ -427,6 +437,10 @@ class BatchOptions(QtWidgets.QDialog):
 
         self.trim_last_frame_checkbox = CheckBox()
         self.trim_last_frame_checkbox.setChecked(self.trim_last_frame)
+
+        self.subtractBaseline_checkbox = CheckBox()
+        self.subtractBaseline_checkbox.setChecked(self.trim_last_frame)
+
         
         self.inputDirectory_display = QtWidgets.QLabel(self.inputDirectory)
 
@@ -457,10 +471,15 @@ class BatchOptions(QtWidgets.QDialog):
         layout.addWidget(self.shiftFactorBox, 8, 1) 
         layout.addWidget(self.label_trim_last_frame, 9, 0)        
         layout.addWidget(self.trim_last_frame_checkbox, 9, 1) 
-        layout.addWidget(self.label_inputDirectory, 10, 0)        
-        layout.addWidget(self.inputDirectory_display, 10, 1) 
-        layout.addWidget(self.button_setInputDirectory, 10, 2) 
-        layout.addWidget(self.button_startBatch, 11, 2) 
+        
+        layout.addWidget(self.label_subtractBaseline, 10, 0)        
+        layout.addWidget(self.subtractBaseline_checkbox, 10, 1)         
+        
+        
+        layout.addWidget(self.label_inputDirectory, 11, 0)        
+        layout.addWidget(self.inputDirectory_display, 11, 1) 
+        layout.addWidget(self.button_setInputDirectory, 11, 2) 
+        layout.addWidget(self.button_startBatch, 12, 2) 
         
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -479,6 +498,7 @@ class BatchOptions(QtWidgets.QDialog):
         self.multiplicationFactorBox.valueChanged.connect(self.set_multiplicationFactor) 
         self.shiftFactorBox.valueChanged.connect(self.set_shiftFactor) 
         self.trim_last_frame_checkbox.stateChanged.connect(self.set_trim_last_frame)
+        self.subtractBaseline_checkbox.stateChanged.connect(self.set_subtractBaseline)        
         self.button_setInputDirectory.pressed.connect(lambda: self.setInput_button())
         self.button_startBatch.pressed.connect(lambda: self.start_button())        
         return
@@ -513,7 +533,11 @@ class BatchOptions(QtWidgets.QDialog):
         
     def set_trim_last_frame(self):           
         self.trim_last_frame = self.trim_last_frame_checkbox.isChecked()     
-        
+ 
+    def set_subtractBaseline(self):           
+        self.subtractBaseline = self.subtractBaseline_checkbox.isChecked() 
+
+       
     def setInput_button(self):
         self.inputDirectory = QtWidgets.QFileDialog.getExistingDirectory()
         self.inputDirectory_display.setText('...\\' + os.path.basename(self.inputDirectory))
