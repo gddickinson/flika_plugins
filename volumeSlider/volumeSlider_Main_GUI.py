@@ -50,7 +50,7 @@ from matplotlib import cm
 class Form2(QtWidgets.QDialog):
     def __init__(self, viewerInstance, parent = None):
         super(Form2, self).__init__(parent)
-        
+        self.batch = False
         self.viewer = viewerInstance
 
         self.s = g.settings['volumeSlider']
@@ -435,5 +435,9 @@ class Form2(QtWidgets.QDialog):
         self.closeAllWindows()
         return
 
+    def clearData(self):
+        self.viewer.A = []
+        self.viewer.B = []
 
+        
 

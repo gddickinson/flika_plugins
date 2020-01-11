@@ -25,6 +25,7 @@ import pyqtgraph.opengl as gl
 from OpenGL.GL import *
 from qtpy.QtCore import Signal
 import glob
+import gc
 
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
@@ -156,27 +157,60 @@ class CamVolumeSlider(BaseProcess):
             tiffFiles.append(file)
         print(tiffFiles)
         #loop through files
+        i = 0
         for tiff_file in tiffFiles:
+            self.imsPath = tiff_file
             #load tiff
             self.A, _, _ = openTiff(tiff_file)
             self.B = []
             #get shape
             self.nFrames, self.x, self.y = self.A.shape
             self.framesPerVol = paramDict['slicesPerVolume']
-            #self.nVols = int(self.nFrames/self.framesPerVol)
-            self.displayWindow = Window(self.A,'Volume Slider Window') 
+            self.displayWindow = Window(self.A,'Volume Slider Window')
+            self.displayWindow.hide()
             self.dialogbox = Form2(camVolumeSlider)
-            self.dialogbox.show() 
+            #self.dialogbox.show() 
             #shape tiff to 4D
             self.dialogbox.slicesPerVolume = self.framesPerVol
             self.dialogbox.SpinBox2.setValue(self.framesPerVol)
             self.dialogbox.button2.click()
-            #self.updateDisplay_volumeSizeChange()
-            
-            #self.B = A
-            #self.nFrames, self.nVols, self.x, self.y = self.B.shape
-            #self.dialogbox = Form2(camVolumeSlider)
-            #self.viewer = SliceViewer(camVolumeSlider, self.B)  
+            #subtract baseline
+            self.dialogbox.baselineValue = paramDict['baselineValue']
+            self.dialogbox.SpinBox4.setValue(self.dialogbox.baselineValue)            
+            if paramDict['subtractBaseline']:
+                self.dialogbox.button4.click()
+            #DF/F0    
+            self.dialogbox.f0Start = paramDict['f0Start']
+            self.dialogbox.SpinBox6.setValue(self.dialogbox.f0Start)            
+            self.dialogbox.f0End = paramDict['f0End']
+            self.dialogbox.SpinBox7.setValue(self.dialogbox.f0End)            
+            self.dialogbox.f0VolStart = paramDict['f0VolStart']
+            self.dialogbox.SpinBox11.setValue(self.dialogbox.f0VolStart)            
+            self.dialogbox.f0VolEnd = paramDict['f0VolEnd']
+            self.dialogbox.SpinBox12.setValue(self.dialogbox.f0VolEnd)                 
+            if paramDict['runDFF0']:
+                self.dialogbox.button5.click() 
+            #scale by multiplication factor
+            self.dialogbox.multiplicationFactor = paramDict['multiplicationFactor']
+            self.dialogbox.SpinBox8.setValue(self.dialogbox.multiplicationFactor)  
+            if paramDict['runMultiplication']:
+                self.dialogbox.button8.click() 
+            #theta
+            self.dialogbox.theta = paramDict['theta']
+            self.dialogbox.SpinBox9.setValue(self.dialogbox.theta)
+            #shift factor
+            self.dialogbox.shiftFactor = paramDict['shiftFactor']
+            self.dialogbox.SpinBox10.setValue(self.dialogbox.shiftFactor)
+            #trim last frame
+            self.dialogbox.trim_last_frame = paramDict['trim_last_frame']
+            self.dialogbox.trim_last_frame_checkbox.setChecked(self.dialogbox.trim_last_frame)
+            #start volumeSlider3D
+            self.dialogbox.batch = True
+            self.dialogbox.button12.click() 
+            #update counter
+            i = i+1
+
+ 
         g.m.statusBar().showMessage('finished batch processing')   
         return
 
@@ -342,6 +376,9 @@ class CamVolumeSlider(BaseProcess):
             print('first set number of frames per volume')
             g.m.statusBar().showMessage("first set number of frames per volume")
         else:
+            if self.batch:
+                self.viewer = SliceViewer(camVolumeSlider, self.B, batch=True, imsExportPath=self.imsPath)
+                return
             self.viewer = SliceViewer(camVolumeSlider, self.B)
         return
 
@@ -373,6 +410,8 @@ class BatchOptions(QtWidgets.QDialog):
         self.trim_last_frame = self.s['trimLastFrame']  
 
         self.subtractBaseline = False 
+        self.runDFF0 = False
+        self.runMultiplication = False
 
         self.inputDirectory = ''
         
@@ -396,7 +435,8 @@ class BatchOptions(QtWidgets.QDialog):
         self.label_inputDirectory = QtWidgets.QLabel('input directory:') 
       
         self.label_subtractBaseline = QtWidgets.QLabel('subtract baseline:') 
-        
+        self.label_runDFF0 = QtWidgets.QLabel('run DF/F0:') 
+        self.label_runMultiplication = QtWidgets.QLabel('scale by multiplication factor:')         
         
         #spinboxes/comboboxes
         self.volBox = QtWidgets.QSpinBox()
@@ -439,7 +479,13 @@ class BatchOptions(QtWidgets.QDialog):
         self.trim_last_frame_checkbox.setChecked(self.trim_last_frame)
 
         self.subtractBaseline_checkbox = CheckBox()
-        self.subtractBaseline_checkbox.setChecked(self.trim_last_frame)
+        self.subtractBaseline_checkbox.setChecked(self.subtractBaseline)
+
+        self.runDFF0_checkbox = CheckBox()
+        self.runDFF0_checkbox.setChecked(self.runDFF0)
+
+        self.runMultiplication_checkbox = CheckBox()
+        self.runMultiplication_checkbox.setChecked(self.runMultiplication)
 
         
         self.inputDirectory_display = QtWidgets.QLabel(self.inputDirectory)
@@ -473,13 +519,17 @@ class BatchOptions(QtWidgets.QDialog):
         layout.addWidget(self.trim_last_frame_checkbox, 9, 1) 
         
         layout.addWidget(self.label_subtractBaseline, 10, 0)        
-        layout.addWidget(self.subtractBaseline_checkbox, 10, 1)         
+        layout.addWidget(self.subtractBaseline_checkbox, 10, 1) 
+
+        layout.addWidget(self.label_runDFF0, 11, 0)        
+        layout.addWidget(self.runDFF0_checkbox, 11, 1)        
+        layout.addWidget(self.label_runMultiplication, 12, 0)        
+        layout.addWidget(self.runMultiplication_checkbox, 12, 1)        
         
-        
-        layout.addWidget(self.label_inputDirectory, 11, 0)        
-        layout.addWidget(self.inputDirectory_display, 11, 1) 
-        layout.addWidget(self.button_setInputDirectory, 11, 2) 
-        layout.addWidget(self.button_startBatch, 12, 2) 
+        layout.addWidget(self.label_inputDirectory, 13, 0)        
+        layout.addWidget(self.inputDirectory_display, 13, 1) 
+        layout.addWidget(self.button_setInputDirectory, 13, 2) 
+        layout.addWidget(self.button_startBatch, 14, 2) 
         
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -498,7 +548,9 @@ class BatchOptions(QtWidgets.QDialog):
         self.multiplicationFactorBox.valueChanged.connect(self.set_multiplicationFactor) 
         self.shiftFactorBox.valueChanged.connect(self.set_shiftFactor) 
         self.trim_last_frame_checkbox.stateChanged.connect(self.set_trim_last_frame)
-        self.subtractBaseline_checkbox.stateChanged.connect(self.set_subtractBaseline)        
+        self.subtractBaseline_checkbox.stateChanged.connect(self.set_subtractBaseline)          
+        self.runDFF0_checkbox.stateChanged.connect(self.set_runDFF0)        
+        self.runMultiplication_checkbox.stateChanged.connect(self.set_runMultiplication)         
         self.button_setInputDirectory.pressed.connect(lambda: self.setInput_button())
         self.button_startBatch.pressed.connect(lambda: self.start_button())        
         return
@@ -537,6 +589,11 @@ class BatchOptions(QtWidgets.QDialog):
     def set_subtractBaseline(self):           
         self.subtractBaseline = self.subtractBaseline_checkbox.isChecked() 
 
+    def set_runDFF0(self):           
+        self.runDFF0 = self.runDFF0_checkbox.isChecked()
+
+    def set_runMultiplication(self):           
+        self.runMultiplication = self.runMultiplication_checkbox.isChecked()
        
     def setInput_button(self):
         self.inputDirectory = QtWidgets.QFileDialog.getExistingDirectory()
@@ -544,7 +601,8 @@ class BatchOptions(QtWidgets.QDialog):
         return
 
     def start_button(self):
-        paramDict = {'slicesPerVolume': self.slicesPerVolume,
+        paramDict = {
+                     'slicesPerVolume': self.slicesPerVolume,
                      'theta': self.theta,
                      'baselineValue': self.baselineValue,
                      'f0Start': self.f0Start,
@@ -554,7 +612,11 @@ class BatchOptions(QtWidgets.QDialog):
                      'multiplicationFactor': self.multiplicationFactor,
                      'shiftFactor': self.shiftFactor ,
                      'trim_last_frame': self.trim_last_frame,
-                     'inputDirectory': self.inputDirectory }
+                     'inputDirectory': self.inputDirectory,                    
+                     'subtractBaseline': self.subtractBaseline,                     
+                     'runDFF0': self.runDFF0,                     
+                     'runMultiplication': self.runMultiplication                     
+                     }
         
         self.hide()
         camVolumeSlider.batchProcess(paramDict)

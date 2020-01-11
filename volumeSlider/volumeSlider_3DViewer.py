@@ -52,8 +52,11 @@ from pathlib import Path
 #########################################################################################
 class SliceViewer(BaseProcess):
 
-    def __init__(self, viewerInstance, A):
+    def __init__(self, viewerInstance, A, batch=False, imsExportPath=''):
         super().__init__()
+        self.batch = batch
+        self.imsExportPath = imsExportPath
+        
         self.app = QtWidgets.QApplication([])
         
         self.viewer = viewerInstance
@@ -250,7 +253,8 @@ class SliceViewer(BaseProcess):
         self.quickOverlayButton.clicked.connect(self.quickOverlay)
 
         #display window
-        self.win.show()
+        if self.batch == False:
+            self.win.show()
 
         #define single line roi
         self.roi1 = pg.LineSegmentROI([[10, 64], [120,64]], pen='r')
@@ -390,6 +394,12 @@ class SliceViewer(BaseProcess):
         self.imv1.getHistogramWidget().item.sigLookupTableChanged.connect(self.setMainLUTs)        
         self.histogramsLinked = True
 
+
+        if self.batch:
+            print('batch process: ', imsExportPath)
+            self.exportIMSDialog()
+            self.exportIMSdialogWin.setSavePath(imsExportPath)
+            self.exportIMSdialogWin.export()
 
     #define update calls for each roi
     def update(self, win):
@@ -612,7 +622,9 @@ class SliceViewer(BaseProcess):
         return
 
     def exportIMSDialog(self):
-        self.exportIMSdialogWin = exportIMSdialog_win(self.viewer, self.originalData)
+        self.exportIMSdialogWin = exportIMSdialog_win(self.viewer, self.originalData, batch = self.batch)
+        if self.batch:
+            return
         self.exportIMSdialogWin.show()
         return
 
@@ -1159,7 +1171,7 @@ class gaussianDialog_win(QtWidgets.QDialog):
         return
 
 class exportIMSdialog_win(QtWidgets.QDialog):
-    def __init__(self, viewerInstance, A, parent = None):
+    def __init__(self, viewerInstance, A, parent = None, batch=False):
         super(exportIMSdialog_win, self).__init__(parent)
 
         self.viewer = viewerInstance
@@ -1303,6 +1315,13 @@ class exportIMSdialog_win(QtWidgets.QDialog):
         g.settings['volumeSlider']['IMS_fname'] = str(imsSavePath[0])
         self.label_IMS_SavePath.setText(str(shorten_path(g.settings['volumeSlider']['IMS_fname'],4))) 
         return
+
+    def setSavePath(self, path):
+        #for batch operations
+        savePathName = path.split('.')[0] + 'ims'
+        g.settings['volumeSlider']['IMS_fname'] = savePathName
+        self.label_IMS_SavePath.setText(str(shorten_path(g.settings['volumeSlider']['IMS_fname'],4)))         
+
     
     def subsampSelectionChange(self):
         g.settings['volumeSlider']['IMS_subsamp'] = self.subsampSelectorBox.currentText()
