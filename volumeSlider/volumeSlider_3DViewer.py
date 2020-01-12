@@ -714,6 +714,36 @@ class SliceViewer(BaseProcess):
         self.mouseMoved(point,self.imv6)
         return
 
+    def changeMainImage(self, A):
+        if self.trim_last_frame:
+            self.originalData = A[:, :-1, :, :]
+        else:
+            self.originalData = A
+
+        self.originalDataShape = self.originalData.shape
+        self.nVols = self.originalDataShape[1]
+        self.nSteps = self.originalDataShape[0]
+
+        self.originalData= perform_shear_transform(self.originalData, self.shift_factor, self.interpolate, self.originalData.dtype, self.theta, inputArrayOrder=self.inputArrayOrder,displayArrayOrder=self.displayArrayOrder)
+        self.dataShape = self.originalData.shape
+
+        self.height = self.dataShape[3]
+        self.width = self.dataShape[2]
+
+        self.currentVolume = 0
+
+        self.data = self.originalData[:,0,:,:]
+        self.updateAllMainWins()
+        return
+
+    def runBatchStep(self, imsExportPath):
+            self.imsExportPath = imsExportPath
+            print('batch process: ', imsExportPath)
+            self.exportIMSDialog()
+            self.exportIMSdialogWin.setSavePath(imsExportPath)
+            self.exportIMSdialogWin.export()
+
+
     def overlayArray_start(self):
         #get array data
         A_path = open_file_gui(directory=os.path.expanduser("~/Desktop"),filetypes='*.npy')

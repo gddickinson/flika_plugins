@@ -146,6 +146,12 @@ class CamVolumeSlider(BaseProcess):
         self.dialogbox.show()        
         return
 
+    def updateVolumeSlider(self, A):
+        self.A = A
+        self.B = []
+        self.nFrames, self.x, self.y = self.A.shape
+        self.framesPerVol = int(self.nFrames/self.nVols)
+        
 
     def batchProcess(self, paramDict):
         print(paramDict)
@@ -161,14 +167,19 @@ class CamVolumeSlider(BaseProcess):
         for tiff_file in tiffFiles:
             self.imsPath = tiff_file
             #load tiff
-            self.A, _, _ = openTiff(tiff_file)
-            self.B = []
+            if i == 0:
+                self.A, _, _ = openTiff(tiff_file)
+                self.B = []
+            else:
+                self.dialogbox.loadNewFile(tiff_file)
             #get shape
             self.nFrames, self.x, self.y = self.A.shape
             self.framesPerVol = paramDict['slicesPerVolume']
             self.displayWindow = Window(self.A,'Volume Slider Window')
             self.displayWindow.hide()
-            self.dialogbox = Form2(camVolumeSlider)
+            if i == 0:
+                self.dialogbox = Form2(camVolumeSlider)
+            self.dialogbox.batch = True
             #self.dialogbox.show() 
             #shape tiff to 4D
             self.dialogbox.slicesPerVolume = self.framesPerVol
@@ -205,12 +216,15 @@ class CamVolumeSlider(BaseProcess):
             self.dialogbox.trim_last_frame = paramDict['trim_last_frame']
             self.dialogbox.trim_last_frame_checkbox.setChecked(self.dialogbox.trim_last_frame)
             #start volumeSlider3D
-            self.dialogbox.batch = True
-            self.dialogbox.button12.click() 
+            if i == 0:
+                self.dialogbox.button12.click() 
+            else:
+                self.viewer.changeMainImage(self.B)
+                self.viewer.runBatchStep(self.imsPath)   
             #update counter
             i = i+1
+            
 
- 
         g.m.statusBar().showMessage('finished batch processing')   
         return
 

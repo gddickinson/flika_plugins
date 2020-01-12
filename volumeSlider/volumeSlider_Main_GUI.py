@@ -37,12 +37,13 @@ from .scalebar_classOverwrite import Scale_Bar_volumeView
 from .histogramExtension import HistogramLUTWidget_Overlay
 from .texturePlot import *
 from .volumeSlider_3DViewer import *
+from .tiffLoader import openTiff
 
 from pyqtgraph import HistogramLUTWidget
 
 dataType = np.float16
 from matplotlib import cm
-
+import gc
 
 #########################################################################################
 #############                  volumeViewer GUI setup            ########################
@@ -177,6 +178,8 @@ class Form2(QtWidgets.QDialog):
 
         self.button12 = QtWidgets.QPushButton("open 3D viewer")
         self.button13 = QtWidgets.QPushButton("close 3D viewer")
+        
+        self.button14 = QtWidgets.QPushButton("load new file")
 
         #labels
         self.ratioVolStartLabel = QtWidgets.QLabel("ratio start volume: ")
@@ -250,6 +253,7 @@ class Form2(QtWidgets.QDialog):
         layout.addWidget(self.button6, 14, 0)
         layout.addWidget(self.button1, 14, 4)
         layout.addWidget(self.button9, 15, 0)
+      
         layout.addWidget(self.arraySavePathLabel, 15, 1, 1, 4)      
         
         
@@ -269,7 +273,7 @@ class Form2(QtWidgets.QDialog):
 
         layout.addWidget(self.button12, 21, 0)
         layout.addWidget(self.button13, 21, 1)
-
+        layout.addWidget(self.button14, 21, 2)  
 
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -295,10 +299,22 @@ class Form2(QtWidgets.QDialog):
         self.button9.clicked.connect(self.exportArray)            
         self.button12.clicked.connect(self.startViewer)
         self.button13.clicked.connect(self.closeViewer)
+        self.button14.clicked.connect(lambda: self.loadNewFile(''))        
 
         return
 
      #volume changes with slider & spinbox
+    def loadNewFile(self, fileName):
+        if self.batch == False:
+            fileName = QtWidgets.QFileDialog.getOpenFileName(self,'Open File', os.path.expanduser("~/Desktop"), 'tiff files (*.tif *.tiff)')
+            fileName = str(fileName[0])
+            
+        A, _, _ = openTiff(fileName)
+        self.viewer.updateVolumeSlider(A)
+        self.viewer.displayWindow.imageview.setImage(A)        
+        return
+
+
     def slider1ValueChange(self, value):
         self.SpinBox1.setValue(value)
         return
@@ -433,6 +449,7 @@ class Form2(QtWidgets.QDialog):
         self.viewer.dialogbox.destroy()
         self.viewer.end()
         self.closeAllWindows()
+        gc.collect()
         return
 
     def clearData(self):
