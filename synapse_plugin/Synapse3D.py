@@ -590,6 +590,13 @@ class Synapse3D(BaseProcess):
         self.dictToCSV(data1,data2,filePath=saveName)
         return
 
+    
+    def getRandomClusters(self):
+        return
+    
+    def clearRandomClusters(self):
+        return    
+
 
     def start(self):        
         self.menu = self.win.menuBar()
@@ -617,14 +624,18 @@ class Synapse3D(BaseProcess):
         self.getClusters_button.pressed.connect(lambda : self.getClusters()) 
         self.clearClusters_button = QtWidgets.QPushButton('Clear Clusters')
         self.clearClusters_button.pressed.connect(lambda : self.clearClusters()) 
-        self.toggleClusters_button = QtWidgets.QPushButton('Toggle Noise Points')
+        self.toggleClusters_button = QtWidgets.QPushButton('Toggle Noise')
         self.toggleClusters_button.pressed.connect(lambda : self.toggleNoise()) 
-        self.toggleClusters2_button = QtWidgets.QPushButton('Toggle Cluster Points')
+        self.toggleClusters2_button = QtWidgets.QPushButton('Toggle Clusters')
         self.toggleClusters2_button.pressed.connect(lambda : self.toggleClusters()) 
-        self.export_button = QtWidgets.QPushButton('Export Window Data')
+        self.export_button = QtWidgets.QPushButton('Export Window')
         self.export_button.pressed.connect(lambda : self.exportWindow()) 
-        
-        self.viewBox_tickLabel = QtWidgets.QLabel('Display 3D viewer')
+        self.getRandomClusters_button = QtWidgets.QPushButton('Random Clusters')
+        self.getRandomClusters_button.pressed.connect(lambda : self.getRandomClusters()) 
+        self.clearRandomClusters_button = QtWidgets.QPushButton('Clear Random')
+        self.clearRandomClusters_button.pressed.connect(lambda : self.clearRandomClusters())         
+                
+        self.viewBox_tickLabel = QtWidgets.QLabel('3D Viewer: ')
         self.viewBox_tickBox = QtWidgets.QCheckBox()  
         self.viewBox_tickBox.setChecked(False)
         self.viewBox_tickBox.stateChanged.connect(self.show_viewBox)
@@ -636,11 +647,15 @@ class Synapse3D(BaseProcess):
         self.layout.addWidget(self.show_cent, 0, 3)        
         self.layout.addWidget(self.getClusters_button, 0, 4)    
         self.layout.addWidget(self.clearClusters_button, 0, 5) 
-        self.layout.addWidget(self.viewBox_tickLabel, 0, 6) 
-        self.layout.addWidget(self.viewBox_tickBox, 0, 7) 
-        self.layout.addWidget(self.toggleClusters_button, 0, 8)  
-        self.layout.addWidget(self.toggleClusters2_button, 0, 9)
-        self.layout.addWidget(self.export_button, 0, 10)           
+        
+        self.layout.addWidget(self.getRandomClusters_button, 0, 6)    
+        self.layout.addWidget(self.clearRandomClusters_button, 0, 7)         
+        
+        self.layout.addWidget(self.viewBox_tickLabel, 0, 8) 
+        self.layout.addWidget(self.viewBox_tickBox, 0, 9) 
+        self.layout.addWidget(self.toggleClusters_button, 0, 10)  
+        self.layout.addWidget(self.toggleClusters2_button, 0, 11)
+        self.layout.addWidget(self.export_button, 0, 12)           
         self.layout.addItem(QtWidgets.QSpacerItem(400, 20), 0, 3, 1, 8)
         
         self.plotWidget.__name__ = '2D Plotted Channels'
