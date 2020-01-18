@@ -130,6 +130,9 @@ class Synapse3D(BaseProcess):
     		roi.mean_line = pg.PlotDataItem(np.array([channels[1].getCenter(), channels[0].getCenter()]), symbol='d', symbolSize=self.centroidSymbolSize )
     		roi.mean_line.setParentItem(roi)
     		roi.mean_line.setVisible(False)
+    		roi.synapse_data['%s Centeroid' % (self.Channels[0].__name__)] = channels[0].getCenter()
+    		roi.synapse_data['%s Centeroid' % (self.Channels[1].__name__)] = channels[1].getCenter()
+            
     	else:
     		del roi.synapse_data
     		print('Must select exactly 2 channels to calculate distance. Ignoring ROI %d' % roi.id)
@@ -591,11 +594,20 @@ class Synapse3D(BaseProcess):
         return
 
     
-    def getRandomClusters(self):
+    def clusterAnalysis(self):
+        #print(self.clusterChannels[0].getDataAsDict())
+        #print(self.Channels[0].getCenter())
+        #print(self.dataWidget.getData())
+        ch1_centeroids = []
+        ch2_centeroids = []
+        for roi in self.plotWidget.items():
+            if isinstance(roi, Freehand) and hasattr(roi, 'synapse_data'):
+                ch1_centeroids.append(roi.synapse_data['%s Centeroid' % (self.Channels[0].__name__)])
+                ch2_centeroids.append(roi.synapse_data['%s Centeroid' % (self.Channels[1].__name__)])
+        print(ch1_centeroids)
+        print(ch2_centeroids)
         return
     
-    def clearRandomClusters(self):
-        return    
 
 
     def start(self):        
@@ -630,10 +642,8 @@ class Synapse3D(BaseProcess):
         self.toggleClusters2_button.pressed.connect(lambda : self.toggleClusters()) 
         self.export_button = QtWidgets.QPushButton('Export Window')
         self.export_button.pressed.connect(lambda : self.exportWindow()) 
-        self.getRandomClusters_button = QtWidgets.QPushButton('Random Clusters')
-        self.getRandomClusters_button.pressed.connect(lambda : self.getRandomClusters()) 
-        self.clearRandomClusters_button = QtWidgets.QPushButton('Clear Random')
-        self.clearRandomClusters_button.pressed.connect(lambda : self.clearRandomClusters())         
+        self.clusterAnalysis_button = QtWidgets.QPushButton('Cluster Analysis')
+        self.clusterAnalysis_button.pressed.connect(lambda : self.clusterAnalysis()) 
                 
         self.viewBox_tickLabel = QtWidgets.QLabel('3D Viewer: ')
         self.viewBox_tickBox = QtWidgets.QCheckBox()  
@@ -648,8 +658,7 @@ class Synapse3D(BaseProcess):
         self.layout.addWidget(self.getClusters_button, 0, 4)    
         self.layout.addWidget(self.clearClusters_button, 0, 5) 
         
-        self.layout.addWidget(self.getRandomClusters_button, 0, 6)    
-        self.layout.addWidget(self.clearRandomClusters_button, 0, 7)         
+        self.layout.addWidget(self.clusterAnalysis_button, 0, 6)    
         
         self.layout.addWidget(self.viewBox_tickLabel, 0, 8) 
         self.layout.addWidget(self.viewBox_tickBox, 0, 9) 
