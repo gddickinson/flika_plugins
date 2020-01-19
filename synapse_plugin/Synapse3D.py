@@ -28,7 +28,8 @@ from matplotlib import pyplot as plt
 from .dbscan import *
 import copy
 import pandas as pd
-
+from sklearn.neighbors import KDTree
+import random
 
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
@@ -130,8 +131,8 @@ class Synapse3D(BaseProcess):
     		roi.mean_line = pg.PlotDataItem(np.array([channels[1].getCenter(), channels[0].getCenter()]), symbol='d', symbolSize=self.centroidSymbolSize )
     		roi.mean_line.setParentItem(roi)
     		roi.mean_line.setVisible(False)
-    		roi.synapse_data['%s Centeroid' % (self.Channels[0].__name__)] = channels[0].getCenter()
-    		roi.synapse_data['%s Centeroid' % (self.Channels[1].__name__)] = channels[1].getCenter()
+    		roi.synapse_data['%s Centeroid' % (self.Channels[0].__name__)] = channels[0].getCenter(z=True)
+    		roi.synapse_data['%s Centeroid' % (self.Channels[1].__name__)] = channels[1].getCenter(z=True)
             
     	else:
     		del roi.synapse_data
@@ -604,11 +605,103 @@ class Synapse3D(BaseProcess):
             if isinstance(roi, Freehand) and hasattr(roi, 'synapse_data'):
                 ch1_centeroids.append(roi.synapse_data['%s Centeroid' % (self.Channels[0].__name__)])
                 ch2_centeroids.append(roi.synapse_data['%s Centeroid' % (self.Channels[1].__name__)])
-        print(ch1_centeroids)
-        print(ch2_centeroids)
-        return
-    
+                
+        ch1_centeroids = np.array(ch1_centeroids)
+        ch2_centeroids = np.array(ch2_centeroids)
+        dist_clusters = self.getNearestNeighbors(ch1_centeroids,ch2_centeroids)
+        #print(dist_clusters)        
+        #print(min(self.data['Xc']), min(self.data['Yc']), min(self.data['Zc']))
+        #print(max(self.data['Xc']), max(self.data['Yc']), max(self.data['Zc']))
+        ch1_random = self.getRandomXYZ(min(self.data['Xc']),
+                                       min(self.data['Yc']),
+                                       min(self.data['Zc']),
+                                       max(self.data['Xc']),
+                                       max(self.data['Yc']),
+                                       max(self.data['Zc']), len(ch1_centeroids))
 
+
+        ch2_random = self.getRandomXYZ(min(self.data['Xc']),
+                                       min(self.data['Yc']),
+                                       min(self.data['Zc']),
+                                       max(self.data['Xc']),
+                                       max(self.data['Yc']),
+                                       max(self.data['Zc']), len(ch2_centeroids))
+
+
+        dist_random = self.getNearestNeighbors(ch1_random,ch2_random)
+
+        distAll_clusters = self.getNearestNeighbors(ch1_centeroids,ch2_centeroids, k=len(ch2_centeroids))
+        distAll_random = self.getNearestNeighbors(ch1_random,ch2_random, k=len(ch2_random))
+
+        
+        fig = plt.figure()
+        ax1 = fig.add_subplot(231, projection='3d')
+        ax1.scatter(ch1_centeroids[::,0], ch1_centeroids[::,1], ch1_centeroids[::,2], marker='o')
+        ax1.scatter(ch2_centeroids[::,0], ch2_centeroids[::,1], ch2_centeroids[::,2], marker='^')
+
+        ax1.set_title('Cluster Centeroids') 
+        ax1.set_xlabel('X')
+        ax1.set_ylabel('Y')
+        ax1.set_zlabel('Z')
+    
+        ax3 = fig.add_subplot(234, projection='3d')
+        ax3.scatter(ch1_random[::,0], ch1_random[::,1], ch1_random[::,2], marker='o')
+        ax3.scatter(ch2_random[::,0], ch2_random[::,1], ch2_random[::,2], marker='^')
+
+        ax3.set_title('Random Points')        
+        ax3.set_xlabel('X')
+        ax3.set_ylabel('Y')
+        ax3.set_zlabel('Z')
+        
+
+        ax2 = fig.add_subplot(232)
+        ax2.hist(dist_clusters)
+        ax2.set_title('Nearest Neighbor')
+        ax2.set_ylabel('# of observations')
+        ax2.set_xlabel('distance')        
+        
+        ax5 = fig.add_subplot(233)
+        ax5.hist(distAll_clusters)
+        ax5.set_title('All Neighbors')
+        ax5.set_ylabel('# of observations')
+        ax5.set_xlabel('distance') 
+        
+        ax4 = fig.add_subplot(235)
+        ax4.hist(dist_random)
+        #ax4.set_title('Nearest Neighbor')
+        ax4.set_ylabel('# of observations')
+        ax4.set_xlabel('distance')  
+
+        ax6 = fig.add_subplot(236)
+        ax6.hist(distAll_random)
+        #ax6.set_title('All Neighbors')
+        ax6.set_ylabel('# of observations')
+        ax6.set_xlabel('distance') 
+       
+        plt.show()
+        
+        #save distances
+        d = {'clusters':dist_clusters,'random':dist_random}
+        nearestNeighborDF = pd.DataFrame(data=d)
+        nearestNeighborDF.to_csv('nearestNeighbors.csv')
+        
+        return
+  
+    
+    def getRandomXYZ(self, minX, minY, minZ, maxX, maxY, maxZ, n):
+        randomList = []
+        while len(randomList) < n:
+            p = np.array([random.uniform(minX,maxY),
+                 random.uniform(minY,maxY),
+                 random.uniform(minZ,maxZ)])
+            randomList.append(p)       
+        return np.array(randomList)
+    
+    
+    def getNearestNeighbors(self,train,test,k=1):
+        tree = KDTree(train, leaf_size=5)   
+        dist, ind = tree.query(test, k=k)         
+        return dist.reshape(np.size(dist),)
 
     def start(self):        
         self.menu = self.win.menuBar()
