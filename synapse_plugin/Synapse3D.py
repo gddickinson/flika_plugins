@@ -727,12 +727,17 @@ class Synapse3D(BaseProcess):
         
         
         #save distances
-        d = {'clusters':dist_clusters,'random':dist_random}
-        nearestNeighborDF = pd.DataFrame(data=d)
-        saveName = 'clusterAnalysis.csv'
-        nearestNeighborDF.to_csv(saveName)
+        d1 = {'clusters_nearest':dist_clusters,'random_nearest':dist_random}
+        d2 = {'clusters_All':distAll_clusters,'random_All':distAll_random}
+        nearestNeighborDF = pd.DataFrame(data=d1)
+        allNeighborDF = pd.DataFrame(data=d2)        
+        saveName1 = 'clusterAnalysis_nearestNeighbors.csv'
+        saveName2 = 'clusterAnalysis_AllNeighbors.csv'        
+        nearestNeighborDF.to_csv(saveName1)
+        allNeighborDF.to_csv(saveName2)
         
-        print('distances saved as:', saveName)
+        print('nearest neighbor distances saved as:', saveName1)
+        print('all neighbor distances saved as:', saveName2)
         
         return
   
