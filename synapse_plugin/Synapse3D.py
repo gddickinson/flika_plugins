@@ -89,6 +89,9 @@ class Synapse3D(BaseProcess):
         self.clustersGeneated = False
         
         self.clusterIndex = []
+
+        #cluster analysis options
+        self.clusterAnaysisSelection = 'All Clusters'
         
     def displayData(self):
     	self.dataWidget.setData(sorted([roi.synapse_data for roi in self.plotWidget.items() if \
@@ -426,16 +429,24 @@ class Synapse3D(BaseProcess):
         self.plotWidget.getViewBox().createROIFromPoints(pointsList)
         
     def getClusters(self):
-        #get 2D points
-        ch1Points = self.Channels[0].getPoints(z=False)
-        ch2Points = self.Channels[1].getPoints(z=False)
+        #get 3D points
+        ch1Points_3D = self.Channels[0].getPoints(z=True)
+        ch2Points_3D = self.Channels[1].getPoints(z=True)
         #get cluster labels for each channel
         print('--- channel 1 ---')
-        self.ch1_labels = dbscan(ch1Points, eps=self.eps, min_samples=self.min_samples, plot=False)
+        self.ch1_labels = dbscan(ch1Points_3D, eps=self.eps, min_samples=self.min_samples, plot=False)
         print('--- channel 2 ---')
-        self.ch2_labels = dbscan(ch2Points, eps=self.eps, min_samples=self.min_samples, plot=False)    
+        self.ch2_labels = dbscan(ch2Points_3D, eps=self.eps, min_samples=self.min_samples, plot=False)    
         print('-----------------')
-        #get hulls for each channels clusters
+        #get 2D points
+        ch1Points = self.Channels[0].getPoints(z=False)
+        ch2Points = self.Channels[1].getPoints(z=False)      
+        
+        #get 3D centeroids for cluster analysis
+        _, self.ch1_centeroids_3D, _ = self.getHulls(ch1Points_3D,self.ch1_labels)
+        _, self.ch2_centeroids_3D, _ = self.getHulls(ch2Points_3D,self.ch2_labels)
+        
+        #get hulls for each channels clusters        
         ch1_hulls, ch1_centeroids, ch1_groupPoints = self.getHulls(ch1Points,self.ch1_labels)
         #self.plotHull(ch1_groupPoints[0],ch1_hulls[0])
         ch2_hulls, ch2_centeroids, ch2_groupPoints = self.getHulls(ch2Points,self.ch2_labels)
@@ -596,15 +607,26 @@ class Synapse3D(BaseProcess):
 
     
     def clusterAnalysis(self):
-        #print(self.clusterChannels[0].getDataAsDict())
-        #print(self.Channels[0].getCenter())
-        #print(self.dataWidget.getData())
-        ch1_centeroids = []
-        ch2_centeroids = []
-        for roi in self.plotWidget.items():
-            if isinstance(roi, Freehand) and hasattr(roi, 'synapse_data'):
-                ch1_centeroids.append(roi.synapse_data['%s Centeroid' % (self.Channels[0].__name__)])
-                ch2_centeroids.append(roi.synapse_data['%s Centeroid' % (self.Channels[1].__name__)])
+        if self.clustersGeneated != True:
+            print('no clusters!')
+            g.m.statusBar().showMessage('no clusters!')
+            return
+
+        if self.clusterAnaysisSelection == 'Paired Clusters':            
+            #print(self.clusterChannels[0].getDataAsDict())
+            #print(self.Channels[0].getCenter())
+            #print(self.dataWidget.getData())
+            ch1_centeroids = []
+            ch2_centeroids = []
+            for roi in self.plotWidget.items():
+                if isinstance(roi, Freehand) and hasattr(roi, 'synapse_data'):
+                    ch1_centeroids.append(roi.synapse_data['%s Centeroid' % (self.Channels[0].__name__)])
+                    ch2_centeroids.append(roi.synapse_data['%s Centeroid' % (self.Channels[1].__name__)])
+
+
+        else:
+            ch1_centeroids = self.ch1_centeroids_3D
+            ch2_centeroids = self.ch2_centeroids_3D
                 
         ch1_centeroids = np.array(ch1_centeroids)
         ch2_centeroids = np.array(ch2_centeroids)
@@ -630,8 +652,8 @@ class Synapse3D(BaseProcess):
 
         dist_random = self.getNearestNeighbors(ch1_random,ch2_random)
 
-        distAll_clusters = self.getNearestNeighbors(ch1_centeroids,ch2_centeroids, k=len(ch2_centeroids))
-        distAll_random = self.getNearestNeighbors(ch1_random,ch2_random, k=len(ch2_random))
+        distAll_clusters = self.getNearestNeighbors(ch1_centeroids,ch2_centeroids, k=len(ch1_centeroids))
+        distAll_random = self.getNearestNeighbors(ch1_random,ch2_random, k=len(ch1_random))
 
         
         fig = plt.figure()
@@ -680,10 +702,37 @@ class Synapse3D(BaseProcess):
        
         plt.show()
         
+        #print stats
+        print('----------------------------------------------')
+        print(self.clusterAnaysisSelection)        
+        print('----------------------------------------------')
+        print('Channel 1: Number of clusters: ', str(len(ch1_centeroids)))
+        print('Channel 2: Number of clusters: ', str(len(ch2_centeroids)))        
+        print('Number of nearest neighbor distances:', str(np.size(dist_clusters)))
+        print('Mean nearest neighbor distance:', str(np.mean(dist_clusters)))
+        print('StDev nearest neighbor distance:', str(np.std(dist_clusters)))        
+        print('Number of All distances:', str(np.size(distAll_clusters)))
+        print('Mean All distance:', str(np.mean(distAll_clusters)))
+        print('StDev All distance:', str(np.std(distAll_clusters)))       
+        print('----------------------------------------------')
+        print('Random 1: Number of clusters: ', str(len(ch1_random)))
+        print('Random 2: Number of clusters: ', str(len(ch2_random)))        
+        print('Number of nearest neighbor distances:', str(np.size(dist_random)))
+        print('Mean nearest neighbor distance:', str(np.mean(dist_random)))
+        print('StDev nearest neighbor distance:', str(np.std(dist_random)))       
+        print('Number of All distances:', str(np.size(distAll_random)))
+        print('Mean All distance:', str(np.mean(distAll_random)))  
+        print('Stdev All distance:', str(np.std(distAll_random)))          
+        print('----------------------------------------------')
+        
+        
         #save distances
         d = {'clusters':dist_clusters,'random':dist_random}
         nearestNeighborDF = pd.DataFrame(data=d)
-        nearestNeighborDF.to_csv('nearestNeighbors.csv')
+        saveName = 'clusterAnalysis.csv'
+        nearestNeighborDF.to_csv(saveName)
+        
+        print('distances saved as:', saveName)
         
         return
   
@@ -876,7 +925,11 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.label_maxDistance = QtWidgets.QLabel("max distance between clusters:") 
         self.displayTitle = QtWidgets.QLabel("----- Display Parameters -----") 
         self.label_unitPerPixel = QtWidgets.QLabel("nanometers/pixel:") 
-        self.label_centroidSymbolSize = QtWidgets.QLabel("centroid symbol size:")         
+        self.label_centroidSymbolSize = QtWidgets.QLabel("centroid symbol size:")  
+        
+        self.analysisTitle = QtWidgets.QLabel("----- Cluster Analysis -----") 
+        self.label_analysis = QtWidgets.QLabel("Clusters to analyse: ")         
+        
         #self.label_displayPlot = QtWidgets.QLabel("show plot")         
 
         #spinboxes
@@ -896,6 +949,11 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.centroidSymbolSizeBox.setRange(0,1000)
         self.centroidSymbolSizeBox.setValue(self.centroidSymbolSize)          
 
+        #combobox
+        self.analysis_Box = QtWidgets.QComboBox()
+        self.analysis_Box.addItems(["All Clusters", "Paired Clusters"])
+
+
         #grid layout
         layout = QtWidgets.QGridLayout()
         layout.setSpacing(5)
@@ -912,6 +970,11 @@ class ClusterOptions_win(QtWidgets.QDialog):
         layout.addWidget(self.label_centroidSymbolSize, 6, 0)  
         layout.addWidget(self.centroidSymbolSizeBox, 6, 1) 
         
+        layout.addWidget(self.analysisTitle, 8, 0, 1, 2)  
+        layout.addWidget(self.label_analysis, 9, 0)  
+        layout.addWidget(self.analysis_Box, 9, 1)         
+
+        
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
 
@@ -923,7 +986,10 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.minSampleBox.valueChanged.connect(self.minSampleChange) 
         self.maxDistanceBox.valueChanged.connect(self.maxDistanceChange)    
         self.unitPerPixelBox.valueChanged.connect(self.unitPerPixelChange) 
-        self.centroidSymbolSizeBox.valueChanged.connect(self.centroidSymbolSizeChange)        
+        self.centroidSymbolSizeBox.valueChanged.connect(self.centroidSymbolSizeChange)  
+        #connect combobox
+        self.analysis_Box.setCurrentIndex(0)
+        self.analysis_Box.currentIndexChanged.connect(self.analysisChange)         
         
     def epsValueChange(self,value):
         self.epsBox = value
@@ -948,4 +1014,8 @@ class ClusterOptions_win(QtWidgets.QDialog):
     def centroidSymbolSizeChange(self,value):
         self.centroidSymbolSize = value
         self.viewer.centroidSymbolSize = self.centroidSymbolSize
-        return    
+        return   
+    
+    def analysisChange(self):
+        self.viewer.clusterAnaysisSelection = self.analysis_Box.currentText()
+        return
