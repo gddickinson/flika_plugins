@@ -12,8 +12,8 @@ from .BioDocks.Tools import *
 from pyqtgraph.dockarea import *
 from scipy.spatial import ConvexHull
 from collections import OrderedDict
-#from PyQt4.QtCore import *
-#from PyQt4.QtGui import *
+from PyQt5.QtCore import pyqtSignal, pyqtSlot
+#from qtpy.QtGui import *
 from qtpy import QtWidgets, QtCore, QtGui
 from .Channels import *
 from .ClusterMath import *
@@ -30,12 +30,108 @@ import copy
 import pandas as pd
 from sklearn.neighbors import KDTree
 import random
+import time
 
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
     from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, FileSelector
 else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, FileSelector
+
+
+class TimerError(Exception):
+    """A custom exception used to report errors in use of Timer class"""
+
+class Timer:
+    def __init__(self):
+        self._start_time = None
+
+    def start(self):
+        """Start a new timer"""
+        if self._start_time is not None:
+            raise TimerError(f"Timer is running. Use .stop() to stop it")
+
+        self._start_time = time.perf_counter()
+
+    def stop(self):
+        """Stop the timer, and report the elapsed time"""
+        if self._start_time is None:
+            raise TimerError(f"Timer is not running. Use .start() to start it")
+
+        elapsed_time = time.perf_counter() - self._start_time
+        self._start_time = None
+        #print(f"Elapsed time: {elapsed_time:0.4f} seconds")
+        return(elapsed_time)
+
+
+import traceback, sys
+
+class WorkerSignals(QObject):
+    '''
+    Defines the signals available from a running worker thread.
+
+    Supported signals are:
+
+    finished
+        No data
+    
+    error
+        `tuple` (exctype, value, traceback.format_exc() )
+    
+    result
+        `object` data returned from processing, anything
+        
+    progress
+        `int` indicating % progress 
+
+    '''
+    finished = pyqtSignal()
+    error = pyqtSignal(tuple)
+    result = pyqtSignal(object)
+    progress = pyqtSignal(int)
+
+class Worker(QRunnable):
+    '''
+    Worker thread
+
+    Inherits from QRunnable to handler worker thread setup, signals and wrap-up.
+
+    :param callback: The function callback to run on this worker thread. Supplied args and 
+                     kwargs will be passed through to the runner.
+    :type callback: function
+    :param args: Arguments to pass to the callback function
+    :param kwargs: Keywords to pass to the callback function
+
+    '''
+
+    def __init__(self, fn, *args, **kwargs):
+        super(Worker, self).__init__()
+        # Store constructor arguments (re-used for processing)
+        self.fn = fn
+        self.args = args
+        self.kwargs = kwargs
+        self.signals = WorkerSignals()
+        
+        # Add the callback to our kwargs
+        self.kwargs['progress_callback'] = self.signals.progress 
+
+    @pyqtSlot()
+    def run(self):
+        '''
+        Initialise the runner function with passed args, kwargs.
+        '''
+
+        # Retrieve args/kwargs here; and fire processing using them
+        try:
+            result = self.fn(*self.args, **self.kwargs)
+        except:
+            traceback.print_exc()
+            exctype, value = sys.exc_info()[:2]
+            self.signals.error.emit((exctype, value, traceback.format_exc()))
+        else:
+            self.signals.result.emit(result)  # Return the result of the processing
+        finally:
+            self.signals.finished.emit()  # Done
 
 
 class Synapse3D(BaseProcess):
@@ -419,52 +515,147 @@ class Synapse3D(BaseProcess):
                         
     def createROIFromHull(self,points, hull):
         '''add roi to display from hull points'''
+        #make points list
         pointsList = []     
         for simplex in hull:
             pointsList.append((points[simplex][0])) 
         for simplex in hull:            
-            pointsList.append((points[simplex][1]))       
+            pointsList.append((points[simplex][1])) 
+            
+        #order points list
         pointsList = order_points(pointsList)
-        pointsList = np.array(pointsList) 
+
+        #convert list to np array
+        pointsList = np.array(pointsList)
+        
+        #add create ROIs from points
         self.plotWidget.getViewBox().createROIFromPoints(pointsList)
+
         
     def getClusters(self):
+        t = Timer()
         #get 3D points
+        t.start()
         ch1Points_3D = self.Channels[0].getPoints(z=True)
         ch2Points_3D = self.Channels[1].getPoints(z=True)
+        
+        print('\n-----------------')
+        print(':::TIME:::: 3D point data collected: {0:1.3f}'.format(t.stop()))
+        print('-----------------\n')
+        
         #get cluster labels for each channel
+        t.start()
         print('--- channel 1 ---')
         self.ch1_labels = dbscan(ch1Points_3D, eps=self.eps, min_samples=self.min_samples, plot=False)
         print('--- channel 2 ---')
         self.ch2_labels = dbscan(ch2Points_3D, eps=self.eps, min_samples=self.min_samples, plot=False)    
         print('-----------------')
+
+        print('\n-----------------')        
+        print(':::TIME:::: 2D clusters created: {0:1.3f}'.format(t.stop()))
+        print('-----------------\n')        
+        
         #get 2D points
+        t.start()
         ch1Points = self.Channels[0].getPoints(z=False)
-        ch2Points = self.Channels[1].getPoints(z=False)      
+        ch2Points = self.Channels[1].getPoints(z=False) 
+
+        print('\n-----------------')        
+        print(':::TIME:::: 2D point data collected: {0:1.3f}'.format(t.stop()))     
+        print('-----------------\n')
         
         #get 3D centeroids for cluster analysis
+        t.start()
         _, self.ch1_centeroids_3D, _ = self.getHulls(ch1Points_3D,self.ch1_labels)
         _, self.ch2_centeroids_3D, _ = self.getHulls(ch2Points_3D,self.ch2_labels)
         
-        #get hulls for each channels clusters        
+        print('\n-----------------')        
+        print(':::TIME:::: 3D clusters created: {0:1.3f}'.format(t.stop()))      
+        print('-----------------\n')
+        
+        #get hulls for each channels clusters  
+        t.start()
         ch1_hulls, ch1_centeroids, ch1_groupPoints = self.getHulls(ch1Points,self.ch1_labels)
         #self.plotHull(ch1_groupPoints[0],ch1_hulls[0])
         ch2_hulls, ch2_centeroids, ch2_groupPoints = self.getHulls(ch2Points,self.ch2_labels)
+
+        print('\n-----------------')        
+        print(':::TIME:::: hulls created: {0:1.3f}'.format(t.stop()))         
+        print('-----------------\n')  
+        
         #combine nearest roi between channels
+        t.start()
         combinedHulls, combinedPoints = combineClosestHulls(ch1_hulls,ch1_centeroids,ch1_groupPoints,ch2_hulls,ch2_centeroids,ch2_groupPoints, self.maxDistance)
+
+        print('\n-----------------')            
+        print(':::TIME:::: hulls created: {0:1.3f}'.format(t.stop()))
+        print('-----------------\n')      
+        
         #get new hulls for combined points
-        newHulls = self.getHulls2(combinedPoints)        
+        t.start()
+        newHulls = self.getHulls2(combinedPoints) 
+
+        print('\n-----------------')            
+        print(':::TIME:::: new hulls created: {0:1.3f}'.format(t.stop()))       
+        print('-----------------\n')          
+        
         #self.plotHull(combinedPoints[0],newHulls[0])       
+
+
         #draw rois around combined hulls
         #self.createROIFromHull(combinedPoints[0],newHulls[0])
+        t.start()
         print('--- combined channels ---')
-        for i in range(len(combinedHulls)):
-            self.createROIFromHull(combinedPoints[i],newHulls[i])  
+        
+        #single thread
+        #for i in range(len(combinedHulls)):
+        #    self.createROIFromHull(combinedPoints[i],newHulls[i]) ### THIS IS SLOW! ###
+
+        #multi-thread
+        t2 = Timer()
+        t2.start()
+        self.threadpool = QThreadPool()
+        print("Multithreading with maximum %d threads" % self.threadpool.maxThreadCount())
+
+
+        def progress_fn(n):
+            print("%d%% done" % n)
+        
+        def makeROIs(progress_callback):
+            for i in range(len(combinedHulls)):
+                self.createROIFromHull(combinedPoints[i],newHulls[i])
+                progress_callback.emit((i/len(combinedHulls))*100)
+            return "Done."
+
+        def thread_complete():
+            print("THREAD COMPLETE! - time taken:{0:1.3f}".format(t2.stop()))
+
+        
+        # Pass the function to execute
+        worker = Worker(makeROIs) # Any other args, kwargs are passed 
+        worker.signals.finished.connect(thread_complete)
+        worker.signals.progress.connect(progress_fn)                
+        #start threads
+        self.threadpool.start(worker)
+
+        
+        
+        print('\n-----------------')                 
+        print(':::TIME:::: ROI created: {0:1.3f}'.format(t.stop()))       
+        print('-----------------\n')        
+        
         print('{} ROI created'.format(str(len(combinedHulls))))
         g.m.statusBar().showMessage('{} ROI created'.format(str(len(combinedHulls))))
+        
         #self.updateClusterData()
+        t.start()
         if len(combinedHulls) > 0:
             self.clustersGeneated = True
+
+        print('\n-----------------')              
+        print(':::TIME:::: ROI data updated: {0:1.3f}'.format(t.stop()))       
+        print('-----------------\n')          
+        
         return
 
 
