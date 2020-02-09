@@ -4,7 +4,7 @@ import numpy as np
 from qtpy.QtGui import *
 from qtpy.QtWidgets import *
 
-from .BioDocks.AnalysisIO import *
+from .AnalysisIO import *
 
 import flika
 from flika import global_vars as g

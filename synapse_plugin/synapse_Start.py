@@ -22,11 +22,18 @@ if StrictVersion(flika_version) < StrictVersion('0.2.23'):
 else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, FileSelector
 
-from .BioDocks import *
+#from .BioDocks import *
+#import BioDocks
 #from Channels import *
 #from ClusterMath import *
-from .Synapse3D import *
-from .Synapse import *
+try:
+    from .Synapse3D import *
+except:
+    from Synapse3D import *
+try:
+    from .Synapse import *
+except:
+    from Synapse import *
 
 #########################################################################################
 #############          FLIKA Base Menu             #####################################

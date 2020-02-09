@@ -5,18 +5,25 @@
 @Date: August 6, 2015
 """
 import os,sys
-from .BioDocks import *
-from .BioDocks.DockWindow import * 
-from .BioDocks.AnalysisIO import *
-from .BioDocks.Tools import *
+#from .BioDocks import *
+#from .BioDocks.DockWindow import * 
+#from .BioDocks.AnalysisIO import *
+#from .BioDocks.Tools import *
+#from .BioDocks.Channels import *
+#from .BioDocks.ClusterMath import *
+#from .BioDocks.dbscan import *
+try:
+    from BioDocks import *
+except:
+    from .BioDocks import *
 from pyqtgraph.dockarea import *
 from scipy.spatial import ConvexHull
 from collections import OrderedDict
 from PyQt5.QtCore import pyqtSignal, pyqtSlot
-#from qtpy.QtGui import *
 from qtpy import QtWidgets, QtCore, QtGui
-from .Channels import *
-from .ClusterMath import *
+from qtpy.QtGui import *
+from qtpy.QtWidgets import *
+from qtpy.QtCore import *
 import flika
 from flika import global_vars as g
 from flika.window import Window
@@ -25,12 +32,13 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph import mkPen
 from matplotlib import pyplot as plt
-from .dbscan import *
 import copy
 import pandas as pd
 from sklearn.neighbors import KDTree
 import random
 import time
+from mpl_toolkits.mplot3d import Axes3D # <--- This is needed for newer versions of matplotlib
+
 
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
@@ -39,99 +47,6 @@ else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, FileSelector
 
 
-class TimerError(Exception):
-    """A custom exception used to report errors in use of Timer class"""
-
-class Timer:
-    def __init__(self):
-        self._start_time = None
-
-    def start(self):
-        """Start a new timer"""
-        if self._start_time is not None:
-            raise TimerError(f"Timer is running. Use .stop() to stop it")
-
-        self._start_time = time.perf_counter()
-
-    def stop(self):
-        """Stop the timer, and report the elapsed time"""
-        if self._start_time is None:
-            raise TimerError(f"Timer is not running. Use .start() to start it")
-
-        elapsed_time = time.perf_counter() - self._start_time
-        self._start_time = None
-        #print(f"Elapsed time: {elapsed_time:0.4f} seconds")
-        return(elapsed_time)
-
-
-import traceback, sys
-
-class WorkerSignals(QObject):
-    '''
-    Defines the signals available from a running worker thread.
-
-    Supported signals are:
-
-    finished
-        No data
-    
-    error
-        `tuple` (exctype, value, traceback.format_exc() )
-    
-    result
-        `object` data returned from processing, anything
-        
-    progress
-        `int` indicating % progress 
-
-    '''
-    finished = pyqtSignal()
-    error = pyqtSignal(tuple)
-    result = pyqtSignal(object)
-    progress = pyqtSignal(int)
-
-class Worker(QRunnable):
-    '''
-    Worker thread
-
-    Inherits from QRunnable to handler worker thread setup, signals and wrap-up.
-
-    :param callback: The function callback to run on this worker thread. Supplied args and 
-                     kwargs will be passed through to the runner.
-    :type callback: function
-    :param args: Arguments to pass to the callback function
-    :param kwargs: Keywords to pass to the callback function
-
-    '''
-
-    def __init__(self, fn, *args, **kwargs):
-        super(Worker, self).__init__()
-        # Store constructor arguments (re-used for processing)
-        self.fn = fn
-        self.args = args
-        self.kwargs = kwargs
-        self.signals = WorkerSignals()
-        
-        # Add the callback to our kwargs
-        self.kwargs['progress_callback'] = self.signals.progress 
-
-    @pyqtSlot()
-    def run(self):
-        '''
-        Initialise the runner function with passed args, kwargs.
-        '''
-
-        # Retrieve args/kwargs here; and fire processing using them
-        try:
-            result = self.fn(*self.args, **self.kwargs)
-        except:
-            traceback.print_exc()
-            exctype, value = sys.exc_info()[:2]
-            self.signals.error.emit((exctype, value, traceback.format_exc()))
-        else:
-            self.signals.result.emit(result)  # Return the result of the processing
-        finally:
-            self.signals.finished.emit()  # Done
 
 
 class Synapse3D(BaseProcess):
@@ -188,6 +103,9 @@ class Synapse3D(BaseProcess):
 
         #cluster analysis options
         self.clusterAnaysisSelection = 'All Clusters'
+
+        #multithreading option
+        self.multiThreadingFlag = False
         
     def displayData(self):
     	self.dataWidget.setData(sorted([roi.synapse_data for roi in self.plotWidget.items() if \
@@ -514,6 +432,8 @@ class Synapse3D(BaseProcess):
             plt.show()            
                         
     def createROIFromHull(self,points, hull):
+        t = Timer()
+        t.start()
         '''add roi to display from hull points'''
         #make points list
         pointsList = []     
@@ -521,15 +441,36 @@ class Synapse3D(BaseProcess):
             pointsList.append((points[simplex][0])) 
         for simplex in hull:            
             pointsList.append((points[simplex][1])) 
-            
+
+        # print('\n-----------------')
+        # print(':::TIME:::: Points list made: {0:1.3f}'.format(t.stop()))
+        # print('-----------------\n')
+        
+        #t.start()
         #order points list
         pointsList = order_points(pointsList)
+        
+        # print('\n-----------------')
+        # print(':::TIME:::: Points list ordered: {0:1.3f}'.format(t.stop()))
+        # print('-----------------\n')
 
+
+        #t.start()
         #convert list to np array
         pointsList = np.array(pointsList)
         
+        # print('\n-----------------')
+        # print(':::TIME:::: Array made: {0:1.3f}'.format(t.stop()))
+        # print('-----------------\n')        
+
+
+        #t.start()        
         #add create ROIs from points
         self.plotWidget.getViewBox().createROIFromPoints(pointsList)
+
+        print('\n-----------------')
+        print(':::TIME:::: ROI made: {0:1.3f}'.format(t.stop()))
+        print('-----------------\n')         
 
         
     def getClusters(self):
@@ -607,38 +548,40 @@ class Synapse3D(BaseProcess):
         t.start()
         print('--- combined channels ---')
         
+
+        if self.multiThreadingFlag:
+        # #multi-thread
+            t2 = Timer()
+            t2.start()
+            self.threadpool = QThreadPool()
+            print("Multithreading with maximum %d threads" % self.threadpool.maxThreadCount())
+    
+    
+            def progress_fn(n):
+                print("%d%% done" % n)
+            
+            def makeROIs(progress_callback):
+                for i in range(len(combinedHulls)):
+                    self.createROIFromHull(combinedPoints[i],newHulls[i])
+                    progress_callback.emit((i/len(combinedHulls))*100)
+                return "Done."
+    
+            def thread_complete():
+                print("THREAD COMPLETE! - time taken:{0:1.3f}".format(t2.stop()))
+    
+            
+            # Pass the function to execute
+            worker = Worker(makeROIs) # Any other args, kwargs are passed 
+            worker.signals.finished.connect(thread_complete)
+            worker.signals.progress.connect(progress_fn)                
+            #start threads
+            self.threadpool.start(worker)
+
+        else:
         #single thread
-        #for i in range(len(combinedHulls)):
-        #    self.createROIFromHull(combinedPoints[i],newHulls[i]) ### THIS IS SLOW! ###
-
-        #multi-thread
-        t2 = Timer()
-        t2.start()
-        self.threadpool = QThreadPool()
-        print("Multithreading with maximum %d threads" % self.threadpool.maxThreadCount())
-
-
-        def progress_fn(n):
-            print("%d%% done" % n)
-        
-        def makeROIs(progress_callback):
             for i in range(len(combinedHulls)):
-                self.createROIFromHull(combinedPoints[i],newHulls[i])
-                progress_callback.emit((i/len(combinedHulls))*100)
-            return "Done."
-
-        def thread_complete():
-            print("THREAD COMPLETE! - time taken:{0:1.3f}".format(t2.stop()))
-
-        
-        # Pass the function to execute
-        worker = Worker(makeROIs) # Any other args, kwargs are passed 
-        worker.signals.finished.connect(thread_complete)
-        worker.signals.progress.connect(progress_fn)                
-        #start threads
-        self.threadpool.start(worker)
-
-        
+                self.createROIFromHull(combinedPoints[i],newHulls[i]) ### THIS IS SLOW! ###
+      
         
         print('\n-----------------')                 
         print(':::TIME:::: ROI created: {0:1.3f}'.format(t.stop()))       
@@ -658,6 +601,18 @@ class Synapse3D(BaseProcess):
         
         return
 
+
+    def saveROIs(self):
+        self.plotWidget.getViewBox().export_rois()
+        print('ROIs saved')
+        return
+
+
+    def loadROIs(self):
+        self.plotWidget.getViewBox().import_rois()
+        self.clustersGeneated = True
+        print('ROIs loaded')
+        return
 
     def clearClusters(self):
         while (len(self.plotWidget.getViewBox().addedItems)) > 2:
@@ -917,19 +872,53 @@ class Synapse3D(BaseProcess):
         print('----------------------------------------------')
         
         
-        #save distances
+        #save centeroids and distances
         d1 = {'clusters_nearest':dist_clusters,'random_nearest':dist_random}
         d2 = {'clusters_All':distAll_clusters,'random_All':distAll_random}
+        d3 = {'ch1_centeroids_x':ch1_centeroids[::,0],
+              'ch1_centeroids_y':ch1_centeroids[::,1],
+              'ch1_centeroids_z':ch1_centeroids[::,2]}
+        
+        d4 = {'ch2_centeroids_x':ch2_centeroids[::,0],
+              'ch2_centeroids_y':ch2_centeroids[::,1],
+              'ch2_centeroids_z':ch2_centeroids[::,2]}
+        
+        d5 = {'ch1_centeroids_rnd_x':ch1_random[::,0],
+              'ch1_centeroids_rnd_y':ch1_random[::,1],
+              'ch1_centeroids_rnd_z':ch1_random[::,2]}
+              
+        d6 = {'ch2_centeroids_rnd_x':ch2_random[::,0],
+              'ch2_centeroids_rnd_y':ch2_random[::,1],
+              'ch2_centeroids_rnd_z':ch2_random[::,2]}
+        
+        
         nearestNeighborDF = pd.DataFrame(data=d1)
-        allNeighborDF = pd.DataFrame(data=d2)        
+        allNeighborDF = pd.DataFrame(data=d2)   
+        ch1_centeroids_clusters_DF = pd.DataFrame(data=d3)  
+        ch2_centeroids_clusters_DF = pd.DataFrame(data=d4)                 
+        ch1_centeroids_random_DF = pd.DataFrame(data=d5)   
+        ch2_centeroids_random_DF = pd.DataFrame(data=d6) 
+         
         saveName1 = 'clusterAnalysis_nearestNeighbors.csv'
-        saveName2 = 'clusterAnalysis_AllNeighbors.csv'        
+        saveName2 = 'clusterAnalysis_AllNeighbors.csv'  
+        saveName3 = 'ch1_clusters_centeroids.csv'
+        saveName4 = 'ch2_clusters_centeroids.csv'        
+        saveName5 = 'ch1_random_centeroids.csv'       
+        saveName6 = 'ch2_random_centeroids.csv'          
+        
         nearestNeighborDF.to_csv(saveName1)
         allNeighborDF.to_csv(saveName2)
-        
+        ch1_centeroids_clusters_DF.to_csv(saveName3) 
+        ch2_centeroids_clusters_DF.to_csv(saveName4)        
+        ch1_centeroids_random_DF .to_csv(saveName5)         
+        ch2_centeroids_random_DF .to_csv(saveName6)   
+       
         print('nearest neighbor distances saved as:', saveName1)
         print('all neighbor distances saved as:', saveName2)
-        
+        print('ch1_cluster centeroids saved as:', saveName3) 
+        print('ch1_cluster centeroids saved as:', saveName4)               
+        print('ch1_random centeroids saved as:', saveName5)         
+        print('ch2_random centeroids saved as:', saveName6)        
         return
   
     
@@ -953,6 +942,9 @@ class Synapse3D(BaseProcess):
         
         self.fileMenu =self. menu.addMenu('&File')
         self.fileMenu.addAction(QtWidgets.QAction('&Import Channels', self.fileMenu, triggered = lambda : self.open_file()))
+        self.fileMenu.addAction(QtWidgets.QAction('&Save ROIs', self.fileMenu, triggered = lambda : self.saveROIs()))
+        self.fileMenu.addAction(QtWidgets.QAction('&Load ROIs', self.fileMenu, triggered = lambda : self.loadROIs()))
+        
         self.fileMenu.addAction(QtWidgets.QAction('&Close', self.fileMenu, triggered = self.win.close))
         self.optionMenu =self. menu.addMenu('&Options')
         self.optionMenu.addAction(QtWidgets.QAction('&Settings', self.optionMenu, triggered = lambda : self.clusterOptions()))            
@@ -1107,6 +1099,7 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.maxDistance = self.viewer.maxDistance
         self.unitPerPixel = self.viewer.unitPerPixel
         self.centroidSymbolSize = self.viewer.centroidSymbolSize
+        self.multiThreadingFlag = self.viewer.multiThreadingFlag
         
         #window geometry
         self.left = 300
@@ -1125,6 +1118,9 @@ class ClusterOptions_win(QtWidgets.QDialog):
         
         self.analysisTitle = QtWidgets.QLabel("----- Cluster Analysis -----") 
         self.label_analysis = QtWidgets.QLabel("Clusters to analyse: ")         
+        
+        self.multiThreadTitle = QtWidgets.QLabel("----- Multi-Threading -----") 
+        self.label_multiThread = QtWidgets.QLabel("Multi-Threading On: ")        
         
         #self.label_displayPlot = QtWidgets.QLabel("show plot")         
 
@@ -1148,6 +1144,11 @@ class ClusterOptions_win(QtWidgets.QDialog):
         #combobox
         self.analysis_Box = QtWidgets.QComboBox()
         self.analysis_Box.addItems(["All Clusters", "Paired Clusters"])
+        
+        #tickbox
+        self.multiThread_checkbox = CheckBox()
+        self.multiThread_checkbox.setChecked(self.multiThreadingFlag)
+        self.multiThread_checkbox.stateChanged.connect(self.multiThreadClicked)
 
 
         #grid layout
@@ -1168,7 +1169,11 @@ class ClusterOptions_win(QtWidgets.QDialog):
         
         layout.addWidget(self.analysisTitle, 8, 0, 1, 2)  
         layout.addWidget(self.label_analysis, 9, 0)  
-        layout.addWidget(self.analysis_Box, 9, 1)         
+        layout.addWidget(self.analysis_Box, 9, 1)     
+        
+        layout.addWidget(self.multiThreadTitle, 10, 0, 1, 2)  
+        layout.addWidget(self.label_multiThread, 11, 0)  
+        layout.addWidget(self.multiThread_checkbox, 11, 1)          
 
         
         self.setLayout(layout)
@@ -1214,4 +1219,8 @@ class ClusterOptions_win(QtWidgets.QDialog):
     
     def analysisChange(self):
         self.viewer.clusterAnaysisSelection = self.analysis_Box.currentText()
+        return
+    
+    def multiThreadClicked(self):
+        self.viewer.multiThreadingFlag = self.multiThread_checkbox.isChecked()
         return

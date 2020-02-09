@@ -7,15 +7,21 @@
 import os,sys,inspect
 from scipy.spatial import Delaunay
 import pyqtgraph.console
-from .Channels import ActivePoint, Channel
-from .BioDocks import *
-from .BioDocks.DockWindow import * 
+#from .BioDocks.Channels import ActivePoint, Channel
+#from .BioDocks import *
+#from .BioDocks.DockWindow import * 
+#from .BioDocks.ClusterMath import *
+try:
+    from BioDocks import *
+except:
+    from .BioDocks import *
+
 from pyqtgraph.dockarea import *
 from collections import OrderedDict
 #from PyQt4.QtCore import *
 #from PyQt4.QtGui import *
 from qtpy import QtWidgets, QtCore, QtGui
-from .ClusterMath import *
+
 import flika
 from flika import global_vars as g
 from flika.window import Window
