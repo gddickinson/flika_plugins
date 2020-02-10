@@ -35,3 +35,8 @@ class Timer:
         elapsed_time = time.perf_counter() - self._start_time
         return(elapsed_time)
     
+    def timeReport(self, message=''):
+        print('\n-----------------')
+        print(':::TIME:::: {0}: {1:1.3f}'.format(message,self.stop()))
+        print('-----------------\n')
+        return 

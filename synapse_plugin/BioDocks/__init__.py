@@ -7,6 +7,7 @@ from .dbscan import *
 from .DockWindow import *
 from .timer import *
 from .multiThread import *
+from .scatterplot3D import *
 
 name='BioDocks'
 base_dir='BioDocks'
