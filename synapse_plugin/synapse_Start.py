@@ -34,7 +34,10 @@ try:
     from .Synapse import *
 except:
     from Synapse import *
-
+try:
+    from .clusterAnalysis import *
+except:
+    from clusterAnalysis import *
 #########################################################################################
 #############          FLIKA Base Menu             #####################################
 #########################################################################################
@@ -62,6 +65,10 @@ class SynapseStart(BaseProcess_noPriorWindow):
             #start synapse3D GUI
             self.synapse3D_app = Synapse3D()
             self.synapse3D_app.start()
+        elif version == 'synapse3D_batch':
+            #start synapse3D_batch GUI
+            self.synapse3D_batch_app = Synapse3D_batch()
+            self.synapse3D_batch_app.start()            
         elif version == 'synapse':
             #start synapse GUI
             self.synapse_app = Synapse()
@@ -77,6 +84,7 @@ class SynapseStart(BaseProcess_noPriorWindow):
         #combobox
         versionChoice = ComboBox()
         versionChoice.addItem('synapse3D')
+        versionChoice.addItem('synapse3D_batch')        
         versionChoice.addItem('synapse')
                          
         #populate GUI

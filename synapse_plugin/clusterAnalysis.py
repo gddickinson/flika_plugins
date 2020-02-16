@@ -41,7 +41,6 @@ else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, FileSelector
 
 
-
 class ClusterAnalysis:
     
     def __init__(self):
@@ -53,9 +52,9 @@ class ClusterAnalysis:
         self.unit = 'Nanometers'
         self.ignore = {"Z Rejected"}
         #clustering option
-        #self.eps = 100          #max distance between points within a cluster
-        #self.min_samples = 10   #min number of points to form a cluster
-        #self.maxDistance = 100  #max distance between clusters in differnt channels when forming combined ROI
+        self.eps = 100          #max distance between points within a cluster
+        self.min_samples = 10   #min number of points to form a cluster
+        self.maxDistance = 100  #max distance between clusters in differnt channels when forming combined ROI
         self.colors = ((255, 0, 0), (0, 255, 0))
         self.color_dict = {'atto488': self.colors[0], 'Alexa647': self.colors[1]}
         self.ignore = {"Z Rejected"}        
@@ -76,6 +75,7 @@ class ClusterAnalysis:
         self.All_ROIs_pointsList = []
         self.channelList = []
         
+        #self..multiThreadingFlag = False
    
     def open_file(self,filename=''):
     	if filename == '':
@@ -187,6 +187,7 @@ class ClusterAnalysis:
         for i in range(len(combinedHulls)):
             self.createROIFromHull(combinedPoints[i],newHulls[i]) ### THIS IS SLOW! ###
             print('\r', 'creating rois: {:0.2f}'.format((i/len(combinedHulls))*100),'%', end='\r', flush=True)
+        
         # #multi-thread
         # t2 = Timer()
         # t2.start()
@@ -583,12 +584,13 @@ class ClusterAnalysis:
             savePath = pathName + r'\results'
             print('save path: ', savePath, '\n')
             
-            ##### RUN ####
-            
+            ##### set parameters ####
             self.name = fileName
             self.eps = eps
             self.min_samples = min_samples
             self.maxDistance = maxDistance
+            
+            ##### run #####
             self.open_file(filename=filePath)
             self.getClusters()
             #self.plotClusters()
@@ -618,17 +620,167 @@ class ClusterAnalysis:
         return
 
 clusterAnalysis = ClusterAnalysis()
-###################################################################################################
-###################      Testing     ##############################################################
-###################################################################################################
 
-#clustering option
-eps = 100          #max distance between points within a cluster
-min_samples = 20   #min number of points to form a cluster
-maxDistance = 300  #max distance between clusters in differnt channels when forming combined ROI
 
-#pathName = r"C:\Google Drive\fromIan_batchProcess"
-pathName = r"C:\Users\George\Desktop\ianS-synapse"
+class Synapse3D_batch(QtWidgets.QDialog):
+    def __init__(self, parent = None):
+        super(Synapse3D_batch, self).__init__(parent)
+        #add window title
+        self.setWindowTitle("Volume Slider GUI")
+        
+        self.pathName = ''
 
-clusterAnalysis.runBatch(pathName, eps, min_samples, maxDistance, test=True)
+        self.eps  = clusterAnalysis.eps
+        self.min_samples = clusterAnalysis.min_samples
+        self.maxDistance = clusterAnalysis.maxDistance
+        self.unitPerPixel = clusterAnalysis.unitPerPixel
+        #self.multiThreadingFlag = clusterAnalysis.multiThreadingFlag
+        
+        #window geometry
+        self.left = 300
+        self.top = 300
+        self.width = 300
+        self.height = 200
 
+        #labels
+        self.clusterTitle = QtWidgets.QLabel("----- Cluster Parameters -----") 
+        self.label_eps = QtWidgets.QLabel("max distance between points:") 
+        self.label_minSamples = QtWidgets.QLabel("minimum number of points:") 
+        self.label_maxDistance = QtWidgets.QLabel("max distance between clusters:") 
+        self.displayTitle = QtWidgets.QLabel("----- Display Parameters -----") 
+        self.label_unitPerPixel = QtWidgets.QLabel("nanometers/pixel:") 
+        #self.label_centroidSymbolSize = QtWidgets.QLabel("centroid symbol size:")  
+        
+        self.analysisTitle = QtWidgets.QLabel("----- Cluster Analysis -----") 
+        self.label_analysis = QtWidgets.QLabel("Clusters to analyse: ")         
+        
+        #self.multiThreadTitle = QtWidgets.QLabel("----- Multi-Threading -----") 
+        #self.label_multiThread = QtWidgets.QLabel("Multi-Threading On: ")        
+        
+        #self.label_displayPlot = QtWidgets.QLabel("show plot")         
+
+        #spinboxes
+        self.epsBox = QtWidgets.QSpinBox()
+        self.epsBox.setRange(0,10000)
+        self.epsBox.setValue(self.eps)
+        self.minSampleBox = QtWidgets.QSpinBox()    
+        self.minSampleBox.setRange(0,10000)
+        self.minSampleBox.setValue(self.min_samples)
+        self.maxDistanceBox = QtWidgets.QSpinBox()    
+        self.maxDistanceBox.setRange(0,10000)
+        self.maxDistanceBox.setValue(self.maxDistance)    
+        self.unitPerPixelBox = QtWidgets.QSpinBox()    
+        self.unitPerPixelBox.setRange(0,1000)
+        self.unitPerPixelBox.setValue(self.unitPerPixel)  
+        #self.centroidSymbolSizeBox = QtWidgets.QSpinBox()    
+        #self.centroidSymbolSizeBox.setRange(0,1000)
+        #self.centroidSymbolSizeBox.setValue(self.centroidSymbolSize)          
+
+        #combobox
+        #self.analysis_Box = QtWidgets.QComboBox()
+        #self.analysis_Box.addItems(["All Clusters", "Paired Clusters"])
+        
+        #tickbox
+        #self.multiThread_checkbox = CheckBox()
+        #self.multiThread_checkbox.setChecked(self.multiThreadingFlag)
+        #self.multiThread_checkbox.stateChanged.connect(self.multiThreadClicked)
+
+        #buttons
+        self.button_start = QtWidgets.QPushButton("Set Folder and Start Batch Analysis")
+        
+        #grid layout
+        layout = QtWidgets.QGridLayout()
+        layout.setSpacing(5)
+        layout.addWidget(self.clusterTitle, 0, 0, 1, 2)        
+        layout.addWidget(self.label_eps, 1, 0)
+        layout.addWidget(self.epsBox, 1, 1)       
+        layout.addWidget(self.label_minSamples, 2, 0)        
+        layout.addWidget(self.minSampleBox, 2, 1)     
+        layout.addWidget(self.label_maxDistance, 3, 0)        
+        layout.addWidget(self.maxDistanceBox, 3, 1)
+        layout.addWidget(self.displayTitle, 4, 0, 1, 2)          
+        layout.addWidget(self.label_unitPerPixel, 5, 0)  
+        layout.addWidget(self.unitPerPixelBox, 5, 1) 
+        layout.addWidget(self.button_start, 6, 0) 
+        
+        #layout.addWidget(self.label_centroidSymbolSize, 6, 0)  
+        #layout.addWidget(self.centroidSymbolSizeBox, 6, 1) 
+        
+        #layout.addWidget(self.analysisTitle, 8, 0, 1, 2)  
+        #layout.addWidget(self.label_analysis, 9, 0)  
+        #layout.addWidget(self.analysis_Box, 9, 1)     
+        
+        #layout.addWidget(self.multiThreadTitle, 10, 0, 1, 2)  
+        #layout.addWidget(self.label_multiThread, 11, 0)  
+        #layout.addWidget(self.multiThread_checkbox, 11, 1)  
+        
+
+        
+        self.setLayout(layout)
+        self.setGeometry(self.left, self.top, self.width, self.height)
+
+        #add window title
+        self.setWindowTitle("Clustering Options")
+
+        #connect spinboxes
+        self.epsBox.valueChanged.connect(self.epsValueChange)
+        self.minSampleBox.valueChanged.connect(self.minSampleChange) 
+        self.maxDistanceBox.valueChanged.connect(self.maxDistanceChange)    
+        self.unitPerPixelBox.valueChanged.connect(self.unitPerPixelChange) 
+        #self.centroidSymbolSizeBox.valueChanged.connect(self.centroidSymbolSizeChange)  
+        #connect combobox
+        #self.analysis_Box.setCurrentIndex(0)
+        #self.analysis_Box.currentIndexChanged.connect(self.analysisChange)         
+
+        #connect buttons
+        self.button_start.clicked.connect(self.run)
+
+        
+    def epsValueChange(self,value):
+        self.epsBox = value
+        clusterAnalysis.eps = self.epsBox
+        return
+    
+    def minSampleChange(self,value):
+        self.min_samples = value
+        clusterAnalysis.min_samples = self.min_samples 
+        return
+        
+    def maxDistanceChange(self,value):
+        self.maxDistance = value
+        clusterAnalysis.maxDistance = self.maxDistance
+        return
+
+    def unitPerPixelChange(self,value):
+        self.unitPerPixel = value
+        clusterAnalysis.unitPerPixel = self.unitPerPixel
+        return
+    
+#    def centroidSymbolSizeChange(self,value):
+#        self.centroidSymbolSize = value
+#        self.viewer.centroidSymbolSize = self.centroidSymbolSize
+#        return   
+    
+#    def analysisChange(self):
+#        self.viewer.clusterAnaysisSelection = self.analysis_Box.currentText()
+#        return
+    
+#    def multiThreadClicked(self):
+#        self.viewer.multiThreadingFlag = self.multiThread_checkbox.isChecked()
+#        return
+
+    def getSavePath(self): 
+        folder = QtWidgets.QFileDialog.getExistingDirectory(g.m, "Select batch folder.", os.path.expanduser("~"), QtWidgets.QFileDialog.ShowDirsOnly)
+        self.pathName = folder
+        return
+
+    def run(self):
+        self.getSavePath()
+        if not os.path.exists(os.path.join(self.pathName,'results')):
+            os.makedirs(os.path.join(self.pathName,'results'))
+        clusterAnalysis.runBatch(self.pathName)
+        return
+
+    def start(self):
+        self.show()
+        return
