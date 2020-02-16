@@ -4,7 +4,7 @@ Created on Sat Feb  8 08:54:05 2020
 Synapse3D - Clustering code
 @author: George
 """
-import os,sys
+import os, sys, glob
 
 try:
     from BioDocks import *
@@ -74,6 +74,7 @@ class ClusterAnalysis:
         self.clusterAnaysisSelection = 'All Clusters'
         
         self.All_ROIs_pointsList = []
+        self.channelList = []
         
    
     def open_file(self,filename=''):
@@ -137,16 +138,16 @@ class ClusterAnalysis:
        
         #get cluster labels for each channel
         print('--- channel 1 ---')
-        self.ch1_labels = dbscan(self.ch1Points_3D, eps=self.eps, min_samples=self.min_samples, plot=False)
+        self.ch1_labels,self.ch1_numClusters,self.ch1_numNoise = dbscan(self.ch1Points_3D, eps=self.eps, min_samples=self.min_samples, plot=False)
         print('--- channel 2 ---')
-        self.ch2_labels = dbscan(self.ch2Points_3D, eps=self.eps, min_samples=self.min_samples, plot=False)    
+        self.ch2_labels,self.ch2_numClusters,self.ch2_numNoise = dbscan(self.ch2Points_3D, eps=self.eps, min_samples=self.min_samples, plot=False)    
         print('-----------------')
         
         t.timeReport('2D clusters created')  
         #get 2D points
         t.start()
-        ch1Points = self.Channels[0].getPoints(z=False)
-        ch2Points = self.Channels[1].getPoints(z=False) 
+        #ch1Points = self.Channels[0].getPoints(z=True)
+        #ch2Points = self.Channels[1].getPoints(z=True) 
     
         #get 3D centeroids for cluster analysis
         _, self.ch1_centeroids_3D, _ = self.getHulls(self.ch1Points_3D,self.ch1_labels)
@@ -156,9 +157,9 @@ class ClusterAnalysis:
         
         #get hulls for each channels clusters  
         t.start()
-        ch1_hulls, ch1_centeroids, ch1_groupPoints = self.getHulls(ch1Points,self.ch1_labels)
+        ch1_hulls, ch1_centeroids, ch1_groupPoints = self.getHulls(self.ch1Points_3D,self.ch1_labels)
         #self.plotHull(ch1_groupPoints[0],ch1_hulls[0])
-        ch2_hulls, ch2_centeroids, ch2_groupPoints = self.getHulls(ch2Points,self.ch2_labels)
+        ch2_hulls, ch2_centeroids, ch2_groupPoints = self.getHulls(self.ch2Points_3D,self.ch2_labels)
  
         #t.timeReport('hulls created')
                 
@@ -266,6 +267,9 @@ class ClusterAnalysis:
         
         #add points to All_ROI_pointsList
         self.All_ROIs_pointsList.append(pointsList)
+        
+        #make channel list for all points
+        self.makeChannelList()
 
         #t.timeReport('ROI made')
         return
@@ -380,6 +384,86 @@ class ClusterAnalysis:
         plt.show()
         return
 
+    def makeChannelList(self):
+        self.channelList = []
+        ch1_pts = self.Channels[0].getPoints(z=True)
+        #ch2_pts = self.Channels[1].getPoints()
+        for roi in self.All_ROIs_pointsList:
+            roiList = []
+            for pts in roi:
+                if pts in ch1_pts:
+                    roiList.append(self.Channels[0].__name__)
+                else:
+                    roiList.append(self.Channels[1].__name__) 
+            self.channelList.append(np.array(roiList))
+        return
+
+
+    def analyze_roi(self, roi, channelList, roiIndex):
+        '''analyse roi pts'''
+        #channels = [self.Channels[0],self.Channels[1]]
+        
+        ch1_pts = roi[channelList == self.Channels[0].__name__]
+        ch2_pts = roi[channelList == self.Channels[1].__name__]  
+                        
+        roi_data = OrderedDict([('ROI #', roiIndex), ('Mean Distance (%s)' % self.unit_prefixes[self.unit], 0), ('%s N' % self.Channels[0].__name__, 0), \
+        ('%s N' % self.Channels[1].__name__, 0), ('%s Volume (%s^3)' % (self.Channels[0].__name__, self.unit_prefixes[self.unit]), 0), ('%s Volume (%s^3)' % (self.Channels[1].__name__, self.unit_prefixes[self.unit]), 0)])
+
+
+        roi_data['%s N' % self.Channels[0].__name__] = len(ch1_pts)
+        roi_data['%s N' % self.Channels[1].__name__] = len(ch2_pts)        
+
+        try:        
+            if len(ch1_pts) >= 5:
+                roi_data['%s Volume (%s^3)' % (self.Channels[0].__name__, self.unit_prefixes[self.unit])] = convex_volume(ch1_pts)
+    
+            else:
+                roi_data['%s Volume (%s^3)' % (self.Channels[0].__name__, self.unit_prefixes[self.unit])] = 0
+
+        except:
+                roi_data['%s Volume (%s^3)' % (self.Channels[0].__name__, self.unit_prefixes[self.unit])] = 0
+
+
+        try:
+            if len(ch2_pts) >= 5:
+    
+                roi_data['%s Volume (%s^3)' % (self.Channels[1].__name__, self.unit_prefixes[self.unit])] = convex_volume(ch2_pts)
+    
+            else:
+                roi_data['%s Volume (%s^3)' % (self.Channels[1].__name__, self.unit_prefixes[self.unit])] = 0
+    
+        except:
+                roi_data['%s Volume (%s^3)' % (self.Channels[1].__name__, self.unit_prefixes[self.unit])] = 0
+
+
+            #g.m.statusBar().showMessage('Cannot get Volume of %s in roi %d with %d points' % (ch.__name__, roi.id, ch.getCount())) 
+        
+        
+        roi_data['Mean Distance (%s)' % self.unit_prefixes[self.unit]] = np.linalg.norm(np.average(ch1_pts, 0) - np.average(ch2_pts, 0))
+        roi_data['%s Centeroid' % (self.Channels[0].__name__)] = np.average(ch1_pts, 0)
+        roi_data['%s Centeroid' % (self.Channels[1].__name__)] = np.average(ch2_pts, 0)
+                    
+        return roi_data
+
+
+    def makeROI_DF(self):
+        '''pass each roi to analyze_roi(), compile resuts in table'''
+        dictList = []
+        for i in range(len(self.All_ROIs_pointsList)):
+            roi_data = self.analyze_roi(self.All_ROIs_pointsList[i],self.channelList[i],i)
+            dictList.append(roi_data)
+        #make df
+        self.roiAnalysisDF = pd.DataFrame(dictList)
+        print(self.roiAnalysisDF.head())
+        return
+
+    def saveROIAnalysis(self, savePath='',fileName=''):
+        '''save roi analysis dataframe as csv'''
+        self.makeROI_DF()
+        saveName = os.path.join(savePath, fileName + '_roiAnalysis.csv')
+        self.roiAnalysisDF.to_csv(saveName)   
+        print('roi analysis saved as:', saveName)              
+        return
 
     def printStats(self):
         '''print stats'''
@@ -397,16 +481,46 @@ class ClusterAnalysis:
         print('----------------------------------------------')
         print('Random 1: Number of clusters: ', str(len(self.ch1_random)))
         print('Random 2: Number of clusters: ', str(len(self.ch2_random)))        
-        print('Number of nearest neighbor distances:', str(np.size(self.dist_random)))
-        print('Mean nearest neighbor distance:', str(np.mean(self.dist_random)))
-        print('StDev nearest neighbor distance:', str(np.std(self.dist_random)))       
-        print('Number of All distances:', str(np.size(self.distAll_random)))
-        print('Mean All distance:', str(np.mean(self.distAll_random)))  
-        print('Stdev All distance:', str(np.std(self.distAll_random)))          
+        print('Random: Number of nearest neighbor distances:', str(np.size(self.dist_random)))
+        print('Random: Mean nearest neighbor distance:', str(np.mean(self.dist_random)))
+        print('Random: StDev nearest neighbor distance:', str(np.std(self.dist_random)))       
+        print('Random: Number of All distances:', str(np.size(self.distAll_random)))
+        print('Random: Mean All distance:', str(np.mean(self.distAll_random)))  
+        print('Random: Stdev All distance:', str(np.std(self.distAll_random)))          
         print('----------------------------------------------')
         return
 
-    def saveResults(self, savePath=''):
+
+    def saveStats(self ,savePath='',fileName=''):
+        '''save clustering stats as csv'''
+        d= {
+            'Channel 1: Number of clusters': (len(self.ch1_centeroids_3D)),
+            'Channel 2: Number of clusters': (len(self.ch2_centeroids_3D)),
+            'Channel 1: Number of noise points': self.ch1_numNoise,
+            'Channel 2: Number of noise points': self.ch2_numNoise,
+            'Number of nearest neighbor distances': (np.size(self.dist_clusters)),
+            'Mean nearest neighbor distance': (np.mean(self.dist_clusters)),
+            'StDev nearest neighbor distance': (np.std(self.dist_clusters)),       
+            'Number of All distances': (np.size(self.distAll_clusters)),
+            'Mean All distance': (np.mean(self.distAll_clusters)),
+            'StDev All distance': (np.std(self.distAll_clusters)),      
+            'Random 1: Number of clusters': (len(self.ch1_random)),
+            'Random 2: Number of clusters': (len(self.ch2_random)),      
+            'Random: Number of nearest neighbor distances': (np.size(self.dist_random)),
+            'Random: Mean nearest neighbor distance': (np.mean(self.dist_random)),
+            'Random: StDev nearest neighbor distance': (np.std(self.dist_random)),      
+            'Random: Number of All distances': (np.size(self.distAll_random)),
+            'Random: Mean All distance': (np.mean(self.distAll_random)),
+            'Random: Stdev All distance': (np.std(self.distAll_random)) 
+                }
+        
+        statsDF = pd.DataFrame(data=d,index=[0])
+        saveName = os.path.join(savePath, fileName + '_stats.csv')
+        statsDF.to_csv(saveName)
+        print('stats saved as:', saveName)
+        return
+
+    def saveResults(self, savePath='',fileName=''):
         '''save centeroids and distances'''
         d1 = {'clusters_nearest':self.dist_clusters,'random_nearest':self.dist_random}
         d2 = {'clusters_All':self.distAll_clusters,'random_All':self.distAll_random}
@@ -434,12 +548,12 @@ class ClusterAnalysis:
         ch1_centeroids_random_DF = pd.DataFrame(data=d5)   
         ch2_centeroids_random_DF = pd.DataFrame(data=d6) 
         
-        saveName1 = os.path.join(savePath, 'clusterAnalysis_nearestNeighbors.csv')
-        saveName2 = os.path.join(savePath, 'clusterAnalysis_AllNeighbors.csv')  
-        saveName3 = os.path.join(savePath, 'ch1_clusters_centeroids.csv')
-        saveName4 = os.path.join(savePath, 'ch2_clusters_centeroids.csv')   
-        saveName5 = os.path.join(savePath, 'ch1_random_centeroids.csv')
-        saveName6 = os.path.join(savePath, 'ch2_random_centeroids.csv')   
+        saveName1 = os.path.join(savePath, fileName + '_clusterAnalysis_nearestNeighbors.csv')
+        saveName2 = os.path.join(savePath, fileName + '_clusterAnalysis_AllNeighbors.csv')  
+        saveName3 = os.path.join(savePath, fileName + '_ch1_clusters_centeroids.csv')
+        saveName4 = os.path.join(savePath, fileName + '_ch2_clusters_centeroids.csv')   
+        saveName5 = os.path.join(savePath, fileName + '_ch1_random_centeroids.csv')
+        saveName6 = os.path.join(savePath, fileName + '_ch2_random_centeroids.csv')   
         
         nearestNeighborDF.to_csv(saveName1)
         allNeighborDF.to_csv(saveName2)
@@ -447,6 +561,7 @@ class ClusterAnalysis:
         ch2_centeroids_clusters_DF.to_csv(saveName4)        
         ch1_centeroids_random_DF .to_csv(saveName5)         
         ch2_centeroids_random_DF .to_csv(saveName6)   
+
        
         print('nearest neighbor distances saved as:', saveName1)
         print('all neighbor distances saved as:', saveName2)
@@ -454,36 +569,59 @@ class ClusterAnalysis:
         print('ch1_cluster centeroids saved as:', saveName4)               
         print('ch1_random centeroids saved as:', saveName5)         
         print('ch2_random centeroids saved as:', saveName6)  
+        
         return
 
 ###################################################################################################
 ###################    PARAMETERS    ##############################################################
 ###################################################################################################
 
-filePath = r"C:\Users\George\Desktop\ianS-synapse\trial_1_superes_cropped.txt"
 #clustering option
 eps = 100          #max distance between points within a cluster
-min_samples = 10   #min number of points to form a cluster
-maxDistance = 100  #max distance between clusters in differnt channels when forming combined ROI
-savePath = r"C:\Users\George\Desktop\ianS-synapse"
+min_samples = 20   #min number of points to form a cluster
+maxDistance = 300  #max distance between clusters in differnt channels when forming combined ROI
+
 
 ###################################################################################################
 ###################################################################################################
 ###################################################################################################
 
-##### RUN ####
-test = ClusterAnalysis()
-test.eps = eps
-test.min_samples = min_samples
-test.maxDistance = maxDistance
-test.open_file(filename=filePath)
-test.getClusters()
-#test.plotClusters()
-#test.plot3DClusters()
-test.randomPointAnalysis()
-test.plotAnalysis()
-test.printStats()
-test.saveResults(savePath)
 
 
+#pathName = r"C:\Google Drive\fromIan_batchProcess"
+pathName = r"C:\Users\George\Desktop\ianS-synapse"
+
+files = [f for f in glob.glob(pathName + "**/*.txt", recursive=True)]
+
+#1 file to test
+files=[files[0]]
+
+for file in files:
+    try:
+        fileName = file.split('\\')[-1].split('.')[0]
+        print(fileName)
+        filePath = file
+        savePath = pathName + r'\results'
+        print(savePath)
+        
+        ##### RUN ####
+        test = ClusterAnalysis()
+        test.name = fileName
+        test.eps = eps
+        test.min_samples = min_samples
+        test.maxDistance = maxDistance
+        test.open_file(filename=filePath)
+        test.getClusters()
+        #test.plotClusters()
+        #test.plot3DClusters()
+        test.randomPointAnalysis()
+        #test.plotAnalysis()
+        test.printStats()
+        #test.saveResults(savePath, fileName=fileName)
+        #test.saveStats(savePath, fileName=fileName)
+        test.saveROIAnalysis(savePath, fileName=fileName)
+    except:
+        print('skipped: ',fileName)
+
+print('finished!')
 

@@ -487,9 +487,9 @@ class Synapse3D(BaseProcess):
         #get cluster labels for each channel
         t.start()
         print('--- channel 1 ---')
-        self.ch1_labels = dbscan(ch1Points_3D, eps=self.eps, min_samples=self.min_samples, plot=False)
+        self.ch1_labels,self.ch1_numClusters,self.ch1_numNoise = dbscan(ch1Points_3D, eps=self.eps, min_samples=self.min_samples, plot=False)
         print('--- channel 2 ---')
-        self.ch2_labels = dbscan(ch2Points_3D, eps=self.eps, min_samples=self.min_samples, plot=False)    
+        self.ch2_labels,self.ch2_numClusters,self.ch2_numNoise  = dbscan(ch2Points_3D, eps=self.eps, min_samples=self.min_samples, plot=False)    
         print('-----------------')
 
         print('\n-----------------')        

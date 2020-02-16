@@ -55,4 +55,4 @@ def dbscan(xyData, eps=500, min_samples = 10, plot=False):
         plt.title('Estimated number of clusters: %d' % n_clusters_)
         plt.show()
         
-    return labels
+    return labels, n_clusters_, n_noise_
