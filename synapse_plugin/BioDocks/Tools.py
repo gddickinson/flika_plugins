@@ -79,6 +79,8 @@ def order_points(pts):
 def combineClosestHulls(ch1_hulls,ch1_centeroids,ch1_groupPoints,ch2_hulls,ch2_centeroids,ch2_groupPoints, maxDistance):
     combinedHullList = []
     combinedPointsList = []
+    ch1_combinedCenteroidsList = []
+    ch2_combinedCenteroidsList = []
     for i in range(len(ch1_centeroids)):
         pt = ch1_centeroids[i]
         distance,index = KDTree(ch2_centeroids).query(pt)
@@ -88,8 +90,10 @@ def combineClosestHulls(ch1_hulls,ch1_centeroids,ch1_groupPoints,ch2_hulls,ch2_c
             ch1_points = ch1_groupPoints[i]
             ch2_points = ch2_groupPoints[index]                     
             combinedHullList.append(np.concatenate((ch1_hull,ch2_hull)))   
-            combinedPointsList.append(np.concatenate((ch1_points,ch2_points)))               
-    return combinedHullList, combinedPointsList
+            combinedPointsList.append(np.concatenate((ch1_points,ch2_points)))
+            ch1_combinedCenteroidsList.append(ch1_centeroids[i]) 
+            ch2_combinedCenteroidsList.append(ch2_centeroids[index])               
+    return combinedHullList, combinedPointsList, np.array(ch1_combinedCenteroidsList), np.array(ch2_combinedCenteroidsList)
 
 class AnalysisException(Exception):
     def __init__(self, parent, title='Analysis Error', s='Something went wrong'):

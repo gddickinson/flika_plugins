@@ -168,7 +168,7 @@ class ClusterAnalysis:
                 
         #combine nearest roi between channels
         #t.start()
-        combinedHulls, combinedPoints = combineClosestHulls(ch1_hulls,ch1_centeroids,self.ch1_groupPoints,ch2_hulls,ch2_centeroids,self.ch2_groupPoints, self.maxDistance)
+        combinedHulls, combinedPoints, self.combined_ch1_Centeroids, self.combined_ch2_Centeroids = combineClosestHulls(ch1_hulls,ch1_centeroids,self.ch1_groupPoints,ch2_hulls,ch2_centeroids,self.ch2_groupPoints, self.maxDistance)
   
         #t.timeReport('new hulls created')
         

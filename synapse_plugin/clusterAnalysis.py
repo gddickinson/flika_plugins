@@ -71,7 +71,7 @@ class ClusterAnalysis:
 
         #cluster analysis options
         self.clusterAnaysisSelection = 'All Clusters'
-        self.clusterType = '3D'
+        self.clusterType = '2D'
         
         self.All_ROIs_pointsList = []
         self.channelList = []
@@ -175,7 +175,7 @@ class ClusterAnalysis:
                 
         #combine nearest roi between channels
         #t.start()
-        combinedHulls, combinedPoints = combineClosestHulls(ch1_hulls,ch1_centeroids,self.ch1_groupPoints,ch2_hulls,ch2_centeroids,self.ch2_groupPoints, self.maxDistance)
+        combinedHulls, combinedPoints, self.combined_ch1_Centeroids, self.combined_ch2_Centeroids = combineClosestHulls(ch1_hulls,ch1_centeroids,self.ch1_groupPoints,ch2_hulls,ch2_centeroids,self.ch2_groupPoints, self.maxDistance)
   
         #t.timeReport('new hulls created')
         
@@ -302,7 +302,7 @@ class ClusterAnalysis:
 
     def randomPointAnalysis(self):
         '''generate random points distributed in same dimensions as data'''       
-        self.dist_clusters = self.getNearestNeighbors(self.ch1_centeroids_3D,self.ch2_centeroids_3D)
+        self.dist_clusters = self.getNearestNeighbors(self.combined_ch1_Centeroids,self.combined_ch2_Centeroids)
         #print(self.dist_clusters)        
         #print(min(self.data['Xc']), min(self.data['Yc']), min(self.data['Zc']))
         #print(max(self.data['Xc']), max(self.data['Yc']), max(self.data['Zc']))
@@ -311,7 +311,7 @@ class ClusterAnalysis:
                                        min(self.data['Zc']),
                                        max(self.data['Xc']),
                                        max(self.data['Yc']),
-                                       max(self.data['Zc']), len(self.ch1_centeroids_3D))
+                                       max(self.data['Zc']), len(self.combined_ch1_Centeroids))
 
 
         self.ch2_random = self.getRandomXYZ(min(self.data['Xc']),
@@ -319,12 +319,12 @@ class ClusterAnalysis:
                                        min(self.data['Zc']),
                                        max(self.data['Xc']),
                                        max(self.data['Yc']),
-                                       max(self.data['Zc']), len(self.ch2_centeroids_3D))
+                                       max(self.data['Zc']), len(self.combined_ch2_Centeroids))
 
 
         self.dist_random = self.getNearestNeighbors(self.ch1_random,self.ch2_random)
 
-        self.distAll_clusters = self.getNearestNeighbors(self.ch1_centeroids_3D,self.ch2_centeroids_3D, k=len(self.ch1_centeroids_3D))
+        self.distAll_clusters = self.getNearestNeighbors(self.combined_ch1_Centeroids,self.combined_ch2_Centeroids, k=len(self.combined_ch2_Centeroids))
         self.distAll_random = self.getNearestNeighbors(self.ch1_random,self.ch2_random, k=len(self.ch1_random))
         
         return
@@ -366,12 +366,18 @@ class ClusterAnalysis:
         w1.addItem(point_s1)
         w1.addItem(point_s2)
         #make centeroid data
-        centeroid_n1 = len(self.ch1_centeroids_3D[::,0])
-        centeroid_n2 = len(self.ch2_centeroids_3D[::,0])
         centeroid_s1 = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))
-        centeroid_s2 = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))        
-        centeroid_pos1 = np.array([self.ch1_centeroids_3D[::,0],self.ch1_centeroids_3D[::,1]])
-        centeroid_pos2 = np.array([self.ch2_centeroids_3D[::,0],self.ch2_centeroids_3D[::,1]])
+        centeroid_s2 = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))
+        #combined clusters
+        centeroid_n1 = len(self.combined_ch1_Centeroids[::,0])
+        centeroid_n2 = len(self.combined_ch2_Centeroids[::,0])
+        centeroid_pos1 = np.array([self.combined_ch1_Centeroids[::,0],self.combined_ch1_Centeroids[::,1]])
+        centeroid_pos2 = np.array([self.combined_ch2_Centeroids[::,0],self.combined_ch2_Centeroids[::,1]])
+        #all clusters
+        #centeroid_n1 = len(self.ch1_centeroids_3D[::,0])
+        #centeroid_n2 = len(self.ch2_centeroids_3D[::,0])
+        #centeroid_pos1 = np.array([self.ch1_centeroids_3D[::,0],self.ch1_centeroids_3D[::,1]])
+        #centeroid_pos2 = np.array([self.ch2_centeroids_3D[::,0],self.ch2_centeroids_3D[::,1]])
         centeroid_spots1 = [{'pos': centeroid_pos1[:,i], 'data': 1} for i in range(centeroid_n1)]
         centeroid_spots2 = [{'pos': centeroid_pos2[:,i], 'data': 1} for i in range(centeroid_n2)]
         centeroid_s1.addPoints(centeroid_spots1)
@@ -390,8 +396,8 @@ class ClusterAnalysis:
         ''''3D scatter plots of centeroids and histograms of distances'''
         fig = plt.figure()
         ax1 = fig.add_subplot(231, projection='3d')
-        ax1.scatter(self.ch1_centeroids_3D[::,0], self.ch1_centeroids_3D[::,1], self.ch1_centeroids_3D[::,2], marker='o')
-        ax1.scatter(self.ch2_centeroids_3D[::,0], self.ch2_centeroids_3D[::,1], self.ch2_centeroids_3D[::,2], marker='^')
+        ax1.scatter(self.combined_ch1_Centeroids[::,0], self.combined_ch1_Centeroids[::,1], self.combined_ch1_Centeroids[::,2], marker='o')
+        ax1.scatter(self.combined_ch2_Centeroids[::,0], self.combined_ch2_Centeroids[::,1], self.combined_ch2_Centeroids[::,2], marker='^')
 
         ax1.set_title('Cluster Centeroids') 
         ax1.set_xlabel('X')
@@ -521,8 +527,8 @@ class ClusterAnalysis:
         print('----------------------------------------------')
         print(self.clusterAnaysisSelection)        
         print('----------------------------------------------')
-        print('Channel 1: Number of clusters: ', str(len(self.ch1_centeroids_3D)))
-        print('Channel 2: Number of clusters: ', str(len(self.ch2_centeroids_3D)))        
+        print('Channel 1: Number of clusters: ', str(len(self.combined_ch1_Centeroids)))
+        print('Channel 2: Number of clusters: ', str(len(self.combined_ch2_Centeroids)))        
         print('Number of nearest neighbor distances:', str(np.size(self.dist_clusters)))
         print('Mean nearest neighbor distance:', str(np.mean(self.dist_clusters)))
         print('StDev nearest neighbor distance:', str(np.std(self.dist_clusters)))        
@@ -545,8 +551,8 @@ class ClusterAnalysis:
     def saveStats(self ,savePath='',fileName=''):
         '''save clustering stats as csv'''
         d= {
-            'Channel 1: Number of clusters': (len(self.ch1_centeroids_3D)),
-            'Channel 2: Number of clusters': (len(self.ch2_centeroids_3D)),
+            'Channel 1: Number of clusters': (len(self.combined_ch1_Centeroids)),
+            'Channel 2: Number of clusters': (len(self.combined_ch2_Centeroids)),
             'Channel 1: Number of noise points': self.ch1_numNoise,
             'Channel 2: Number of noise points': self.ch2_numNoise,
             'Number of nearest neighbor distances': (np.size(self.dist_clusters)),
@@ -575,13 +581,13 @@ class ClusterAnalysis:
         '''save centeroids and distances'''
         d1 = {'clusters_nearest':self.dist_clusters,'random_nearest':self.dist_random}
         d2 = {'clusters_All':self.distAll_clusters,'random_All':self.distAll_random}
-        d3 = {'ch1_centeroids_x':self.ch1_centeroids_3D[::,0],
-              'ch1_centeroids_y':self.ch1_centeroids_3D[::,1],
-              'ch1_centeroids_z':self.ch1_centeroids_3D[::,2]}
+        d3 = {'ch1_centeroids_x':self.combined_ch1_Centeroids[::,0],
+              'ch1_centeroids_y':self.combined_ch1_Centeroids[::,1],
+              'ch1_centeroids_z':self.combined_ch1_Centeroids[::,2]}
         
-        d4 = {'ch2_centeroids_x':self.ch2_centeroids_3D[::,0],
-              'ch2_centeroids_y':self.ch2_centeroids_3D[::,1],
-              'ch2_centeroids_z':self.ch2_centeroids_3D[::,2]}
+        d4 = {'ch2_centeroids_x':self.combined_ch2_Centeroids[::,0],
+              'ch2_centeroids_y':self.combined_ch2_Centeroids[::,1],
+              'ch2_centeroids_z':self.combined_ch2_Centeroids[::,2]}
         
         d5 = {'ch1_centeroids_rnd_x':self.ch1_random[::,0],
               'ch1_centeroids_rnd_y':self.ch1_random[::,1],
@@ -683,7 +689,7 @@ class Synapse3D_batch(QtWidgets.QDialog):
         self.unitPerPixel = clusterAnalysis.unitPerPixel
         #self.multiThreadingFlag = clusterAnalysis.multiThreadingFlag
         
-        self.clusterType = '3D'
+        self.clusterType = '2D'
         
         #window geometry
         self.left = 300
@@ -740,7 +746,8 @@ class Synapse3D_batch(QtWidgets.QDialog):
         #self.multiThread_checkbox.stateChanged.connect(self.multiThreadClicked)
 
         #buttons
-        self.button_start = QtWidgets.QPushButton("Set Folder and Start Batch Analysis")
+        self.button_getFolder = QtWidgets.QPushButton("Set Folder")
+        self.button_start = QtWidgets.QPushButton("Start Batch Analysis")
         
         #grid layout
         layout = QtWidgets.QGridLayout()
@@ -757,7 +764,8 @@ class Synapse3D_batch(QtWidgets.QDialog):
         layout.addWidget(self.unitPerPixelBox, 5, 1)         
         layout.addWidget(self.label_clustertype, 6, 0) 
         layout.addWidget(self.clustertype_Box, 6, 1)  
-        layout.addWidget(self.button_start, 7, 0)         
+        layout.addWidget(self.button_getFolder, 7, 0)          
+        layout.addWidget(self.button_start, 8, 0)         
         
         #layout.addWidget(self.label_centroidSymbolSize, 6, 0)  
         #layout.addWidget(self.centroidSymbolSizeBox, 6, 1) 
@@ -789,6 +797,7 @@ class Synapse3D_batch(QtWidgets.QDialog):
         #self.analysis_Box.currentIndexChanged.connect(self.analysisChange)         
 
         #connect buttons
+        self.button_getFolder.clicked.connect(self.getSavePath)
         self.button_start.clicked.connect(self.run)
 
         
@@ -835,7 +844,6 @@ class Synapse3D_batch(QtWidgets.QDialog):
         return
 
     def run(self):
-        self.getSavePath()
         if not os.path.exists(os.path.join(self.pathName,'results')):
             os.makedirs(os.path.join(self.pathName,'results'))
         clusterAnalysis.runBatch(self.pathName)
@@ -849,7 +857,7 @@ class Synapse3D_batch(QtWidgets.QDialog):
 ### TESTING ####
 def test():
     pathName = r"C:\Users\George\Desktop\batchTest"
-    clusterAnalysis.clusterType = '2D'
+    clusterAnalysis.clusterType = '3D'
     clusterAnalysis.runBatch(pathName, test=True)
     clusterAnalysis.plotClusters()   
     return     

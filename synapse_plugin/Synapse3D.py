@@ -526,7 +526,7 @@ class Synapse3D(BaseProcess):
         
         #combine nearest roi between channels
         t.start()
-        combinedHulls, combinedPoints = combineClosestHulls(ch1_hulls,ch1_centeroids,ch1_groupPoints,ch2_hulls,ch2_centeroids,ch2_groupPoints, self.maxDistance)
+        combinedHulls, combinedPoints, self.combined_ch1_Centeroids, self.combined_ch2_Centeroids = combineClosestHulls(ch1_hulls,ch1_centeroids,ch1_groupPoints,ch2_hulls,ch2_centeroids,ch2_groupPoints, self.maxDistance)
 
         print('\n-----------------')            
         print(':::TIME:::: hulls created: {0:1.3f}'.format(t.stop()))
