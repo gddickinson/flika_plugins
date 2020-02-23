@@ -71,6 +71,7 @@ class ClusterAnalysis:
 
         #cluster analysis options
         self.clusterAnaysisSelection = 'All Clusters'
+        self.clusterType = '3D'
         
         self.All_ROIs_pointsList = []
         self.channelList = []
@@ -149,8 +150,8 @@ class ClusterAnalysis:
         t.timeReport('2D clusters created')  
         #get 2D points
         t.start()
-        #ch1Points = self.Channels[0].getPoints(z=True)
-        #ch2Points = self.Channels[1].getPoints(z=True) 
+        self.ch1Points = self.Channels[0].getPoints(z=True)
+        self.ch2Points = self.Channels[1].getPoints(z=True) 
     
         #get 3D centeroids for cluster analysis
         _, self.ch1_centeroids_3D, _ = self.getHulls(self.ch1Points_3D,self.ch1_labels)
@@ -160,9 +161,15 @@ class ClusterAnalysis:
         
         #get hulls for each channels clusters  
         t.start()
-        ch1_hulls, ch1_centeroids, self.ch1_groupPoints = self.getHulls(self.ch1Points_3D,self.ch1_labels)
-        #self.plotHull(self.ch1_groupPoints[0],ch1_hulls[0])
-        ch2_hulls, ch2_centeroids, self.ch2_groupPoints = self.getHulls(self.ch2Points_3D,self.ch2_labels)
+        if self.clusterType == '3D':
+            ch1_hulls, ch1_centeroids, self.ch1_groupPoints = self.getHulls(self.ch1Points_3D,self.ch1_labels)
+            #self.plotHull(self.ch1_groupPoints[0],ch1_hulls[0])
+            ch2_hulls, ch2_centeroids, self.ch2_groupPoints = self.getHulls(self.ch2Points_3D,self.ch2_labels)
+            
+        else:
+            ch1_hulls, ch1_centeroids, self.ch1_groupPoints = self.getHulls(self.ch1Points,self.ch1_labels)
+            #self.plotHull(self.ch1_groupPoints[0],ch1_hulls[0])
+            ch2_hulls, ch2_centeroids, self.ch2_groupPoints = self.getHulls(self.ch2Points,self.ch2_labels)
  
         #t.timeReport('hulls created')
                 
@@ -323,16 +330,55 @@ class ClusterAnalysis:
         return
 
 
-    def plotClusters(self):
-        '''3D scatter plots of data points with cluster labels - using matplotlib'''
-        fig = plt.figure()
-        ax1 = fig.add_subplot(111, projection='3d')
-        ax1.scatter(self.ch1Points_3D[::,0], self.ch1Points_3D[::,1], self.ch1Points_3D[::,2], marker='o', c=self.ch1_labels, cmap="RdBu")
-        ax1.scatter(self.ch2Points_3D[::,0], self.ch2Points_3D[::,1], self.ch2Points_3D[::,2], marker='x', c=self.ch2_labels, cmap="RdBu")
-        ax1.view_init(azim=0, elev=90)
-        plt.show()
-        return
+#    def plotClusters(self):
+#        '''3D scatter plots of data points with cluster labels - using matplotlib'''
+#        fig = plt.figure()
+#        ax1 = fig.add_subplot(111, projection='3d')
+#        ax1.scatter(self.ch1Points_3D[::,0], self.ch1Points_3D[::,1], self.ch1Points_3D[::,2], marker='o', c=self.ch1_labels, cmap="RdBu")
+#        ax1.scatter(self.ch2Points_3D[::,0], self.ch2Points_3D[::,1], self.ch2Points_3D[::,2], marker='x', c=self.ch2_labels, cmap="RdBu")
+#        ax1.view_init(azim=0, elev=90)
+#        plt.show()
+#        return
 
+
+    def plotClusters(self):
+        '''3D scatter plots of data points with cluster labels - using pyqtgraph'''
+        self.app = QtGui.QApplication([])
+        self.mw = QtGui.QMainWindow()
+        self.mw.resize(800,800)
+        view = pg.GraphicsLayoutWidget()  ## GraphicsView with GraphicsLayout inserted by default
+        self.mw.setCentralWidget(view)
+        self.mw.show()
+        self.mw.setWindowTitle('all points and cluster centeroids')
+        #create plot window
+        w1 = view.addPlot()
+        #make point data
+        point_n1 = len(self.ch1Points_3D[::,0])
+        point_n2 = len(self.ch2Points_3D[::,0])
+        point_s1 = pg.ScatterPlotItem(size=2, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 120))
+        point_s2 = pg.ScatterPlotItem(size=2, pen=pg.mkPen(None), brush=pg.mkBrush(0, 0, 255, 120))        
+        point_pos1 = np.array([self.ch1Points_3D[::,0],self.ch1Points_3D[::,1]])
+        point_pos2 = np.array([self.ch2Points_3D[::,0],self.ch2Points_3D[::,1]])
+        point_spots1 = [{'pos': point_pos1[:,i], 'data': 1} for i in range(point_n1)]
+        point_spots2 = [{'pos': point_pos2[:,i], 'data': 1} for i in range(point_n2)]
+        point_s1.addPoints(point_spots1)
+        point_s2.addPoints(point_spots2)
+        w1.addItem(point_s1)
+        w1.addItem(point_s2)
+        #make centeroid data
+        centeroid_n1 = len(self.ch1_centeroids_3D[::,0])
+        centeroid_n2 = len(self.ch2_centeroids_3D[::,0])
+        centeroid_s1 = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))
+        centeroid_s2 = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))        
+        centeroid_pos1 = np.array([self.ch1_centeroids_3D[::,0],self.ch1_centeroids_3D[::,1]])
+        centeroid_pos2 = np.array([self.ch2_centeroids_3D[::,0],self.ch2_centeroids_3D[::,1]])
+        centeroid_spots1 = [{'pos': centeroid_pos1[:,i], 'data': 1} for i in range(centeroid_n1)]
+        centeroid_spots2 = [{'pos': centeroid_pos2[:,i], 'data': 1} for i in range(centeroid_n2)]
+        centeroid_s1.addPoints(centeroid_spots1)
+        centeroid_s2.addPoints(centeroid_spots2)
+        w1.addItem(centeroid_s1)
+        w1.addItem(centeroid_s2)       
+        return
 
     def plot3DClusters(self):
         '''3D scatter plot using GL ScatterPlot'''
@@ -418,7 +464,7 @@ class ClusterAnalysis:
         roi_data['%s N' % self.Channels[1].__name__] = len(ch2_pts)        
 
         try:        
-            if len(ch1_pts) >= 5:
+            if len(ch1_pts) >= 4:
                 roi_data['%s Volume (%s^3)' % (self.Channels[0].__name__, self.unit_prefixes[self.unit])] = convex_volume(ch1_pts)
     
             else:
@@ -429,7 +475,7 @@ class ClusterAnalysis:
 
 
         try:
-            if len(ch2_pts) >= 5:
+            if len(ch2_pts) >= 4:
     
                 roi_data['%s Volume (%s^3)' % (self.Channels[1].__name__, self.unit_prefixes[self.unit])] = convex_volume(ch2_pts)
     
@@ -603,6 +649,7 @@ class ClusterAnalysis:
             self.saveROIAnalysis(savePath, fileName=fileName)
         except:
             print('skipped: ',fileName)
+            raise
         print ('finished analysing: ', fileName)
         return
 
@@ -636,6 +683,8 @@ class Synapse3D_batch(QtWidgets.QDialog):
         self.unitPerPixel = clusterAnalysis.unitPerPixel
         #self.multiThreadingFlag = clusterAnalysis.multiThreadingFlag
         
+        self.clusterType = '3D'
+        
         #window geometry
         self.left = 300
         self.top = 300
@@ -647,6 +696,7 @@ class Synapse3D_batch(QtWidgets.QDialog):
         self.label_eps = QtWidgets.QLabel("max distance between points:") 
         self.label_minSamples = QtWidgets.QLabel("minimum number of points:") 
         self.label_maxDistance = QtWidgets.QLabel("max distance between clusters:") 
+        self.label_clustertype = QtWidgets.QLabel("clustering type:")        
         self.displayTitle = QtWidgets.QLabel("----- Display Parameters -----") 
         self.label_unitPerPixel = QtWidgets.QLabel("nanometers/pixel:") 
         #self.label_centroidSymbolSize = QtWidgets.QLabel("centroid symbol size:")  
@@ -679,6 +729,10 @@ class Synapse3D_batch(QtWidgets.QDialog):
         #combobox
         #self.analysis_Box = QtWidgets.QComboBox()
         #self.analysis_Box.addItems(["All Clusters", "Paired Clusters"])
+        self.clustertype_Box = QtWidgets.QComboBox()
+        self.clustertype_Box.addItems(["2D", "3D"])
+        self.clustertype_Box.setCurrentText(self.clusterType)
+        self.clustertype_Box.currentIndexChanged.connect(self.clusterTypeChange)
         
         #tickbox
         #self.multiThread_checkbox = CheckBox()
@@ -700,8 +754,10 @@ class Synapse3D_batch(QtWidgets.QDialog):
         layout.addWidget(self.maxDistanceBox, 3, 1)
         layout.addWidget(self.displayTitle, 4, 0, 1, 2)          
         layout.addWidget(self.label_unitPerPixel, 5, 0)  
-        layout.addWidget(self.unitPerPixelBox, 5, 1) 
-        layout.addWidget(self.button_start, 6, 0) 
+        layout.addWidget(self.unitPerPixelBox, 5, 1)         
+        layout.addWidget(self.label_clustertype, 6, 0) 
+        layout.addWidget(self.clustertype_Box, 6, 1)  
+        layout.addWidget(self.button_start, 7, 0)         
         
         #layout.addWidget(self.label_centroidSymbolSize, 6, 0)  
         #layout.addWidget(self.centroidSymbolSizeBox, 6, 1) 
@@ -755,6 +811,10 @@ class Synapse3D_batch(QtWidgets.QDialog):
         self.unitPerPixel = value
         clusterAnalysis.unitPerPixel = self.unitPerPixel
         return
+ 
+    def clusterTypeChange(self):
+        self.clusterType = self.clustertype_Box.currentText
+        clusterAnalysis.clusterType = self.clusterType
     
 #    def centroidSymbolSizeChange(self,value):
 #        self.centroidSymbolSize = value
@@ -784,3 +844,13 @@ class Synapse3D_batch(QtWidgets.QDialog):
     def start(self):
         self.show()
         return
+
+
+### TESTING ####
+def test():
+    pathName = r"C:\Users\George\Desktop\batchTest"
+    clusterAnalysis.clusterType = '2D'
+    clusterAnalysis.runBatch(pathName, test=True)
+    clusterAnalysis.plotClusters()   
+    return     
+    
