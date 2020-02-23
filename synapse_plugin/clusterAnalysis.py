@@ -71,13 +71,15 @@ class ClusterAnalysis:
 
         #cluster analysis options
         self.clusterAnaysisSelection = 'All Clusters'
-        self.clusterType = '2D'
+        self.clusterType = '3D'
         
         self.All_ROIs_pointsList = []
         self.channelList = []
         
         #self..multiThreadingFlag = False
    
+
+    
     def open_file(self,filename=''):
     	if filename == '':
     		filename = getFilename(filter='Text Files (*.txt)')
@@ -150,8 +152,8 @@ class ClusterAnalysis:
         t.timeReport('2D clusters created')  
         #get 2D points
         t.start()
-        self.ch1Points = self.Channels[0].getPoints(z=True)
-        self.ch2Points = self.Channels[1].getPoints(z=True) 
+        self.ch1Points = self.Channels[0].getPoints(z=False)
+        self.ch2Points = self.Channels[1].getPoints(z=False) 
     
         #get 3D centeroids for cluster analysis
         _, self.ch1_centeroids_3D, _ = self.getHulls(self.ch1Points_3D,self.ch1_labels)
@@ -343,7 +345,7 @@ class ClusterAnalysis:
 
     def plotClusters(self):
         '''3D scatter plots of data points with cluster labels - using pyqtgraph'''
-        self.app = QtGui.QApplication([])
+        #self.app = QtGui.QApplication([])
         self.mw = QtGui.QMainWindow()
         self.mw.resize(800,800)
         view = pg.GraphicsLayoutWidget()  ## GraphicsView with GraphicsLayout inserted by default
@@ -355,8 +357,8 @@ class ClusterAnalysis:
         #make point data
         point_n1 = len(self.ch1Points_3D[::,0])
         point_n2 = len(self.ch2Points_3D[::,0])
-        point_s1 = pg.ScatterPlotItem(size=2, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 120))
-        point_s2 = pg.ScatterPlotItem(size=2, pen=pg.mkPen(None), brush=pg.mkBrush(0, 0, 255, 120))        
+        point_s1 = pg.ScatterPlotItem(size=3, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 120))
+        point_s2 = pg.ScatterPlotItem(size=3, pen=pg.mkPen(None), brush=pg.mkBrush(0, 0, 255, 120))        
         point_pos1 = np.array([self.ch1Points_3D[::,0],self.ch1Points_3D[::,1]])
         point_pos2 = np.array([self.ch2Points_3D[::,0],self.ch2Points_3D[::,1]])
         point_spots1 = [{'pos': point_pos1[:,i], 'data': 1} for i in range(point_n1)]
@@ -378,12 +380,34 @@ class ClusterAnalysis:
         #centeroid_n2 = len(self.ch2_centeroids_3D[::,0])
         #centeroid_pos1 = np.array([self.ch1_centeroids_3D[::,0],self.ch1_centeroids_3D[::,1]])
         #centeroid_pos2 = np.array([self.ch2_centeroids_3D[::,0],self.ch2_centeroids_3D[::,1]])
-        centeroid_spots1 = [{'pos': centeroid_pos1[:,i], 'data': 1} for i in range(centeroid_n1)]
-        centeroid_spots2 = [{'pos': centeroid_pos2[:,i], 'data': 1} for i in range(centeroid_n2)]
-        centeroid_s1.addPoints(centeroid_spots1)
-        centeroid_s2.addPoints(centeroid_spots2)
+        self.centeroid_spots1 = [{'pos': centeroid_pos1[:,i], 'data': 1} for i in range(centeroid_n1)]
+        self.centeroid_spots2 = [{'pos': centeroid_pos2[:,i], 'data': 1} for i in range(centeroid_n2)]
+        centeroid_s1.addPoints(self.centeroid_spots1)
+        centeroid_s2.addPoints(self.centeroid_spots2)
         w1.addItem(centeroid_s1)
-        w1.addItem(centeroid_s2)       
+        w1.addItem(centeroid_s2)  
+        #add text labels
+        ## Create text object, use HTML tags to specify color/size
+        for i in range(len(self.centeroid_spots1)):
+            text = pg.TextItem(str(i), anchor=(0,0))#, angle=45, border='w', fill=(0, 0, 255, 100))
+            text.setPos(self.centeroid_spots1[i]['pos'][0],self.centeroid_spots1[i]['pos'][1])
+            w1.addItem(text)
+            
+        #add roi points
+        ch1_pts = np.vstack(self.AllPoints_ch1)
+        ch2_pts = np.vstack(self.AllPoints_ch2)
+        roi_point_n1 = len(ch1_pts[::,0])
+        roi_point_n2 = len(ch2_pts[::,0])
+        roi_point_s1 = pg.ScatterPlotItem(size=5, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 120))
+        roi_point_s2 = pg.ScatterPlotItem(size=5, pen=pg.mkPen(None), brush=pg.mkBrush(0, 0, 255, 120))        
+        roi_point_pos1 = np.array([ch1_pts[::,0],ch1_pts[::,1]])
+        roi_point_pos2 = np.array([ch2_pts[::,0],ch2_pts[::,1]])
+        roi_point_spots1 = [{'pos': roi_point_pos1[:,i], 'data': 1} for i in range(roi_point_n1)]
+        roi_point_spots2 = [{'pos': roi_point_pos2[:,i], 'data': 1} for i in range(roi_point_n2)]
+        roi_point_s1.addPoints(roi_point_spots1)
+        roi_point_s2.addPoints(roi_point_spots2)
+        w1.addItem(roi_point_s1)
+        w1.addItem(roi_point_s2)
         return
 
     def plot3DClusters(self):
@@ -440,6 +464,39 @@ class ClusterAnalysis:
         plt.show()
         return
 
+    def plotData(self,flika_ch1,flika_ch2,cluster_ch1,cluster_ch2):
+        '''3D scatter plot'''
+                  
+        #3D viewer dock
+        #self.app = QtWidgets.QApplication([])
+                
+        self.win = DockWindow(addMenu=False)
+        self.win.resize(1700, 900)
+        self.win.setWindowTitle('Main Window')
+        viewerFrame = QtWidgets.QWidget()
+        layout = QtWidgets.QGridLayout(viewerFrame)
+        viewerWidget = Plot3DWidget()       
+        layout.addWidget(viewerWidget, 0, 0, 6, 6)
+        viewerDock = self.win.addWidget(size=(300, 100), widget=viewerFrame)
+        self.win.show()
+        
+        viewerWidget.addArray(flika_ch1,color=QColor(0, 255, 0),size=8,name='flika_ch1')
+        viewerWidget.addArray(flika_ch2,color=QColor(255, 0, 0),size=8,name='flika_ch2')
+        
+        viewerWidget.addArray(cluster_ch2,color=QColor(0, 0, 255),size=8,name='cluster_ch1')
+        viewerWidget.addArray(cluster_ch1,color=QColor(255, 255, 0),size=8,name='cluster_ch2')
+        
+        #add all points
+        ch1_pts = np.vstack(self.AllPoints_ch1)
+        ch2_pts = np.vstack(self.AllPoints_ch2)
+        viewerWidget.addArray(ch1_pts,color=QColor(0, 0, 255),size=4,name='allPoints_ch1')
+        viewerWidget.addArray(ch2_pts,color=QColor(255, 255, 0),size=4,name='allPoints_ch2')
+        
+        
+        return
+
+
+
     def makeChannelList(self):
         self.channelList = []
         ch1_pts = self.Channels[0].getPoints(z=True).tolist() #cast as list to ensure logic test works
@@ -461,6 +518,9 @@ class ClusterAnalysis:
         
         ch1_pts = roi[channelList == self.Channels[0].__name__]
         ch2_pts = roi[channelList == self.Channels[1].__name__]  
+
+        self.AllPoints_ch1.append(np.array(ch1_pts))
+        self.AllPoints_ch2.append(np.array(ch2_pts))
                         
         roi_data = OrderedDict([('ROI #', roiIndex), ('Mean Distance (%s)' % self.unit_prefixes[self.unit], 0), ('%s N' % self.Channels[0].__name__, 0), \
         ('%s N' % self.Channels[1].__name__, 0), ('%s Volume (%s^3)' % (self.Channels[0].__name__, self.unit_prefixes[self.unit]), 0), ('%s Volume (%s^3)' % (self.Channels[1].__name__, self.unit_prefixes[self.unit]), 0)])
@@ -505,6 +565,9 @@ class ClusterAnalysis:
     def makeROI_DF(self):
         '''pass each roi to analyze_roi(), compile resuts in table'''
         dictList = []
+        #reset AllPoints_ch lists
+        self.AllPoints_ch1 = []
+        self.AllPoints_ch2 = []
         for i in range(len(self.All_ROIs_pointsList)):
             roi_data = self.analyze_roi(self.All_ROIs_pointsList[i],self.channelList[i],i)
             dictList.append(roi_data)
@@ -689,7 +752,7 @@ class Synapse3D_batch(QtWidgets.QDialog):
         self.unitPerPixel = clusterAnalysis.unitPerPixel
         #self.multiThreadingFlag = clusterAnalysis.multiThreadingFlag
         
-        self.clusterType = '2D'
+        self.clusterType = '3D'
         
         #window geometry
         self.left = 300
@@ -859,6 +922,69 @@ def test():
     pathName = r"C:\Users\George\Desktop\batchTest"
     clusterAnalysis.clusterType = '3D'
     clusterAnalysis.runBatch(pathName, test=True)
-    clusterAnalysis.plotClusters()   
+    clusterAnalysis.app = QtWidgets.QApplication([])
+    clusterAnalysis.plotClusters() 
+    clusterAnalysis.plotData(flika_ch1,flika_ch2,clusterAnalysis.combined_ch1_Centeroids,clusterAnalysis.combined_ch2_Centeroids)
     return     
     
+    
+### Results imported from flika synapse3d - centeroid positions ######
+flika_ch1=np.array([
+[ 28849.801,  28046.604,    -69.577],
+[ 27766.59,   27610.517,   -140.14 ],
+[ 28191.031,  29548.444,    -37.048],
+[ 27285.888,  30138.903,    -46.435],
+[ 27545.076,  29030.776,   -133.687],
+[ 34489.221,  25583.399,    -84.541],
+[ 32475.941,  26758.759,    -80.956],
+[ 33386.625,  27659.698,      2.476],
+[ 31271.405,  28160.945,    -67.217],
+[ 31558.25,   29113.995,    -52.919],
+[ 28721.319,  29385.331,     -5.442],
+[ 32934.606,  26396.176,    -72.529],
+[ 29167.9,    28558.128,   -107.619],
+[ 36937.738,  24633.898,    -77.78 ],
+[ 30671.771,  24698.787,   -124.09 ],
+[ 33855.623,  24844.174,    -55.33 ],
+[ 26153.912,  24597.138,   -134.657],
+[ 31803.411,  30098.301,    -75.315],
+[ 33362.993,  23370.046,   -111.79 ],
+[ 36192.31,   26042.785,     95.725],
+[ 33263.975,  29369.342,    -44.615],
+[ 36559.777,  28737.011,    -19.001],
+[ 31935.77,   31216.172,    101.554],
+[ 32578.314,  25259.607,   -197.62 ],
+[ 32498.104,  29079.978,    -87.256],
+[ 35153.584,  25662.426,   -128.142],
+[ 26500.6,    31140.9,        5.792],
+[ 36192.923,  26040.988,    100.642]])
+
+flika_ch2=np.array([
+[ 28837.562,  28023.018,     31.606],
+[ 27797.904,  27612.064,   -101.271],
+[ 28181.748,  29531.938,    -45.415],
+[ 27204.195,  30155.179,    -35.544],
+[ 27559.117,  29052.583,    -79.524],
+[ 34511.506,  25559.09,    -104.659],
+[ 32481.97,  26710.734,    -17.592],
+[ 33378.39,   27637.781,    116.19 ],
+[ 31296.811,  28197.728,    -38.894],
+[ 31565.558,  29123.4,      -53.131],
+[ 28679.085,  29386.998,     86.17 ],
+[ 32981.491,  26404.085,    -67.109],
+[ 29150.344,  28635.35,    -121.757],
+[ 36969.166,  24622.003,    -60.854],
+[ 30674.546,  24670.4,      -31.949],
+[ 33852.333,  24835.737,      8.277],
+[ 26155.332,  24577.131,   -110.686],
+[ 31823.54 ,  30033.058,   -128.855],
+[ 33361.005,  23392.089,    -58.206],
+[ 36194.087,  26045.045,     19.083],
+[ 33283.499,  29321.428,    -89.694],
+[ 36619.67,   28774.642,    -13.32 ],
+[ 31906.728,  31234.607,     53.789],
+[ 32522.525,  25211.325,     -2.005],
+[ 32503.126,  29007.397,    -89.459],
+[ 35163.128,  25672.141,    -78.937],
+[ 26494.654,  31062.431,    168.638],
+[ 36193.515,  26044.323,     19.535]])
