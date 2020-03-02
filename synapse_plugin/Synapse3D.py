@@ -104,6 +104,8 @@ class Synapse3D(BaseProcess):
         #cluster analysis options
         self.clusterAnaysisSelection = 'All Clusters'
 
+        self.clusterType = '2D'
+
         #multithreading option
         self.multiThreadingFlag = False
         
@@ -516,9 +518,14 @@ class Synapse3D(BaseProcess):
         
         #get hulls for each channels clusters  
         t.start()
-        ch1_hulls, ch1_centeroids, ch1_groupPoints = self.getHulls(ch1Points,self.ch1_labels)
-        #self.plotHull(ch1_groupPoints[0],ch1_hulls[0])
-        ch2_hulls, ch2_centeroids, ch2_groupPoints = self.getHulls(ch2Points,self.ch2_labels)
+        if self.clusterType == '3D': 
+            ch1_hulls, ch1_centeroids, ch1_groupPoints = self.getHulls(ch1Points_3D,self.ch1_labels)
+            #self.plotHull(ch1_groupPoints[0],ch1_hulls[0])
+            ch2_hulls, ch2_centeroids, ch2_groupPoints = self.getHulls(ch2Points_3D,self.ch2_labels)
+        else:
+            ch1_hulls, ch1_centeroids, ch1_groupPoints = self.getHulls(ch1Points,self.ch1_labels)
+            #self.plotHull(ch1_groupPoints[0],ch1_hulls[0])
+            ch2_hulls, ch2_centeroids, ch2_groupPoints = self.getHulls(ch2Points,self.ch2_labels)
 
         print('\n-----------------')        
         print(':::TIME:::: hulls created: {0:1.3f}'.format(t.stop()))         

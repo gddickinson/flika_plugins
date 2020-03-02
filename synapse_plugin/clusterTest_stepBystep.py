@@ -40,7 +40,6 @@ if StrictVersion(flika_version) < StrictVersion('0.2.23'):
 else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, FileSelector
 
-
 class ClusterAnalysis:
     
     def __init__(self):
@@ -77,7 +76,7 @@ class ClusterAnalysis:
         self.channelList = []
         
         #self..multiThreadingFlag = False
-        self.displayFlag = False
+   
 
     
     def open_file(self,filename=''):
@@ -279,9 +278,8 @@ class ClusterAnalysis:
         #self.plotWidget.getViewBox().createROIFromPoints(pointsList)
         
         #add points to All_ROI_pointsList
-        #self.All_ROIs_pointsList.append(pointsList)
+        #self.All_ROIs_pointsList.append(pointsList) #this is just the hull points
         self.All_ROIs_pointsList.append(points)
-        
         
         #make channel list for all points
         self.makeChannelList()
@@ -346,13 +344,9 @@ class ClusterAnalysis:
 
 
     def plotClusters(self):
-        '''3D scatter plots of data points with cluster labels - using pyqtgraph'''
+        '''2D scatter plots of data points with cluster labels - using pyqtgraph'''
         #self.app = QtGui.QApplication([])
-        try:
-            self.mw = QtGui.QMainWindow() 
-        except:
-            self.mw = QtWidgets.QMainWindow()
-            
+        self.mw = QtGui.QMainWindow()
         self.mw.resize(800,800)
         view = pg.GraphicsLayoutWidget()  ## GraphicsView with GraphicsLayout inserted by default
         self.mw.setCentralWidget(view)
@@ -416,11 +410,56 @@ class ClusterAnalysis:
         w1.addItem(roi_point_s2)
         return
 
+    def plot2DData(self,ch1_pts,ch2_pts=[],cen1_pts=[],cen2_pts=[], ch1_size=3, ch2_size=3, cen1_size=10,cen2_size=10):
+        '''2D scatter plots of data points with cluster labels - using pyqtgraph'''
+        #self.app = QtGui.QApplication([])
+        self.mw = QtGui.QMainWindow()
+        self.mw.resize(800,800)
+        view = pg.GraphicsLayoutWidget()  ## GraphicsView with GraphicsLayout inserted by default
+        self.mw.setCentralWidget(view)
+        self.mw.show()
+        self.mw.setWindowTitle('all points and cluster centeroids')
+        #create plot window
+        w1 = view.addPlot()
+        #make point data
+        point_n1 = len(ch1_pts[::,0])
+        point_s1 = pg.ScatterPlotItem(size=ch1_size, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 120))
+        point_pos1 = np.array([ch1_pts[::,0],ch1_pts[::,1]])
+        point_spots1 = [{'pos': point_pos1[:,i], 'data': 1} for i in range(point_n1)]
+        point_s1.addPoints(point_spots1)
+        w1.addItem(point_s1)
+
+        if ch2_pts !=[]:
+            point_n2 = len(ch2_pts[::,0])
+            point_s2 = pg.ScatterPlotItem(size=ch2_size, pen=pg.mkPen(None), brush=pg.mkBrush(0, 0, 255, 120))        
+            point_pos2 = np.array([ch2_pts[::,0],ch2_pts[::,1]])
+            point_spots2 = [{'pos': point_pos2[:,i], 'data': 1} for i in range(point_n2)]
+            point_s2.addPoints(point_spots2)
+            w1.addItem(point_s2)
+
+
+        if cen1_pts != []:
+            #make centeroid data
+            centeroid_s1 = pg.ScatterPlotItem(size=cen1_size, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))
+            centeroid_s2 = pg.ScatterPlotItem(size=cen2_size, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))
+            #combined clusters
+            centeroid_n1 = len(cen1_pts[::,0])
+            centeroid_n2 = len(cen2_pts[::,0])
+            centeroid_pos1 = np.array([cen1_pts[::,0],cen1_pts[::,1]])
+            centeroid_pos2 = np.array([cen2_pts[::,0],cen2_pts[::,1]])
+    
+            centeroid_spots1 = [{'pos': centeroid_pos1[:,i], 'data': 1} for i in range(centeroid_n1)]
+            centeroid_spots2 = [{'pos': centeroid_pos2[:,i], 'data': 1} for i in range(centeroid_n2)]
+            centeroid_s1.addPoints(centeroid_spots1)
+            centeroid_s2.addPoints(centeroid_spots2)
+            w1.addItem(centeroid_s1)
+            w1.addItem(centeroid_s2)         
+        
+        
+
     def plot3DClusters(self):
         '''3D scatter plot using GL ScatterPlot'''
-        ch1_pts = np.vstack(self.AllPoints_ch1)
-        ch2_pts = np.vstack(self.AllPoints_ch2)
-        plot3DScatter = Plot3D_GL(ch1_pts,ch2_pts)   
+        plot3DScatter = Plot3D_GL(self.ch1Points_3D,self.ch2Points_3D)   
         plot3DScatter.plot()
         return
 
@@ -472,7 +511,7 @@ class ClusterAnalysis:
         plt.show()
         return
 
-    def plotData(self):
+    def plotData(self,flika_ch1,flika_ch2,cluster_ch1,cluster_ch2):
         '''3D scatter plot'''
                   
         #3D viewer dock
@@ -488,20 +527,17 @@ class ClusterAnalysis:
         viewerDock = self.win.addWidget(size=(300, 100), widget=viewerFrame)
         self.win.show()
         
-        #add points
-        ch1_pts = np.vstack(self.AllPoints_ch1)
-        ch2_pts = np.vstack(self.AllPoints_ch2)        
-        viewerWidget.addArray(ch1_pts,color=QColor(0, 255, 0),size=8,name='ch1_pts')
-        viewerWidget.addArray(ch2_pts,color=QColor(255, 0, 0),size=8,name='ch2_pts')
-        #add centeroids
-        viewerWidget.addArray(self.combined_ch1_Centeroids,color=QColor(255, 255, 255),size=20,name='ch1_cent')
-        viewerWidget.addArray(self.combined_ch2_Centeroids,color=QColor(255, 255, 255),size=20,name='ch2_cent')
+        viewerWidget.addArray(flika_ch1,color=QColor(0, 255, 0),size=8,name='flika_ch1')
+        viewerWidget.addArray(flika_ch2,color=QColor(255, 0, 0),size=8,name='flika_ch2')
+        
+        viewerWidget.addArray(cluster_ch2,color=QColor(0, 0, 255),size=8,name='cluster_ch1')
+        viewerWidget.addArray(cluster_ch1,color=QColor(255, 255, 0),size=8,name='cluster_ch2')
         
         #add all points
-        #ch1_pts = np.vstack(self.AllPoints_ch1)
-        #ch2_pts = np.vstack(self.AllPoints_ch2)
-        #viewerWidget.addArray(ch1_pts,color=QColor(0, 0, 255),size=4,name='allPoints_ch1')
-        #viewerWidget.addArray(ch2_pts,color=QColor(255, 255, 0),size=4,name='allPoints_ch2')
+        ch1_pts = np.vstack(self.AllPoints_ch1)
+        ch2_pts = np.vstack(self.AllPoints_ch2)
+        viewerWidget.addArray(ch1_pts,color=QColor(0, 0, 255),size=4,name='allPoints_ch1')
+        viewerWidget.addArray(ch2_pts,color=QColor(255, 255, 0),size=4,name='allPoints_ch2')
         
         
         return
@@ -727,11 +763,6 @@ class ClusterAnalysis:
             self.saveResults(savePath, fileName=fileName)
             self.saveStats(savePath, fileName=fileName)
             self.saveROIAnalysis(savePath, fileName=fileName)
-            
-            if self.displayFlag:
-                self.plotClusters()
-                self.plotData()
-            
         except:
             print('skipped: ',fileName)
             raise
@@ -767,7 +798,6 @@ class Synapse3D_batch(QtWidgets.QDialog):
         self.maxDistance = clusterAnalysis.maxDistance
         self.unitPerPixel = clusterAnalysis.unitPerPixel
         #self.multiThreadingFlag = clusterAnalysis.multiThreadingFlag
-        self.displayFlag = clusterAnalysis.displayFlag
         
         self.clusterType = '3D'
         
@@ -788,10 +818,7 @@ class Synapse3D_batch(QtWidgets.QDialog):
         #self.label_centroidSymbolSize = QtWidgets.QLabel("centroid symbol size:")  
         
         self.analysisTitle = QtWidgets.QLabel("----- Cluster Analysis -----") 
-        self.label_analysis = QtWidgets.QLabel("Clusters to analyse: ")
-
-        self.displayTitle = QtWidgets.QLabel("----- Display -----") 
-        self.label_display = QtWidgets.QLabel("Plot results: ")         
+        self.label_analysis = QtWidgets.QLabel("Clusters to analyse: ")         
         
         #self.multiThreadTitle = QtWidgets.QLabel("----- Multi-Threading -----") 
         #self.label_multiThread = QtWidgets.QLabel("Multi-Threading On: ")        
@@ -824,9 +851,6 @@ class Synapse3D_batch(QtWidgets.QDialog):
         self.clustertype_Box.currentIndexChanged.connect(self.clusterTypeChange)
         
         #tickbox
-        self.display_checkbox = CheckBox()
-        self.display_checkbox.setChecked(self.displayFlag)
-        self.display_checkbox.stateChanged.connect(self.displayClicked)
         #self.multiThread_checkbox = CheckBox()
         #self.multiThread_checkbox.setChecked(self.multiThreadingFlag)
         #self.multiThread_checkbox.stateChanged.connect(self.multiThreadClicked)
@@ -849,12 +873,9 @@ class Synapse3D_batch(QtWidgets.QDialog):
         layout.addWidget(self.label_unitPerPixel, 5, 0)  
         layout.addWidget(self.unitPerPixelBox, 5, 1)         
         layout.addWidget(self.label_clustertype, 6, 0) 
-        layout.addWidget(self.clustertype_Box, 6, 1)
-        layout.addWidget(self.displayTitle, 7, 0, 1, 2) 
-        layout.addWidget(self.label_display, 8, 0)        
-        layout.addWidget(self.display_checkbox, 8, 1)         
-        layout.addWidget(self.button_getFolder, 9, 0)          
-        layout.addWidget(self.button_start, 10, 0)         
+        layout.addWidget(self.clustertype_Box, 6, 1)  
+        layout.addWidget(self.button_getFolder, 7, 0)          
+        layout.addWidget(self.button_start, 8, 0)         
         
         #layout.addWidget(self.label_centroidSymbolSize, 6, 0)  
         #layout.addWidget(self.centroidSymbolSizeBox, 6, 1) 
@@ -938,25 +959,27 @@ class Synapse3D_batch(QtWidgets.QDialog):
         clusterAnalysis.runBatch(self.pathName)
         return
 
-    def displayClicked(self):
-        clusterAnalysis.displayFlag = self.display_checkbox.isChecked()
-        self.displayFlag = clusterAnalysis.displayFlag
-        return
-
     def start(self):
         self.show()
         return
 
+filePath = r"C:\Users\George\Desktop\batchTest\0_trial_1_superes_cropped.txt"
+clusterAnalysis.open_file(filename=filePath)
 
-### TESTING ####
-def test():
-    pathName = r"C:\Users\George\Desktop\batchTest"
-    clusterAnalysis.clusterType = '3D'
-    clusterAnalysis.displayFlag = True
-    clusterAnalysis.runBatch(pathName, test=True)
-    #clusterAnalysis.app = QtWidgets.QApplication([])
-    #clusterAnalysis.plotClusters() 
-    #clusterAnalysis.plotData(flika_ch1,flika_ch2,clusterAnalysis.combined_ch1_Centeroids,clusterAnalysis.combined_ch2_Centeroids)
-    return     
-    
- 
+ch1Points_3D = clusterAnalysis.Channels[0].getPoints(z=True)
+ch2Points_3D = clusterAnalysis.Channels[1].getPoints(z=True)
+
+#clusterAnalysis.plot2DData(ch1Points_3D,ch2Points_3D)
+
+clusterAnalysis.clusterType = '3D'
+clusterAnalysis.name = filePath.split('\\')[-1].split('.')[0]
+clusterAnalysis.getClusters()
+
+ch1_cent = clusterAnalysis.ch1_centeroids_3D
+ch2_cent = clusterAnalysis.ch2_centeroids_3D
+
+clusterAnalysis.plot2DData(ch1Points_3D,ch2Points_3D,ch1_cent,ch2_cent)
+
+allROI = np.vstack(clusterAnalysis.All_ROIs_pointsList)
+clusterAnalysis.plot2DData(allROI,cen1_pts=ch1Points_3D,cen2_pts=ch2Points_3D)
+
