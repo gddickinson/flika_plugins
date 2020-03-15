@@ -574,7 +574,7 @@ class ClusterAnalysis:
 
 
     def makeROI_DF(self):
-        '''pass each roi to analyze_roi(), compile resuts in table'''
+        '''pass each roi to analyze_roi(), compile results in table'''
         dictList = []
         #reset AllPoints_ch lists
         self.AllPoints_ch1 = []

@@ -93,7 +93,7 @@ class Plot3DWidget(gl.GLViewWidget):
 		#print(array[:,0])        
 		array = np.transpose([array[:,0],array[:,1],array[:,2]])
 		item = gl.GLScatterPlotItem(pos=array, color=color.getRgbF(), size=size)
-		#item.__name__ = name
+		item.__name__ = name
 		self.addItem(item)  
         
 
@@ -120,6 +120,13 @@ class Plot3DWidget(gl.GLViewWidget):
 			#print("Could not move to item pos: %s" % e)
 
 		super(Plot3DWidget, self).addItem(item)
+
+
+	def deleteItem(self,itemName):
+		for item in self.items:
+			#print(item.__name__)    
+			if item.__name__ == itemName:          
+				self.removeItem(item)  
 
 	def load_file(self, f = ''):
 		if type(f) != str or f == '':
