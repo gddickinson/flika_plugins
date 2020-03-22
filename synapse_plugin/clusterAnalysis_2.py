@@ -214,7 +214,7 @@ class ClusterAnalysis:
         self.area.addDock(self.dock3, 'right', self.dock2) 
         self.area.addDock(self.dock4, 'below', self.dock1)
         self.area.addDock(self.dock5, 'below', self.dock2)           
-        self.area.addDock(self.dock6, 'below', self.dock3)    
+        self.area.addDock(self.dock6, 'above', self.dock3)    
         self.area.addDock(self.dockResults, 'bottom')              
         self.area.addDock(self.dockButtons, 'top',self.dockResults)   
            
@@ -245,7 +245,7 @@ class ClusterAnalysis:
         #make sure data plots on top
         self.area.moveDock(self.dock1, 'above', self.dock4)  
         self.area.moveDock(self.dock2, 'above', self.dock5)  
-        self.area.moveDock(self.dock3, 'above', self.dock6)  
+        self.area.moveDock(self.dock6, 'above', self.dock3)  
                         
         #create plot windows
         self.w2 = self.imv2D.addPlot()
@@ -615,66 +615,121 @@ class ClusterAnalysis:
             b = int(random.random() * 256)          
         return [r,g,b]
 
-    def displayROIpoints_2D(self):
+    def displayROIpoints_2D(self, roiNum = 'ALL'):
         #add roi points
         #ch1_pts = np.vstack(self.AllPoints_ch1)
         #ch2_pts = np.vstack(self.AllPoints_ch2)
+
+        if roiNum == 'ALL':
         
-        for i in range(len(self.AllPoints_ch1)):
-            
-            colour = self.randRGB()   
-            
-            ch1_pts = self.AllPoints_ch1[i]
-            ch2_pts = self.AllPoints_ch2[i]    
-            
-            roi_point_n1 = len(ch1_pts[::,0])
-            roi_point_n2 = len(ch2_pts[::,0])
-            roi_point_s1 = pg.ScatterPlotItem(size=5, pen=pg.mkPen(None), brush=pg.mkBrush(colour[0], colour[1], colour[2], 120))
-            roi_point_s2 = pg.ScatterPlotItem(size=5, pen=pg.mkPen(None), brush=pg.mkBrush(colour[0], colour[1], colour[2], 120))        
-            roi_point_pos1 = np.array([ch1_pts[::,0],ch1_pts[::,1]])
-            roi_point_pos2 = np.array([ch2_pts[::,0],ch2_pts[::,1]])
-            roi_point_spots1 = [{'pos': roi_point_pos1[:,i], 'data': 1} for i in range(roi_point_n1)]
-            roi_point_spots2 = [{'pos': roi_point_pos2[:,i], 'data': 1} for i in range(roi_point_n2)]
-            roi_point_s1.addPoints(roi_point_spots1)
-            roi_point_s2.addPoints(roi_point_spots2)
-            self.w3.addItem(roi_point_s1)
-            self.w3.addItem(roi_point_s2)
+            for i in range(len(self.AllPoints_ch1)):                
+                colour = self.randRGB()                   
+                ch1_pts = self.AllPoints_ch1[i]
+                ch2_pts = self.AllPoints_ch2[i]                    
+                roi_point_n1 = len(ch1_pts[::,0])
+                roi_point_n2 = len(ch2_pts[::,0])
+                roi_point_s1 = pg.ScatterPlotItem(size=5, pen=pg.mkPen(None), brush=pg.mkBrush(colour[0], colour[1], colour[2], 120))
+                roi_point_s2 = pg.ScatterPlotItem(size=5, pen=pg.mkPen(None), brush=pg.mkBrush(colour[0], colour[1], colour[2], 120))        
+                roi_point_pos1 = np.array([ch1_pts[::,0],ch1_pts[::,1]])
+                roi_point_pos2 = np.array([ch2_pts[::,0],ch2_pts[::,1]])
+                roi_point_spots1 = [{'pos': roi_point_pos1[:,i], 'data': 1} for i in range(roi_point_n1)]
+                roi_point_spots2 = [{'pos': roi_point_pos2[:,i], 'data': 1} for i in range(roi_point_n2)]
+                roi_point_s1.addPoints(roi_point_spots1)
+                roi_point_s2.addPoints(roi_point_spots2)
+                self.w3.addItem(roi_point_s1)
+                self.w3.addItem(roi_point_s2)
+                return
+        else:
+                self.w3.clear()               
+                ch1_pts = self.AllPoints_ch1[roiNum]
+                ch2_pts = self.AllPoints_ch2[roiNum]                    
+                roi_point_n1 = len(ch1_pts[::,0])
+                roi_point_n2 = len(ch2_pts[::,0])
+                roi_point_s1 = pg.ScatterPlotItem(size=5, pen=pg.mkPen(None), brush=pg.mkBrush(0, 255, 0, 120))
+                roi_point_s2 = pg.ScatterPlotItem(size=5, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 120))        
+                roi_point_pos1 = np.array([ch1_pts[::,0],ch1_pts[::,1]])
+                roi_point_pos2 = np.array([ch2_pts[::,0],ch2_pts[::,1]])
+                roi_point_spots1 = [{'pos': roi_point_pos1[:,i], 'data': 1} for i in range(roi_point_n1)]
+                roi_point_spots2 = [{'pos': roi_point_pos2[:,i], 'data': 1} for i in range(roi_point_n2)]
+                roi_point_s1.addPoints(roi_point_spots1)
+                roi_point_s2.addPoints(roi_point_spots2)
+                self.w3.addItem(roi_point_s1)
+                self.w3.addItem(roi_point_s2) 
+                self.w3.autoRange(padding=0.4)
         return
 
-    def display2Dcentroids_roi(self):
+    def display2Dcentroids_roi(self, roiNum = 'ALL'):
         #make centeroid data
         self.centeroid_s1_roi = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))
-        self.centeroid_s2_roi = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))
-        #combined clusters
-        centeroid_n1 = len(self.combined_ch1_Centeroids[::,0])
-        centeroid_n2 = len(self.combined_ch2_Centeroids[::,0])
-        centeroid_pos1 = np.array([self.combined_ch1_Centeroids[::,0],self.combined_ch1_Centeroids[::,1]])
-        centeroid_pos2 = np.array([self.combined_ch2_Centeroids[::,0],self.combined_ch2_Centeroids[::,1]])
-
-        self.centeroid_spots1_roi = [{'pos': centeroid_pos1[:,i], 'data': 1} for i in range(centeroid_n1)]
-        self.centeroid_spots2_roi = [{'pos': centeroid_pos2[:,i], 'data': 1} for i in range(centeroid_n2)]
-        self.centeroid_s1_roi.addPoints(self.centeroid_spots1_roi)
-        self.centeroid_s2_roi.addPoints(self.centeroid_spots2_roi)
-        self.w3.addItem(self.centeroid_s1_roi)
-        self.w3.addItem(self.centeroid_s2_roi) 
+        self.centeroid_s2_roi = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))        
+        
+        if roiNum == 'ALL':
+            #combined clusters
+            centeroid_n1 = len(self.combined_ch1_Centeroids[::,0])
+            centeroid_n2 = len(self.combined_ch2_Centeroids[::,0])
+            centeroid_pos1 = np.array([self.combined_ch1_Centeroids[::,0],self.combined_ch1_Centeroids[::,1]])
+            centeroid_pos2 = np.array([self.combined_ch2_Centeroids[::,0],self.combined_ch2_Centeroids[::,1]])
+    
+            self.centeroid_spots1_roi = [{'pos': centeroid_pos1[:,i], 'data': 1} for i in range(centeroid_n1)]
+            self.centeroid_spots2_roi = [{'pos': centeroid_pos2[:,i], 'data': 1} for i in range(centeroid_n2)]
+            self.centeroid_s1_roi.addPoints(self.centeroid_spots1_roi)
+            self.centeroid_s2_roi.addPoints(self.centeroid_spots2_roi)
+            self.w3.addItem(self.centeroid_s1_roi)
+            self.w3.addItem(self.centeroid_s2_roi) 
+            return
+        else:
+            #combined clusters
+            centeroid_pos1 = np.array([self.combined_ch1_Centeroids[roiNum][0],self.combined_ch1_Centeroids[roiNum]][1])
+            centeroid_pos2 = np.array([self.combined_ch2_Centeroids[roiNum][0],self.combined_ch2_Centeroids[roiNum]][1])    
+            self.centeroid_spots1_roi = [{'pos': centeroid_pos1, 'data': 1}]
+            self.centeroid_spots2_roi = [{'pos': centeroid_pos2, 'data': 1}]
+            self.centeroid_s1_roi.addPoints(self.centeroid_spots1_roi)
+            self.centeroid_s2_roi.addPoints(self.centeroid_spots2_roi)
+            self.w3.addItem(self.centeroid_s1_roi)
+            self.w3.addItem(self.centeroid_s2_roi)             
         return
 
 
-    def display3Ddata_roi(self):
-        ch1_pts = np.vstack(self.AllPoints_ch1)
-        ch2_pts = np.vstack(self.AllPoints_ch2)
-        self.imv3D_roi.addArray(ch1_pts,color=QColor(0, 255, 0),size=2,name='ch1_pts')
-        self.imv3D_roi.addArray(ch2_pts,color=QColor(255, 0, 0),size=2,name='ch2_pts') 
+    def display3Ddata_roi(self, roiNum):
+        if roiNum == 'ALL':
+            ch1_pts = np.vstack(self.AllPoints_ch1)
+            ch2_pts = np.vstack(self.AllPoints_ch2)
+            self.imv3D_roi.addArray(ch1_pts,color=QColor(0, 255, 0),size=2,name='ch1_pts')
+            self.imv3D_roi.addArray(ch2_pts,color=QColor(255, 0, 0),size=2,name='ch2_pts') 
+            return
+        else:
+            self.imv3D_roi.clear()
+            ch1_pts = self.AllPoints_ch1[roiNum]
+            ch2_pts = self.AllPoints_ch2[roiNum]
+            self.imv3D_roi.addArray(ch1_pts,color=QColor(0, 255, 0),size=2,name='ch1_pts')
+            self.imv3D_roi.addArray(ch2_pts,color=QColor(255, 0, 0),size=2,name='ch2_pts')             
         return
 
-    def display3Dcentroids_roi(self):
-        pos = self.imv3D_roi.cameraPosition() 
-        dist = self.imv3D_roi.opts['distance']
-        elevation =self.imv3D_roi.opts['elevation']
-        azimuth = self.imv3D_roi.opts['azimuth']
-        self.imv3D_roi.addArray(self.combined_ch1_Centeroids,color=QColor(255, 255, 255),size=10,name='ch1_cent')
-        self.imv3D_roi.addArray(self.combined_ch2_Centeroids,color=QColor(255, 255, 255),size=10,name='ch2_cent')
-        self.imv3D_roi.setCameraPosition(pos=pos,distance=dist, elevation =elevation, azimuth=azimuth)       
+    def display3Dcentroids_roi(self, roiNum):
+        if roiNum == 'ALL':        
+            pos = self.imv3D_roi.cameraPosition() 
+            dist = self.imv3D_roi.opts['distance']
+            elevation =self.imv3D_roi.opts['elevation']
+            azimuth = self.imv3D_roi.opts['azimuth']
+            self.imv3D_roi.addArray(self.combined_ch1_Centeroids,color=QColor(255, 255, 255),size=10,name='ch1_cent')
+            self.imv3D_roi.addArray(self.combined_ch2_Centeroids,color=QColor(255, 255, 255),size=10,name='ch2_cent')
+            self.imv3D_roi.setCameraPosition(pos=pos,distance=dist, elevation =elevation, azimuth=azimuth)       
+            return
+        else:
+            print('display roi: ',roiNum)
+            pos = self.imv3D_roi.cameraPosition() 
+            dist = self.imv3D_roi.opts['distance']
+            elevation =self.imv3D_roi.opts['elevation']
+            azimuth = self.imv3D_roi.opts['azimuth']
+            
+            item1 = np.array([np.array(self.combined_ch1_Centeroids[roiNum])])
+            item2 = np.array([np.array(self.combined_ch2_Centeroids[roiNum])])
+            
+            print(item1)
+            
+            self.imv3D_roi.addArray(item1,color=QColor(255, 255, 255),size=10,name='ch1_cent')
+            self.imv3D_roi.addArray(item2,color=QColor(255, 255, 255),size=10,name='ch2_cent')
+            self.imv3D_roi.setCameraPosition(pos=pos,distance=dist, elevation =elevation, azimuth=azimuth)             
         return
 
 
@@ -990,31 +1045,21 @@ class ClusterAnalysis:
         print('ch2_random centeroids saved as:', saveName6)  
 
 
-    @staticmethod
-    def write_df_to_qtable(df,table):
-        headers = list(df)
-        table.setRowCount(df.shape[0])
-        table.setColumnCount(df.shape[1])
-        table.setHorizontalHeaderLabels(headers)        
-    
-        # getting data from df is computationally costly so convert it to array first
-        df_array = df.values
-        for row in range(df.shape[0]):
-            for col in range(df.shape[1]):
-                table.setItem(row, col, QtGui.QTableWidgetItem(str(df_array[row,col])))
 
     def displayROIresults(self):
-        self.write_df_to_qtable(self.roiAnalysisDF,self.resultsTable)
+        #self.write_df_to_qtable(self.roiAnalysisDF,self.resultsTable)
+        data = self.roiAnalysisDF.to_records(index=False)
+        self.resultsTable.setData(data)                
         return
 
     def displayROI(self, items):
         height = float(items[9].text())
         width = float(items[10].text())
-        roi_number = str(items[0].text())
+        roi_number = int(items[0].text())
         x = str(items[8].text()).split(' ')[1]
         y = str(items[8].text()).split(' ')[3]        
       
-        print('#: ', roi_number, 'x: ', x, 'y: ', y, 'width: ', str(width), 'height: ', str(height))
+        #print('#: ', str(roi_number), 'x: ', x, 'y: ', y, 'width: ', str(width), 'height: ', str(height))
         
         startX = float(x)-(height/2)
         startY = float(y)-(width/2)
@@ -1027,13 +1072,30 @@ class ClusterAnalysis:
             handles[0].disconnectROI(self.ROI_2D)
             handles[0].pen = mkPen(None)
             #self.ROI_2D.setState(self.ROIState)            
-            self.w3.addItem(self.ROI_2D)
+            #self.w3.addItem(self.ROI_2D)
+            #add ROI around 2D selection
+            self.w2.addItem(self.ROI_2D)   
             self.ROI2D_flag = True
+            #display ROI selection only - 2D
+            self.displayROIpoints_2D(roi_number)
+            self.display2Dcentroids_roi(roi_number)            
+            #display ROI selection only - 3D  
+            self.display3Ddata_roi(roi_number)
+            self.display3Dcentroids_roi(roi_number)
+            
         else:
+            #update 2D ROI position
             self.ROI_2D.setPos([startX, startY])
+            self.ROI_2D.setSize([height,width])
+            #update 2D ROI selection display
+            self.displayROIpoints_2D(roi_number)
+            self.display2Dcentroids_roi(roi_number)            
+            #update 3D ROI selection display
+            self.display3Ddata_roi(roi_number)
+            self.display3Dcentroids_roi(roi_number)
             
         #set window focus
-        self.w3.view.setRect(self.ROI_2D.mapRectFromView())
+        #self.w3.view.setRect(self.ROI_2D.mapRectFromView())
         return
 
 
@@ -1053,9 +1115,13 @@ class ClusterAnalysis:
         self.display3Dcentroids()    
         self.randomPointAnalysis()
         self.display2Dcentroids_rnd()   
-        self.display3Dcentroids_rnd()        
-        
-               
+        self.display3Dcentroids_rnd() 
+        self.printStats()
+        self.makeROIs()
+        self.makeROI_DF()
+        self.displayROIresults()
+
+                       
         return
         
         
@@ -1220,10 +1286,10 @@ def test():
     clusterAnalysis.printStats()
     clusterAnalysis.makeROIs()
     clusterAnalysis.makeROI_DF()    
-    clusterAnalysis.displayROIpoints_2D()
-    clusterAnalysis.display2Dcentroids_roi()
-    clusterAnalysis.display3Ddata_roi()
-    clusterAnalysis.display3Dcentroids_roi()
+    #clusterAnalysis.displayROIpoints_2D('ALL')
+    #clusterAnalysis.display2Dcentroids_roi('ALL')
+    #clusterAnalysis.display3Ddata_roi('ALL')
+    #clusterAnalysis.display3Dcentroids_roi('ALL')
     clusterAnalysis.displayROIresults()
     return     
     
