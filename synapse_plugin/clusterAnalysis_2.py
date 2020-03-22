@@ -49,6 +49,22 @@ def setMenuUp(menuItem,menu,shortcut='Ctrl+X',statusTip='Exit',connection=None):
     return
 
 
+class DataWidget(pg.TableWidget):
+    __name__ = "Data Widget"
+    def __init__(self, viewer, sortable=False, **args):
+        if 'name' in args:
+            self.__name__ = args.pop('name')
+        super(DataWidget, self).__init__(**args)
+        self.viewer = viewer
+        self.setSortingEnabled(sortable)
+        self.itemSelectionChanged.connect(self.sendRowSignal)
+
+    def sendRowSignal(self):
+        items = self.selectedItems()     
+        self.viewer.displayROI(items)
+        return
+        
+
 class ClusterAnalysis:
     
     def __init__(self):
@@ -96,6 +112,9 @@ class ClusterAnalysis:
         #init data types
         self.ch1Points_3D = []
         self.ch2Points_3D = []
+
+        #init roi flags
+        self.ROI2D_flag = False
 
 
     def clear(self):
@@ -210,7 +229,7 @@ class ClusterAnalysis:
         self.imv3D_roi = Plot3DWidget()       
 
         #initialise table widget
-        self.resultsTable = pg.TableWidget()
+        self.resultsTable = DataWidget(self,sortable=True)
         
         #add widgets to docks
         self.dock1.addWidget(self.imv3D, 0, 0, 6, 6)
@@ -221,6 +240,7 @@ class ClusterAnalysis:
         self.dock6.addWidget(self.imv3D_roi)        
 
         self.dockResults.addWidget(self.resultsTable)
+
         
         #make sure data plots on top
         self.area.moveDock(self.dock1, 'above', self.dock4)  
@@ -668,8 +688,12 @@ class ClusterAnalysis:
         self.AllPoints_ch1.append(np.array(ch1_pts))
         self.AllPoints_ch2.append(np.array(ch2_pts))
                         
-        roi_data = OrderedDict([('ROI #', roiIndex), ('Mean Distance (%s)' % self.unit_prefixes[self.unit], 0), ('%s N' % self.Channels[0].__name__, 0), \
-        ('%s N' % self.Channels[1].__name__, 0), ('%s Volume (%s^3)' % (self.Channels[0].__name__, self.unit_prefixes[self.unit]), 0), ('%s Volume (%s^3)' % (self.Channels[1].__name__, self.unit_prefixes[self.unit]), 0)])
+        roi_data = OrderedDict([('ROI #', roiIndex), \
+                                 ('Mean Distance (%s)' % self.unit_prefixes[self.unit], 0), \
+                                 ('%s N' % self.Channels[0].__name__, 0), \
+                                 ('%s N' % self.Channels[1].__name__, 0), \
+                                 ('%s Volume (%s^3)' % (self.Channels[0].__name__, self.unit_prefixes[self.unit]), 0), \
+                                 ('%s Volume (%s^3)' % (self.Channels[1].__name__, self.unit_prefixes[self.unit]), 0)])
 
 
         roi_data['%s N' % self.Channels[0].__name__] = len(ch1_pts)
@@ -677,7 +701,7 @@ class ClusterAnalysis:
 
         try:        
             if len(ch1_pts) >= 4:
-                roi_data['%s Volume (%s^3)' % (self.Channels[0].__name__, self.unit_prefixes[self.unit])] = convex_volume(ch1_pts)
+                roi_data['%s Volume (%s^3)' % (self.Channels[0].__name__, self.unit_prefixes[self.unit])] = round(convex_volume(ch1_pts), 2)
     
             else:
                 roi_data['%s Volume (%s^3)' % (self.Channels[0].__name__, self.unit_prefixes[self.unit])] = 0
@@ -689,7 +713,7 @@ class ClusterAnalysis:
         try:
             if len(ch2_pts) >= 4:
     
-                roi_data['%s Volume (%s^3)' % (self.Channels[1].__name__, self.unit_prefixes[self.unit])] = convex_volume(ch2_pts)
+                roi_data['%s Volume (%s^3)' % (self.Channels[1].__name__, self.unit_prefixes[self.unit])] = round(convex_volume(ch2_pts), 2)
     
             else:
                 roi_data['%s Volume (%s^3)' % (self.Channels[1].__name__, self.unit_prefixes[self.unit])] = 0
@@ -701,10 +725,20 @@ class ClusterAnalysis:
             #g.m.statusBar().showMessage('Cannot get Volume of %s in roi %d with %d points' % (ch.__name__, roi.id, ch.getCount())) 
         
         
-        roi_data['Mean Distance (%s)' % self.unit_prefixes[self.unit]] = np.linalg.norm(np.average(ch1_pts, 0) - np.average(ch2_pts, 0))
+        roi_data['Mean Distance (%s)' % self.unit_prefixes[self.unit]] = round(np.linalg.norm(np.average(ch1_pts, 0) - np.average(ch2_pts, 0)), 2)
         roi_data['%s Centeroid' % (self.Channels[0].__name__)] = np.average(ch1_pts, 0)
         roi_data['%s Centeroid' % (self.Channels[1].__name__)] = np.average(ch2_pts, 0)
-                    
+
+
+        height = round(max((max(ch1_pts[::,0]),max(ch2_pts[::,0]))) - min((min(ch1_pts[::,0]),min(ch2_pts[::,0]))), 2)  
+        width = round(max((max(ch1_pts[::,1]),max(ch2_pts[::,1]))) - min((min(ch1_pts[::,1]),min(ch2_pts[::,1]))) , 2)
+        depth = round(max((max(ch1_pts[::,2]),max(ch2_pts[::,2]))) - min((min(ch1_pts[::,2]),min(ch2_pts[::,2]))), 2)
+        
+        roi_data['center'] = (np.average(ch1_pts, 0) + np.average(ch2_pts, 0))/2
+        roi_data['height'] = height  
+        roi_data['width'] =  width     
+        roi_data['depth'] =  depth   
+        roi_data['box volume'] = height*width*depth     
         return roi_data
 
 
@@ -858,20 +892,20 @@ class ClusterAnalysis:
         print('Channel 1: Number of clusters: ', str(len(self.combined_ch1_Centeroids)))
         print('Channel 2: Number of clusters: ', str(len(self.combined_ch2_Centeroids)))        
         print('Number of nearest neighbor distances:', str(np.size(self.dist_clusters)))
-        print('Mean nearest neighbor distance:', str(np.mean(self.dist_clusters)))
-        print('StDev nearest neighbor distance:', str(np.std(self.dist_clusters)))        
+        print('Mean nearest neighbor distance:', str(round(np.mean(self.dist_clusters),2)))
+        print('StDev nearest neighbor distance:', str(round(np.std(self.dist_clusters),2)))        
         print('Number of All distances:', str(np.size(self.distAll_clusters)))
-        print('Mean All distance:', str(np.mean(self.distAll_clusters)))
-        print('StDev All distance:', str(np.std(self.distAll_clusters)))       
+        print('Mean All distance:', str(round(np.mean(self.distAll_clusters),2)))
+        print('StDev All distance:', str(round(np.std(self.distAll_clusters),2)))       
         print('----------------------------------------------')
         print('Random 1: Number of clusters: ', str(len(self.ch1_random)))
         print('Random 2: Number of clusters: ', str(len(self.ch2_random)))        
         print('Random: Number of nearest neighbor distances:', str(np.size(self.dist_random)))
-        print('Random: Mean nearest neighbor distance:', str(np.mean(self.dist_random)))
-        print('Random: StDev nearest neighbor distance:', str(np.std(self.dist_random)))       
+        print('Random: Mean nearest neighbor distance:', str(round(np.mean(self.dist_random),2)))
+        print('Random: StDev nearest neighbor distance:', str(round(np.std(self.dist_random),2)))       
         print('Random: Number of All distances:', str(np.size(self.distAll_random)))
-        print('Random: Mean All distance:', str(np.mean(self.distAll_random)))  
-        print('Random: Stdev All distance:', str(np.std(self.distAll_random)))          
+        print('Random: Mean All distance:', str(round(np.mean(self.distAll_random),2)))  
+        print('Random: Stdev All distance:', str(round(np.std(self.distAll_random),2)))          
         print('----------------------------------------------')
         return
 
@@ -973,8 +1007,34 @@ class ClusterAnalysis:
         self.write_df_to_qtable(self.roiAnalysisDF,self.resultsTable)
         return
 
+    def displayROI(self, items):
+        height = float(items[9].text())
+        width = float(items[10].text())
+        roi_number = str(items[0].text())
+        x = str(items[8].text()).split(' ')[1]
+        y = str(items[8].text()).split(' ')[3]        
+      
+        print('#: ', roi_number, 'x: ', x, 'y: ', y, 'width: ', str(width), 'height: ', str(height))
+        
+        startX = float(x)-(height/2)
+        startY = float(y)-(width/2)
 
-
+        if self.ROI2D_flag == False:
+            self.ROI2D_pen = mkPen('r', width=3,style=QtCore.Qt.DashLine)
+            self.ROI_2D = pg.RectROI([startX, startY], [height,width], pen=self.ROI2D_pen, movable=False) 
+            #self.ROI_2D = pg.CircleROI([int(width/2),int(self.height)], [ch1_x , ch1_y], pen=(4,9))
+            handles = self.ROI_2D.getHandles()
+            handles[0].disconnectROI(self.ROI_2D)
+            handles[0].pen = mkPen(None)
+            #self.ROI_2D.setState(self.ROIState)            
+            self.w3.addItem(self.ROI_2D)
+            self.ROI2D_flag = True
+        else:
+            self.ROI_2D.setPos([startX, startY])
+            
+        #set window focus
+        self.w3.view.setRect(self.ROI_2D.mapRectFromView())
+        return
 
 
 
