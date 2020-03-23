@@ -32,7 +32,7 @@ from sklearn.neighbors import KDTree
 import random
 import time
 from mpl_toolkits.mplot3d import Axes3D # <--- This is needed for newer versions of matplotlib
-
+import pyqtgraph.opengl as gl
 
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
@@ -705,6 +705,12 @@ class ClusterAnalysis:
             self.imv3D_roi.addArray(ch2_pts,color=QColor(255, 0, 0),size=2,name='ch2_pts')             
         return
 
+    #TODO
+    def displayDistanceLine_roi(self,ch1_x,ch1_y,ch1_z,ch2_x,ch2_y,ch2_z):
+        self.imv3D_roi.addLine(ch1_x,ch1_y,ch1_z,ch2_x,ch2_y,ch2_z, name='distanceLine')
+        return
+
+
     def display3Dcentroids_roi(self, roiNum):
         if roiNum == 'ALL':        
             pos = self.imv3D_roi.cameraPosition() 
@@ -716,7 +722,6 @@ class ClusterAnalysis:
             self.imv3D_roi.setCameraPosition(pos=pos,distance=dist, elevation =elevation, azimuth=azimuth)       
             return
         else:
-            print('display roi: ',roiNum)
             pos = self.imv3D_roi.cameraPosition() 
             dist = self.imv3D_roi.opts['distance']
             elevation =self.imv3D_roi.opts['elevation']
@@ -724,8 +729,6 @@ class ClusterAnalysis:
             
             item1 = np.array([np.array(self.combined_ch1_Centeroids[roiNum])])
             item2 = np.array([np.array(self.combined_ch2_Centeroids[roiNum])])
-            
-            print(item1)
             
             self.imv3D_roi.addArray(item1,color=QColor(255, 255, 255),size=10,name='ch1_cent')
             self.imv3D_roi.addArray(item2,color=QColor(255, 255, 255),size=10,name='ch2_cent')
@@ -1056,10 +1059,28 @@ class ClusterAnalysis:
         height = float(items[9].text())
         width = float(items[10].text())
         roi_number = int(items[0].text())
-        x = str(items[8].text()).split(' ')[1]
-        y = str(items[8].text()).split(' ')[3]        
-      
-        #print('#: ', str(roi_number), 'x: ', x, 'y: ', y, 'width: ', str(width), 'height: ', str(height))
+        
+        centerXYZ = list(items[8].text().replace(']','').replace('[','').split())
+        x = float(centerXYZ[0])
+        y = float(centerXYZ[1])
+        z = float(centerXYZ[2])
+
+        ch1_cent = list(items[6].text().replace(']','').replace('[','').split())
+        ch1_x = float(ch1_cent[0])
+        ch1_y = float(ch1_cent[1])
+        ch1_z = float(ch1_cent[2])
+
+        ch2_cent = list(items[7].text().replace(']','').replace('[','').split())
+        ch2_x = float(ch2_cent[0])
+        ch2_y = float(ch2_cent[1])
+        ch2_z = float(ch2_cent[2])
+
+        
+        print('\n----')      
+        print('#: ', str(roi_number), 'x: ', x, 'y: ', y, 'width: ', str(width), 'height: ', str(height))
+        #print('#: ', str(roi_number), '\n', str(items[6].text()),'\n',str(items[7].text()),'\n', str(items[8].text()))
+
+
         
         startX = float(x)-(height/2)
         startY = float(y)-(width/2)
@@ -1082,6 +1103,7 @@ class ClusterAnalysis:
             #display ROI selection only - 3D  
             self.display3Ddata_roi(roi_number)
             self.display3Dcentroids_roi(roi_number)
+            self.displayDistanceLine_roi(ch1_x,ch1_y,ch1_z,ch2_x,ch2_y,ch2_z)
             
         else:
             #update 2D ROI position
@@ -1093,9 +1115,7 @@ class ClusterAnalysis:
             #update 3D ROI selection display
             self.display3Ddata_roi(roi_number)
             self.display3Dcentroids_roi(roi_number)
-            
-        #set window focus
-        #self.w3.view.setRect(self.ROI_2D.mapRectFromView())
+            self.displayDistanceLine_roi(ch1_x,ch1_y,ch1_z,ch2_x,ch2_y,ch2_z)            
         return
 
 
@@ -1120,7 +1140,6 @@ class ClusterAnalysis:
         self.makeROIs()
         self.makeROI_DF()
         self.displayROIresults()
-
                        
         return
         

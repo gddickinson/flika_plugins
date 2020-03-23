@@ -90,12 +90,23 @@ class Plot3DWidget(gl.GLViewWidget):
 
 
 	def addArray(self, array, color=QColor(0, 255, 0),size=4,name=''):
-		#print(array[:,0])        
+	#print(array[:,0])        
 		array = np.transpose([array[:,0],array[:,1],array[:,2]])
 		item = gl.GLScatterPlotItem(pos=array, color=color.getRgbF(), size=size)
 		item.__name__ = name
 		self.addItem(item)  
         
+	#TODO
+	def addLine(self,ch1_x,ch1_y,ch1_z,ch2_x,ch2_y,ch2_z,name=''):
+		print(ch1_x,ch1_y,ch1_z,ch2_x,ch2_y,ch2_z)
+		item = gl.GLLinePlotItem()
+		item.setParentItem(self)  
+		item.setVisible(True)  
+		item.setData(pos=np.array([[ch1_x,ch1_y,ch1_z], [ch2_x,ch2_y,ch2_z]]), color=(1, 1, 1, 1))        
+		item.__name__ = name 
+		self.addItem(item) 
+		return
+
 
 	def addItem(self, item, name=''):
 		if name == '':
