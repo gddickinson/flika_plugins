@@ -661,8 +661,8 @@ class ClusterAnalysis:
     def display2Dcentroids_roi(self, roiNum = 'ALL'):
         #make centeroid data
         self.centeroid_s1_roi = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))
-        self.centeroid_s2_roi = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))        
-        
+        self.centeroid_s2_roi = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))  
+                
         if roiNum == 'ALL':
             #combined clusters
             centeroid_n1 = len(self.combined_ch1_Centeroids[::,0])
@@ -708,6 +708,10 @@ class ClusterAnalysis:
     #TODO
     def displayDistanceLine_roi(self,ch1_x,ch1_y,ch1_z,ch2_x,ch2_y,ch2_z):
         self.imv3D_roi.addLine(ch1_x,ch1_y,ch1_z,ch2_x,ch2_y,ch2_z, name='distanceLine')
+        #make 2D line data
+        self.distanceLine_2D = pg.PlotCurveItem()
+        self.distanceLine_2D.setData(x=[ch1_x,ch2_x], y=[ch1_y,ch2_y]) 
+        self.w3.addItem(self.distanceLine_2D) 
         return
 
 

@@ -98,17 +98,17 @@ class Plot3DWidget(gl.GLViewWidget):
         
 	#TODO
 	def addLine(self,ch1_x,ch1_y,ch1_z,ch2_x,ch2_y,ch2_z,name=''):
-		print(ch1_x,ch1_y,ch1_z,ch2_x,ch2_y,ch2_z)
-		item = gl.GLLinePlotItem()
-		item.setParentItem(self)  
-		item.setVisible(True)  
+		item = gl.GLLinePlotItem()        
+		item.setVisible(True)         
 		item.setData(pos=np.array([[ch1_x,ch1_y,ch1_z], [ch2_x,ch2_y,ch2_z]]), color=(1, 1, 1, 1))        
 		item.__name__ = name 
+        
 		self.addItem(item) 
 		return
 
 
 	def addItem(self, item, name=''):
+		#print('item added: ',item.__name__)        
 		if name == '':
 			name = 'Item %d' % len(self.items)
 
