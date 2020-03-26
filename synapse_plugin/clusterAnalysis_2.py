@@ -121,9 +121,12 @@ class ClusterAnalysis:
         self.Channels = []
     
     def open_file(self,filename=''):
+        '''Open .txt files - import localization data'''                
         if filename == '':
             filename = getFilename(filter='Text Files (*.txt)')
         self.clear()
+        if self.dataLoaded:
+            self.clearAll()
         self.data = importFile(filename,evaluateLines=False)
         try:        
             for i in range(len(self.data[0])):
@@ -131,7 +134,9 @@ class ClusterAnalysis:
                     self.data[0][i] = self.data[0][i].split('\n')[0]                
     	
         except:
-            pass
+            return
+
+
 
         self.colNames = list(self.data[0])
         #print(self.colNames)
@@ -176,6 +181,11 @@ class ClusterAnalysis:
         
         self.ch1Points = self.Channels[0].getPoints(z=False)
         self.ch2Points = self.Channels[1].getPoints(z=False)
+        
+        #display points
+        self.display2Ddata_allPoints()
+        self.display3Ddata_allPoints()
+        #set data loaded flag
         self.dataLoaded = True
         return
 
@@ -570,6 +580,83 @@ class ClusterAnalysis:
     def clear2Ddisplay(self):
         self.w2.clear()
         return        
+
+    def clearClusterResults(self):
+        self.imv3D_rnd.clear()
+        self.imv3D_roi.clear()        
+        self.resultsTable.clear()        
+        self.removeCentroids()
+        self.centeroid_spots1_rnd = []
+        self.centeroid_spots2_rnd = []
+        self.clusterIndex = []
+        self.clusterChannels = []
+        self.combinedHulls = []
+        self.combinedPoints = []
+        self.combined_ch1_Centeroids = []
+        self.combined_ch2_Centeroids = []
+        self.All_ROIs_pointsList = []
+        self.clustersGenerated = False
+        self.centroidsGenerated = False
+        self.centroidsDisplayed = False
+        self.w2.clear()
+        self.w3.clear()        
+        self.w4.clear()        
+        self.display2Ddata_allPoints()
+        self.display3Ddata_allPoints(toggle=False)
+        self.dataDisplayed = 'original' 
+        return
+
+
+    def clearAll(self):
+        '''remove all data & displays'''
+        self.data = None
+        #data state
+        self.dataLoaded = False
+        self.ROI3D_Initiated = False
+        self.dataDisplayed = 'original'
+        self.clustersGenerated = False
+        self.centroidsGenerated = False
+        self.centroidsDisplayed = False              
+        self.clusterIndex = []
+    
+        #cluster analysis options      
+        self.All_ROIs_pointsList = []
+        self.channelList = []        
+        self.displayFlag = False
+        
+        #init data types
+        self.ch1Points_3D = []
+        self.ch2Points_3D = []
+
+        self.AllPoints_ch1 = []
+        self.AllPoints_ch2 = []
+        
+        self.ch1_random = []
+        self.ch2_random = []
+        
+        #self.centeroid_s1_rnd = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))
+        #self.centeroid_s2_rnd = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))
+        
+        self.centeroid_spots1_rnd = []
+        self.centeroid_spots2_rnd = []
+
+        #self.centeroid_s1_roi = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))
+        #self.centeroid_s2_roi = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120)) 
+
+        #init roi flags
+        self.ROI2D_flag = False        
+        self.imv3D.clear()
+        
+        self.imv3D_rnd.clear()
+        self.imv3D_roi.clear()
+
+        self.w2.clear()
+        self.w3.clear()        
+        self.w4.clear()   
+        
+        self.resultsTable.clear()
+        
+        return
 
 
     def display2Dcentroids_rnd(self):
@@ -1130,8 +1217,9 @@ class ClusterAnalysis:
             print('No Data Loaded!')
             return
         if self.clustersGenerated == True:
-            print('Clusters already generated!') #TODO update to clear cluster/centroid data
-            return
+            #print('Clusters already generated!') #TODO update to clear cluster/centroid data
+            self.clearClusterResults()
+        
         self.getClusters()  
         self.getCentroids()
         self.makeHulls()  
@@ -1296,8 +1384,6 @@ def test():
     #fileName = r"C:\Users\George\Desktop\ianS-synapse\trial_1_superes_fullfield.txt"
     clusterAnalysis.viewerGUI()
     clusterAnalysis.open_file(fileName)
-    clusterAnalysis.display2Ddata_allPoints()
-    clusterAnalysis.display3Ddata_allPoints()
     clusterAnalysis.getClusters()  
     clusterAnalysis.getCentroids()
     clusterAnalysis.makeHulls()  
