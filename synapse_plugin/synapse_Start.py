@@ -38,6 +38,11 @@ try:
     from .clusterAnalysis import *
 except:
     from clusterAnalysis import *
+    
+try:
+    from .clusterAnalysis_2 import *
+except:
+    from clusterAnalysis_2 import *
 #########################################################################################
 #############          FLIKA Base Menu             #####################################
 #########################################################################################
@@ -72,7 +77,13 @@ class SynapseStart(BaseProcess_noPriorWindow):
         elif version == 'synapse':
             #start synapse GUI
             self.synapse_app = Synapse()
-            self.synapse_app.start()            
+            self.synapse_app.start()  
+        elif version == 'synapse3D_version2':
+            #start synapse GUI
+            self.synapse_app = ClusterAnalysis()
+            self.synapse_app.viewerGUI()              
+            
+            
         return
 
     def closeEvent(self, event):
@@ -84,7 +95,8 @@ class SynapseStart(BaseProcess_noPriorWindow):
         #combobox
         versionChoice = ComboBox()
         versionChoice.addItem('synapse3D')
-        versionChoice.addItem('synapse3D_batch')        
+        versionChoice.addItem('synapse3D_batch') 
+        versionChoice.addItem('synapse3D_version2')        
         versionChoice.addItem('synapse')
                          
         #populate GUI
