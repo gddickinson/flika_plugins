@@ -129,4 +129,13 @@ class Channel(pg.ScatterPlotItem):
 				d[k] = tuple(d[k] for d in self.pts)       
 		return d
       
+	def __getstate__(self):
+		# Copy the object's state from self.__dict__ which contains
+		# all our instance attributes. Always use the dict.copy()
+		# method to avoid modifying the original state.()
+		state = self.getDataAsDict()
+		# Remove the unpicklable entries.
+		#del state['file']
+		return state  
     
+

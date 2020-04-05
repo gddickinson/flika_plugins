@@ -34,6 +34,13 @@ import time
 from mpl_toolkits.mplot3d import Axes3D # <--- This is needed for newer versions of matplotlib
 import pyqtgraph.opengl as gl
 
+import threading
+#from multiprocessing import Pool
+from multiprocessing import freeze_support
+from pathos.threading import ThreadPool
+
+#class threading.Thread(group=None, target=None, name=None, args=(), kwargs={}, *, daemon=None)
+
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
     from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, FileSelector
@@ -501,6 +508,42 @@ class ClusterAnalysis:
         #t.timeReport('ROI made')
         return
 
+    def createROIFromHull_multiThread(self, i):
+        print('ROI loaded: ',i)
+        points = self.combinedPoints[i]
+        hull = self.newHulls[i]
+        #t = Timer()
+        #t.start()
+        '''add roi to display from hull points'''
+        #make points list
+        pointsList = []     
+        for simplex in hull:
+            pointsList.append((points[simplex][0])) 
+        for simplex in hull:            
+            pointsList.append((points[simplex][1])) 
+
+        #order points list
+        pointsList = order_points(pointsList)
+
+        #convert list to np array
+        pointsList = np.array(pointsList)
+               
+        #add create ROIs from points
+        #self.plotWidget.getViewBox().createROIFromPoints(pointsList)
+        
+        #add points to All_ROI_pointsList
+        #self.All_ROIs_pointsList.append(pointsList)
+        #self.All_ROIs_pointsList.append(points)
+        
+        
+        #make channel list for all points
+        #self.makeChannelList()
+
+        #t.timeReport('ROI made')
+
+        return points
+
+
 
     def makeChannelList(self):
         self.channelList = []
@@ -517,10 +560,35 @@ class ClusterAnalysis:
         return
 
     def makeROIs(self):
-        #single thread
-        for i in range(len(self.combinedHulls)):
-            self.createROIFromHull(self.combinedPoints[i],self.newHulls[i]) ### THIS IS SLOW! ###
-            print('\r', 'creating rois: {:0.2f}'.format((i/len(self.combinedHulls))*100),'%', end='\r', flush=True)
+        t = Timer()
+        t.start()
+        # #single thread
+        # for i in range(len(self.combinedHulls)):
+        #     self.createROIFromHull(self.combinedPoints[i],self.newHulls[i]) ### THIS IS SLOW! ###
+        #     print('\r', 'creating rois: {:0.2f}'.format((i/len(self.combinedHulls))*100),'%', end='\r', flush=True)
+        
+        # #multi-thread - runs but slower than single!!
+        # iterations = list(range(len(self.combinedHulls))) 
+        # thread_list = []
+        # for i in iterations:
+        #     th = threading.Thread(target = self.createROIFromHull_multiThread, args = (i,) )
+        #     thread_list.append(th)
+        # for thread in thread_list:
+        #     thread.start()
+        #     thread.join()
+            
+        #multiprocessing with threadpool - faster!
+        iterations = list(range(len(self.combinedHulls)))
+        
+        pool = ThreadPool()
+        results = pool.imap(self.createROIFromHull_multiThread, iterations)
+        print("Multi-processing running...")
+
+        self.All_ROIs_pointsList = list(results)
+        self.makeChannelList()
+               
+        t.timeReport('ROI made')
+        
         return
 
     def display2Dcentroids(self):
@@ -923,10 +991,13 @@ class ClusterAnalysis:
         #reset AllPoints_ch lists
         self.AllPoints_ch1 = []
         self.AllPoints_ch2 = []
+        
         for i in range(len(self.All_ROIs_pointsList)):
             roi_data = self.analyze_roi(self.All_ROIs_pointsList[i],self.channelList[i],i)
             dictList.append(roi_data)
             print('\r', 'analysing rois: {:0.2f}'.format((i/len(self.All_ROIs_pointsList))*100),'%', end='\r', flush=True)
+
+
         #make df
         self.roiAnalysisDF = pd.DataFrame(dictList)
         #print(self.roiAnalysisDF.head())
@@ -1718,6 +1789,6 @@ def test():
 def test2():
     clusterAnalysis.viewerGUI()    
 
-#clusterAnalysis = ClusterAnalysis()
-#test() 
+clusterAnalysis = ClusterAnalysis()
+test() 
 #test2()
