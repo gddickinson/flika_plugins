@@ -38,6 +38,8 @@ import threading
 #from multiprocessing import Pool
 from multiprocessing import freeze_support
 from pathos.threading import ThreadPool
+from pathos.pools import ProcessPool
+from pathos.serial import SerialPool
 
 #class threading.Thread(group=None, target=None, name=None, args=(), kwargs={}, *, daemon=None)
 
@@ -580,7 +582,7 @@ class ClusterAnalysis:
         #multiprocessing with threadpool - faster!
         iterations = list(range(len(self.combinedHulls)))
         
-        pool = ThreadPool()
+        pool = SerialPool()
         results = pool.imap(self.createROIFromHull_multiThread, iterations)
         print("Multi-processing running...")
 
@@ -1790,5 +1792,5 @@ def test2():
     clusterAnalysis.viewerGUI()    
 
 clusterAnalysis = ClusterAnalysis()
-test() 
-#test2()
+#test() 
+test2()
