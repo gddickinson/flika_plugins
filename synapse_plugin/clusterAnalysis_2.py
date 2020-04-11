@@ -511,7 +511,7 @@ class ClusterAnalysis:
         return
 
     def createROIFromHull_multiThread(self, i):
-        print('ROI loaded: ',i)
+        #print('ROI {} loading...'.format(i))
         points = self.combinedPoints[i]
         hull = self.newHulls[i]
         #t = Timer()
@@ -529,41 +529,55 @@ class ClusterAnalysis:
 
         #convert list to np array
         pointsList = np.array(pointsList)
-               
-        #add create ROIs from points
-        #self.plotWidget.getViewBox().createROIFromPoints(pointsList)
-        
-        #add points to All_ROI_pointsList
-        #self.All_ROIs_pointsList.append(pointsList)
-        #self.All_ROIs_pointsList.append(points)
-        
-        
-        #make channel list for all points
-        #self.makeChannelList()
-
-        #t.timeReport('ROI made')
-
+        #print('ROI {} finished'.format(i))       
         return points
 
 
 
+    def testROI(self, roi):
+        roiList = []
+        for pts in roi:
+            if list(pts) in self.ch1_pts_forTest:
+                roiList.append(self.Channels[0].__name__)
+            else:
+                roiList.append(self.Channels[1].__name__) 
+        return roiList
+
+
+    def testROI_multiprocess(self, i):
+        roi = self.All_ROIs_pointsList[i]
+        roiList = []
+        for pts in roi:
+            if list(pts) in self.ch1_pts_forTest:
+                roiList.append(self.Channels[0].__name__)
+            else:
+                roiList.append(self.Channels[1].__name__) 
+        print('\rROI # {} of {} finished'.format(i, self.ROItoProcess ), end='', flush=True)
+        return np.array(roiList)
+
+
     def makeChannelList(self):
         self.channelList = []
-        ch1_pts = self.Channels[0].getPoints(z=True).tolist() #cast as list to ensure logic test works
+        self.ch1_pts_forTest = self.Channels[0].getPoints(z=True).tolist() #cast as list to ensure logic test works
         #ch2_pts = self.Channels[1].getPoints()
-        for roi in self.All_ROIs_pointsList:
-            roiList = []
-            for pts in roi:
-                if list(pts) in ch1_pts:
-                    roiList.append(self.Channels[0].__name__)
-                else:
-                    roiList.append(self.Channels[1].__name__) 
-            self.channelList.append(np.array(roiList))
+        
+        # #single-thread
+        # for roi in self.All_ROIs_pointsList:
+        #     roiResult = self.testROI(roi)
+        #     self.channelList.append(np.array(roiResult))  
+        
+        #multiprocessing
+        self.ROItoProcess = len(self.All_ROIs_pointsList)
+        iteration_2 = list(range(self.ROItoProcess))        
+        pool2 = SerialPool()
+        results = pool2.imap(self.testROI_multiprocess, iteration_2)
+        self.channelList = list(results)           
         return
 
     def makeROIs(self):
         t = Timer()
         t.start()
+        
         # #single thread
         # for i in range(len(self.combinedHulls)):
         #     self.createROIFromHull(self.combinedPoints[i],self.newHulls[i]) ### THIS IS SLOW! ###
@@ -580,15 +594,14 @@ class ClusterAnalysis:
         #     thread.join()
             
         #multiprocessing with threadpool - faster!
-        iterations = list(range(len(self.combinedHulls)))
-        
+        print("Multi-processing running...")
+        iterations = list(range(len(self.combinedHulls)))        
         pool = SerialPool()
         results = pool.imap(self.createROIFromHull_multiThread, iterations)
-        print("Multi-processing running...")
-
         self.All_ROIs_pointsList = list(results)
-        self.makeChannelList()
-               
+        self.makeChannelList()              
+        print("\nMulti-processing finished!")
+        
         t.timeReport('ROI made')
         
         return
@@ -1765,8 +1778,8 @@ class ClusterOptions_win(QtWidgets.QDialog):
 
 ### TESTING ####
 def test():
-    fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\0_trial_1_superes_cropped.txt"
-    #fileName = r"C:\Users\g_dic\OneDrive\Desktop\ianS-synapse\trial_1_superes_fullfield.txt"
+    #fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\0_trial_1_superes_cropped.txt"
+    fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\trial_1_superes_fullfield.txt"
     clusterAnalysis.viewerGUI()
     clusterAnalysis.open_file(fileName)
     clusterAnalysis.getClusters()  
@@ -1791,6 +1804,6 @@ def test():
 def test2():
     clusterAnalysis.viewerGUI()    
 
-clusterAnalysis = ClusterAnalysis()
+#clusterAnalysis = ClusterAnalysis()
 #test() 
-test2()
+#test2()
