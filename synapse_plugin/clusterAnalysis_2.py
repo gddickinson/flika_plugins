@@ -82,11 +82,10 @@ class DataWidget_2(pg.TableWidget):
         self.viewer = viewer
         self.setSortingEnabled(sortable)
         self.itemSelectionChanged.connect(self.sendRowSignal)
-
     
     def sendRowSignal(self):
         items = self.selectedItems()     
-        #self.viewer.displayROI(items)
+        self.viewer.displayPoint(items)
         return       
 
 class ClusterAnalysis:
@@ -129,7 +128,7 @@ class ClusterAnalysis:
         self.All_ROIs_pointsList = []
         self.channelList = []
         
-        self.multiThreadingFlag = False
+        self.multiThreadingFlag = True
         self.displayFlag = False
         
         #init data types
@@ -138,7 +137,7 @@ class ClusterAnalysis:
 
         #init roi flags
         self.ROI2D_flag = False
-
+        self.ROI2Dpoint_flag = False
 
     def clear(self):
         self.Channels = []
@@ -300,7 +299,8 @@ class ClusterAnalysis:
         self.area.moveDock(self.dock1, 'above', self.dock4)  
         self.area.moveDock(self.dock2, 'above', self.dock5)  
         self.area.moveDock(self.dock6, 'above', self.dock3)  
-                        
+        #self.area.moveDock(self.dockResults, 'above', self.dockFile)  
+                
         #create plot windows
         self.w2 = self.imv2D.addPlot()
         self.w3 = self.imv3.addPlot()
@@ -334,7 +334,7 @@ class ClusterAnalysis:
         ##QUICK BUTTON BAR##
         self.dockButtons.hideTitleBar()
         
-        self.button_getClusters = QtWidgets.QPushButton("Get clusters") 
+        self.button_getClusters = QtWidgets.QPushButton("Get Clusters") 
         self.dockButtons.addWidget(self.button_getClusters,0,0)
         self.button_getClusters.clicked.connect(self.runAnalysis)   
         
@@ -362,6 +362,9 @@ class ClusterAnalysis:
         self.state = self.area.saveState()        
         self.win.show()      
         
+        
+        self.resultsTable.setData({' ':['No Results to Display - click "Get Clusters" button']}) 
+        self.fileTable.setData({' ':['Select "Show File Data" from Display Options Menu to see file data (slow to load)']}) 
 
         return
 
@@ -582,49 +585,45 @@ class ClusterAnalysis:
         self.channelList = []
         self.ch1_pts_forTest = self.Channels[0].getPoints(z=True).tolist() #cast as list to ensure logic test works
         #ch2_pts = self.Channels[1].getPoints()
-        
-        # #single-thread
-        # for roi in self.All_ROIs_pointsList:
-        #     roiResult = self.testROI(roi)
-        #     self.channelList.append(np.array(roiResult))  
-        
-        #multiprocessing
-        self.ROItoProcess = len(self.All_ROIs_pointsList)
-        iteration_2 = list(range(self.ROItoProcess))        
-        pool2 = SerialPool()
-        results = pool2.imap(self.testROI_multiprocess, iteration_2)
-        self.channelList = list(results)           
+
+        if self.multiThreadingFlag == False:        
+            #single-thread
+            for roi in self.All_ROIs_pointsList:
+                roiResult = self.testROI(roi)
+                self.channelList.append(np.array(roiResult)) 
+            return
+        else:
+            #multiprocessing
+            self.ROItoProcess = len(self.All_ROIs_pointsList)
+            iteration_2 = list(range(self.ROItoProcess))        
+            pool2 = SerialPool()
+            results = pool2.imap(self.testROI_multiprocess, iteration_2)
+            self.channelList = list(results)           
         return
 
     def makeROIs(self):
         t = Timer()
         t.start()
+
+        if self.multiThreadingFlag == False:       
+            #single thread
+            for i in range(len(self.combinedHulls)):
+                self.createROIFromHull(self.combinedPoints[i],self.newHulls[i]) ### THIS IS SLOW! ###
+                print('\r', 'creating rois: {:0.2f}'.format((i/len(self.combinedHulls))*100),'%', end='\r', flush=True)
+            t.timeReport('ROI made')
+            return        
         
-        # #single thread
-        # for i in range(len(self.combinedHulls)):
-        #     self.createROIFromHull(self.combinedPoints[i],self.newHulls[i]) ### THIS IS SLOW! ###
-        #     print('\r', 'creating rois: {:0.2f}'.format((i/len(self.combinedHulls))*100),'%', end='\r', flush=True)
-        
-        # #multi-thread - runs but slower than single!!
-        # iterations = list(range(len(self.combinedHulls))) 
-        # thread_list = []
-        # for i in iterations:
-        #     th = threading.Thread(target = self.createROIFromHull_multiThread, args = (i,) )
-        #     thread_list.append(th)
-        # for thread in thread_list:
-        #     thread.start()
-        #     thread.join()
+        else:    
+            #multiprocessing with threadpool - faster!
+            print("Multi-processing running...")
+            iterations = list(range(len(self.combinedHulls)))        
+            pool = SerialPool()
+            results = pool.imap(self.createROIFromHull_multiThread, iterations)
+            self.All_ROIs_pointsList = list(results)
+            self.makeChannelList()              
+            print("\nMulti-processing finished!")
             
-        #multiprocessing with threadpool - faster!
-        print("Multi-processing running...")
-        iterations = list(range(len(self.combinedHulls)))        
-        pool = SerialPool()
-        results = pool.imap(self.createROIFromHull_multiThread, iterations)
-        self.All_ROIs_pointsList = list(results)
-        self.makeChannelList()              
-        print("\nMulti-processing finished!")
-        
-        t.timeReport('ROI made')
+            t.timeReport('ROI made')
         
         return
 
@@ -1036,7 +1035,7 @@ class ClusterAnalysis:
 
 
         #make df
-        self.roiAnalysisDF = pd.DataFrame(dictList)
+        self.roiAnalysisDF = pd.DataFrame(dictList, dtype=str)
         #print(self.roiAnalysisDF.head())
         return
     
@@ -1311,9 +1310,9 @@ class ClusterAnalysis:
             print('load data file')
             return
         print('\radding file data to display')
-        file_DF = pd.DataFrame.from_dict(self.data)
-        data = file_DF.to_records(index=False)
-        self.fileTable.setData(data) 
+        self.file_DF = pd.DataFrame.from_dict(self.data, dtype=str)
+        data_recordTable = self.file_DF.to_records(index=False)
+        self.fileTable.setData(data_recordTable) 
         print('file data displayed')
         return
 
@@ -1348,7 +1347,7 @@ class ClusterAnalysis:
         startY = float(y)-(width/2)
 
         if self.ROI2D_flag == False:
-            self.ROI2D_pen = mkPen('r', width=3,style=QtCore.Qt.DashLine)
+            self.ROI2D_pen = mkPen('b', width=3,style=QtCore.Qt.DashLine)
             self.ROI_2D = pg.RectROI([startX, startY], [height,width], pen=self.ROI2D_pen, movable=False) 
             #self.ROI_2D = pg.CircleROI([int(width/2),int(self.height)], [ch1_x , ch1_y], pen=(4,9))
             handles = self.ROI_2D.getHandles()
@@ -1379,6 +1378,41 @@ class ClusterAnalysis:
             self.display3Dcentroids_roi(roi_number)
             self.displayDistanceLine_roi(ch1_x,ch1_y,ch1_z,ch2_x,ch2_y,ch2_z)            
         return
+
+
+    def displayPoint(self, items):
+        channel = items[0].text()
+        x = float(items[3].text())
+        y = float(items[4].text())
+        z = float(items[17].text())
+        
+        print('\n----')      
+        print('channel: ', str(channel), 'x: ', x, 'y: ', y, 'z: ', z)
+
+        height = int(10)
+        width = int(10)
+        startX = float(x)-(height/2)
+        startY = float(y)-(width/2)
+
+        if self.ROI2Dpoint_flag == False:
+            self.ROI2Dpoint_pen = mkPen('b', width=3,style=QtCore.Qt.DashLine)
+            #self.ROI_2Dpoint = pg.RectROI([startX, startY], [height,width], pen=self.ROI2Dpoint_pen, movable=False) 
+            self.ROI_2Dpoint = pg.CircleROI([startX, startY], [height,width], pen=self.ROI2Dpoint_pen, movable=False)
+            handles = self.ROI_2Dpoint.getHandles()
+            handles[0].disconnectROI(self.ROI_2Dpoint)
+            handles[0].pen = mkPen(None)         
+            #self.w3.addItem(self.ROI_2Dpoint)
+            #add ROI around 2D selection
+            self.w2.addItem(self.ROI_2Dpoint)   
+            self.ROI2Dpoint_flag = True
+            
+        else:
+            #update 2D ROI position
+            self.ROI_2Dpoint.setPos([startX, startY])
+            self.ROI_2Dpoint.setSize([height,width])
+     
+        return
+
 
     def displayMessage(self,messageText=''):
         self.messageView.setText('  --- ' + messageText + ' ---  ')
@@ -1490,7 +1524,7 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.maxDistance = self.viewer.maxDistance
         self.unitPerPixel = self.viewer.unitPerPixel
         self.centroidSymbolSize = self.viewer.centroidSymbolSize
-#        self.multiThreadingFlag = self.viewer.multiThreadingFlag
+        self.multiThreadingFlag = self.viewer.multiThreadingFlag
         
         #window geometry
         self.left = 300
@@ -1510,8 +1544,8 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.analysisTitle = QtWidgets.QLabel("----- Cluster Analysis -----") 
         self.label_analysis = QtWidgets.QLabel("Clusters to analyse: ")         
         
-#        self.multiThreadTitle = QtWidgets.QLabel("----- Multi-Threading -----") 
-#        self.label_multiThread = QtWidgets.QLabel("Multi-Threading On: ")        
+        self.multiThreadTitle = QtWidgets.QLabel("----- Multi-Threading -----") 
+        self.label_multiThread = QtWidgets.QLabel("Multi-Threading On: ")        
         
         #self.label_displayPlot = QtWidgets.QLabel("show plot")         
 
@@ -1536,10 +1570,10 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.analysis_Box = QtWidgets.QComboBox()
         self.analysis_Box.addItems(["All Clusters", "Paired Clusters"])
         
-#        #tickbox
-#        self.multiThread_checkbox = CheckBox()
-#        self.multiThread_checkbox.setChecked(self.multiThreadingFlag)
-#        self.multiThread_checkbox.stateChanged.connect(self.multiThreadClicked)
+        #tickbox
+        self.multiThread_checkbox = CheckBox()
+        self.multiThread_checkbox.setChecked(self.multiThreadingFlag)
+        self.multiThread_checkbox.stateChanged.connect(self.multiThreadClicked)
 
 
         #grid layout
@@ -1562,9 +1596,9 @@ class ClusterOptions_win(QtWidgets.QDialog):
         layout.addWidget(self.label_analysis, 9, 0)  
         layout.addWidget(self.analysis_Box, 9, 1)     
         
-#        layout.addWidget(self.multiThreadTitle, 10, 0, 1, 2)  
-#        layout.addWidget(self.label_multiThread, 11, 0)  
-#        layout.addWidget(self.multiThread_checkbox, 11, 1)          
+        layout.addWidget(self.multiThreadTitle, 10, 0, 1, 2)  
+        layout.addWidget(self.label_multiThread, 11, 0)  
+        layout.addWidget(self.multiThread_checkbox, 11, 1)          
 
         
         self.setLayout(layout)
@@ -1612,9 +1646,9 @@ class ClusterOptions_win(QtWidgets.QDialog):
         self.viewer.clusterAnaysisSelection = self.analysis_Box.currentText()
         return
     
-#    def multiThreadClicked(self):
-#        self.viewer.multiThreadingFlag = self.multiThread_checkbox.isChecked()
-#        return
+    def multiThreadClicked(self):
+        self.viewer.multiThreadingFlag = self.multiThread_checkbox.isChecked()
+        return
 
 
 # class Synapse3D_batch(QtWidgets.QDialog):
@@ -1838,8 +1872,12 @@ def test():
     return     
 
 def test2():
-    clusterAnalysis.viewerGUI()    
+    clusterAnalysis.viewerGUI()   
+    fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\0_trial_1_superes_cropped.txt"
+    #fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\trial_1_superes_fullfield.txt"
+    clusterAnalysis.viewerGUI()
+    clusterAnalysis.open_file(fileName)
 
 clusterAnalysis = ClusterAnalysis()
-test() 
-#test2()
+#test() 
+test2()
