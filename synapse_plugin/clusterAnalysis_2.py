@@ -72,7 +72,22 @@ class DataWidget(pg.TableWidget):
         items = self.selectedItems()     
         self.viewer.displayROI(items)
         return
-        
+ 
+class DataWidget_2(pg.TableWidget):
+    __name__ = "Data Widget"
+    def __init__(self, viewer, sortable=False, **args):
+        if 'name' in args:
+            self.__name__ = args.pop('name')
+        super(DataWidget_2, self).__init__(**args)
+        self.viewer = viewer
+        self.setSortingEnabled(sortable)
+        self.itemSelectionChanged.connect(self.sendRowSignal)
+
+    
+    def sendRowSignal(self):
+        items = self.selectedItems()     
+        #self.viewer.displayROI(items)
+        return       
 
 class ClusterAnalysis:
     
@@ -201,12 +216,13 @@ class ClusterAnalysis:
             #display points
             self.display2Ddata_allPoints()
             self.display3Ddata_allPoints()
+            self.displayFileData()
             self.displayMessage('Data loaded')  
             self.win.setWindowTitle('Cluster Analysis Window: '+ filename)
-        
+                  
         #set data loaded flag
         self.dataLoaded = True
-
+        
         return
 
     def viewerGUI(self):
@@ -238,6 +254,7 @@ class ClusterAnalysis:
         self.dockButtons = Dock("Buttons",size=(1800,50))
         self.dockResults = Dock("Results",size=(1800,200))
         self.dockMessages = Dock("Messages",size=(1800,50))       
+        self.dockFile = Dock("File Data",size=(1800,200))
         
         #add docks to area
         self.area.addDock(self.dock1, 'left')
@@ -249,7 +266,7 @@ class ClusterAnalysis:
         self.area.addDock(self.dockResults, 'bottom')               
         self.area.addDock(self.dockMessages, 'top',self.dockResults)   
         self.area.addDock(self.dockButtons, 'top',self.dockMessages) 
-           
+        self.area.addDock(self.dockFile, 'below',self.dockResults)              
 
         #initialise image widgets
         self.imv3D = Plot3DWidget()
@@ -262,6 +279,7 @@ class ClusterAnalysis:
 
         #initialise table widget
         self.resultsTable = DataWidget(self,sortable=True)
+        self.fileTable = DataWidget_2(self,sortable=True)        
         
         #initialise message widget
         self.messageView = pg.VerticalLabel('', orientation='horizontal', forceWidth=True)
@@ -277,6 +295,7 @@ class ClusterAnalysis:
 
         self.dockResults.addWidget(self.resultsTable)
         self.dockMessages.addWidget(self.messageView)
+        self.dockFile.addWidget(self.fileTable)        
         
         #make sure data plots on top
         self.area.moveDock(self.dock1, 'above', self.dock4)  
@@ -1277,10 +1296,22 @@ class ClusterAnalysis:
         return
 
     def displayROIresults(self):
+        '''adds cluster analysis results to display window'''
         #self.write_df_to_qtable(self.roiAnalysisDF,self.resultsTable)
         data = self.roiAnalysisDF.to_records(index=False)
         self.resultsTable.setData(data)                
         return
+
+    def displayFileData(self):
+        '''adds file data to display window - works but is slow!'''
+        print('adding file data to display')
+        file_DF = pd.DataFrame.from_dict(self.data)
+        data = file_DF.to_records(index=False)
+        self.fileTable.setData(data) 
+        print('file data displayed')
+
+        return
+
 
     def displayROI(self, items):
         height = float(items[9].text())
@@ -1778,8 +1809,8 @@ class ClusterOptions_win(QtWidgets.QDialog):
 
 ### TESTING ####
 def test():
-    #fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\0_trial_1_superes_cropped.txt"
-    fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\trial_1_superes_fullfield.txt"
+    fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\0_trial_1_superes_cropped.txt"
+    #fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\trial_1_superes_fullfield.txt"
     clusterAnalysis.viewerGUI()
     clusterAnalysis.open_file(fileName)
     clusterAnalysis.getClusters()  
@@ -1804,6 +1835,6 @@ def test():
 def test2():
     clusterAnalysis.viewerGUI()    
 
-#clusterAnalysis = ClusterAnalysis()
-#test() 
+clusterAnalysis = ClusterAnalysis()
+test() 
 #test2()
