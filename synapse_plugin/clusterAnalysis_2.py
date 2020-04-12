@@ -111,8 +111,7 @@ class ClusterAnalysis:
         
         #display options
         self.centroidSymbolSize = 10
-
-    
+            
         #data state
         self.dataLoaded = False
         self.ROI3D_Initiated = False
@@ -216,7 +215,7 @@ class ClusterAnalysis:
             #display points
             self.display2Ddata_allPoints()
             self.display3Ddata_allPoints()
-            self.displayFileData()
+            #self.displayFileData()
             self.displayMessage('Data loaded')  
             self.win.setWindowTitle('Cluster Analysis Window: '+ filename)
                   
@@ -316,8 +315,10 @@ class ClusterAnalysis:
         self.showTitles = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Show Titles')
         setMenuUp(self.showTitles,self.fileMenu1,shortcut='Ctrl+G',statusTip='Show Titles',connection=self.show_titles)
         self.hideTitles = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Hide Titles')
-        setMenuUp(self.hideTitles,self.fileMenu1,shortcut='Ctrl+H',statusTip='Hide Titles',connection=self.hide_titles)                   
-
+        setMenuUp(self.hideTitles,self.fileMenu1,shortcut='Ctrl+H',statusTip='Hide Titles',connection=self.hide_titles)  
+        self.showFileData = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Show File Data')              
+        setMenuUp(self.showFileData,self.fileMenu1,shortcut='Ctrl+l',statusTip='Show File Data',connection=self.displayFileData)  
+        
         self.fileMenu2 = self.menubar.addMenu('&File Options')
         self.menu_openFile = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Open File')
         setMenuUp(self.menu_openFile,self.fileMenu2,shortcut='Ctrl+O',statusTip='Open File',connection=lambda f: self.openFileAndDisplay())
@@ -357,8 +358,10 @@ class ClusterAnalysis:
         self.dockButtons.addWidget(self.button_exportResults,0,4)
         self.button_exportResults.clicked.connect(self.exportResults)  
         
+        
         self.state = self.area.saveState()        
-        self.win.show()        
+        self.win.show()      
+        
 
         return
 
@@ -1304,12 +1307,14 @@ class ClusterAnalysis:
 
     def displayFileData(self):
         '''adds file data to display window - works but is slow!'''
-        print('adding file data to display')
+        if self.dataLoaded == False:
+            print('load data file')
+            return
+        print('\radding file data to display')
         file_DF = pd.DataFrame.from_dict(self.data)
         data = file_DF.to_records(index=False)
         self.fileTable.setData(data) 
         print('file data displayed')
-
         return
 
 
