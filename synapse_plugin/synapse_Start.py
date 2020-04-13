@@ -79,9 +79,13 @@ class SynapseStart(BaseProcess_noPriorWindow):
             self.synapse_app = Synapse()
             self.synapse_app.start()  
         elif version == 'synapse3D_version2':
-            #start synapse GUI
+            #start synapse v2 GUI
             self.synapse_app = ClusterAnalysis()
-            self.synapse_app.viewerGUI()              
+            self.synapse_app.viewerGUI()     
+        elif version == 'synapse3D_version2_batch':
+            #start synapse v2  batch GUI
+            self.synapse3D_batch_app = Synapse3D_batch_2()
+            self.synapse3D_batch_app.start() 
             
             
         return
@@ -96,7 +100,8 @@ class SynapseStart(BaseProcess_noPriorWindow):
         versionChoice = ComboBox()
         versionChoice.addItem('synapse3D')
         versionChoice.addItem('synapse3D_batch') 
-        versionChoice.addItem('synapse3D_version2')        
+        versionChoice.addItem('synapse3D_version2')   
+        versionChoice.addItem('synapse3D_version2_batch')
         versionChoice.addItem('synapse')
                          
         #populate GUI

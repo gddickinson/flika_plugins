@@ -85,7 +85,8 @@ class DataWidget_2(pg.TableWidget):
     
     def sendRowSignal(self):
         items = self.selectedItems()     
-        self.viewer.displayPoint(items)
+        #self.viewer.displayPoint(items)
+        self.viewer.highlightPointSelection(items)
         return       
 
 class ClusterAnalysis:
@@ -138,6 +139,8 @@ class ClusterAnalysis:
         #init roi flags
         self.ROI2D_flag = False
         self.ROI2Dpoint_flag = False
+        
+        self.batch_flag = False
 
     def clear(self):
         self.Channels = []
@@ -399,16 +402,18 @@ class ClusterAnalysis:
         #make point data
         point_n1 = len(self.ch1Points_3D[::,0])
         point_n2 = len(self.ch2Points_3D[::,0])
-        point_s1 = pg.ScatterPlotItem(size=3, pen=pg.mkPen(None), brush=pg.mkBrush(0, 255, 0, 120))
-        point_s2 = pg.ScatterPlotItem(size=3, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 120))        
+        self.point_s1 = pg.ScatterPlotItem(size=3, pen=pg.mkPen(None), brush=pg.mkBrush(0, 255, 0, 120))
+        self.point_s2 = pg.ScatterPlotItem(size=3, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 120))  
+        self.point_s3 = pg.ScatterPlotItem(size=6, pen=pg.mkPen(None), brush=pg.mkBrush(125, 255, 255, 120))          
         point_pos1 = np.array([self.ch1Points_3D[::,0],self.ch1Points_3D[::,1]])
         point_pos2 = np.array([self.ch2Points_3D[::,0],self.ch2Points_3D[::,1]])
         point_spots1 = [{'pos': point_pos1[:,i], 'data': 1} for i in range(point_n1)]
         point_spots2 = [{'pos': point_pos2[:,i], 'data': 1} for i in range(point_n2)]
-        point_s1.addPoints(point_spots1)
-        point_s2.addPoints(point_spots2)
-        self.w2.addItem(point_s1)
-        self.w2.addItem(point_s2)
+        self.point_s1.addPoints(point_spots1)
+        self.point_s2.addPoints(point_spots2)
+        self.w2.addItem(self.point_s1)
+        self.w2.addItem(self.point_s2)
+        self.w2.addItem(self.point_s3)       
         return
 
     def display3Ddata_allPoints(self, toggle=False):
@@ -1067,6 +1072,8 @@ class ClusterAnalysis:
             
         if self.ROI2D_flag:
             self.w2.addItem(self.ROI_2D)
+        if self.ROI2Dpoint_flag:
+            self.w2.addItem(self.ROI_2Dpoint)   
         return
 
     def toggleCentroids(self):      
@@ -1110,6 +1117,9 @@ class ClusterAnalysis:
         #print(self.imv3D.cameraPosition())
         if self.ROI2D_flag:
             self.w2.addItem(self.ROI_2D)
+            
+        if self.ROI2Dpoint_flag:
+            self.w2.addItem(self.ROI_2Dpoint)              
         return
             
 
@@ -1287,6 +1297,7 @@ class ClusterAnalysis:
 
 
     def exportResults(self):
+        ''''saves results to results folder in path of loaded file'''
         fileName =  os.path.basename(self.loadedFile).split('.')[0]
         print(fileName)
         filePath = os.path.dirname(self.loadedFile)
@@ -1294,7 +1305,7 @@ class ClusterAnalysis:
         savePath = os.path.join(filePath, 'results')
         print(savePath)
         self.saveResults(savePath=savePath,fileName=fileName)
-        #self.saveStats(savePath=savePath,fileName=fileName)
+        self.saveStats(savePath=savePath,fileName=fileName)
         return
 
     def displayROIresults(self):
@@ -1318,6 +1329,8 @@ class ClusterAnalysis:
 
 
     def displayROI(self, items):
+        '''    1. updates 2d display with an ROI indcating cluster selection from results table
+               2. adds clusyter points to 3d ROI display'''
         height = float(items[9].text())
         width = float(items[10].text())
         roi_number = int(items[0].text())
@@ -1380,42 +1393,74 @@ class ClusterAnalysis:
         return
 
 
-    def displayPoint(self, items):
-        channel = items[0].text()
-        x = float(items[3].text())
-        y = float(items[4].text())
-        z = float(items[17].text())
+    # def displayPoint(self, items):
+    #     ''''updates 2d display with roi indicating file table selection'''
+    #     channel = items[0].text()
+    #     x = float(items[3].text())
+    #     y = float(items[4].text())
+    #     z = float(items[17].text())
         
-        print('\n----')      
-        print('channel: ', str(channel), 'x: ', x, 'y: ', y, 'z: ', z)
+    #     print('\n----')      
+    #     print('channel: ', str(channel), 'x: ', x, 'y: ', y, 'z: ', z)
 
-        height = int(10)
-        width = int(10)
-        startX = float(x)-(height/2)
-        startY = float(y)-(width/2)
+    #     height = int(10)
+    #     width = int(10)
+    #     startX = float(x)-(height/2)
+    #     startY = float(y)-(width/2)
 
-        if self.ROI2Dpoint_flag == False:
-            self.ROI2Dpoint_pen = mkPen('b', width=3,style=QtCore.Qt.DashLine)
-            #self.ROI_2Dpoint = pg.RectROI([startX, startY], [height,width], pen=self.ROI2Dpoint_pen, movable=False) 
-            self.ROI_2Dpoint = pg.CircleROI([startX, startY], [height,width], pen=self.ROI2Dpoint_pen, movable=False)
-            handles = self.ROI_2Dpoint.getHandles()
-            handles[0].disconnectROI(self.ROI_2Dpoint)
-            handles[0].pen = mkPen(None)         
-            #self.w3.addItem(self.ROI_2Dpoint)
-            #add ROI around 2D selection
-            self.w2.addItem(self.ROI_2Dpoint)   
-            self.ROI2Dpoint_flag = True
+    #     if self.ROI2Dpoint_flag == False:
+    #         self.ROI2Dpoint_pen = mkPen('b', width=3,style=QtCore.Qt.DashLine)
+    #         #self.ROI_2Dpoint = pg.RectROI([startX, startY], [height,width], pen=self.ROI2Dpoint_pen, movable=False) 
+    #         self.ROI_2Dpoint = pg.CircleROI([startX, startY], [height,width], pen=self.ROI2Dpoint_pen, movable=False)
+    #         handles = self.ROI_2Dpoint.getHandles()
+    #         handles[0].disconnectROI(self.ROI_2Dpoint)
+    #         handles[0].pen = mkPen(None)         
+    #         #self.w3.addItem(self.ROI_2Dpoint)
+    #         #add ROI around 2D selection
+    #         self.w2.addItem(self.ROI_2Dpoint)   
+    #         self.ROI2Dpoint_flag = True
             
-        else:
-            #update 2D ROI position
-            self.ROI_2Dpoint.setPos([startX, startY])
-            self.ROI_2Dpoint.setSize([height,width])
+    #     else:
+    #         #update 2D ROI position
+    #         self.ROI_2Dpoint.setPos([startX, startY])
+    #         self.ROI_2Dpoint.setSize([height,width])
      
+    #     return
+
+    def getTextValues(self, items):
+        test_list = []
+        for value in items:
+            test_list.append(float(value.text()))       
+        return test_list
+
+
+    def highlightPointSelection(self, items):
+        '''adds points to 2D display as selected from table'''
+        #get x,y,z pointers from table rows
+        x = items[3::26]
+        y = items[4::26]
+        z = items[17::26]  
+        #get cell values
+        x_items = self.getTextValues(x)
+        y_items = self.getTextValues(y)
+        z_items = self.getTextValues(z)
+        
+        point_n3 = len(x_items)         
+        point_pos3 = np.array([x_items,y_items])
+        point_spots3 = [{'pos': point_pos3[:,i], 'data': 1} for i in range(point_n3)]
+        self.point_s3.clear()
+        self.point_s3.addPoints(point_spots3)
         return
 
 
+
+
     def displayMessage(self,messageText=''):
-        self.messageView.setText('  --- ' + messageText + ' ---  ')
+        '''updates message view box'''
+        if self.batch_flag:
+            return
+        else:
+            self.messageView.setText('  --- ' + messageText + ' ---  ')
         return
 
 
@@ -1495,21 +1540,38 @@ class ClusterAnalysis:
 
     
     def batchAnalysis(self, file, eps, min_samples, maxDistance, pathName):
+        print('Analysing {}'.format(file))   
         self.open_file(file, batch=True)
+        self.getClusters()  
+        self.getCentroids()
+        self.makeHulls()    
+        self.randomPointAnalysis()        
+        self.makeROIs()
+        self.makeROI_DF()        
+        print('Analysis of {} Complete'.format(file))   
+        self.exportResults()
         return
 
 
     def runBatch(self, pathName, eps = 100 , min_samples = 10, maxDistance = 100, test=False):
         '''run all txt files in folder'''
+        self.batch_flag = True
+        
         files = [f for f in glob.glob(pathName + "**/*.txt", recursive=True)]
+        
+        if not os.path.exists(os.path.join(pathName,'results')):
+            os.makedirs(os.path.join(pathName,'results'))
 
         #FOR TESTING - JUST FIRST FILE IN LIST
         if test:
             files=[files[0]]
                     
-        for file in files:            
-            self.runAnalysis(file, eps, min_samples, maxDistance, pathName)            
-            print('batch finished!')
+        for file in files: 
+            self.displayMessage('Batch Analysis Starting...')             
+            self.batchAnalysis(file, eps, min_samples, maxDistance, pathName)            
+            self.displayMessage('Batch Analysis Complete!') 
+            
+        self.batch_flag = False
         return       
 
         
@@ -1651,198 +1713,201 @@ class ClusterOptions_win(QtWidgets.QDialog):
         return
 
 
-# class Synapse3D_batch(QtWidgets.QDialog):
-#     def __init__(self, parent = None):
-#         super(Synapse3D_batch, self).__init__(parent)
-#         #add window title
-#         self.setWindowTitle("Volume Slider GUI")
+class Synapse3D_batch_2(QtWidgets.QDialog):
+    def __init__(self, parent = None):
+        super(Synapse3D_batch_2, self).__init__(parent)
         
-#         self.pathName = ''
+        self.clusterAnalysis = ClusterAnalysis()
+        
+        #add window title
+        self.setWindowTitle("Volume Slider GUI")
+        
+        self.pathName = ''
 
-#         self.eps  = clusterAnalysis.eps
-#         self.min_samples = clusterAnalysis.min_samples
-#         self.maxDistance = clusterAnalysis.maxDistance
-#         self.unitPerPixel = clusterAnalysis.unitPerPixel
-#         #self.multiThreadingFlag = clusterAnalysis.multiThreadingFlag
-#         self.displayFlag = clusterAnalysis.displayFlag
+        self.eps  = self.clusterAnalysis.eps
+        self.min_samples = self.clusterAnalysis.min_samples
+        self.maxDistance = self.clusterAnalysis.maxDistance
+        self.unitPerPixel = self.clusterAnalysis.unitPerPixel
+        self.multiThreadingFlag = self.clusterAnalysis.multiThreadingFlag
+        self.displayFlag = self.clusterAnalysis.displayFlag
         
-#         self.clusterType = '3D'
+        self.clusterType = '3D'
         
-#         #window geometry
-#         self.left = 300
-#         self.top = 300
-#         self.width = 300
-#         self.height = 200
+        #window geometry
+        self.left = 300
+        self.top = 300
+        self.width = 300
+        self.height = 200
 
-#         #labels
-#         self.clusterTitle = QtWidgets.QLabel("----- Cluster Parameters -----") 
-#         self.label_eps = QtWidgets.QLabel("max distance between points:") 
-#         self.label_minSamples = QtWidgets.QLabel("minimum number of points:") 
-#         self.label_maxDistance = QtWidgets.QLabel("max distance between clusters:") 
-#         self.label_clustertype = QtWidgets.QLabel("clustering type:")        
-#         self.displayTitle = QtWidgets.QLabel("----- Display Parameters -----") 
-#         self.label_unitPerPixel = QtWidgets.QLabel("nanometers/pixel:") 
-#         #self.label_centroidSymbolSize = QtWidgets.QLabel("centroid symbol size:")  
+        #labels
+        self.clusterTitle = QtWidgets.QLabel("----- Cluster Parameters -----") 
+        self.label_eps = QtWidgets.QLabel("max distance between points:") 
+        self.label_minSamples = QtWidgets.QLabel("minimum number of points:") 
+        self.label_maxDistance = QtWidgets.QLabel("max distance between clusters:") 
+        self.label_clustertype = QtWidgets.QLabel("clustering type:")        
+        self.displayTitle = QtWidgets.QLabel("----- Display Parameters -----") 
+        self.label_unitPerPixel = QtWidgets.QLabel("nanometers/pixel:") 
+        #self.label_centroidSymbolSize = QtWidgets.QLabel("centroid symbol size:")  
         
-#         self.analysisTitle = QtWidgets.QLabel("----- Cluster Analysis -----") 
-#         self.label_analysis = QtWidgets.QLabel("Clusters to analyse: ")
+        self.analysisTitle = QtWidgets.QLabel("----- Cluster Analysis -----") 
+        self.label_analysis = QtWidgets.QLabel("Clusters to analyse: ")
 
-#         self.displayTitle = QtWidgets.QLabel("----- Display -----") 
-#         self.label_display = QtWidgets.QLabel("Plot results: ")         
+        self.displayTitle = QtWidgets.QLabel("----- Display -----") 
+        self.label_display = QtWidgets.QLabel("Plot results: ")         
         
-#         #self.multiThreadTitle = QtWidgets.QLabel("----- Multi-Threading -----") 
-#         #self.label_multiThread = QtWidgets.QLabel("Multi-Threading On: ")        
+        self.multiThreadTitle = QtWidgets.QLabel("----- Multi-Threading -----") 
+        self.label_multiThread = QtWidgets.QLabel("Multi-Threading On: ")        
         
-#         #self.label_displayPlot = QtWidgets.QLabel("show plot")         
+        #self.label_displayPlot = QtWidgets.QLabel("show plot")         
 
-#         #spinboxes
-#         self.epsBox = QtWidgets.QSpinBox()
-#         self.epsBox.setRange(0,10000)
-#         self.epsBox.setValue(self.eps)
-#         self.minSampleBox = QtWidgets.QSpinBox()    
-#         self.minSampleBox.setRange(0,10000)
-#         self.minSampleBox.setValue(self.min_samples)
-#         self.maxDistanceBox = QtWidgets.QSpinBox()    
-#         self.maxDistanceBox.setRange(0,10000)
-#         self.maxDistanceBox.setValue(self.maxDistance)    
-#         self.unitPerPixelBox = QtWidgets.QSpinBox()    
-#         self.unitPerPixelBox.setRange(0,1000)
-#         self.unitPerPixelBox.setValue(self.unitPerPixel)  
-#         #self.centroidSymbolSizeBox = QtWidgets.QSpinBox()    
-#         #self.centroidSymbolSizeBox.setRange(0,1000)
-#         #self.centroidSymbolSizeBox.setValue(self.centroidSymbolSize)          
+        #spinboxes
+        self.epsBox = QtWidgets.QSpinBox()
+        self.epsBox.setRange(0,10000)
+        self.epsBox.setValue(self.eps)
+        self.minSampleBox = QtWidgets.QSpinBox()    
+        self.minSampleBox.setRange(0,10000)
+        self.minSampleBox.setValue(self.min_samples)
+        self.maxDistanceBox = QtWidgets.QSpinBox()    
+        self.maxDistanceBox.setRange(0,10000)
+        self.maxDistanceBox.setValue(self.maxDistance)    
+        self.unitPerPixelBox = QtWidgets.QSpinBox()    
+        self.unitPerPixelBox.setRange(0,1000)
+        self.unitPerPixelBox.setValue(self.unitPerPixel)  
+        #self.centroidSymbolSizeBox = QtWidgets.QSpinBox()    
+        #self.centroidSymbolSizeBox.setRange(0,1000)
+        #self.centroidSymbolSizeBox.setValue(self.centroidSymbolSize)          
 
-#         #combobox
-#         #self.analysis_Box = QtWidgets.QComboBox()
-#         #self.analysis_Box.addItems(["All Clusters", "Paired Clusters"])
-#         self.clustertype_Box = QtWidgets.QComboBox()
-#         self.clustertype_Box.addItems(["2D", "3D"])
-#         self.clustertype_Box.setCurrentText(self.clusterType)
-#         self.clustertype_Box.currentIndexChanged.connect(self.clusterTypeChange)
+        #combobox
+        #self.analysis_Box = QtWidgets.QComboBox()
+        #self.analysis_Box.addItems(["All Clusters", "Paired Clusters"])
+        self.clustertype_Box = QtWidgets.QComboBox()
+        self.clustertype_Box.addItems(["2D", "3D"])
+        self.clustertype_Box.setCurrentText(self.clusterType)
+        self.clustertype_Box.currentIndexChanged.connect(self.clusterTypeChange)
         
-#         #tickbox
-#         self.display_checkbox = CheckBox()
-#         self.display_checkbox.setChecked(self.displayFlag)
-#         self.display_checkbox.stateChanged.connect(self.displayClicked)
-#         #self.multiThread_checkbox = CheckBox()
-#         #self.multiThread_checkbox.setChecked(self.multiThreadingFlag)
-#         #self.multiThread_checkbox.stateChanged.connect(self.multiThreadClicked)
+        #tickbox
+        self.display_checkbox = CheckBox()
+        self.display_checkbox.setChecked(self.displayFlag)
+        self.display_checkbox.stateChanged.connect(self.displayClicked)
+        self.multiThread_checkbox = CheckBox()
+        self.multiThread_checkbox.setChecked(self.multiThreadingFlag)
+        self.multiThread_checkbox.stateChanged.connect(self.multiThreadClicked)
 
-#         #buttons
-#         self.button_getFolder = QtWidgets.QPushButton("Set Folder")
-#         self.button_start = QtWidgets.QPushButton("Start Batch Analysis")
+        #buttons
+        self.button_getFolder = QtWidgets.QPushButton("Set Folder")
+        self.button_start = QtWidgets.QPushButton("Start Batch Analysis")
         
-#         #grid layout
-#         layout = QtWidgets.QGridLayout()
-#         layout.setSpacing(5)
-#         layout.addWidget(self.clusterTitle, 0, 0, 1, 2)        
-#         layout.addWidget(self.label_eps, 1, 0)
-#         layout.addWidget(self.epsBox, 1, 1)       
-#         layout.addWidget(self.label_minSamples, 2, 0)        
-#         layout.addWidget(self.minSampleBox, 2, 1)     
-#         layout.addWidget(self.label_maxDistance, 3, 0)        
-#         layout.addWidget(self.maxDistanceBox, 3, 1)
-#         layout.addWidget(self.displayTitle, 4, 0, 1, 2)          
-#         layout.addWidget(self.label_unitPerPixel, 5, 0)  
-#         layout.addWidget(self.unitPerPixelBox, 5, 1)         
-#         layout.addWidget(self.label_clustertype, 6, 0) 
-#         layout.addWidget(self.clustertype_Box, 6, 1)
-#         layout.addWidget(self.displayTitle, 7, 0, 1, 2) 
-#         layout.addWidget(self.label_display, 8, 0)        
-#         layout.addWidget(self.display_checkbox, 8, 1)         
-#         layout.addWidget(self.button_getFolder, 9, 0)          
-#         layout.addWidget(self.button_start, 10, 0)         
+        #grid layout
+        layout = QtWidgets.QGridLayout()
+        layout.setSpacing(5)
+        layout.addWidget(self.clusterTitle, 0, 0, 1, 2)        
+        layout.addWidget(self.label_eps, 1, 0)
+        layout.addWidget(self.epsBox, 1, 1)       
+        layout.addWidget(self.label_minSamples, 2, 0)        
+        layout.addWidget(self.minSampleBox, 2, 1)     
+        layout.addWidget(self.label_maxDistance, 3, 0)        
+        layout.addWidget(self.maxDistanceBox, 3, 1)
+        layout.addWidget(self.displayTitle, 4, 0, 1, 2)          
+        layout.addWidget(self.label_unitPerPixel, 5, 0)  
+        layout.addWidget(self.unitPerPixelBox, 5, 1)         
+        layout.addWidget(self.label_clustertype, 6, 0) 
+        layout.addWidget(self.clustertype_Box, 6, 1)
+        layout.addWidget(self.displayTitle, 7, 0, 1, 2) 
+        layout.addWidget(self.label_display, 8, 0)        
+        layout.addWidget(self.display_checkbox, 8, 1)         
+        layout.addWidget(self.button_getFolder, 9, 0)          
+        layout.addWidget(self.button_start, 10, 0)         
         
-#         #layout.addWidget(self.label_centroidSymbolSize, 6, 0)  
-#         #layout.addWidget(self.centroidSymbolSizeBox, 6, 1) 
+        #layout.addWidget(self.label_centroidSymbolSize, 6, 0)  
+        #layout.addWidget(self.centroidSymbolSizeBox, 6, 1) 
         
-#         #layout.addWidget(self.analysisTitle, 8, 0, 1, 2)  
-#         #layout.addWidget(self.label_analysis, 9, 0)  
-#         #layout.addWidget(self.analysis_Box, 9, 1)     
+        #layout.addWidget(self.analysisTitle, 8, 0, 1, 2)  
+        #layout.addWidget(self.label_analysis, 9, 0)  
+        #layout.addWidget(self.analysis_Box, 9, 1)     
         
-#         #layout.addWidget(self.multiThreadTitle, 10, 0, 1, 2)  
-#         #layout.addWidget(self.label_multiThread, 11, 0)  
-#         #layout.addWidget(self.multiThread_checkbox, 11, 1)  
+        layout.addWidget(self.multiThreadTitle, 11, 0, 1, 2)  
+        layout.addWidget(self.label_multiThread, 12, 0)  
+        layout.addWidget(self.multiThread_checkbox, 12, 1)  
         
-
-        
-#         self.setLayout(layout)
-#         self.setGeometry(self.left, self.top, self.width, self.height)
-
-#         #add window title
-#         self.setWindowTitle("Clustering Options")
-
-#         #connect spinboxes
-#         self.epsBox.valueChanged.connect(self.epsValueChange)
-#         self.minSampleBox.valueChanged.connect(self.minSampleChange) 
-#         self.maxDistanceBox.valueChanged.connect(self.maxDistanceChange)    
-#         self.unitPerPixelBox.valueChanged.connect(self.unitPerPixelChange) 
-#         #self.centroidSymbolSizeBox.valueChanged.connect(self.centroidSymbolSizeChange)  
-#         #connect combobox
-#         #self.analysis_Box.setCurrentIndex(0)
-#         #self.analysis_Box.currentIndexChanged.connect(self.analysisChange)         
-
-#         #connect buttons
-#         self.button_getFolder.clicked.connect(self.getSavePath)
-#         self.button_start.clicked.connect(self.run)
 
         
-#     def epsValueChange(self,value):
-#         self.epsBox = value
-#         clusterAnalysis.eps = self.epsBox
-#         return
+        self.setLayout(layout)
+        self.setGeometry(self.left, self.top, self.width, self.height)
+
+        #add window title
+        self.setWindowTitle("Clustering Options")
+
+        #connect spinboxes
+        self.epsBox.valueChanged.connect(self.epsValueChange)
+        self.minSampleBox.valueChanged.connect(self.minSampleChange) 
+        self.maxDistanceBox.valueChanged.connect(self.maxDistanceChange)    
+        self.unitPerPixelBox.valueChanged.connect(self.unitPerPixelChange) 
+        #self.centroidSymbolSizeBox.valueChanged.connect(self.centroidSymbolSizeChange)  
+        #connect combobox
+        #self.analysis_Box.setCurrentIndex(0)
+        #self.analysis_Box.currentIndexChanged.connect(self.analysisChange)         
+
+        #connect buttons
+        self.button_getFolder.clicked.connect(self.getSavePath)
+        self.button_start.clicked.connect(self.run)
+
+        
+    def epsValueChange(self,value):
+        self.epsBox = value
+        self.clusterAnalysis.eps = self.epsBox
+        return
     
-#     def minSampleChange(self,value):
-#         self.min_samples = value
-#         clusterAnalysis.min_samples = self.min_samples 
-#         return
+    def minSampleChange(self,value):
+        self.min_samples = value
+        self.clusterAnalysis.min_samples = self.min_samples 
+        return
         
-#     def maxDistanceChange(self,value):
-#         self.maxDistance = value
-#         clusterAnalysis.maxDistance = self.maxDistance
-#         return
+    def maxDistanceChange(self,value):
+        self.maxDistance = value
+        self.clusterAnalysis.maxDistance = self.maxDistance
+        return
 
-#     def unitPerPixelChange(self,value):
-#         self.unitPerPixel = value
-#         clusterAnalysis.unitPerPixel = self.unitPerPixel
-#         return
+    def unitPerPixelChange(self,value):
+        self.unitPerPixel = value
+        self.clusterAnalysis.unitPerPixel = self.unitPerPixel
+        return
  
-#     def clusterTypeChange(self):
-#         self.clusterType = self.clustertype_Box.currentText
-#         clusterAnalysis.clusterType = self.clusterType
+    def clusterTypeChange(self):
+        self.clusterType = self.clustertype_Box.currentText
+        self.clusterAnalysis.clusterType = self.clusterType
     
-# #    def centroidSymbolSizeChange(self,value):
-# #        self.centroidSymbolSize = value
-# #        self.viewer.centroidSymbolSize = self.centroidSymbolSize
-# #        return   
+#    def centroidSymbolSizeChange(self,value):
+#        self.centroidSymbolSize = value
+#        self.clusterAnalysis.centroidSymbolSize = self.centroidSymbolSize
+#        return   
     
-# #    def analysisChange(self):
-# #        self.viewer.clusterAnaysisSelection = self.analysis_Box.currentText()
-# #        return
+#    def analysisChange(self):
+#        self.clusterAnalysis.clusterAnaysisSelection = self.analysis_Box.currentText()
+#        return
     
-# #    def multiThreadClicked(self):
-# #        self.viewer.multiThreadingFlag = self.multiThread_checkbox.isChecked()
-# #        return
+    def multiThreadClicked(self):
+        self.clusterAnalysis.multiThreadingFlag = self.multiThread_checkbox.isChecked()
+        return
 
-#     def getSavePath(self): 
-#         folder = QtWidgets.QFileDialog.getExistingDirectory(g.m, "Select batch folder.", os.path.expanduser("~"), QtWidgets.QFileDialog.ShowDirsOnly)
-#         self.pathName = folder
-#         return
+    def getSavePath(self): 
+        folder = QtWidgets.QFileDialog.getExistingDirectory(g.m, "Select batch folder.", os.path.expanduser("~"), QtWidgets.QFileDialog.ShowDirsOnly)
+        self.pathName = folder
+        return
 
-#     def run(self):
-#         if not os.path.exists(os.path.join(self.pathName,'results')):
-#             os.makedirs(os.path.join(self.pathName,'results'))
-#         clusterAnalysis.runBatch(self.pathName)
-#         return
+    def run(self):
+        if not os.path.exists(os.path.join(self.pathName,'results')):
+            os.makedirs(os.path.join(self.pathName,'results'))
+        self.clusterAnalysis.runBatch(self.pathName)
+        return
 
-#     def displayClicked(self):
-#         clusterAnalysis.displayFlag = self.display_checkbox.isChecked()
-#         self.displayFlag = clusterAnalysis.displayFlag
-#         return
+    def displayClicked(self):
+        self.clusterAnalysis.displayFlag = self.display_checkbox.isChecked()
+        self.displayFlag = self.clusterAnalysis.displayFlag
+        return
 
-#     def start(self):
-#         self.show()
-#         return
+    def start(self):
+        self.show()
+        return
 
 
 
@@ -1878,6 +1943,11 @@ def test2():
     clusterAnalysis.viewerGUI()
     clusterAnalysis.open_file(fileName)
 
-clusterAnalysis = ClusterAnalysis()
+def test3():
+    clusterAnalysis.runBatch(r'C:\Users\g_dic\OneDrive\Desktop\batchTest')    
+
+#clusterAnalysis = ClusterAnalysis()
 #test() 
-test2()
+#test2()
+#test3()
+
