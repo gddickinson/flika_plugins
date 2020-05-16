@@ -162,8 +162,12 @@ class ClusterAnalysis:
             print('Data load failed')
             return
 
+        print(len(self.data[0]))
+
         self.loadedFile = filename
         self.colNames = list(self.data[0])
+        #remove any quotation marks
+        #self.colNames = [s.strip('"') for s in self.colNames]
         #print(self.colNames)
         
         #filter 1000 for testing
@@ -1296,13 +1300,21 @@ class ClusterAnalysis:
         return
 
 
-    def exportResults(self):
+    def exportResults(self, batch=False):
         ''''saves results to results folder in path of loaded file'''
         fileName =  os.path.basename(self.loadedFile).split('.')[0]
         print(fileName)
         filePath = os.path.dirname(self.loadedFile)
         print(filePath)
-        savePath = os.path.join(filePath, 'results')
+        if batch:
+            savePath = os.path.join(filePath, 'batch_results') 
+        else:    
+            savePath = os.path.join(filePath, 'results')
+
+        if not os.path.exists(savePath):
+            os.makedirs(savePath)
+            print('export folder created: {}'.format(savePath))
+        
         print(savePath)
         self.saveResults(savePath=savePath,fileName=fileName)
         self.saveStats(savePath=savePath,fileName=fileName)
@@ -1549,7 +1561,7 @@ class ClusterAnalysis:
         self.makeROIs()
         self.makeROI_DF()        
         print('Analysis of {} Complete'.format(file))   
-        self.exportResults()
+        self.exportResults(batch=True)
         return
 
 
@@ -1558,10 +1570,7 @@ class ClusterAnalysis:
         self.batch_flag = True
         
         files = [f for f in glob.glob(pathName + "**/*.txt", recursive=True)]
-        
-        if not os.path.exists(os.path.join(pathName,'results')):
-            os.makedirs(os.path.join(pathName,'results'))
-
+    
         #FOR TESTING - JUST FIRST FILE IN LIST
         if test:
             files=[files[0]]
@@ -1895,8 +1904,6 @@ class Synapse3D_batch_2(QtWidgets.QDialog):
         return
 
     def run(self):
-        if not os.path.exists(os.path.join(self.pathName,'results')):
-            os.makedirs(os.path.join(self.pathName,'results'))
         self.clusterAnalysis.runBatch(self.pathName)
         return
 
@@ -1938,16 +1945,24 @@ def test():
 
 def test2():
     clusterAnalysis.viewerGUI()   
-    fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\0_trial_1_superes_cropped.txt"
+    #fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\0_trial_1_superes_cropped.txt"
     #fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\trial_1_superes_fullfield.txt"
-    clusterAnalysis.viewerGUI()
+    #fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\fakeTest.txt"    
     clusterAnalysis.open_file(fileName)
 
 def test3():
     clusterAnalysis.runBatch(r'C:\Users\g_dic\OneDrive\Desktop\batchTest')    
 
-#clusterAnalysis = ClusterAnalysis()
-#test() 
-#test2()
-#test3()
+def test4():
+    clusterAnalysis.viewerGUI()      
+
+
+if __name__ == "__main__":
+    clusterAnalysis = ClusterAnalysis()
+    #test() 
+    #test2()
+    #test3()
+    #test4()
+
+
 
