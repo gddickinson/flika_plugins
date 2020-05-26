@@ -446,7 +446,7 @@ class ClusterAnalysis:
         print('--- channel 2 ---')
         self.ch2_labels,self.ch2_numClusters,self.ch2_numNoise = dbscan(self.ch2Points_3D, eps=self.eps, min_samples=self.min_samples, plot=False)    
         print('-----------------')
-            
+                
         t.timeReport('3D clusters created') 
         
         ch1_Name, ch1_pts, ch1_color = self.Channels[0].filterPts(self.ch1_labels)     
@@ -468,9 +468,15 @@ class ClusterAnalysis:
         hulls = []
         centroids = []
         groupPoints = []
-        for i in range(n_clusters):
+        
+        #get list of unique labels
+        uniqueLabels = np.unique(labels)
+        #remove noise value
+        uniqueLabels = uniqueLabels[uniqueLabels != -1]
+        
+        for i in uniqueLabels:
             clusterPoints = points[labels==i]
-            groupPoints.append(clusterPoints)           
+            groupPoints.append(clusterPoints)  
             hulls.append(ConvexHull(clusterPoints).simplices)
             centroids.append(np.average(clusterPoints,axis=0)) 
         return np.array(hulls), np.array(centroids), np.array(groupPoints)
@@ -1945,10 +1951,14 @@ def test():
 
 def test2():
     clusterAnalysis.viewerGUI()   
-    #fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\0_trial_1_superes_cropped.txt"
+    fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\0_trial_1_superes_cropped.txt"
     #fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\trial_1_superes_fullfield.txt"
-    #fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\fakeTest.txt"    
+    #fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\fakeTest.txt" 
+    #fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\trial_1_sv2a_test002.txt"
     clusterAnalysis.open_file(fileName)
+    clusterAnalysis.getClusters() 
+    clusterAnalysis.getCentroids()
+    clusterAnalysis.makeHulls() 
 
 def test3():
     clusterAnalysis.runBatch(r'C:\Users\g_dic\OneDrive\Desktop\batchTest')    
@@ -1960,7 +1970,7 @@ def test4():
 if __name__ == "__main__":
     clusterAnalysis = ClusterAnalysis()
     #test() 
-    #test2()
+    test2()
     #test3()
     #test4()
 
