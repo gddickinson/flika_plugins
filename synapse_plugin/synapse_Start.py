@@ -98,11 +98,11 @@ class SynapseStart(BaseProcess_noPriorWindow):
                        
         #combobox
         versionChoice = ComboBox()
-        versionChoice.addItem('synapse3D')
-        versionChoice.addItem('synapse3D_batch') 
+        #versionChoice.addItem('synapse3D')
+        #versionChoice.addItem('synapse3D_batch') 
         versionChoice.addItem('synapse3D_version2')   
         versionChoice.addItem('synapse3D_version2_batch')
-        versionChoice.addItem('synapse')
+        #versionChoice.addItem('synapse')
                          
         #populate GUI
         self.items.append({'name': 'version', 'string': 'Choose Version:', 'object': versionChoice})                                    

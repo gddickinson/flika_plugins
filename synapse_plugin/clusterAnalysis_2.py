@@ -12,6 +12,7 @@ except:
     from .BioDocks import *
 from pyqtgraph.dockarea import *
 from scipy.spatial import ConvexHull
+from scipy import stats
 from collections import OrderedDict
 from PyQt5.QtCore import pyqtSignal, pyqtSlot
 from qtpy import QtWidgets, QtCore, QtGui
@@ -148,7 +149,7 @@ class ClusterAnalysis:
     def open_file(self, filename='', batch=False):
         '''Open .txt files - import localization data'''                
         if filename == '':
-            filename = getFilename(filter='Text Files (*.txt)')
+            filename = getFilename(filter='Text or Bin Files (*.txt *.bin)')
         self.clear()
         if self.dataLoaded:
             self.clearAll(batch=batch)
@@ -159,10 +160,10 @@ class ClusterAnalysis:
                     self.data[0][i] = self.data[0][i].split('\n')[0]                
     	
         except:
-            print('Data load failed')
+            self.displayMessage('Data load failed')
             return
 
-        print(len(self.data[0]))
+        #print(len(self.data[0]))
 
         self.loadedFile = filename
         self.colNames = list(self.data[0])
@@ -178,18 +179,11 @@ class ClusterAnalysis:
         for k in self.data:
             if k != 'Channel Name':
                 self.data[k] = self.data[k].astype(float)
-        print('Gathering channels...')
-        #g.m.statusBar().showMessage('Gathering channels...')  
-        if batch == False:
-            self.displayMessage('Gathering channels...')
+        self.displayMessage('Gathering channels...')
                             
         self.names = set(self.data['Channel Name'].astype(str)) - self.ignore
-        print('Channels Found: %s' % ', '.join(self.names))
-        #g.m.statusBar().showMessage('Channels Found: %s' % ', '.join(self.names))
-        
-        if batch == False:
-            self.displayMessage('Channels Found: %s' % ', '.join(self.names))        
-        
+        self.displayMessage('Channels Found: {}'.format(self.names))
+                    
         self.data['Xc'] /= self.units[self.unit]
         self.data['Yc'] /= self.units[self.unit]
         self.data['Zc'] /= self.units[self.unit]
@@ -316,6 +310,11 @@ class ClusterAnalysis:
         
         #add menu options
         self.menubar = self.win.menuBar()
+        
+        self.fileMenu2 = self.menubar.addMenu('&File Options')
+        self.menu_openFile = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Open File')
+        setMenuUp(self.menu_openFile,self.fileMenu2,shortcut='Ctrl+O',statusTip='Open File',connection=lambda f: self.openFileAndDisplay())       
+        
         self.fileMenu1 = self.menubar.addMenu('&Display Options')        
         self.resetLayout = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Reset Layout')
         setMenuUp(self.resetLayout,self.fileMenu1,shortcut='Ctrl+R',statusTip='Reset Layout',connection=self.reset_layout)
@@ -325,15 +324,12 @@ class ClusterAnalysis:
         setMenuUp(self.hideTitles,self.fileMenu1,shortcut='Ctrl+H',statusTip='Hide Titles',connection=self.hide_titles)  
         self.showFileData = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Show File Data')              
         setMenuUp(self.showFileData,self.fileMenu1,shortcut='Ctrl+l',statusTip='Show File Data',connection=self.displayFileData)  
-        
-        self.fileMenu2 = self.menubar.addMenu('&File Options')
-        self.menu_openFile = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Open File')
-        setMenuUp(self.menu_openFile,self.fileMenu2,shortcut='Ctrl+O',statusTip='Open File',connection=lambda f: self.openFileAndDisplay())
+        self.plotOptions = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Plot Options')              
+        setMenuUp(self.plotOptions,self.fileMenu1,shortcut='Ctrl+P',statusTip='Plot Options',connection=self.openPlotOptionWin)          
 
         self.fileMenu3 = self.menubar.addMenu('&Cluster Options')
         self.clusterMenu = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Cluster Option Window')
         setMenuUp(self.clusterMenu,self.fileMenu3,shortcut='Ctrl+o',statusTip='Cluster Option Window',connection=self.openClusterOptionWin)
-
 
 
         self.dockList = [self.dock1, self.dock2, self.dock3]
@@ -402,6 +398,12 @@ class ClusterAnalysis:
         self.clusterOptionDialog.show()
         return
 
+    def openPlotOptionWin(self):
+        self.plotOptionDialog = PlotOption_win(self)
+        self.plotOptionDialog.show()
+        return
+
+
     def display2Ddata_allPoints(self):
         #make point data
         point_n1 = len(self.ch1Points_3D[::,0])
@@ -438,16 +440,16 @@ class ClusterAnalysis:
 
 
     def getClusters(self):
-        t = Timer() 
-        t.start()
+        #t = Timer() 
+        #t.start()
         #get cluster labels for each channel
-        print('--- channel 1 ---')
+        self.displayMessage(':: channel 1 DBSCAN running')
         self.ch1_labels,self.ch1_numClusters,self.ch1_numNoise = dbscan(self.ch1Points_3D, eps=self.eps, min_samples=self.min_samples, plot=False)
-        print('--- channel 2 ---')
+        self.displayMessage(':: channel 2 DBSCAN running')
         self.ch2_labels,self.ch2_numClusters,self.ch2_numNoise = dbscan(self.ch2Points_3D, eps=self.eps, min_samples=self.min_samples, plot=False)    
-        print('-----------------')
+
                 
-        t.timeReport('3D clusters created') 
+        #t.timeReport('3D clusters created') 
         
         ch1_Name, ch1_pts, ch1_color = self.Channels[0].filterPts(self.ch1_labels)     
         ch2_Name, ch2_pts, ch2_color = self.Channels[1].filterPts(self.ch2_labels) 
@@ -482,12 +484,12 @@ class ClusterAnalysis:
         return np.array(hulls), np.array(centroids), np.array(groupPoints)
 
     def getCentroids(self):
-        t = Timer() 
-        t.start()        
+        #t = Timer() 
+        #t.start()        
         #get 3D centeroids for cluster analysis
         _, self.ch1_centeroids_3D, _ = self.getHulls(self.ch1Points_3D,self.ch1_labels)
         _, self.ch2_centeroids_3D, _ = self.getHulls(self.ch2Points_3D,self.ch2_labels)        
-        t.timeReport('3D clusters created') 
+        #t.timeReport('3D clusters created') 
         self.centroidsGenerated = True
         return
 
@@ -498,9 +500,9 @@ class ClusterAnalysis:
         return hullList
 
     def makeHulls(self):
-        t = Timer()
+        #t = Timer()
         #get hulls for each channels clusters  
-        t.start()
+        #t.start()
         if self.clusterType == '3D':
             ch1_hulls, ch1_centeroids, self.ch1_groupPoints = self.getHulls(self.ch1Points_3D,self.ch1_labels)
             #self.plotHull(self.ch1_groupPoints[0],ch1_hulls[0])
@@ -516,7 +518,7 @@ class ClusterAnalysis:
         
         #get new hulls for combined points
         self.newHulls = self.getHulls2(self.combinedPoints)              
-        t.timeReport('hulls created')
+        #t.timeReport('hulls created')
 
 
     def createROIFromHull(self,points, hull):
@@ -593,6 +595,7 @@ class ClusterAnalysis:
             else:
                 roiList.append(self.Channels[1].__name__) 
         print('\rROI # {} of {} finished'.format(i, self.ROItoProcess ), end='', flush=True)
+        self.displayMessage('\rROI # {} of {} finished'.format(i, self.ROItoProcess), printOption = False)
         return np.array(roiList)
 
 
@@ -624,19 +627,19 @@ class ClusterAnalysis:
             #single thread
             for i in range(len(self.combinedHulls)):
                 self.createROIFromHull(self.combinedPoints[i],self.newHulls[i]) ### THIS IS SLOW! ###
-                print('\r', 'creating rois: {:0.2f}'.format((i/len(self.combinedHulls))*100),'%', end='\r', flush=True)
+                self.displayMessage('\r', 'creating rois: {:0.2f}'.format((i/len(self.combinedHulls))*100),'%', end='\r', flush=True)
             t.timeReport('ROI made')
             return        
         
         else:    
             #multiprocessing with threadpool - faster!
-            print("Multi-processing running...")
+            self.displayMessage("Multi-processing running...")
             iterations = list(range(len(self.combinedHulls)))        
             pool = SerialPool()
             results = pool.imap(self.createROIFromHull_multiThread, iterations)
             self.All_ROIs_pointsList = list(results)
             self.makeChannelList()              
-            print("\nMulti-processing finished!")
+            self.displayMessage("\nMulti-processing finished!")
             
             t.timeReport('ROI made')
         
@@ -1047,20 +1050,30 @@ class ClusterAnalysis:
             roi_data = self.analyze_roi(self.All_ROIs_pointsList[i],self.channelList[i],i)
             dictList.append(roi_data)
             print('\r', 'analysing rois: {:0.2f}'.format((i/len(self.All_ROIs_pointsList))*100),'%', end='\r', flush=True)
+            self.displayMessage('analysing rois: {:0.2f}'.format((i/len(self.All_ROIs_pointsList))*100), printOption = False)
 
 
         #make df
         self.roiAnalysisDF = pd.DataFrame(dictList, dtype=str)
         #print(self.roiAnalysisDF.head())
         return
+ 
     
+    def getClusterVolumes(self, channel):
+        name = self.Channels[channel].__name__ + ' Volume (nm^3)'
+        volumes = self.roiAnalysisDF[name].to_numpy()
+        return volumes.astype(float)
+         
+    def getClusterLocalizations(self, channel):
+        name = self.Channels[channel].__name__ + ' N'
+        localizations = self.roiAnalysisDF[name].to_numpy()
+        return localizations.astype(float)    
+ 
     def toggleNoise(self):
         if self.dataLoaded == False:
-            print('No Data Loaded!')
             self.displayMessage('No Data Loaded!')
             return
         if self.clustersGenerated == False:
-            print('Generate Clusters!')
             self.displayMessage('Generate Clusters First!')
             return
         self.clear2Ddisplay()
@@ -1088,15 +1101,12 @@ class ClusterAnalysis:
 
     def toggleCentroids(self):      
         if self.dataLoaded == False:
-            print('No Data Loaded!')
             self.displayMessage('No Data Loaded!')
             return
         if self.clustersGenerated == False:
-            print('Generate Clusters!')
             self.displayMessage('Generate Clusters first!')
             return
         if self.centroidsGenerated == False:
-            print('Generate Centroids!')
             self.displayMessage('Generate Centroids first!')
             return    
         self.clear2Ddisplay()
@@ -1198,58 +1208,92 @@ class ClusterAnalysis:
 
     def printStats(self):
         '''print stats'''
+        print('\n----------------------------------------------')
+        print('----------------------------------------------')       
+        print('STATS REPORT')
         print('----------------------------------------------')
-        print(self.clusterAnaysisSelection)        
+        print('Clustering Type: {}'.format(self.clusterAnaysisSelection)) 
+        print('\n------- Localization Data Summary -------')          
+        print('Channel 1: Number of clusters: {}'.format(str(len(self.combined_ch1_Centeroids))))
+        print('Channel 2: Number of clusters: {}'.format(str(len(self.combined_ch2_Centeroids))))        
+        print('Number of nearest neighbor distances: {}'.format(str(np.size(self.dist_clusters))))
+        print('Mean nearest neighbor distance: {}'.format(str(round(np.mean(self.dist_clusters),2))))
+        print('StDev nearest neighbor distance: {}'.format(str(round(np.std(self.dist_clusters),2))))        
+        print('Number of All distances: {}'.format(str(np.size(self.distAll_clusters))))
+        print('Mean All distance: {}'.format(str(round(np.mean(self.distAll_clusters),2))))
+        print('StDev All distance: {}'.format(str(round(np.std(self.distAll_clusters),2)))       )
+        print('')
+        print('------- Randomized Data Summary -------')              
+        print('Random 1: Number of clusters: {}'.format(str(len(self.ch1_random))))
+        print('Random 2: Number of clusters: {}'.format( str(len(self.ch2_random)))        )
+        print('Random: Number of nearest neighbor distances: {}'.format( str(np.size(self.dist_random))))
+        print('Random: Mean nearest neighbor distance: {}'.format(str(round(np.mean(self.dist_random),2))))
+        print('Random: StDev nearest neighbor distance: {}'.format(str(round(np.std(self.dist_random),2))))       
+        print('Random: Number of All distances: {}'.format(str(np.size(self.distAll_random))))
+        print('Random: Mean All distance: {}'.format(str(round(np.mean(self.distAll_random),2))))  
+        print('Random: Stdev All distance: {}'.format(str(round(np.std(self.distAll_random),2))))          
         print('----------------------------------------------')
-        print('Channel 1: Number of clusters: ', str(len(self.combined_ch1_Centeroids)))
-        print('Channel 2: Number of clusters: ', str(len(self.combined_ch2_Centeroids)))        
-        print('Number of nearest neighbor distances:', str(np.size(self.dist_clusters)))
-        print('Mean nearest neighbor distance:', str(round(np.mean(self.dist_clusters),2)))
-        print('StDev nearest neighbor distance:', str(round(np.std(self.dist_clusters),2)))        
-        print('Number of All distances:', str(np.size(self.distAll_clusters)))
-        print('Mean All distance:', str(round(np.mean(self.distAll_clusters),2)))
-        print('StDev All distance:', str(round(np.std(self.distAll_clusters),2)))       
-        print('----------------------------------------------')
-        print('Random 1: Number of clusters: ', str(len(self.ch1_random)))
-        print('Random 2: Number of clusters: ', str(len(self.ch2_random)))        
-        print('Random: Number of nearest neighbor distances:', str(np.size(self.dist_random)))
-        print('Random: Mean nearest neighbor distance:', str(round(np.mean(self.dist_random),2)))
-        print('Random: StDev nearest neighbor distance:', str(round(np.std(self.dist_random),2)))       
-        print('Random: Number of All distances:', str(np.size(self.distAll_random)))
-        print('Random: Mean All distance:', str(round(np.mean(self.distAll_random),2)))  
-        print('Random: Stdev All distance:', str(round(np.std(self.distAll_random),2)))          
-        print('----------------------------------------------')
+        print('----------------------------------------------\n')
         return
 
 
     def saveStats(self ,savePath='',fileName=''):
         '''save clustering stats as csv'''
         d= {
-            'Channel 1: Number of clusters': (len(self.combined_ch1_Centeroids)),
-            'Channel 2: Number of clusters': (len(self.combined_ch2_Centeroids)),
-            'Channel 1: Number of noise points': self.ch1_numNoise,
-            'Channel 2: Number of noise points': self.ch2_numNoise,
+            'Number of paired clusters': (len(self.combined_ch1_Centeroids)),
+            #'Channel 2: Number of paired clusters': (len(self.combined_ch2_Centeroids)),
+            'Channel 1: Total Number of localizations': len(self.ch1Points),
+            'Channel 2: Total Number of localizations': len(self.ch2Points),             
+            'Channel 1: Number of localizations classified as noise': self.ch1_numNoise,
+            'Channel 2: Number of localizations classified as noise': self.ch2_numNoise,
+            'Channel 1: Number of localizations classified as clusters': len(self.ch1Points)-self.ch1_numNoise,
+            'Channel 2: Number of localizations classified as clusters': len(self.ch2Points)-self.ch2_numNoise,            
+                     
+            'Channel 1: Number of non-paired clusters': self.ch1_numClusters - (len(self.combined_ch1_Centeroids)),
+            'Channel 2: Number of non-paired clusters': self.ch2_numClusters - (len(self.combined_ch2_Centeroids)),            
+                        
             'Number of nearest neighbor distances': (np.size(self.dist_clusters)),
             'Mean nearest neighbor distance': (np.mean(self.dist_clusters)),
+            'SEM nearest neighbor distance': (stats.sem(self.dist_clusters)),            
             'StDev nearest neighbor distance': (np.std(self.dist_clusters)),       
             'Number of All distances': (np.size(self.distAll_clusters)),
             'Mean All distance': (np.mean(self.distAll_clusters)),
-            'StDev All distance': (np.std(self.distAll_clusters)),      
-            'Random 1: Number of clusters': (len(self.ch1_random)),
-            'Random 2: Number of clusters': (len(self.ch2_random)),      
+            'SEM All distance': (stats.sem(self.distAll_clusters)),             
+            'StDev All distance': (np.std(self.distAll_clusters)), 
+
+            'Channel 1: Mean localizations per cluster': (np.mean(self.getClusterLocalizations(0))),
+            'Channel 1: SEM localizations per cluster': (stats.sem(self.getClusterLocalizations(0))),            
+            'Channel 1: StDev localizations per cluster': (np.std(self.getClusterLocalizations(0))),
+            'Channel 2: Mean localizations per cluster': (np.mean(self.getClusterLocalizations(1))),
+            'Channel 2: SEM localizations per cluster': (stats.sem(self.getClusterLocalizations(1))),            
+            'Channel 2: StDev localizations per cluster': (np.std(self.getClusterLocalizations(1))),
+
+            
+            'Channel 1: Mean cluster volume': (np.mean(self.getClusterVolumes(0))),
+            'Channel 1: SEM cluster volume': (stats.sem(self.getClusterVolumes(0))),            
+            'Channel 1: StDev cluster volume': (np.std(self.getClusterVolumes(0))),
+            'Channel 2: Mean cluster volume': (np.mean(self.getClusterVolumes(1))),
+            'Channel 2: SEM cluster volume': (stats.sem(self.getClusterVolumes(1))),            
+            'Channel 2: StDev cluster volume': (np.std(self.getClusterVolumes(1))),
+            
+            
+            'Random: Number of paired clusters': (len(self.ch1_random)),
+            #'Random 2: Number of paired clusters': (len(self.ch2_random)),      
             'Random: Number of nearest neighbor distances': (np.size(self.dist_random)),
             'Random: Mean nearest neighbor distance': (np.mean(self.dist_random)),
+            'Random: SEM nearest neighbor distance': (stats.sem(self.dist_random)),              
             'Random: StDev nearest neighbor distance': (np.std(self.dist_random)),      
             'Random: Number of All distances': (np.size(self.distAll_random)),
             'Random: Mean All distance': (np.mean(self.distAll_random)),
+            'Random: SEM All distance': (stats.sem(self.distAll_random)),             
             'Random: Stdev All distance': (np.std(self.distAll_random)) 
                 }
         
         statsDF = pd.DataFrame(data=d,index=[0])
         saveName = os.path.join(savePath, fileName + '_stats.csv')
-        statsDF.to_csv(saveName)
-        print('stats saved as:', saveName)
-        self.displayMessage('stats saved as:'+ saveName)
+        statsDF.to_csv(saveName, index = False)
+        self.displayMessage('stats saved as: {}'.format(saveName))
+
         return
 
     def saveResults(self, savePath='',fileName=''):
@@ -1295,12 +1339,12 @@ class ClusterAnalysis:
         ch2_centeroids_random_DF .to_csv(saveName6)   
 
        
-        print('nearest neighbor distances saved as:', saveName1)
-        print('all neighbor distances saved as:', saveName2)
-        print('ch1_cluster centeroids saved as:', saveName3) 
-        print('ch1_cluster centeroids saved as:', saveName4)               
-        print('ch1_random centeroids saved as:', saveName5)         
-        print('ch2_random centeroids saved as:', saveName6)  
+        self.displayMessage('nearest neighbor distances saved as: {}'.format(saveName1))
+        self.displayMessage('all neighbor distances saved as: {}'.format(saveName2))
+        self.displayMessage('ch1_cluster centeroids saved as: {}'.format(saveName3)) 
+        self.displayMessage('ch1_cluster centeroids saved as: {}'.format(saveName4))               
+        self.displayMessage('ch1_random centeroids saved as: {}'.format(saveName5))        
+        self.displayMessage('ch2_random centeroids saved as: {}'.format(saveName6)) 
 
         self.displayMessage('results files saved')
         return
@@ -1309,9 +1353,9 @@ class ClusterAnalysis:
     def exportResults(self, batch=False):
         ''''saves results to results folder in path of loaded file'''
         fileName =  os.path.basename(self.loadedFile).split('.')[0]
-        print(fileName)
+
         filePath = os.path.dirname(self.loadedFile)
-        print(filePath)
+
         if batch:
             savePath = os.path.join(filePath, 'batch_results') 
         else:    
@@ -1319,9 +1363,8 @@ class ClusterAnalysis:
 
         if not os.path.exists(savePath):
             os.makedirs(savePath)
-            print('export folder created: {}'.format(savePath))
+            self.displayMessage('export folder created: {}'.format(savePath))
         
-        print(savePath)
         self.saveResults(savePath=savePath,fileName=fileName)
         self.saveStats(savePath=savePath,fileName=fileName)
         return
@@ -1336,13 +1379,13 @@ class ClusterAnalysis:
     def displayFileData(self):
         '''adds file data to display window - works but is slow!'''
         if self.dataLoaded == False:
-            print('load data file')
+            self.displayMessage('load data file')
             return
-        print('\radding file data to display')
+        self.displayMessage('\radding file data to display')
         self.file_DF = pd.DataFrame.from_dict(self.data, dtype=str)
         data_recordTable = self.file_DF.to_records(index=False)
         self.fileTable.setData(data_recordTable) 
-        print('file data displayed')
+        self.displayMessage('file data displayed')
         return
 
 
@@ -1369,8 +1412,8 @@ class ClusterAnalysis:
         ch2_z = float(ch2_cent[2])
 
         
-        print('\n----')      
-        print('#: ', str(roi_number), 'x: ', x, 'y: ', y, 'width: ', str(width), 'height: ', str(height))
+        self.displayMessage('\n----')      
+        self.displayMessage('#: ', str(roi_number), 'x: ', x, 'y: ', y, 'width: ', str(width), 'height: ', str(height))
         #print('#: ', str(roi_number), '\n', str(items[6].text()),'\n',str(items[7].text()),'\n', str(items[8].text()))
 
         
@@ -1471,14 +1514,21 @@ class ClusterAnalysis:
         return
 
 
-
-
-    def displayMessage(self,messageText=''):
+    def displayMessage(self,messageText='', printOption = True):
         '''updates message view box'''
-        if self.batch_flag:
-            return
-        else:
-            self.messageView.setText('  --- ' + messageText + ' ---  ')
+        try:
+            self.messageView.setText(messageText)
+        except:
+            pass
+        try:
+           g.m.statusBar().showMessage(messageText) 
+        except:
+            pass
+        if printOption:
+            try:
+                print(messageText)
+            except:
+                pass        
         return
 
 
@@ -1533,7 +1583,6 @@ class ClusterAnalysis:
     def runAnalysis(self):
         '''performs clustering, gets centeroids combines centeroids and displays result'''
         if self.dataLoaded == False:
-            print('No Data Loaded!')
             self.displayMessage('Load data before running analysis')
             return
         if self.clustersGenerated == True:
@@ -1558,7 +1607,7 @@ class ClusterAnalysis:
 
     
     def batchAnalysis(self, file, eps, min_samples, maxDistance, pathName):
-        print('Analysing {}'.format(file))   
+        self.displayMessage('Analysing {}'.format(file))   
         self.open_file(file, batch=True)
         self.getClusters()  
         self.getCentroids()
@@ -1566,8 +1615,27 @@ class ClusterAnalysis:
         self.randomPointAnalysis()        
         self.makeROIs()
         self.makeROI_DF()        
-        print('Analysis of {} Complete'.format(file))   
+        self.displayMessage('Analysis of {} Complete'.format(file))   
         self.exportResults(batch=True)
+        return
+
+
+    def batchSummary(self, pathName):
+        pd.set_option('display.max_columns', None)
+        self.displayMessage('Creating Batch Summary File') 
+        summaryTable = pd.DataFrame()
+        #get batch file result file names
+        files = [f for f in glob.glob(pathName + "**/*_stats.csv", recursive=True)] 
+        #loop through results files - compile into datatables
+        for file in files:         
+            newRow = pd.read_csv(file)
+            name = os.path.basename(file).split('_stats.csv')[0]
+            newRow.insert(0,'filename',name)
+            summaryTable = summaryTable.append(newRow)
+        #save file
+        saveName = os.path.join(pathName,'batchAnalysis_Summary.csv')
+        summaryTable.to_csv(saveName, index=False)
+        self.displayMessage('Batch Summary File {} Created'.format(saveName))  
         return
 
 
@@ -1575,17 +1643,23 @@ class ClusterAnalysis:
         '''run all txt files in folder'''
         self.batch_flag = True
         
+        #get files to analyse 
         files = [f for f in glob.glob(pathName + "**/*.txt", recursive=True)]
     
         #FOR TESTING - JUST FIRST FILE IN LIST
         if test:
             files=[files[0]]
-                    
+        
+        #loop through all files            
         for file in files: 
-            self.displayMessage('Batch Analysis Starting...')             
+            self.displayMessage('Batch Analysis Starting for {}'.format(os.path.basename(file)))             
             self.batchAnalysis(file, eps, min_samples, maxDistance, pathName)            
-            self.displayMessage('Batch Analysis Complete!') 
-            
+        
+        #compile stats results to summary file
+        self.batchSummary(os.path.join(pathName, 'batch_results') )
+        
+        #Batch analysis finished
+        self.displayMessage('Batch Analysis Complete!') 
         self.batch_flag = False
         return       
 
@@ -1726,6 +1800,68 @@ class ClusterOptions_win(QtWidgets.QDialog):
     def multiThreadClicked(self):
         self.viewer.multiThreadingFlag = self.multiThread_checkbox.isChecked()
         return
+
+
+class PlotOption_win(QtWidgets.QDialog):
+    def __init__(self, viewerInstance, parent = None):
+        super(PlotOption_win, self).__init__(parent)
+
+        self.viewer = viewerInstance
+        self.colors  = self.viewer.colors
+
+        
+        #window geometry
+        self.left = 300
+        self.top = 300
+        self.width = 300
+        self.height = 200
+
+        #labels
+        self.plottingTitle = QtWidgets.QLabel("----- Colour Parameters -----") 
+        self.label_Cluster1_colour= QtWidgets.QLabel("Cluster 1 Colour:") 
+      
+        
+        #self.label_displayPlot = QtWidgets.QLabel("show plot")         
+
+        #spinboxes
+        #self.epsBox = QtWidgets.QSpinBox()
+        #self.epsBox.setRange(0,10000)
+        #self.epsBox.setValue(self.eps)
+        
+
+        #combobox
+        #self.analysis_Box = QtWidgets.QComboBox()
+        #self.analysis_Box.addItems(["All Clusters", "Paired Clusters"])
+        
+        #tickbox
+        #self.multiThread_checkbox = CheckBox()
+        #self.multiThread_checkbox.setChecked(self.multiThreadingFlag)
+        #self.multiThread_checkbox.stateChanged.connect(self.multiThreadClicked)
+
+
+        #grid layout
+        layout = QtWidgets.QGridLayout()
+        layout.setSpacing(5)
+        layout.addWidget(self.plottingTitle, 0, 0, 1, 2)        
+        layout.addWidget(self.label_Cluster1_colour, 1, 0)
+
+        self.setLayout(layout)
+        self.setGeometry(self.left, self.top, self.width, self.height)
+
+        #add window title
+        self.setWindowTitle("Plot Options")
+
+        #connect spinboxes
+        #self.epsBox.valueChanged.connect(self.epsValueChange)
+
+        #connect combobox
+        #self.analysis_Box.setCurrentIndex(0)
+        #self.analysis_Box.currentIndexChanged.connect(self.analysisChange)         
+        
+    def setColour_cluster_1(self,value):
+        pass
+        return
+    
 
 
 class Synapse3D_batch_2(QtWidgets.QDialog):
@@ -1969,10 +2105,10 @@ def test4():
 
 if __name__ == "__main__":
     clusterAnalysis = ClusterAnalysis()
-    #test() 
-    test2()
+    test() 
+    #test2()
     #test3()
     #test4()
-
+    #clusterAnalysis.batchSummary(r'C:\Users\g_dic\OneDrive\Desktop\batchTest\batch_results')
 
 
