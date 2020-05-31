@@ -56,6 +56,14 @@ def epp_Amplitudes(mu, sigma, n=500):
     '''draw n epp amplitude values from a guassian ditribution
     mean = mu and std = sigma'''    
     return np.random.normal(mu, sigma, n)    
+
+def epp_Amplitudes_by_quanta(mu, sigma, quanta, n=500):
+    '''draw n epp amplitude values from a guassian ditribution
+    mean = mu, quanta = quanta, std = sigma'''           
+    return np.random.normal(quanta*mu, sigma*np.sqrt(quanta), n)   
+
+
+
     
 class FolderSelector(QWidget):
     """
@@ -117,6 +125,10 @@ class NeuroLab(BaseProcess_noPriorWindow):
     Function: np.random.normal(mu, sigma, n)
     Parameters: mean (mu), StD (sigma) and sample size (n) 
     
+    EPP Amplitudes by Quanta: draw n epp amplitude values from a gaussian distribution
+    np.random.normal(quanta*mu, sigma*np.sqrt(quanta), n) 
+    Parameters: mean (mu), number of quanta (quanta), StD (sigma) and sample size (n)     
+      
     ---------------------------------------------------------------------------------------------------------
     Click 'Select Folder' button to set path for exporting results
     Click 'Generate MEPP Data' or 'Generate EPP Data' to draw random values. Summary histograms should appear
@@ -126,7 +138,7 @@ class NeuroLab(BaseProcess_noPriorWindow):
  
     """
     def __init__(self):
-        if g.settings['neuroLab'] is None or 'eppAmp_N' not in g.settings['neuroLab']:
+        if g.settings['neuroLab'] is None or 'eppAmpByQuanta_N' not in g.settings['neuroLab']:
             s = dict()            
             s['meppAmp_mean'] = 10
             s['meppAmp_sigma'] = 0.1
@@ -139,7 +151,12 @@ class NeuroLab(BaseProcess_noPriorWindow):
             s['eppQuanta_N'] = 500  
             s['eppAmp_mean'] = 10
             s['eppAmp_sigma'] = 0.1
-            s['eppAmp_N'] = 500  
+            s['eppAmp_N'] = 500            
+            s['eppAmpByQuanta_mean'] = 10
+            s['eppAmpByQuanta_quanta'] = 1           
+            s['eppAmpByQuanta_sigma'] = 0.1
+            s['eppAmpByQuanta_N'] = 500            
+           
             g.settings['neuroLab'] = s
                    
         BaseProcess_noPriorWindow.__init__(self)
@@ -161,13 +178,19 @@ class NeuroLab(BaseProcess_noPriorWindow):
         g.settings['neuroLab']['eppQuanta_N'] = 500  
         g.settings['neuroLab']['eppAmp_mean'] = 10
         g.settings['neuroLab']['eppAmp_sigma'] = 0.1
-        g.settings['neuroLab']['eppAmp_N'] = 500          
+        g.settings['neuroLab']['eppAmp_N'] = 500 
+        g.settings['eppAmpByQuanta_mean'] = 10
+        g.settings['eppAmpByQuanta_quanta'] = 1           
+        g.settings['eppAmpByQuanta_sigma'] = 0.1
+        g.settings['eppAmpByQuanta_N'] = 500         
+        
+        #currently not saving parameter changes
         
         return
 
     def closeEvent(self, event):
         BaseProcess_noPriorWindow.closeEvent(self, event)
-
+        return
 
     def gui(self):
         self.gui_reset()
@@ -204,7 +227,7 @@ class NeuroLab(BaseProcess_noPriorWindow):
         self.meppAmp_N_Box.setMaximum(10000)        
         self.meppAmp_N_Box.setValue(s['meppAmp_N'])         
        
-        self.meppsPerInterval_Box = pg.SpinBox(int=True, step=1)
+        self.meppsPerInterval_Box = pg.SpinBox(int=False, step=0.1)
         self.meppsPerInterval_Box.setMinimum(1)
         self.meppsPerInterval_Box.setMaximum(1000)        
         self.meppsPerInterval_Box.setValue(s['meppsPerInterval'])          
@@ -225,7 +248,7 @@ class NeuroLab(BaseProcess_noPriorWindow):
         self.meppIntervals_N_Box.setValue(s['meppIntervals_N'])   
         
         #EPPS
-        self.eppQuanta_mean_Box = pg.SpinBox(int=True, step=1)
+        self.eppQuanta_mean_Box = pg.SpinBox(int=False, step=0.1)
         self.eppQuanta_mean_Box.setMinimum(1)
         self.eppQuanta_mean_Box.setMaximum(1000)        
         self.eppQuanta_mean_Box.setValue(s['eppQuanta_mean']) 
@@ -249,32 +272,59 @@ class NeuroLab(BaseProcess_noPriorWindow):
         self.eppAmp_N_Box.setMinimum(1)
         self.eppAmp_N_Box.setMaximum(10000)        
         self.eppAmp_N_Box.setValue(s['eppAmp_N'])  
-        
+
+        self.eppAmpByQuanta_mean_Box = pg.SpinBox(int=False, step=0.1)
+        self.eppAmpByQuanta_mean_Box.setMinimum(1)
+        self.eppAmpByQuanta_mean_Box.setMaximum(1000)        
+        self.eppAmpByQuanta_mean_Box.setValue(s['eppAmpByQuanta_mean'])          
+ 
+        self.eppAmpByQuanta_quanta_Box = pg.SpinBox(int=True, step=1)
+        self.eppAmpByQuanta_quanta_Box.setMinimum(1)
+        self.eppAmpByQuanta_quanta_Box.setMaximum(1000)        
+        self.eppAmpByQuanta_quanta_Box.setValue(s['eppAmpByQuanta_quanta'])         
+     
+        self.eppAmpByQuanta_sigma_Box = pg.SpinBox(int=False, step=0.1)
+        self.eppAmpByQuanta_sigma_Box.setMinimum(0)
+        self.eppAmpByQuanta_sigma_Box.setMaximum(100)        
+        self.eppAmpByQuanta_sigma_Box.setValue(s['eppAmpByQuanta_sigma']) 
        
-        
+        self.eppAmpByQuanta_N_Box = pg.SpinBox(int=True, step=1)
+        self.eppAmpByQuanta_N_Box.setMinimum(1)
+        self.eppAmpByQuanta_N_Box.setMaximum(10000)        
+        self.eppAmpByQuanta_N_Box.setValue(s['eppAmpByQuanta_N'])        
+   
+           
         #################################################################
         #self.exportFolder = FolderSelector('*.txt')
         #MEPPS
         self.items.append({'name': 'blank ', 'string': '-------------    MEPP Parameters    ---------------', 'object': None}) 
-        self.items.append({'name': 'meppAmp_mean ', 'string': 'MEPP Amplitude - Mean: ', 'object': self.meppAmp_mean_Box})  
-        self.items.append({'name': 'meppAmp_sigma ', 'string': 'MEPP Amplitude - Standard Deviation: ', 'object': self.meppAmp_sigma_Box}) 
-        self.items.append({'name': 'meppAmp_N ', 'string': 'MEPP Amplitude - Number of Samples: ', 'object': self.meppAmp_N_Box})       
+        self.items.append({'name': 'meppAmp_mean ', 'string': 'MEPP Amplitude (mean): ', 'object': self.meppAmp_mean_Box})  
+        self.items.append({'name': 'meppAmp_sigma ', 'string': 'MEPP Amplitude (standard deviation): ', 'object': self.meppAmp_sigma_Box}) 
+        self.items.append({'name': 'meppAmp_N ', 'string': 'MEPP Amplitude (# of samples): ', 'object': self.meppAmp_N_Box})       
         self.items.append({'name': 'meppsPerInterval ', 'string': '# MEPPs per interval: ', 'object': self.meppsPerInterval_Box})        
-        self.items.append({'name': 'meppsPerInterval_N ', 'string': '# MEPPs per interval - Number of Samples: ', 'object': self.meppsPerInterval_N_Box})         
-        self.items.append({'name': 'meppIntervals_time ', 'string': 'MEPP intervals - time constant: ', 'object': self.meppIntervals_time_Box })         
-        self.items.append({'name': 'meppIntervals_N ', 'string': 'MEPP intervals - Number of Samples: ', 'object': self.meppIntervals_N_Box})                 
+        self.items.append({'name': 'meppsPerInterval_N ', 'string': '# MEPPs per interval (# of samples): ', 'object': self.meppsPerInterval_N_Box})         
+        self.items.append({'name': 'meppIntervals_time ', 'string': 'MEPP intervals (time constant): ', 'object': self.meppIntervals_time_Box })         
+        self.items.append({'name': 'meppIntervals_N ', 'string': 'MEPP intervals (# of samples): ', 'object': self.meppIntervals_N_Box})                 
         self.items.append({'name': 'generateMeppData ', 'string': '', 'object': self.generateMeppData_button})  
         self.items.append({'name': 'exportMeppData ', 'string': '', 'object': self.exportMeppData_button})          
         
         #EPPS        
         self.items.append({'name': 'blank ', 'string': '---------------   EPP Parameters    ---------------', 'object': None})                  
-        self.items.append({'name': 'eppQuanta_mean ', 'string': 'EPP Quanta - Mean: ', 'object': self.eppQuanta_mean_Box})  
-        self.items.append({'name': 'eppQuanta_N ', 'string': 'EPP Quanta - Number of Samples: ', 'object': self.eppQuanta_N_Box})  
-        self.items.append({'name': 'eppAmp_mean ', 'string': 'EPP Amplitude - Mean: ', 'object': self.eppAmp_mean_Box})  
-        self.items.append({'name': 'eppAmp_sigma ', 'string': 'EPP Amplitude - Standard Deviation: ', 'object': self.eppAmp_sigma_Box}) 
-        self.items.append({'name': 'eppAmp_N ', 'string': 'EPP Amplitude - Number of Samples: ', 'object': self.eppAmp_N_Box})         
+        self.items.append({'name': 'eppQuanta_mean ', 'string': 'EPP Quanta (mean): ', 'object': self.eppQuanta_mean_Box})  
+        self.items.append({'name': 'eppQuanta_N ', 'string': 'EPP Quanta (# of samples): ', 'object': self.eppQuanta_N_Box})  
+        self.items.append({'name': 'eppAmp_mean ', 'string': 'EPP Amplitude (mean): ', 'object': self.eppAmp_mean_Box})  
+        self.items.append({'name': 'eppAmp_sigma ', 'string': 'EPP Amplitude (standard deviation): ', 'object': self.eppAmp_sigma_Box}) 
+        self.items.append({'name': 'eppAmp_N ', 'string': 'EPP Amplitude (# of samples): ', 'object': self.eppAmp_N_Box})  
+        
+        self.items.append({'name': 'eppAmpByQuanta_mean ', 'string': 'EPP Amplitude By Quanta (mean): ', 'object': self.eppAmpByQuanta_mean_Box})  
+        self.items.append({'name': 'eppAmpByQuanta_quanta ', 'string': 'EPP Amplitude By Quanta (# of quanta): ', 'object': self.eppAmpByQuanta_quanta_Box})          
+        self.items.append({'name': 'eppAmpByQuanta_sigma ', 'string': 'EPP Amplitude By Quanta  (standard deviation): ', 'object': self.eppAmpByQuanta_sigma_Box}) 
+        self.items.append({'name': 'eppAmpByQuanta_N ', 'string': 'EPP Amplitude By Quanta  (# of samples): ', 'object': self.eppAmpByQuanta_N_Box})          
+        
+               
         self.items.append({'name': 'generateEppData ', 'string': '', 'object': self.generateEppData_button}) 
-        self.items.append({'name': 'exportEppData ', 'string': '', 'object': self.exportEppData_button})   
+        self.items.append({'name': 'exportEppData ', 'string': '', 'object': self.exportEppData_button}) 
+              
 
         self.items.append({'name': 'blank ', 'string': '-----------------   Export Path    -----------------', 'object': None})    
         self.items.append({'name': 'setPath ', 'string': '', 'object': self.setExportFolder_button })            
@@ -308,13 +358,15 @@ class NeuroLab(BaseProcess_noPriorWindow):
         except:
             pass
             
-        self.epp_fig, (self.epp_ax1, self.epp_ax2) = plt.subplots(1, 2)
+        self.epp_fig, (self.epp_ax1, self.epp_ax2, self.epp_ax3) = plt.subplots(1, 3)
         self.epp_fig.suptitle('Randomly Generated EPP Data')
         self.epp_ax1.hist(self.epp_Quanta_dist)
         self.epp_ax2.hist(self.epp_Amplitudes_dist)
+        self.epp_ax3.hist(self.epp_Amplitudes_by_quanta_dist)
         
         self.epp_ax1.set_title('EPP Quanta')
         self.epp_ax2.set_title('EPP Amplitudes')
+        self.epp_ax3.set_title('EPP Amplitudes by Quanta')        
      
         self.epp_fig.show()
         return
@@ -330,6 +382,7 @@ class NeuroLab(BaseProcess_noPriorWindow):
     def makeEppData(self):
         self.epp_Quanta_dist = epp_Quanta(self.eppQuanta_mean_Box.value(),n=self.eppQuanta_N_Box.value()) 
         self.epp_Amplitudes_dist = epp_Amplitudes(self.eppAmp_mean_Box.value(), self.eppAmp_sigma_Box.value(), n=self.eppAmp_N_Box.value())
+        self.epp_Amplitudes_by_quanta_dist = epp_Amplitudes_by_quanta(self.eppAmpByQuanta_mean_Box.value(), self.eppAmpByQuanta_quanta_Box.value(), self.eppAmpByQuanta_sigma_Box.value(), self.eppAmpByQuanta_N_Box.value())
         self.plotEppData()        
         return
 
@@ -351,7 +404,8 @@ class NeuroLab(BaseProcess_noPriorWindow):
             return
         else:
             np.savetxt(os.path.join(self.exportPath,'epp_Quanta.csv'), self.epp_Quanta_dist, delimiter=',')
-            np.savetxt(os.path.join(self.exportPath,'epp_Amplitudes.csv'), self.epp_Amplitudes_dist, delimiter=',')    
+            np.savetxt(os.path.join(self.exportPath,'epp_Amplitudes.csv'), self.epp_Amplitudes_dist, delimiter=',')
+            np.savetxt(os.path.join(self.exportPath,'epp_Amplitudes_by_Quanta.csv'), self.epp_Amplitudes_by_quanta_dist, delimiter=',')            
             print('EPP Data saved')
         return
 
