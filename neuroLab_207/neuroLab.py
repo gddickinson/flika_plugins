@@ -57,10 +57,29 @@ def epp_Amplitudes(mu, sigma, n=500):
     mean = mu and std = sigma'''    
     return np.random.normal(mu, sigma, n)    
 
-def epp_Amplitudes_by_quanta(mu, sigma, quanta, n=500):
+def epp_Amplitudes_by_quanta(mu, quanta, sigma, n=500):
     '''draw n epp amplitude values from a guassian ditribution
-    mean = mu, quanta = quanta, std = sigma'''           
-    return np.random.normal(quanta*mu, sigma*np.sqrt(quanta), n)   
+    mean = mu, quanta = quanta, std = sigma'''
+
+    quantaDist = epp_Quanta(quanta,n=n)
+    
+    unique_quanta, counts_quanta = np.unique(quantaDist, return_counts=True)
+
+    dist = []
+
+    for i in range(len(unique_quanta)):
+        dist.append(np.random.normal(unique_quanta[i]*mu,
+                                     sigma*np.sqrt(unique_quanta[i]),
+                                     counts_quanta[i]))           
+ 
+    
+
+    #flatten list
+    flat_dist = [item for sublist in dist for item in sublist]
+    #remove zeros
+    dist_noNeg = [0 if i <0 else i for i in flat_dist]
+    
+    return dist_noNeg 
 
 
 
@@ -125,8 +144,8 @@ class NeuroLab(BaseProcess_noPriorWindow):
     Function: np.random.normal(mu, sigma, n)
     Parameters: mean (mu), StD (sigma) and sample size (n) 
     
-    EPP Amplitudes by Quanta: draw n epp amplitude values from a gaussian distribution
-    np.random.normal(quanta*mu, sigma*np.sqrt(quanta), n) 
+    EPP Amplitudes by Quanta: draw n epp amplitude values from a gaussian distribution based on poisson distribution of quanta
+    for each quantum combine: np.random.normal(quanta*mu, sigma*np.sqrt(quanta), n=number of quanta) 
     Parameters: mean (mu), number of quanta (quanta), StD (sigma) and sample size (n)     
       
     ---------------------------------------------------------------------------------------------------------
@@ -160,6 +179,8 @@ class NeuroLab(BaseProcess_noPriorWindow):
             g.settings['neuroLab'] = s
                    
         BaseProcess_noPriorWindow.__init__(self)
+        
+        self.sampleMax = 1000000
         
         self.exportPath = ''
 
@@ -224,7 +245,7 @@ class NeuroLab(BaseProcess_noPriorWindow):
         
         self.meppAmp_N_Box = pg.SpinBox(int=True, step=1)
         self.meppAmp_N_Box.setMinimum(1)
-        self.meppAmp_N_Box.setMaximum(10000)        
+        self.meppAmp_N_Box.setMaximum(self.sampleMax)        
         self.meppAmp_N_Box.setValue(s['meppAmp_N'])         
        
         self.meppsPerInterval_Box = pg.SpinBox(int=False, step=0.1)
@@ -234,7 +255,7 @@ class NeuroLab(BaseProcess_noPriorWindow):
 
         self.meppsPerInterval_N_Box = pg.SpinBox(int=True, step=1)
         self.meppsPerInterval_N_Box.setMinimum(1)
-        self.meppsPerInterval_N_Box.setMaximum(10000)        
+        self.meppsPerInterval_N_Box.setMaximum(self.sampleMax)        
         self.meppsPerInterval_N_Box.setValue(s['meppsPerInterval_N'])  
 
         self.meppIntervals_time_Box = pg.SpinBox(int=True, step=1)
@@ -244,7 +265,7 @@ class NeuroLab(BaseProcess_noPriorWindow):
         
         self.meppIntervals_N_Box = pg.SpinBox(int=True, step=1)
         self.meppIntervals_N_Box.setMinimum(1)
-        self.meppIntervals_N_Box.setMaximum(10000)        
+        self.meppIntervals_N_Box.setMaximum(self.sampleMax)        
         self.meppIntervals_N_Box.setValue(s['meppIntervals_N'])   
         
         #EPPS
@@ -255,7 +276,7 @@ class NeuroLab(BaseProcess_noPriorWindow):
         
         self.eppQuanta_N_Box = pg.SpinBox(int=True, step=1)
         self.eppQuanta_N_Box.setMinimum(1)
-        self.eppQuanta_N_Box.setMaximum(10000)        
+        self.eppQuanta_N_Box.setMaximum(self.sampleMax)        
         self.eppQuanta_N_Box.setValue(s['eppQuanta_N'])         
         
         self.eppAmp_mean_Box = pg.SpinBox(int=True, step=1)
@@ -270,7 +291,7 @@ class NeuroLab(BaseProcess_noPriorWindow):
 
         self.eppAmp_N_Box = pg.SpinBox(int=True, step=1)
         self.eppAmp_N_Box.setMinimum(1)
-        self.eppAmp_N_Box.setMaximum(10000)        
+        self.eppAmp_N_Box.setMaximum(self.sampleMax)        
         self.eppAmp_N_Box.setValue(s['eppAmp_N'])  
 
         self.eppAmpByQuanta_mean_Box = pg.SpinBox(int=False, step=0.1)
@@ -283,14 +304,14 @@ class NeuroLab(BaseProcess_noPriorWindow):
         self.eppAmpByQuanta_quanta_Box.setMaximum(1000)        
         self.eppAmpByQuanta_quanta_Box.setValue(s['eppAmpByQuanta_quanta'])         
      
-        self.eppAmpByQuanta_sigma_Box = pg.SpinBox(int=False, step=0.1)
-        self.eppAmpByQuanta_sigma_Box.setMinimum(0)
+        self.eppAmpByQuanta_sigma_Box = pg.SpinBox(int=False, step=0.01)
+        self.eppAmpByQuanta_sigma_Box.setMinimum(0.0)
         self.eppAmpByQuanta_sigma_Box.setMaximum(100)        
         self.eppAmpByQuanta_sigma_Box.setValue(s['eppAmpByQuanta_sigma']) 
        
         self.eppAmpByQuanta_N_Box = pg.SpinBox(int=True, step=1)
         self.eppAmpByQuanta_N_Box.setMinimum(1)
-        self.eppAmpByQuanta_N_Box.setMaximum(10000)        
+        self.eppAmpByQuanta_N_Box.setMaximum(self.sampleMax)        
         self.eppAmpByQuanta_N_Box.setValue(s['eppAmpByQuanta_N'])        
    
            
@@ -362,11 +383,14 @@ class NeuroLab(BaseProcess_noPriorWindow):
         self.epp_fig.suptitle('Randomly Generated EPP Data')
         self.epp_ax1.hist(self.epp_Quanta_dist)
         self.epp_ax2.hist(self.epp_Amplitudes_dist)
-        self.epp_ax3.hist(self.epp_Amplitudes_by_quanta_dist)
+        self.epp_ax3.hist(self.epp_Amplitudes_by_quanta_dist,100)
+        #noZeroDist = [i for i in self.epp_Amplitudes_by_quanta_dist if i != 0]
+        #self.epp_ax4.hist(noZeroDist,100)        
         
         self.epp_ax1.set_title('EPP Quanta')
         self.epp_ax2.set_title('EPP Amplitudes')
-        self.epp_ax3.set_title('EPP Amplitudes by Quanta')        
+        self.epp_ax3.set_title('EPP Amplitudes by Quanta')  
+        #self.epp_ax4.set_title('EPP Amplitudes by Quanta (No zeros)')          
      
         self.epp_fig.show()
         return
@@ -392,9 +416,9 @@ class NeuroLab(BaseProcess_noPriorWindow):
             print('Set Export Path')
             return
         else:
-            np.savetxt(os.path.join(self.exportPath,'mepp_Amplitudes.csv'), self.mepp_Amplitudes_dist, delimiter=',')
-            np.savetxt(os.path.join(self.exportPath,'mepp_nPerInterval.csv'), self.mepp_nPerInterval_dist, delimiter=',')    
-            np.savetxt(os.path.join(self.exportPath,'mepp_Interval.csv'), self.mepp_Intervals_dist, delimiter=',')
+            np.savetxt(os.path.join(self.exportPath,'mepp_Amplitudes.csv'), self.mepp_Amplitudes_dist, delimiter=',',fmt='%1.3f')
+            np.savetxt(os.path.join(self.exportPath,'mepp_nPerInterval.csv'), self.mepp_nPerInterval_dist, delimiter=',',fmt='%1.3f')    
+            np.savetxt(os.path.join(self.exportPath,'mepp_Interval.csv'), self.mepp_Intervals_dist, delimiter=',',fmt='%1.3f')
             print('MEPP Data saved')
         return
 
@@ -403,9 +427,9 @@ class NeuroLab(BaseProcess_noPriorWindow):
             print('Set Export Path')
             return
         else:
-            np.savetxt(os.path.join(self.exportPath,'epp_Quanta.csv'), self.epp_Quanta_dist, delimiter=',')
-            np.savetxt(os.path.join(self.exportPath,'epp_Amplitudes.csv'), self.epp_Amplitudes_dist, delimiter=',')
-            np.savetxt(os.path.join(self.exportPath,'epp_Amplitudes_by_Quanta.csv'), self.epp_Amplitudes_by_quanta_dist, delimiter=',')            
+            np.savetxt(os.path.join(self.exportPath,'epp_Quanta.csv'), self.epp_Quanta_dist, delimiter=',',fmt='%1.3f')
+            np.savetxt(os.path.join(self.exportPath,'epp_Amplitudes.csv'), self.epp_Amplitudes_dist, delimiter=',',fmt='%1.3f')
+            np.savetxt(os.path.join(self.exportPath,'epp_Amplitudes_by_Quanta.csv'), self.epp_Amplitudes_by_quanta_dist, delimiter=',',fmt='%1.3f')            
             print('EPP Data saved')
         return
 
@@ -414,15 +438,21 @@ class NeuroLab(BaseProcess_noPriorWindow):
 neuroLab = NeuroLab()
 
 
+if __name__ == "__main__":
+    mu = 1.0
+    sigma = 1
+    quanta = 1.0
+    n = 100000
+    test = epp_Amplitudes_by_quanta(mu, sigma, quanta, n=n)
+    test = [i for i in test  if i != 0]
+
+    plt.hist(test, 100)
 
 
+    saveTest = np.loadtxt(r"C:\Users\g_dic\OneDrive\Desktop\testing\epp_Amplitudes_by_Quanta.csv", delimiter=',')
+    saveTest= [i for i in saveTest if i != 0]
 
-
-
-
-
-
-
+    plt.hist(saveTest, 100)
 
 
 
