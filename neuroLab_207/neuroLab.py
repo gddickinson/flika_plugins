@@ -233,7 +233,7 @@ class NeuroLab(BaseProcess_noPriorWindow):
         
         #spinboxes
         #MEPPS
-        self.meppAmp_mean_Box = pg.SpinBox(int=True, step=1)
+        self.meppAmp_mean_Box = pg.SpinBox(int=False, step=0.1)
         self.meppAmp_mean_Box.setMinimum(1)
         self.meppAmp_mean_Box.setMaximum(1000)        
         self.meppAmp_mean_Box.setValue(s['meppAmp_mean'])
@@ -258,7 +258,7 @@ class NeuroLab(BaseProcess_noPriorWindow):
         self.meppsPerInterval_N_Box.setMaximum(self.sampleMax)        
         self.meppsPerInterval_N_Box.setValue(s['meppsPerInterval_N'])  
 
-        self.meppIntervals_time_Box = pg.SpinBox(int=True, step=1)
+        self.meppIntervals_time_Box = pg.SpinBox(int=False, step=0.1)
         self.meppIntervals_time_Box.setMinimum(1)
         self.meppIntervals_time_Box.setMaximum(1000)        
         self.meppIntervals_time_Box.setValue(s['meppIntervals_time'])         
@@ -279,7 +279,7 @@ class NeuroLab(BaseProcess_noPriorWindow):
         self.eppQuanta_N_Box.setMaximum(self.sampleMax)        
         self.eppQuanta_N_Box.setValue(s['eppQuanta_N'])         
         
-        self.eppAmp_mean_Box = pg.SpinBox(int=True, step=1)
+        self.eppAmp_mean_Box = pg.SpinBox(int=False, step=0.1)
         self.eppAmp_mean_Box.setMinimum(1)
         self.eppAmp_mean_Box.setMaximum(1000)        
         self.eppAmp_mean_Box.setValue(s['eppAmp_mean'])          
@@ -299,7 +299,7 @@ class NeuroLab(BaseProcess_noPriorWindow):
         self.eppAmpByQuanta_mean_Box.setMaximum(1000)        
         self.eppAmpByQuanta_mean_Box.setValue(s['eppAmpByQuanta_mean'])          
  
-        self.eppAmpByQuanta_quanta_Box = pg.SpinBox(int=True, step=1)
+        self.eppAmpByQuanta_quanta_Box = pg.SpinBox(int=False, step=0.1)
         self.eppAmpByQuanta_quanta_Box.setMinimum(1)
         self.eppAmpByQuanta_quanta_Box.setMaximum(1000)        
         self.eppAmpByQuanta_quanta_Box.setValue(s['eppAmpByQuanta_quanta'])         
