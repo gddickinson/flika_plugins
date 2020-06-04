@@ -33,34 +33,39 @@ from matplotlib import pyplot as plt
 #MEPPS
 def mepp_Amplitudes(mu, sigma, n=500):
     '''draw n mepp amplitude values from a guassian ditribution
-    mean = mu and std = sigma'''    
+    mean = mu and std = sigma'''  
+    print(mu,sigma,n)
     return np.random.normal(mu, sigma, n)
 
 def mepp_nPerInterval(mu,n=500):
     '''draw n mepps/interval values from a poisson ditribution
     mean = mu '''  
+    print(mu,n)
     return np.random.poisson(mu, n)
 
-def mepp_Intervals(t, start=0, end=5, n=500):
+def mepp_Intervals(t, n=500):
     '''draw n intervals between mepps values from a exponentially decaying function
     time constant = t '''
+    print(t,n)
     return np.random.exponential(t,size=n)
 
 #EPPS
 def epp_Quanta(mu,n=500):
     '''draw n # of quanta values from a poisson ditribution
-    mean = mu'''     
+    mean = mu'''   
+    print(mu,n)
     return np.random.poisson(mu, n)
 
 def epp_Amplitudes(mu, sigma, n=500):
     '''draw n epp amplitude values from a guassian ditribution
-    mean = mu and std = sigma'''    
+    mean = mu and std = sigma'''   
+    print(mu,sigma,n)
     return np.random.normal(mu, sigma, n)    
 
 def epp_Amplitudes_by_quanta(mu, quanta, sigma, n=500):
     '''draw n epp amplitude values from a guassian ditribution
     mean = mu, quanta = quanta, std = sigma'''
-
+    print(mu,quanta,sigma,n)
     quantaDist = epp_Quanta(quanta,n=n)
     
     unique_quanta, counts_quanta = np.unique(quantaDist, return_counts=True)
@@ -234,7 +239,7 @@ class NeuroLab(BaseProcess_noPriorWindow):
         #spinboxes
         #MEPPS
         self.meppAmp_mean_Box = pg.SpinBox(int=False, step=0.1)
-        self.meppAmp_mean_Box.setMinimum(1)
+        self.meppAmp_mean_Box.setMinimum(0)
         self.meppAmp_mean_Box.setMaximum(1000)        
         self.meppAmp_mean_Box.setValue(s['meppAmp_mean'])
         
@@ -249,7 +254,7 @@ class NeuroLab(BaseProcess_noPriorWindow):
         self.meppAmp_N_Box.setValue(s['meppAmp_N'])         
        
         self.meppsPerInterval_Box = pg.SpinBox(int=False, step=0.1)
-        self.meppsPerInterval_Box.setMinimum(1)
+        self.meppsPerInterval_Box.setMinimum(0)
         self.meppsPerInterval_Box.setMaximum(1000)        
         self.meppsPerInterval_Box.setValue(s['meppsPerInterval'])          
 
@@ -259,7 +264,7 @@ class NeuroLab(BaseProcess_noPriorWindow):
         self.meppsPerInterval_N_Box.setValue(s['meppsPerInterval_N'])  
 
         self.meppIntervals_time_Box = pg.SpinBox(int=False, step=0.1)
-        self.meppIntervals_time_Box.setMinimum(1)
+        self.meppIntervals_time_Box.setMinimum(0)
         self.meppIntervals_time_Box.setMaximum(1000)        
         self.meppIntervals_time_Box.setValue(s['meppIntervals_time'])         
         
@@ -270,7 +275,7 @@ class NeuroLab(BaseProcess_noPriorWindow):
         
         #EPPS
         self.eppQuanta_mean_Box = pg.SpinBox(int=False, step=0.1)
-        self.eppQuanta_mean_Box.setMinimum(1)
+        self.eppQuanta_mean_Box.setMinimum(0)
         self.eppQuanta_mean_Box.setMaximum(1000)        
         self.eppQuanta_mean_Box.setValue(s['eppQuanta_mean']) 
         
@@ -280,7 +285,7 @@ class NeuroLab(BaseProcess_noPriorWindow):
         self.eppQuanta_N_Box.setValue(s['eppQuanta_N'])         
         
         self.eppAmp_mean_Box = pg.SpinBox(int=False, step=0.1)
-        self.eppAmp_mean_Box.setMinimum(1)
+        self.eppAmp_mean_Box.setMinimum(0)
         self.eppAmp_mean_Box.setMaximum(1000)        
         self.eppAmp_mean_Box.setValue(s['eppAmp_mean'])          
         
@@ -295,12 +300,12 @@ class NeuroLab(BaseProcess_noPriorWindow):
         self.eppAmp_N_Box.setValue(s['eppAmp_N'])  
 
         self.eppAmpByQuanta_mean_Box = pg.SpinBox(int=False, step=0.1)
-        self.eppAmpByQuanta_mean_Box.setMinimum(1)
+        self.eppAmpByQuanta_mean_Box.setMinimum(0)
         self.eppAmpByQuanta_mean_Box.setMaximum(1000)        
         self.eppAmpByQuanta_mean_Box.setValue(s['eppAmpByQuanta_mean'])          
  
         self.eppAmpByQuanta_quanta_Box = pg.SpinBox(int=False, step=0.1)
-        self.eppAmpByQuanta_quanta_Box.setMinimum(1)
+        self.eppAmpByQuanta_quanta_Box.setMinimum(0)
         self.eppAmpByQuanta_quanta_Box.setMaximum(1000)        
         self.eppAmpByQuanta_quanta_Box.setValue(s['eppAmpByQuanta_quanta'])         
      
@@ -399,7 +404,7 @@ class NeuroLab(BaseProcess_noPriorWindow):
     def makeMeppData(self):
         self.mepp_Amplitudes_dist = mepp_Amplitudes(self.meppAmp_mean_Box.value(), self.meppAmp_sigma_Box.value(), n=self.meppAmp_N_Box.value())    
         self.mepp_nPerInterval_dist = mepp_nPerInterval(self.meppsPerInterval_Box.value(),n=self.meppsPerInterval_N_Box.value())
-        self.mepp_Intervals_dist = mepp_Intervals(self.meppIntervals_time_Box.value(), start=0, end=5, n=self.meppIntervals_N_Box.value())
+        self.mepp_Intervals_dist = mepp_Intervals(self.meppIntervals_time_Box.value(), n=self.meppIntervals_N_Box.value())
         self.plotMeppData()
         return
 
