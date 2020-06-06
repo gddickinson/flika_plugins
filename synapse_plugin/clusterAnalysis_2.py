@@ -1237,7 +1237,7 @@ class ClusterAnalysis:
         return
 
 
-    def saveStats(self ,savePath='',fileName=''):
+    def saveStats(self ,savePath='',fileName='', timeStr=False):
         '''save clustering stats as csv'''
         d= {
             'Number of paired clusters': (len(self.combined_ch1_Centeroids)),
@@ -1290,13 +1290,17 @@ class ClusterAnalysis:
                 }
         
         statsDF = pd.DataFrame(data=d,index=[0])
-        saveName = os.path.join(savePath, fileName + '_stats.csv')
+        
+        if timeStr:
+            saveName = os.path.join(savePath, fileName + '_stats_'  + timeStr +'.csv')            
+        else:
+            saveName = os.path.join(savePath, fileName + '_stats.csv')
         statsDF.to_csv(saveName, index = False)
         self.displayMessage('stats saved as: {}'.format(saveName))
 
         return
 
-    def saveResults(self, savePath='',fileName=''):
+    def saveResults(self, savePath='',fileName='', timeStr=False):
         '''save centeroids and distances'''
         d1 = {'clusters_nearest':self.dist_clusters,'random_nearest':self.dist_random}
         d2 = {'clusters_All':self.distAll_clusters,'random_All':self.distAll_random}
@@ -1323,13 +1327,22 @@ class ClusterAnalysis:
         ch2_centeroids_clusters_DF = pd.DataFrame(data=d4)                 
         ch1_centeroids_random_DF = pd.DataFrame(data=d5)   
         ch2_centeroids_random_DF = pd.DataFrame(data=d6) 
-        
-        saveName1 = os.path.join(savePath, fileName + '_clusterAnalysis_nearestNeighbors.csv')
-        saveName2 = os.path.join(savePath, fileName + '_clusterAnalysis_AllNeighbors.csv')  
-        saveName3 = os.path.join(savePath, fileName + '_ch1_clusters_centeroids.csv')
-        saveName4 = os.path.join(savePath, fileName + '_ch2_clusters_centeroids.csv')   
-        saveName5 = os.path.join(savePath, fileName + '_ch1_random_centeroids.csv')
-        saveName6 = os.path.join(savePath, fileName + '_ch2_random_centeroids.csv')   
+
+        if timeStr:
+            saveName1 = os.path.join(savePath, fileName + '_clusterAnalysis_nearestNeighbors_'  + timeStr +'.csv')
+            saveName2 = os.path.join(savePath, fileName + '_clusterAnalysis_AllNeighbors_'  + timeStr +'.csv')  
+            saveName3 = os.path.join(savePath, fileName + '_ch1_clusters_centeroids_'  + timeStr +'.csv')
+            saveName4 = os.path.join(savePath, fileName + '_ch2_clusters_centeroids_'  + timeStr +'.csv')   
+            saveName5 = os.path.join(savePath, fileName + '_ch1_random_centeroids_'  + timeStr +'.csv')
+            saveName6 = os.path.join(savePath, fileName + '_ch2_random_centeroids_'  + timeStr +'.csv')                         
+
+        else:
+            saveName1 = os.path.join(savePath, fileName + '_clusterAnalysis_nearestNeighbors.csv')
+            saveName2 = os.path.join(savePath, fileName + '_clusterAnalysis_AllNeighbors.csv')  
+            saveName3 = os.path.join(savePath, fileName + '_ch1_clusters_centeroids.csv')
+            saveName4 = os.path.join(savePath, fileName + '_ch2_clusters_centeroids.csv')   
+            saveName5 = os.path.join(savePath, fileName + '_ch1_random_centeroids.csv')
+            saveName6 = os.path.join(savePath, fileName + '_ch2_random_centeroids.csv')   
         
         nearestNeighborDF.to_csv(saveName1)
         allNeighborDF.to_csv(saveName2)
@@ -1350,7 +1363,7 @@ class ClusterAnalysis:
         return
 
 
-    def exportResults(self, batch=False):
+    def exportResults(self, batch=False, timeStr=False):
         ''''saves results to results folder in path of loaded file'''
         fileName =  os.path.basename(self.loadedFile).split('.')[0]
 
@@ -1364,9 +1377,14 @@ class ClusterAnalysis:
         if not os.path.exists(savePath):
             os.makedirs(savePath)
             self.displayMessage('export folder created: {}'.format(savePath))
-        
-        self.saveResults(savePath=savePath,fileName=fileName)
-        self.saveStats(savePath=savePath,fileName=fileName)
+
+        if timeStr:        
+            self.saveResults(savePath=savePath,fileName=fileName, timeStr=timeStr)
+            self.saveStats(savePath=savePath,fileName=fileName, timeStr=timeStr)
+            
+        else:
+            self.saveResults(savePath=savePath,fileName=fileName)
+            self.saveStats(savePath=savePath,fileName=fileName) 
         return
 
     def displayROIresults(self):
@@ -1606,7 +1624,7 @@ class ClusterAnalysis:
         return
 
     
-    def batchAnalysis(self, file, eps, min_samples, maxDistance, pathName):
+    def batchAnalysis(self, file, pathName, timeStr):
         self.displayMessage('Analysing {}'.format(file))   
         self.open_file(file, batch=True)
         self.getClusters()  
@@ -1616,24 +1634,28 @@ class ClusterAnalysis:
         self.makeROIs()
         self.makeROI_DF()        
         self.displayMessage('Analysis of {} Complete'.format(file))   
-        self.exportResults(batch=True)
+        self.exportResults(batch=True, timeStr=timeStr)
         return
 
 
-    def batchSummary(self, pathName):
+    def batchSummary(self, pathName, timeStr):
         pd.set_option('display.max_columns', None)
         self.displayMessage('Creating Batch Summary File') 
         summaryTable = pd.DataFrame()
         #get batch file result file names
-        files = [f for f in glob.glob(pathName + "**/*_stats.csv", recursive=True)] 
+        files = [f for f in glob.glob(pathName + "**/*_stats*.csv", recursive=True)] 
         #loop through results files - compile into datatables
         for file in files:         
             newRow = pd.read_csv(file)
+            #add dbscan settings
+            settings = 'eps: {}, min_samples: {}, max_Distance: {}'.format(self.eps,self.min_samples,self.maxDistance)
+            newRow.insert(0,'DBSCAN_settings',settings)            
+            #add filename
             name = os.path.basename(file).split('_stats.csv')[0]
-            newRow.insert(0,'filename',name)
+            newRow.insert(0,'filename', name)
             summaryTable = summaryTable.append(newRow)
         #save file
-        saveName = os.path.join(pathName,'batchAnalysis_Summary.csv')
+        saveName = os.path.join(pathName,'batchAnalysis_Summary_'  + timeStr +'.csv')
         summaryTable.to_csv(saveName, index=False)
         self.displayMessage('Batch Summary File {} Created'.format(saveName))  
         return
@@ -1642,6 +1664,13 @@ class ClusterAnalysis:
     def runBatch(self, pathName, eps = 100 , min_samples = 10, maxDistance = 100, test=False):
         '''run all txt files in folder'''
         self.batch_flag = True
+        
+        self.eps = eps
+        self.min_samples = min_samples
+        self.maxDistance = maxDistance
+        
+        #set time for savenames
+        timeStr = time.strftime("%Y%m%d-%H%M%S")
         
         #get files to analyse 
         files = [f for f in glob.glob(pathName + "**/*.txt", recursive=True)]
@@ -1653,10 +1682,10 @@ class ClusterAnalysis:
         #loop through all files            
         for file in files: 
             self.displayMessage('Batch Analysis Starting for {}'.format(os.path.basename(file)))             
-            self.batchAnalysis(file, eps, min_samples, maxDistance, pathName)            
+            self.batchAnalysis(file, pathName, timeStr)            
         
         #compile stats results to summary file
-        self.batchSummary(os.path.join(pathName, 'batch_results') )
+        self.batchSummary(os.path.join(pathName, 'batch_results'), timeStr )
         
         #Batch analysis finished
         self.displayMessage('Batch Analysis Complete!') 
@@ -2004,7 +2033,7 @@ class Synapse3D_batch_2(QtWidgets.QDialog):
 
         
     def epsValueChange(self,value):
-        self.epsBox = value
+        self.eps = value
         self.clusterAnalysis.eps = self.epsBox
         return
     
@@ -2045,8 +2074,8 @@ class Synapse3D_batch_2(QtWidgets.QDialog):
         self.pathName = folder
         return
 
-    def run(self):
-        self.clusterAnalysis.runBatch(self.pathName)
+    def run(self): 
+        self.clusterAnalysis.runBatch(self.pathName, eps = self.eps, min_samples = self.min_samples, maxDistance = self.maxDistance)
         return
 
     def displayClicked(self):
@@ -2105,10 +2134,10 @@ def test4():
 
 if __name__ == "__main__":
     clusterAnalysis = ClusterAnalysis()
-    test() 
+    #test() 
     #test2()
-    #test3()
+    test3()
     #test4()
-    #clusterAnalysis.batchSummary(r'C:\Users\g_dic\OneDrive\Desktop\batchTest\batch_results')
+
 
 
