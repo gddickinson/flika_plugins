@@ -42,6 +42,8 @@ from pathos.threading import ThreadPool
 from pathos.pools import ProcessPool
 from pathos.serial import SerialPool
 
+import yaml
+
 #class threading.Thread(group=None, target=None, name=None, args=(), kwargs={}, *, daemon=None)
 
 flika_version = flika.__version__
@@ -132,6 +134,9 @@ class ClusterAnalysis:
         
         self.multiThreadingFlag = True
         self.displayFlag = False
+        
+        
+        self.queuingFlag = False
         
         #init data types
         self.ch1Points_3D = []
@@ -1240,6 +1245,9 @@ class ClusterAnalysis:
     def saveStats(self ,savePath='',fileName='', timeStr=False):
         '''save clustering stats as csv'''
         d= {
+            'eps': self.eps,
+            'min_samples':self.min_samples,
+            'maxDistance':self.maxDistance,
             'Number of paired clusters': (len(self.combined_ch1_Centeroids)),
             #'Channel 2: Number of paired clusters': (len(self.combined_ch2_Centeroids)),
             'Channel 1: Total Number of localizations': len(self.ch1Points),
@@ -1646,10 +1654,7 @@ class ClusterAnalysis:
         files = [f for f in glob.glob(pathName + "**/*_stats*.csv", recursive=True)] 
         #loop through results files - compile into datatables
         for file in files:         
-            newRow = pd.read_csv(file)
-            #add dbscan settings
-            settings = 'eps: {}, min_samples: {}, max_Distance: {}'.format(self.eps,self.min_samples,self.maxDistance)
-            newRow.insert(0,'DBSCAN_settings',settings)            
+            newRow = pd.read_csv(file)           
             #add filename
             name = os.path.basename(file).split('_stats.csv')[0]
             newRow.insert(0,'filename', name)
@@ -1692,7 +1697,29 @@ class ClusterAnalysis:
         self.batch_flag = False
         return       
 
-        
+
+    def loadBatchParams(self, pathName):
+        '''load batch parameters from yaml file'''
+        paramFile = os.path.join(pathName, 'batch.yaml')        
+        with open(paramFile) as f:
+            paramList = yaml.load(f, Loader=yaml.FullLoader)   
+        self.displayMessage('Batch Parameter File Loaded') 
+        return paramList
+
+    def runBatch_queueing(self, pathName):
+        '''perform batch analysis on all files in folder using batch parameters from yaml file - repeat for steps '''
+        try:
+            batches = self.loadBatchParams(pathName)
+        except:
+            self.displayMessage('No Batch Parameter File Detected')
+            return
+        self.displayMessage('Batch Queue started') 
+        for batchParam in batches:
+            self.multiThreadingFlag = batchParam['multiThreading']
+            self.clusterType = batchParam['clusterType']
+            self.runBatch(pathName, eps = batchParam['eps'] , min_samples = batchParam['min_samples'], maxDistance = batchParam['maxDistance'])
+        self.displayMessage('Batch Queue Complete!') 
+        return        
 
 class ClusterOptions_win(QtWidgets.QDialog):
     def __init__(self, viewerInstance, parent = None):
@@ -1911,6 +1938,9 @@ class Synapse3D_batch_2(QtWidgets.QDialog):
         self.multiThreadingFlag = self.clusterAnalysis.multiThreadingFlag
         self.displayFlag = self.clusterAnalysis.displayFlag
         
+        self.queuingFlag = self.clusterAnalysis.queuingFlag
+        
+        
         self.clusterType = '3D'
         
         #window geometry
@@ -1937,6 +1967,11 @@ class Synapse3D_batch_2(QtWidgets.QDialog):
         
         self.multiThreadTitle = QtWidgets.QLabel("----- Multi-Threading -----") 
         self.label_multiThread = QtWidgets.QLabel("Multi-Threading On: ")        
+
+        self.queuingTitle = QtWidgets.QLabel("----- Queuing-----") 
+        self.label_queuing = QtWidgets.QLabel("Use parameter file: ")  
+        
+        self.label_saveFolder = QtWidgets.QLabel("No Folder Selected")        
         
         #self.label_displayPlot = QtWidgets.QLabel("show plot")         
 
@@ -1972,6 +2007,10 @@ class Synapse3D_batch_2(QtWidgets.QDialog):
         self.multiThread_checkbox = CheckBox()
         self.multiThread_checkbox.setChecked(self.multiThreadingFlag)
         self.multiThread_checkbox.stateChanged.connect(self.multiThreadClicked)
+        
+        self.queuing_checkbox = CheckBox()
+        self.queuing_checkbox.setChecked(self.queuingFlag)
+        self.queuing_checkbox.stateChanged.connect(self.queuingClicked)
 
         #buttons
         self.button_getFolder = QtWidgets.QPushButton("Set Folder")
@@ -1995,8 +2034,7 @@ class Synapse3D_batch_2(QtWidgets.QDialog):
         layout.addWidget(self.displayTitle, 7, 0, 1, 2) 
         layout.addWidget(self.label_display, 8, 0)        
         layout.addWidget(self.display_checkbox, 8, 1)         
-        layout.addWidget(self.button_getFolder, 9, 0)          
-        layout.addWidget(self.button_start, 10, 0)         
+       
         
         #layout.addWidget(self.label_centroidSymbolSize, 6, 0)  
         #layout.addWidget(self.centroidSymbolSizeBox, 6, 1) 
@@ -2005,11 +2043,19 @@ class Synapse3D_batch_2(QtWidgets.QDialog):
         #layout.addWidget(self.label_analysis, 9, 0)  
         #layout.addWidget(self.analysis_Box, 9, 1)     
         
-        layout.addWidget(self.multiThreadTitle, 11, 0, 1, 2)  
-        layout.addWidget(self.label_multiThread, 12, 0)  
-        layout.addWidget(self.multiThread_checkbox, 12, 1)  
+        layout.addWidget(self.multiThreadTitle, 9, 0, 1, 2)  
+        layout.addWidget(self.label_multiThread, 10, 0)  
+        layout.addWidget(self.multiThread_checkbox, 10, 1)  
         
-
+        layout.addWidget(self.queuingTitle, 11, 0, 1, 2)  
+        layout.addWidget(self.label_queuing, 12, 0)  
+        layout.addWidget(self.queuing_checkbox, 12, 1)  
+        
+        layout.addWidget(self.button_getFolder, 13, 0) 
+        layout.addWidget(self.label_saveFolder, 14, 0)         
+         
+        layout.addWidget(self.button_start, 15, 0)  
+        
         
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -2068,14 +2114,23 @@ class Synapse3D_batch_2(QtWidgets.QDialog):
     def multiThreadClicked(self):
         self.clusterAnalysis.multiThreadingFlag = self.multiThread_checkbox.isChecked()
         return
+    
+    def queuingClicked(self):
+        self.queuingFlag = self.queuing_checkbox.isChecked()
+        self.clusterAnalysis.queuingFlag = self.queuingFlag
+        return    
 
     def getSavePath(self): 
         folder = QtWidgets.QFileDialog.getExistingDirectory(g.m, "Select batch folder.", os.path.expanduser("~"), QtWidgets.QFileDialog.ShowDirsOnly)
         self.pathName = folder
+        self.label_saveFolder.setText(os.path.basename(self.pathName))
         return
 
     def run(self): 
-        self.clusterAnalysis.runBatch(self.pathName, eps = self.eps, min_samples = self.min_samples, maxDistance = self.maxDistance)
+        if self.queuingFlag:
+            self.clusterAnalysis.runBatch_queueing(self.pathName) 
+        else:
+            self.clusterAnalysis.runBatch(self.pathName, eps = self.eps, min_samples = self.min_samples, maxDistance = self.maxDistance)
         return
 
     def displayClicked(self):
@@ -2130,14 +2185,15 @@ def test3():
 
 def test4():
     clusterAnalysis.viewerGUI()      
-
+  
 
 if __name__ == "__main__":
     clusterAnalysis = ClusterAnalysis()
     #test() 
     #test2()
-    test3()
+    #test3()
     #test4()
+    clusterAnalysis.runBatch_queueing(r'C:\Users\g_dic\OneDrive\Desktop\batchTest')  
 
 
 
