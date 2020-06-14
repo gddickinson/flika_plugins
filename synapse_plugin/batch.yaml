@@ -1,0 +1,12 @@
+- batch: '0'                 
+  eps: 100
+  min_samples: 10
+  maxDistance: 100
+  multiThreading: True
+  clusterType: '3D'
+- batch: '1'
+  eps: 120
+  min_samples: 5
+  maxDistance: 115
+  multiThreading: True
+  clusterType: '3D'

@@ -106,11 +106,24 @@ class ClusterAnalysis:
         self.eps = 100          #max distance between points within a cluster
         self.min_samples = 10   #min number of points to form a cluster
         self.maxDistance = 100  #max distance between clusters in differnt channels when forming combined ROI
-        self.colors = ((255, 0, 0), (0, 255, 0))
+
+        #colour options
+        self.channel1_color = QColor(255, 0, 0)
+        self.channel2_color = QColor(0, 255, 0) 
+        self.emptyChannel_color = QColor(1, 1, 1) 
+        
+        self.channel1_centeroids_color =  QColor(255, 255, 255)      
+        self.channel2_centeroids_color =  QColor(255, 255, 255)
+
+        self.random1_centeroids_color =  QColor(255, 255, 255)      
+        self.random2_centeroids_color =  QColor(255, 255, 255)
+          
+        
+        self.colors = (self.channel1_color , self.channel2_color)
         self.color_dict = {'atto488': self.colors[0], 'Alexa647': self.colors[1]}
         self.ignore = {"Z Rejected"}        
         self.Channels = []
-        self.empty_channel = Channel('Empty', [], (1, 1, 1))
+        self.empty_channel = Channel('Empty', [], self.emptyChannel_color)
         
         #display options
         self.centroidSymbolSize = 10
@@ -413,8 +426,8 @@ class ClusterAnalysis:
         #make point data
         point_n1 = len(self.ch1Points_3D[::,0])
         point_n2 = len(self.ch2Points_3D[::,0])
-        self.point_s1 = pg.ScatterPlotItem(size=3, pen=pg.mkPen(None), brush=pg.mkBrush(0, 255, 0, 120))
-        self.point_s2 = pg.ScatterPlotItem(size=3, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 120))  
+        self.point_s1 = pg.ScatterPlotItem(size=3, pen=pg.mkPen(None), brush=pg.mkBrush(self.channel1_color))
+        self.point_s2 = pg.ScatterPlotItem(size=3, pen=pg.mkPen(None), brush=pg.mkBrush(self.channel2_color))  
         self.point_s3 = pg.ScatterPlotItem(size=6, pen=pg.mkPen(None), brush=pg.mkBrush(125, 255, 255, 120))          
         point_pos1 = np.array([self.ch1Points_3D[::,0],self.ch1Points_3D[::,1]])
         point_pos2 = np.array([self.ch2Points_3D[::,0],self.ch2Points_3D[::,1]])
@@ -434,8 +447,8 @@ class ClusterAnalysis:
             elevation =self.imv3D.opts['elevation']
             azimuth = self.imv3D.opts['azimuth']
             self.imv3D.clear()
-        self.imv3D.addArray(self.ch1Points_3D,color=QColor(0, 255, 0),size=2,name='ch1_pts_all')
-        self.imv3D.addArray(self.ch2Points_3D,color=QColor(255, 0, 0),size=2,name='ch2_pts_all') 
+        self.imv3D.addArray(self.ch1Points_3D,color=self.channel1_color,size=2,name='ch1_pts_all')
+        self.imv3D.addArray(self.ch2Points_3D,color=self.channel2_color,size=2,name='ch2_pts_all') 
         if toggle:
             self.imv3D.setCameraPosition(pos=pos,distance = dist, elevation =elevation, azimuth=azimuth)            
             return
@@ -652,8 +665,8 @@ class ClusterAnalysis:
 
     def display2Dcentroids(self):
         #make centeroid data
-        self.centeroid_s1 = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))
-        self.centeroid_s2 = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))
+        self.centeroid_s1 = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(self.channel1_centeroids_color))
+        self.centeroid_s2 = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(self.channel2_centeroids_color))
         #combined clusters
         centeroid_n1 = len(self.combined_ch1_Centeroids[::,0])
         centeroid_n2 = len(self.combined_ch2_Centeroids[::,0])
@@ -686,8 +699,8 @@ class ClusterAnalysis:
         #make point data
         point_n1 = len(self.ch1PointsNoNoise_3D[::,0])
         point_n2 = len(self.ch2PointsNoNoise_3D[::,0])
-        point_s1 = pg.ScatterPlotItem(size=3, pen=pg.mkPen(None), brush=pg.mkBrush(0, 255, 0, 120))
-        point_s2 = pg.ScatterPlotItem(size=3, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 120))        
+        point_s1 = pg.ScatterPlotItem(size=3, pen=pg.mkPen(None), brush=pg.mkBrush(self.channel1_color))
+        point_s2 = pg.ScatterPlotItem(size=3, pen=pg.mkPen(None), brush=pg.mkBrush(self.channel2_color))        
         point_pos1 = np.array([self.ch1PointsNoNoise_3D[::,0],self.ch1PointsNoNoise_3D[::,1]])
         point_pos2 = np.array([self.ch2PointsNoNoise_3D[::,0],self.ch2PointsNoNoise_3D[::,1]])
         point_spots1 = [{'pos': point_pos1[:,i], 'data': 1} for i in range(point_n1)]
@@ -704,8 +717,8 @@ class ClusterAnalysis:
         elevation =self.imv3D.opts['elevation']
         azimuth = self.imv3D.opts['azimuth']
         self.imv3D.clear()
-        self.imv3D.addArray(self.ch1PointsNoNoise_3D,color=QColor(0, 255, 0),size=2,name='ch1_pts_noNoise')
-        self.imv3D.addArray(self.ch2PointsNoNoise_3D,color=QColor(255, 0, 0),size=2,name='ch2_pts_noNoise') 
+        self.imv3D.addArray(self.ch1PointsNoNoise_3D,color=self.channel1_color,size=2,name='ch1_pts_noNoise')
+        self.imv3D.addArray(self.ch2PointsNoNoise_3D,color=self.channel2_color,size=2,name='ch2_pts_noNoise') 
         if toggle:
             self.imv3D.setCameraPosition(pos=pos,distance=dist, elevation =elevation, azimuth=azimuth)   
             return
@@ -717,8 +730,8 @@ class ClusterAnalysis:
         dist = self.imv3D.opts['distance']
         elevation =self.imv3D.opts['elevation']
         azimuth = self.imv3D.opts['azimuth']
-        self.imv3D.addArray(self.combined_ch1_Centeroids,color=QColor(255, 255, 255),size=10,name='ch1_cent')
-        self.imv3D.addArray(self.combined_ch2_Centeroids,color=QColor(255, 255, 255),size=10,name='ch2_cent')
+        self.imv3D.addArray(self.combined_ch1_Centeroids,color=self.channel1_centeroids_color,size=10,name='ch1_cent')
+        self.imv3D.addArray(self.combined_ch2_Centeroids,color=self.channel2_centeroids_color,size=10,name='ch2_cent')
         self.imv3D.setCameraPosition(pos=pos,distance=dist, elevation =elevation, azimuth=azimuth)       
         self.centroidsDisplayed = True
         return
@@ -814,8 +827,8 @@ class ClusterAnalysis:
 
     def display2Dcentroids_rnd(self):
         #make centeroid data
-        self.centeroid_s1_rnd = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))
-        self.centeroid_s2_rnd = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))
+        self.centeroid_s1_rnd = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(self.channel1_centeroids_color))
+        self.centeroid_s2_rnd = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(self.channel2_centeroids_color))
         #combined clusters
         centeroid_n1 = len(self.ch1_random[::,0])
         centeroid_n2 = len(self.ch2_random[::,0])
@@ -838,8 +851,8 @@ class ClusterAnalysis:
         dist = self.imv3D_rnd.opts['distance']
         elevation =self.imv3D_rnd.opts['elevation']
         azimuth = self.imv3D_rnd.opts['azimuth']
-        self.imv3D_rnd.addArray(self.ch1_random,color=QColor(255, 255, 255),size=10,name='ch1_cent')
-        self.imv3D_rnd.addArray(self.ch2_random,color=QColor(255, 255, 255),size=10,name='ch2_cent')
+        self.imv3D_rnd.addArray(self.ch1_random,color=self.random1_centeroids_color,size=10,name='ch1_cent')
+        self.imv3D_rnd.addArray(self.ch2_random,color=self.random2_centeroids_color,size=10,name='ch2_cent')
         self.imv3D_rnd.setCameraPosition(pos=pos,distance=dist, elevation =elevation, azimuth=azimuth)       
         self.centroidsDisplayed = True
         return
@@ -885,8 +898,8 @@ class ClusterAnalysis:
                 ch2_pts = self.AllPoints_ch2[roiNum]                    
                 roi_point_n1 = len(ch1_pts[::,0])
                 roi_point_n2 = len(ch2_pts[::,0])
-                roi_point_s1 = pg.ScatterPlotItem(size=5, pen=pg.mkPen(None), brush=pg.mkBrush(0, 255, 0, 120))
-                roi_point_s2 = pg.ScatterPlotItem(size=5, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 120))        
+                roi_point_s1 = pg.ScatterPlotItem(size=5, pen=pg.mkPen(None), brush=pg.mkBrush(self.channel1_color))
+                roi_point_s2 = pg.ScatterPlotItem(size=5, pen=pg.mkPen(None), brush=pg.mkBrush(self.channel2_color))        
                 roi_point_pos1 = np.array([ch1_pts[::,0],ch1_pts[::,1]])
                 roi_point_pos2 = np.array([ch2_pts[::,0],ch2_pts[::,1]])
                 roi_point_spots1 = [{'pos': roi_point_pos1[:,i], 'data': 1} for i in range(roi_point_n1)]
@@ -900,8 +913,8 @@ class ClusterAnalysis:
 
     def display2Dcentroids_roi(self, roiNum = 'ALL'):
         #make centeroid data
-        self.centeroid_s1_roi = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))
-        self.centeroid_s2_roi = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 120))  
+        self.centeroid_s1_roi = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(self.channel1_centeroids_color))
+        self.centeroid_s2_roi = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(self.channel2_centeroids_color))  
                 
         if roiNum == 'ALL':
             #combined clusters
@@ -934,18 +947,17 @@ class ClusterAnalysis:
         if roiNum == 'ALL':
             ch1_pts = np.vstack(self.AllPoints_ch1)
             ch2_pts = np.vstack(self.AllPoints_ch2)
-            self.imv3D_roi.addArray(ch1_pts,color=QColor(0, 255, 0),size=2,name='ch1_pts')
-            self.imv3D_roi.addArray(ch2_pts,color=QColor(255, 0, 0),size=2,name='ch2_pts') 
+            self.imv3D_roi.addArray(ch1_pts,color=self.channel1_color, size=2, name='ch1_pts')
+            self.imv3D_roi.addArray(ch2_pts,color=self.channel2_color, size=2, name='ch2_pts') 
             return
         else:
             self.imv3D_roi.clear()
             ch1_pts = self.AllPoints_ch1[roiNum]
             ch2_pts = self.AllPoints_ch2[roiNum]
-            self.imv3D_roi.addArray(ch1_pts,color=QColor(0, 255, 0),size=2,name='ch1_pts')
-            self.imv3D_roi.addArray(ch2_pts,color=QColor(255, 0, 0),size=2,name='ch2_pts')             
+            self.imv3D_roi.addArray(ch1_pts,color=self.channel1_color, size=2, name='ch1_pts')
+            self.imv3D_roi.addArray(ch2_pts,color=self.channel2_color, size=2, name='ch2_pts')             
         return
 
-    #TODO
     def displayDistanceLine_roi(self,ch1_x,ch1_y,ch1_z,ch2_x,ch2_y,ch2_z):
         self.imv3D_roi.addLine(ch1_x,ch1_y,ch1_z,ch2_x,ch2_y,ch2_z, name='distanceLine')
         #make 2D line data
@@ -961,8 +973,8 @@ class ClusterAnalysis:
             dist = self.imv3D_roi.opts['distance']
             elevation =self.imv3D_roi.opts['elevation']
             azimuth = self.imv3D_roi.opts['azimuth']
-            self.imv3D_roi.addArray(self.combined_ch1_Centeroids,color=QColor(255, 255, 255),size=10,name='ch1_cent')
-            self.imv3D_roi.addArray(self.combined_ch2_Centeroids,color=QColor(255, 255, 255),size=10,name='ch2_cent')
+            self.imv3D_roi.addArray(self.combined_ch1_Centeroids, color=self.channel1_centeroids_color, size=10, name='ch1_cent')
+            self.imv3D_roi.addArray(self.combined_ch2_Centeroids, color=self.channel1_centeroids_color, size=10, name='ch2_cent')
             self.imv3D_roi.setCameraPosition(pos=pos,distance=dist, elevation =elevation, azimuth=azimuth)       
             return
         else:
@@ -974,8 +986,8 @@ class ClusterAnalysis:
             item1 = np.array([np.array(self.combined_ch1_Centeroids[roiNum])])
             item2 = np.array([np.array(self.combined_ch2_Centeroids[roiNum])])
             
-            self.imv3D_roi.addArray(item1,color=QColor(255, 255, 255),size=10,name='ch1_cent')
-            self.imv3D_roi.addArray(item2,color=QColor(255, 255, 255),size=10,name='ch2_cent')
+            self.imv3D_roi.addArray(item1, color=self.channel1_centeroids_color, size=10, name='ch1_cent')
+            self.imv3D_roi.addArray(item2, color=self.channel1_centeroids_color, size=10, name='ch2_cent')
             self.imv3D_roi.setCameraPosition(pos=pos,distance=dist, elevation =elevation, azimuth=azimuth)             
         return
 
@@ -1081,6 +1093,7 @@ class ClusterAnalysis:
         if self.clustersGenerated == False:
             self.displayMessage('Generate Clusters First!')
             return
+        
         self.clear2Ddisplay()
         if self.dataDisplayed == 'original':
             self.display2Ddata_noNoise()
@@ -1114,6 +1127,7 @@ class ClusterAnalysis:
         if self.centroidsGenerated == False:
             self.displayMessage('Generate Centroids first!')
             return    
+        
         self.clear2Ddisplay()
         #print(self.imv3D.cameraPosition())
 
@@ -1144,9 +1158,31 @@ class ClusterAnalysis:
             self.w2.addItem(self.ROI_2D)
             
         if self.ROI2Dpoint_flag:
-            self.w2.addItem(self.ROI_2Dpoint)              
+            self.w2.addItem(self.ROI_2Dpoint)            
         return
             
+
+    def refreshDisplays(self):
+        self.clear2Ddisplay()
+        if self.dataDisplayed == 'no noise':
+            self.display2Ddata_noNoise()
+            self.display3Ddata_noNoise(toggle=True)
+            if self.centroidsDisplayed:
+                self.display2Dcentroids()                  
+                self.display3Dcentroids()            
+
+        else:
+            self.display2Ddata_allPoints()
+            self.display3Ddata_allPoints(toggle=True)
+            if self.centroidsDisplayed:
+                self.display2Dcentroids()  
+                self.display3Dcentroids()
+            
+        if self.ROI2D_flag:
+            self.w2.addItem(self.ROI_2D)
+        if self.ROI2Dpoint_flag:
+            self.w2.addItem(self.ROI_2Dpoint)   
+        return
 
 
     # def toggleClusters(self):
@@ -1417,7 +1453,7 @@ class ClusterAnalysis:
 
     def displayROI(self, items):
         '''    1. updates 2d display with an ROI indcating cluster selection from results table
-               2. adds clusyter points to 3d ROI display'''
+               2. adds cluster points to 3d ROI display'''
         height = float(items[9].text())
         width = float(items[10].text())
         roi_number = int(items[0].text())
@@ -1438,9 +1474,11 @@ class ClusterAnalysis:
         ch2_z = float(ch2_cent[2])
 
         
-        self.displayMessage('\n----')      
-        self.displayMessage('#: ', str(roi_number), 'x: ', x, 'y: ', y, 'width: ', str(width), 'height: ', str(height))
-        #print('#: ', str(roi_number), '\n', str(items[6].text()),'\n',str(items[7].text()),'\n', str(items[8].text()))
+        self.displayMessage('\n----') 
+        
+        
+        #print('ROI #: {}, x: {}, y: {}, width: {}, height:, {}'.format(str(roi_number), x,y, str(width), str(height)))        
+        self.displayMessage('ROI #: {}, x: {}, y: {}, width: {}, height: {}'.format(str(roi_number), x,y, str(width), str(height)))
 
         
         startX = float(x)-(height/2)
@@ -1612,7 +1650,6 @@ class ClusterAnalysis:
             self.displayMessage('Load data before running analysis')
             return
         if self.clustersGenerated == True:
-            #print('Clusters already generated!') #TODO update to clear cluster/centroid data
             self.clearClusterResults()
 
         self.getClusters()  
@@ -1865,6 +1902,17 @@ class PlotOption_win(QtWidgets.QDialog):
         self.viewer = viewerInstance
         self.colors  = self.viewer.colors
 
+        #self.viewer.channel1_color
+        #self.viewer.channel2_color 
+        #self.viewer.emptyChannel_color 
+        
+        #self.viewer.channel1_centeroids_color     
+        #self.viewer.channel2_centeroids_color 
+
+        #self.viewer.random1_centeroids_color      
+        #self.viewer.random2_centeroids_color 
+
+
         
         #window geometry
         self.left = 300
@@ -1872,17 +1920,56 @@ class PlotOption_win(QtWidgets.QDialog):
         self.width = 300
         self.height = 200
 
+        def getColorStr(QColor_object):
+            ColorString = str( QColor_object.name() )
+            EvalString = QtGui.QColor(QtCore.QString(" + ColorString +"))
+            print(EvalString)
+            return EvalString
+            
+            
+
         #labels
         self.plottingTitle = QtWidgets.QLabel("----- Colour Parameters -----") 
-        self.label_Cluster1_colour= QtWidgets.QLabel("Cluster 1 Colour:") 
-      
+        self.label_channel1_Pnts_colour= QtWidgets.QLabel("Channel 1 Points Colour:") 
+        self.label_channel1_Pnts_colour_display= QtWidgets.QLabel("      ") 
+
+        self.label_channel1_Pnts_colour_display.setAutoFillBackground(True) 
+        self.label_channel1_Pnts_colour_display.setStyleSheet( '* { background-color: '+ self.viewer.channel1_color.name() + ' }')
+        
+                
+        self.label_channel2_Pnts_colour= QtWidgets.QLabel("Channel 2 Points Colour:") 
+        self.label_channel2_Pnts_colour_display= QtWidgets.QLabel("      ") 
+
+        self.label_channel2_Pnts_colour_display.setAutoFillBackground(True) 
+        self.label_channel2_Pnts_colour_display.setStyleSheet( '* { background-color: '+ self.viewer.channel2_color.name() + ' }')        
+
+        self.label_channel1_centroids_colour= QtWidgets.QLabel("Channel 1 Centroids Colour:") 
+        self.label_channel1_centroids_colour_display= QtWidgets.QLabel("      ")
+
+        self.label_channel1_centroids_colour_display.setAutoFillBackground(True) 
+        self.label_channel1_centroids_colour_display.setStyleSheet( '* { background-color: '+ self.viewer.channel1_centeroids_color.name() + ' }')
+        
+        
+        self.label_channel2_centroids_colour= QtWidgets.QLabel("Channel 2 Centroids Colour:") 
+        self.label_channel2_centroids_colour_display= QtWidgets.QLabel("      ")  
+        
+        self.label_channel2_centroids_colour_display.setAutoFillBackground(True) 
+        self.label_channel2_centroids_colour_display.setStyleSheet( '* { background-color: '+ self.viewer.channel2_centeroids_color.name() + ' }')        
         
         #self.label_displayPlot = QtWidgets.QLabel("show plot")         
 
-        #spinboxes
-        #self.epsBox = QtWidgets.QSpinBox()
-        #self.epsBox.setRange(0,10000)
-        #self.epsBox.setValue(self.eps)
+        #buttons
+        self.button_getColor_1 = QtWidgets.QPushButton("Set Color")
+        self.button_getColor_1.clicked.connect(lambda:self.getColor(1))    
+        
+        self.button_getColor_2 = QtWidgets.QPushButton("Set Color")
+        self.button_getColor_2.clicked.connect(lambda:self.getColor(2))  
+
+        self.button_getColor_3 = QtWidgets.QPushButton("Set Color")
+        self.button_getColor_3.clicked.connect(lambda:self.getColor(3))    
+        
+        self.button_getColor_4 = QtWidgets.QPushButton("Set Color")
+        self.button_getColor_4.clicked.connect(lambda:self.getColor(4))  
         
 
         #combobox
@@ -1898,9 +1985,24 @@ class PlotOption_win(QtWidgets.QDialog):
         #grid layout
         layout = QtWidgets.QGridLayout()
         layout.setSpacing(5)
-        layout.addWidget(self.plottingTitle, 0, 0, 1, 2)        
-        layout.addWidget(self.label_Cluster1_colour, 1, 0)
-
+        layout.addWidget(self.plottingTitle, 0, 0, 1, 2)
+        
+        layout.addWidget(self.label_channel1_Pnts_colour, 1, 0)
+        layout.addWidget(self.label_channel1_Pnts_colour_display, 1, 1)
+        layout.addWidget(self.button_getColor_1, 1, 2)  
+        
+        layout.addWidget(self.label_channel2_Pnts_colour, 2, 0)
+        layout.addWidget(self.label_channel2_Pnts_colour_display, 2, 1)
+        layout.addWidget(self.button_getColor_2, 2, 2)         
+        
+        layout.addWidget(self.label_channel1_centroids_colour, 3, 0)
+        layout.addWidget(self.label_channel1_centroids_colour_display, 3, 1)
+        layout.addWidget(self.button_getColor_3, 3, 2)   
+        
+        layout.addWidget(self.label_channel2_centroids_colour, 4, 0)
+        layout.addWidget(self.label_channel2_centroids_colour_display, 4, 1)
+        layout.addWidget(self.button_getColor_4, 4, 2) 
+        
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
 
@@ -1914,8 +2016,25 @@ class PlotOption_win(QtWidgets.QDialog):
         #self.analysis_Box.setCurrentIndex(0)
         #self.analysis_Box.currentIndexChanged.connect(self.analysisChange)         
         
-    def setColour_cluster_1(self,value):
-        pass
+    def getColor(self, value):
+        colour = QColorDialog.getColor()
+        if value == 1:
+            self.viewer.channel1_color = colour
+            self.label_channel1_Pnts_colour_display.setStyleSheet( '* { background-color: '+ self.viewer.channel1_color.name() + ' }')
+            
+        if value == 2:
+            self.viewer.channel2_color = colour
+            self.label_channel2_Pnts_colour_display.setStyleSheet( '* { background-color: '+ self.viewer.channel2_color.name() + ' }')            
+            
+        if value == 3:
+            self.viewer.channel1_centeroids_color = colour
+            self.label_channel1_centroids_colour_display.setStyleSheet( '* { background-color: '+ self.viewer.channel1_centeroids_color.name() + ' }')            
+        
+        if value == 4:
+            self.viewer.channel2_centeroids_color = colour
+            self.label_channel2_centroids_colour_display.setStyleSheet( '* { background-color: '+ self.viewer.channel2_centeroids_color.name() + ' }')            
+        
+        self.viewer.refreshDisplays()
         return
     
 
@@ -2161,12 +2280,12 @@ def test():
     clusterAnalysis.printStats()
     clusterAnalysis.makeROIs()
     clusterAnalysis.makeROI_DF()    
-    #clusterAnalysis.displayROIpoints_2D('ALL')
-    #clusterAnalysis.display2Dcentroids_roi('ALL')
-    #clusterAnalysis.display3Ddata_roi('ALL')
-    #clusterAnalysis.display3Dcentroids_roi('ALL')
+    clusterAnalysis.displayROIpoints_2D('ALL')
+    clusterAnalysis.display2Dcentroids_roi('ALL')
+    clusterAnalysis.display3Ddata_roi('ALL')
+    clusterAnalysis.display3Dcentroids_roi('ALL')
     clusterAnalysis.displayROIresults()
-    #clusterAnalysis.displayRandomAnalysisResults()
+    clusterAnalysis.displayRandomAnalysisResults()
     return     
 
 def test2():
@@ -2189,11 +2308,11 @@ def test4():
 
 if __name__ == "__main__":
     clusterAnalysis = ClusterAnalysis()
-    #test() 
+    test() 
     #test2()
     #test3()
     #test4()
-    clusterAnalysis.runBatch_queueing(r'C:\Users\g_dic\OneDrive\Desktop\batchTest')  
+    #clusterAnalysis.runBatch_queueing(r'C:\Users\g_dic\OneDrive\Desktop\batchTest')  
 
 
 
