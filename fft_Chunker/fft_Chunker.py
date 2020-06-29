@@ -19,7 +19,12 @@ from flika.window import Window
 from os.path import expanduser
 import os
 import math
-from scipy.fft import fft, fftfreq 
+
+try:
+    from scipy.fft import fft, fftfreq 
+except:
+    from scipy.fftpack import fft, fftfreq
+
 import time
 
 flika_version = flika.__version__
@@ -61,7 +66,8 @@ def fft_chunks(l, n, time_step):
         freq_chunk = fftfreq(chunk.size, d=time_step)
         name1='power_{}'.format(chunk_num)
         name2='frequency_{}'.format(chunk_num)
-        d= {name1: power_chunk, name2: freq_chunk}
+        name3='chunk_{}'.format(chunk_num)
+        d= {name1: power_chunk, name2: freq_chunk, name3: chunk}
         newDF = pd.DataFrame(data=d)
         df = pd.concat([df,newDF], axis=1)
         chunk_num += 1
@@ -163,16 +169,17 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         self.timestep_Max = 1000000
         self.chunkSize_Max = 1000000      
         
-        self.filename = ''
-        
+        self.filename = ''        
         self.exportPath = ''
+        self.plotGraph = False
+        
 
     def __call__(self):
         '''
         reset saved parameters
         '''
-        g.settings['fftChunker']['timestep'] = 10
-        g.settings['fftChunker']['chunkSize'] = 0.1
+        g.settings['fftChunker']['timestep'] = 1
+        g.settings['fftChunker']['chunkSize'] = 128
              
         #currently not saving parameter changes
         
@@ -190,6 +197,10 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         self.runAnalysis_button = QPushButton('Run Analysis')
         self.runAnalysis_button.pressed.connect(self.runAnalysis)              
               
+        #checkbox
+        self.plot_checkbox = CheckBox()
+        self.plot_checkbox.setChecked(self.plotGraph)
+        
         
         #self.setExportFolder_button = FolderSelector('*.csv')
         
@@ -215,7 +226,8 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         self.items.append({'name': 'chunksize ', 'string': 'Set chunk size ', 'object': self.chunkSize_Box})  
         self.items.append({'name': 'timestep ', 'string': 'Set timestep: ', 'object': self.timestep_Box}) 
         self.items.append({'name': 'filepath ', 'string': '', 'object': self.getFile})              
-        self.items.append({'name': 'run', 'string': '', 'object': self.runAnalysis_button })         
+        self.items.append({'name': 'run', 'string': '', 'object': self.runAnalysis_button }) 
+        self.items.append({'name': 'plot', 'string': 'Plot results for 1st Trace', 'object': self.plot_checkbox })         
              
         #self.items.append({'name': 'blank ', 'string': '-----------------   Export Path    -----------------', 'object': None})    
         #self.items.append({'name': 'setPath ', 'string': '', 'object': self.setExportFolder_button })            
@@ -238,7 +250,7 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
 #         else:
 #             self.filename = ''
 #         return
-
+        
 
     def runAnalysis(self):
         self.filename = self.getFile.value()
@@ -265,7 +277,7 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
                 #result = (fft_chunks(sig,chunk_size)) # FOR TESTING     
                 # add to result_dict
                 result_dict.update( {i : result} )
-        
+                print('Trace {} analysed, {} chunks processed'.format(str(i), str((len(data[i].to_numpy() )/chunk_size))))
 
             #export results
             savePath = os.path.dirname(self.filename)
@@ -275,6 +287,28 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
                 result_dict[key].to_csv(saveName)
                 print('File {} saved'.format(saveName))
                 g.m.statusBar().showMessage('File {} saved'.format(saveName))
+                
+            if self.plot_checkbox.isChecked():
+                ### plot test result
+                result_data = result_dict[0] # just results for 1st trace
+                numChunks = int(len(list(result_data.keys()))/3)
+                if numChunks > 20:
+                    g.alert('More than 20 plots would be generated - aborting plotting')
+                    return
+
+
+                for i in range(1,numChunks+1):
+                    print('Plotting chunk {}'.format(str(i)))  
+                    plt.figure(i)
+                    plt.subplot(211)
+                    plt.plot(result_data['chunk_{}'.format(str(i))])
+                    plt.subplot(212)                    
+                    plt.scatter(result_data['frequency_{}'.format(str(i))],result_data['power_{}'.format(str(i))])
+                    #plt.plot(result_data['frequency_{}'.format(str(i))],result_data['power_{}'.format(str(i))])                    
+                    plt.title("FFT analysis - chunk {}".format(str(i)))
+                    plt.xlabel("frequency")
+                    plt.ylabel("power")
+                    plt.show()
     
  
 fft_Chunker = FFT_Chunker()
