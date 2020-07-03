@@ -37,6 +37,7 @@ else:
 import pandas as pd
 from matplotlib import pyplot as plt
 
+
 #chunking fft function
 def fft_chunks(l, n, time_step):
     '''
@@ -58,21 +59,50 @@ def fft_chunks(l, n, time_step):
     # looping till length l 
     df = pd.DataFrame()
     chunk_num = 1
+    freq_min = 100000000
+    freq_max = 0
+    pow_min = 100000000
+    pow_max = 0
     
     for i in range(0, len(l), n):
         chunk = l[i:i + n]
         fft_chunk = fft(chunk)
         power_chunk = np.abs(fft_chunk) 
         freq_chunk = fftfreq(chunk.size, d=time_step)
+
+
+        #replace neqative freq values with NaN - and corresponding power values
+        mask = freq_chunk < 0         
+        freq_chunk = np.ma.masked_array(data=freq_chunk,mask=mask,fill_value=np.nan).filled()
+        power_chunk = np.ma.masked_array(data=power_chunk,mask=mask,fill_value=np.nan).filled()        
+
+        #convert power and freq to 1og10        
+        power_chunk = np.log10(power_chunk)
+        freq_chunk =  np.log10(freq_chunk)
+             
         name1='power_{}'.format(chunk_num)
         name2='frequency_{}'.format(chunk_num)
         name3='chunk_{}'.format(chunk_num)
         d= {name1: power_chunk, name2: freq_chunk, name3: chunk}
         newDF = pd.DataFrame(data=d)
         df = pd.concat([df,newDF], axis=1)
+        
+        #get min and max values to set plot windows
+        if min(freq_chunk) < freq_min:
+            freq_min = min(freq_chunk)
+            
+        if max(freq_chunk) > freq_max:
+            freq_max = max(freq_chunk)
+            
+        if min(power_chunk) < pow_min:
+            pow_min = min(power_chunk)
+            
+        if max(power_chunk) > pow_max:
+            pow_max = max(power_chunk)
+        
         chunk_num += 1
           
-    return df
+    return df, freq_min, freq_max, pow_min, pow_max, min(l), max(l)
 
 
 def open_file_gui(prompt="Open File", directory=None, filetypes=''):
@@ -173,6 +203,12 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         self.exportPath = ''
         self.plotGraph = False
         
+        #plotting options
+        self.X_min = 0.01
+        self.X_max = 10000
+        self.Y_min = 0.01
+        self.Y_max = 10000
+        
 
     def __call__(self):
         '''
@@ -200,8 +236,13 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         #checkbox
         self.plot_checkbox = CheckBox()
         self.plot_checkbox.setChecked(self.plotGraph)
-        
-        
+
+        #label
+        self.numFrames_label = QLabel()
+        self.numFrames_label.setText('No file selected') 
+        self.numChunks_label = QLabel()
+        self.numChunks_label.setText('No file selected')        
+               
         #self.setExportFolder_button = FolderSelector('*.csv')
         
         #spinboxes
@@ -215,9 +256,65 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         self.timestep_Box.setMinimum(0)
         self.timestep_Box.setMaximum(1000000)        
         self.timestep_Box.setValue(s['timestep'])        
+
+        self.baseline_start = pg.SpinBox(int=True, step=1)
+        self.baseline_start.setMinimum(0)
+        self.baseline_start.setMaximum(1000000)        
+        self.baseline_start.setValue(0)        
+               
+        self.baseline_stop = pg.SpinBox(int=True, step=1)  
+        self.baseline_stop.setMinimum(0)
+        self.baseline_stop.setMaximum(1000000)        
+        self.baseline_stop.setValue(0)          
         
+        self.puff1_start = pg.SpinBox(int=True, step=1)
+        self.puff1_start.setMinimum(0)
+        self.puff1_start.setMaximum(1000000)        
+        self.puff1_start.setValue(0)        
+               
+        self.puff1_stop = pg.SpinBox(int=True, step=1)  
+        self.puff1_stop.setMinimum(0)
+        self.puff1_stop.setMaximum(1000000)        
+        self.puff1_stop.setValue(0)         
+        
+        self.puff2_start = pg.SpinBox(int=True, step=1)
+        self.puff2_start.setMinimum(0)
+        self.puff2_start.setMaximum(1000000)        
+        self.puff2_start.setValue(0)        
+               
+        self.puff2_stop = pg.SpinBox(int=True, step=1)  
+        self.puff2_stop.setMinimum(0)
+        self.puff2_stop.setMaximum(1000000)        
+        self.puff2_stop.setValue(0)    
+        
+        self.puff3_start = pg.SpinBox(int=True, step=1)
+        self.puff3_start.setMinimum(0)
+        self.puff3_start.setMaximum(1000000)        
+        self.puff3_start.setValue(0)        
+               
+        self.puff3_stop = pg.SpinBox(int=True, step=1)  
+        self.puff3_stop.setMinimum(0)
+        self.puff3_stop.setMaximum(1000000)        
+        self.puff3_stop.setValue(0)          
+        
+        self.puff4_start = pg.SpinBox(int=True, step=1)
+        self.puff4_start.setMinimum(0)
+        self.puff4_start.setMaximum(1000000)        
+        self.puff4_start.setValue(0)        
+               
+        self.puff4_stop = pg.SpinBox(int=True, step=1)  
+        self.puff4_stop.setMinimum(0)
+        self.puff4_stop.setMaximum(1000000)        
+        self.puff4_stop.setValue(0)          
+        
+        
+        #export file selector
         self.getFile = FileSelector()
- 
+        
+        
+        #connections
+        self.chunkSize_Box.valueChanged.connect(self.chunkSizeUpdate)        
+        self.getFile.valueChanged.connect(self.loadData) 
            
         #################################################################
         #self.exportFolder = FolderSelector('*.txt')
@@ -225,6 +322,20 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         self.items.append({'name': 'blank ', 'string': '-------------   Parameters    ---------------', 'object': None}) 
         self.items.append({'name': 'chunksize ', 'string': 'Set chunk size ', 'object': self.chunkSize_Box})  
         self.items.append({'name': 'timestep ', 'string': 'Set timestep: ', 'object': self.timestep_Box}) 
+        self.items.append({'name': 'numFrames', 'string': 'Number of frames in trace: ', 'object': self.numFrames_label})        
+        self.items.append({'name': 'numChunks', 'string': 'Number of chunks: ', 'object': self.numChunks_label})         
+        self.items.append({'name': 'blank ', 'string': '-------------    Averaging     ---------------', 'object': None}) 
+        self.items.append({'name': 'blank ', 'string': '--  If  stop = 0 the group will be ignored  --', 'object': None})         
+        self.items.append({'name': 'baseline_start ', 'string': 'Baseline start: ', 'object': self.baseline_start})  
+        self.items.append({'name': 'baseline_stop', 'string': 'Baseline stop: ', 'object': self.baseline_stop})          
+        self.items.append({'name': 'puff1_start ', 'string': 'Puff start (1): ', 'object': self.puff1_start})  
+        self.items.append({'name': 'puff1_stop', 'string': 'Puff stop (1): ', 'object': self.puff1_stop})           
+        self.items.append({'name': 'puff2_start ', 'string': 'Puff start (2): ', 'object': self.puff2_start})  
+        self.items.append({'name': 'puff2_stop', 'string': 'Puff stop (2): ', 'object': self.puff2_stop})           
+        self.items.append({'name': 'puff3_start ', 'string': 'Puff start (3): ', 'object': self.puff3_start})  
+        self.items.append({'name': 'puff3_stop', 'string': 'Puff stop (3): ', 'object': self.puff3_stop}) 
+        self.items.append({'name': 'puff4_start ', 'string': 'Puff start (4): ', 'object': self.puff4_start})  
+        self.items.append({'name': 'puff4_stop', 'string': 'Puff stop (4): ', 'object': self.puff4_stop})            
         self.items.append({'name': 'filepath ', 'string': '', 'object': self.getFile})              
         self.items.append({'name': 'run', 'string': '', 'object': self.runAnalysis_button }) 
         self.items.append({'name': 'plot', 'string': 'Plot results for 1st Trace', 'object': self.plot_checkbox })         
@@ -250,10 +361,81 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
 #         else:
 #             self.filename = ''
 #         return
+    
+    def chunkSizeUpdate(self):
+        if self.filename == '' :
+            return
         
+        else:
+            self.numChunks = float(self.nFrames/self.chunkSize_Box.value())
+            self.numChunks_label.setText(str(self.numChunks)) 
+                        
+        return
 
-    def runAnalysis(self):
+    def frameLengthUpdate(self):
+        if self.filename == '' :
+            return        
+        else:
+            self.nFrames = len(self.data[0].values)
+            self.numFrames_label.setText(str(self.nFrames)) 
+            self.chunkSizeUpdate()           
+        return
+
+
+    def loadData(self):
         self.filename = self.getFile.value()
+        self.data = pd.read_csv(self.filename, header=None, skiprows=1, index_col = 0)
+        self.data = self.data.dropna(axis=1, how='all')
+        nCols = len(self.data.columns)
+        colNames = list(range(0,nCols))
+        self.data.columns = colNames
+        self.frameLengthUpdate()
+
+    def plotData(self):
+        ### plot test result
+        result_data = self.result_dict[0] # just results for 1st trace
+        numChunks = int(len(list(result_data.keys()))/3)
+        if numChunks > 20:
+            g.alert('More than 20 plots would be generated - aborting plotting')
+            return
+
+
+        for i in range(1,numChunks+1):
+            print('Plotting chunk {}'.format(str(i)))  
+            plt.figure(i)
+            plt.subplot(211)
+            plt.plot(result_data['chunk_{}'.format(str(i))])
+            plt.xlabel("frame") 
+            plt.ylabel("DF/F0")                    
+            plt.ylim(ymin=self.minTime, ymax=self.maxTime)                    
+            
+            plt.subplot(212)
+            x = result_data['frequency_{}'.format(str(i))]
+            y = result_data['power_{}'.format(str(i))]
+            
+            plt.scatter(x,y, s=8, c='blue')
+            #plt.plot(result_data['frequency_{}'.format(str(i))],result_data['power_{}'.format(str(i))])                    
+            plt.title("FFT analysis - chunk {}".format(str(i)))
+            plt.xlabel("frequency")
+            plt.ylabel("power")
+
+            
+            #add average line
+            #y_mean = [np.mean(y)]*len(x)
+            #plt.plot(x,y_mean, label='Mean', color='red')
+            
+            #plt.xscale('log')
+            #plt.yscale('log')  
+            #plt.xlim(xmin= 0.0001, xmax=self.X_max)
+            plt.ylim(ymin=self.Y_min, ymax=self.Y_max)                    
+            
+            
+            plt.show()
+        
+        
+        return
+
+    def runAnalysis(self):        
         chunk_size = self.chunkSize_Box.value()
         timestep = self.timestep_Box.value()
         timeStr = time.strftime("%Y%m%d-%H%M%S")
@@ -264,51 +446,34 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
             return
         else:
             #import trace/traces
-            data = pd.read_csv(self.filename, header = None)
-            columns = list(data) 
+                        
+            columns = list(self.data) 
+
                         
             #initiate result dict (for multiple traces)
-            result_dict = {}
+            self.result_dict = {}
             
             #fft analysis
             for i in columns:   
                 # analyse each column
-                result = (fft_chunks(data[i].to_numpy(),chunk_size, timestep)) 
-                #result = (fft_chunks(sig,chunk_size)) # FOR TESTING     
-                # add to result_dict
-                result_dict.update( {i : result} )
-                print('Trace {} analysed, {} chunks processed'.format(str(i), str((len(data[i].to_numpy() )/chunk_size))))
+                result, self.X_min, self.X_max, self.Y_min, self.Y_max, self.minTime, self.maxTime = (fft_chunks(self.data[i].values,chunk_size, timestep)) 
+ 
+                # add to self.result_dict
+                self.result_dict.update( {i : result} )
+                print('Trace {} analysed, {} chunks processed'.format(str(i), str((len(self.data[i].values )/chunk_size))))
 
             #export results
             savePath = os.path.dirname(self.filename)
             
-            for key in result_dict:  
+            for key in self.result_dict:  
                 saveName = os.path.join(savePath,'FFT_Chunker_Batch_{}_Trace_{}.csv'.format(timeStr,str(key)))
-                result_dict[key].to_csv(saveName)
+                self.result_dict[key].to_csv(saveName)
                 print('File {} saved'.format(saveName))
                 g.m.statusBar().showMessage('File {} saved'.format(saveName))
                 
             if self.plot_checkbox.isChecked():
-                ### plot test result
-                result_data = result_dict[0] # just results for 1st trace
-                numChunks = int(len(list(result_data.keys()))/3)
-                if numChunks > 20:
-                    g.alert('More than 20 plots would be generated - aborting plotting')
-                    return
+                self.plotData()
 
-
-                for i in range(1,numChunks+1):
-                    print('Plotting chunk {}'.format(str(i)))  
-                    plt.figure(i)
-                    plt.subplot(211)
-                    plt.plot(result_data['chunk_{}'.format(str(i))])
-                    plt.subplot(212)                    
-                    plt.scatter(result_data['frequency_{}'.format(str(i))],result_data['power_{}'.format(str(i))])
-                    #plt.plot(result_data['frequency_{}'.format(str(i))],result_data['power_{}'.format(str(i))])                    
-                    plt.title("FFT analysis - chunk {}".format(str(i)))
-                    plt.xlabel("frequency")
-                    plt.ylabel("power")
-                    plt.show()
     
  
 fft_Chunker = FFT_Chunker()
