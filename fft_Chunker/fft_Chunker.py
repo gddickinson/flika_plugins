@@ -258,9 +258,9 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         self.timestep_Box.setValue(s['timestep'])        
 
         self.baseline_start = pg.SpinBox(int=True, step=1)
-        self.baseline_start.setMinimum(0)
+        self.baseline_start.setMinimum(1)
         self.baseline_start.setMaximum(1000000)        
-        self.baseline_start.setValue(0)        
+        self.baseline_start.setValue(1)        
                
         self.baseline_stop = pg.SpinBox(int=True, step=1)  
         self.baseline_stop.setMinimum(0)
@@ -268,9 +268,9 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         self.baseline_stop.setValue(0)          
         
         self.puff1_start = pg.SpinBox(int=True, step=1)
-        self.puff1_start.setMinimum(0)
+        self.puff1_start.setMinimum(1)
         self.puff1_start.setMaximum(1000000)        
-        self.puff1_start.setValue(0)        
+        self.puff1_start.setValue(1)        
                
         self.puff1_stop = pg.SpinBox(int=True, step=1)  
         self.puff1_stop.setMinimum(0)
@@ -278,9 +278,9 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         self.puff1_stop.setValue(0)         
         
         self.puff2_start = pg.SpinBox(int=True, step=1)
-        self.puff2_start.setMinimum(0)
+        self.puff2_start.setMinimum(1)
         self.puff2_start.setMaximum(1000000)        
-        self.puff2_start.setValue(0)        
+        self.puff2_start.setValue(1)        
                
         self.puff2_stop = pg.SpinBox(int=True, step=1)  
         self.puff2_stop.setMinimum(0)
@@ -288,9 +288,9 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         self.puff2_stop.setValue(0)    
         
         self.puff3_start = pg.SpinBox(int=True, step=1)
-        self.puff3_start.setMinimum(0)
+        self.puff3_start.setMinimum(1)
         self.puff3_start.setMaximum(1000000)        
-        self.puff3_start.setValue(0)        
+        self.puff3_start.setValue(1)        
                
         self.puff3_stop = pg.SpinBox(int=True, step=1)  
         self.puff3_stop.setMinimum(0)
@@ -298,9 +298,9 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         self.puff3_stop.setValue(0)          
         
         self.puff4_start = pg.SpinBox(int=True, step=1)
-        self.puff4_start.setMinimum(0)
+        self.puff4_start.setMinimum(1)
         self.puff4_start.setMaximum(1000000)        
-        self.puff4_start.setValue(0)        
+        self.puff4_start.setValue(1)        
                
         self.puff4_stop = pg.SpinBox(int=True, step=1)  
         self.puff4_stop.setMinimum(0)
@@ -431,9 +431,78 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
             
             
             plt.show()
+         
+
+                
+        return
+
+
+    def plotAverages(self):
+        #plot averaged chunks    
+        fig, (ax1, ax2) = plt.subplots(1, 2)
+        fig.suptitle('Averaged chunks')
+        ax1.plot(self.baselineAverage)
+        ax2.plot(self.puff1Average)
+        plt.show()               
+        return
+
+
+    def makeAverage(self):
+        result_data = self.result_dict[0] 
         
+        self.baselineAverage = []
+        self.puff1Average = []
+        self.puff2Average = []
+        self.puff3Average = []
+        self.puff4Average = []        
+        
+
+        def getAverage(start,end):
+            arrayList = []
+            for i in range(start,end):
+                arrayList.append(result_data['power_{}'.format(str(i))])
+            ans = np.mean(arrayList, axis=0)
+            return ans
+            
+        base_start = self.baseline_start.value()  
+        base_stop = self.baseline_stop.value() 
+        puff1_start = self.puff1_start.value()  
+        puff1_stop = self.puff1_stop.value()         
+        puff2_start = self.puff2_start.value()  
+        puff2_stop = self.puff2_stop.value()         
+        puff3_start = self.puff3_start.value()  
+        puff3_stop = self.puff3_stop.value()         
+        puff4_start = self.puff4_start.value()  
+        puff4_stop = self.puff4_stop.value()         
+        
+
+        
+        #get average group settings
+        if base_stop > 0 and base_stop >= base_start:
+            self.baselineAverage = getAverage(base_start, base_stop) 
+
+        if puff1_stop> 0 and puff1_stop >= puff1_start:
+            self.puff1Average = getAverage(puff1_start, puff1_stop) 
+
+        if puff2_stop > 0 and puff2_stop >= puff2_start:
+            self.puff2Average = getAverage(puff2_start, puff2_stop) 
+
+        if puff3_stop > 0 and puff3_stop >= puff3_start:
+            self.puff3Average = getAverage(puff3_start, puff3_stop) 
+
+        if puff4_stop > 0 and puff4_stop >= puff4_start:
+            self.puff4Average = getAverage(puff4_start, puff4_stop)        
+
+
+        print(self.baselineAverage)
+        print(self.puff1Average)
+        print(self.puff2Average)
+        print(self.puff3Average)
+        print(self.puff4Average)
+
         
         return
+
 
     def runAnalysis(self):        
         chunk_size = self.chunkSize_Box.value()
@@ -473,7 +542,8 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
                 
             if self.plot_checkbox.isChecked():
                 self.plotData()
-
+                self.makeAverage()
+                self.plotAverages()
     
  
 fft_Chunker = FFT_Chunker()
