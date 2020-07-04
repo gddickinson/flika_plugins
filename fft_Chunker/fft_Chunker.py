@@ -218,10 +218,11 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         g.settings['fftChunker']['chunkSize'] = 128
              
         #currently not saving parameter changes
-        
+        self.clearPlots()
         return
 
     def closeEvent(self, event):
+        self.clearPlots()
         BaseProcess_noPriorWindow.closeEvent(self, event)
         return
 
@@ -231,7 +232,10 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
 
         #buttons      
         self.runAnalysis_button = QPushButton('Run Analysis')
-        self.runAnalysis_button.pressed.connect(self.runAnalysis)              
+        self.runAnalysis_button.pressed.connect(self.runAnalysis)  
+
+        self.closePlots_button = QPushButton('Close plots')
+        self.closePlots_button.pressed.connect(self.clearPlots)              
               
         #checkbox
         self.plot_checkbox = CheckBox()
@@ -338,7 +342,8 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         self.items.append({'name': 'puff4_stop', 'string': 'Puff stop (4): ', 'object': self.puff4_stop})            
         self.items.append({'name': 'filepath ', 'string': '', 'object': self.getFile})              
         self.items.append({'name': 'run', 'string': '', 'object': self.runAnalysis_button }) 
-        self.items.append({'name': 'plot', 'string': 'Plot results for 1st Trace', 'object': self.plot_checkbox })         
+        self.items.append({'name': 'plot', 'string': 'Plot results', 'object': self.plot_checkbox })    
+        self.items.append({'name': 'closeplots', 'string': '', 'object': self.closePlots_button })          
              
         #self.items.append({'name': 'blank ', 'string': '-----------------   Export Path    -----------------', 'object': None})    
         #self.items.append({'name': 'setPath ', 'string': '', 'object': self.setExportFolder_button })            
@@ -395,8 +400,8 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         ### plot test result
         result_data = self.result_dict[0] # just results for 1st trace
         numChunks = int(len(list(result_data.keys()))/3)
-        if numChunks > 20:
-            g.alert('More than 20 plots would be generated - aborting plotting')
+        if numChunks > 40:
+            g.alert('More than 40 plots would be generated - aborting plotting')
             return
 
 
@@ -439,30 +444,59 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
 
     def plotAverages(self):
         #plot averaged chunks    
-        fig, (ax1, ax2) = plt.subplots(1, 2)
-        fig.suptitle('Averaged chunks')
-        ax1.plot(self.baselineAverage)
-        ax2.plot(self.puff1Average)
+        self.fig, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(1, 5, sharex = True, sharey = True)
+        self.fig.suptitle('Averaged chunks')
+        ax1.plot(self.baseline_FreqAverage,self.baseline_PowerAverage )
+        ax2.plot(self.puff1_FreqAverage, self.puff1_PowerAverage)
+        ax3.plot(self.puff2_FreqAverage, self.puff2_PowerAverage)    
+        ax4.plot(self.puff3_FreqAverage, self.puff3_PowerAverage)
+        ax5.plot(self.puff4_FreqAverage, self.puff4_PowerAverage)
+        
+        
+        ax1.set_title('Baseline')
+        ax2.set_title('Puff group 1')        
+        ax3.set_title('Puff group 2') 
+        ax4.set_title('Puff group 3')
+        ax5.set_title('Puff group 4')        
+        
         plt.show()               
         return
 
 
+    def clearPlots(self):
+        try:
+            plt.close('all')  
+        except:
+            pass
+        return
+
     def makeAverage(self):
         result_data = self.result_dict[0] 
         
-        self.baselineAverage = []
-        self.puff1Average = []
-        self.puff2Average = []
-        self.puff3Average = []
-        self.puff4Average = []        
-        
+        self.baseline_PowerAverage = []
+        self.puff1_PowerAverage = []
+        self.puff2_PowerAverage = []
+        self.puff3_PowerAverage = []
+        self.puff4_PowerAverage = []  
+        self.baseline_FreqAverage = []
+        self.puff1_FreqAverage = []
+        self.puff2_FreqAverage = []
+        self.puff3_FreqAverage = []
+        self.puff4_FreqAverage = []        
+
+        self.average_dict = {}
+
 
         def getAverage(start,end):
-            arrayList = []
+            powerList = []
+            frequencyList = []
+            
             for i in range(start,end):
-                arrayList.append(result_data['power_{}'.format(str(i))])
-            ans = np.mean(arrayList, axis=0)
-            return ans
+                powerList.append(result_data['power_{}'.format(str(i))])
+                frequencyList.append(result_data['frequency_{}'.format(str(i))])                
+            power = np.mean(powerList, axis=0)
+            frequency = np.mean(frequencyList, axis=0)
+            return power, frequency
             
         base_start = self.baseline_start.value()  
         base_stop = self.baseline_stop.value() 
@@ -479,45 +513,53 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         
         #get average group settings
         if base_stop > 0 and base_stop >= base_start:
-            self.baselineAverage = getAverage(base_start, base_stop) 
+            self.baseline_PowerAverage, self.baseline_FreqAverage = getAverage(base_start, base_stop) 
+            self.average_dict.update( {'baseline_PowerAverage' : self.baseline_PowerAverage, 'baseline_FreqAverage':self.baseline_FreqAverage} )
 
         if puff1_stop> 0 and puff1_stop >= puff1_start:
-            self.puff1Average = getAverage(puff1_start, puff1_stop) 
+            self.puff1_PowerAverage, self.puff1_FreqAverage = getAverage(puff1_start, puff1_stop) 
+            self.average_dict.update( {'puff1_PowerAverage' : self.puff1_PowerAverage, 'puff1_FreqAverage' :self.puff1_FreqAverage} )
 
         if puff2_stop > 0 and puff2_stop >= puff2_start:
-            self.puff2Average = getAverage(puff2_start, puff2_stop) 
+            self.puff2_PowerAverage, self.puff2_FreqAverage = getAverage(puff2_start, puff2_stop) 
+            self.average_dict.update( {'puff2_PowerAverage' : self.puff2_PowerAverage, 'puff2_FreqAverage' :self.puff2_FreqAverage} )
+            
 
         if puff3_stop > 0 and puff3_stop >= puff3_start:
-            self.puff3Average = getAverage(puff3_start, puff3_stop) 
+            self.puff3_PowerAverage, self.puff3_FreqAverage = getAverage(puff3_start, puff3_stop) 
+            self.average_dict.update( {'puff3_PowerAverage' : self.puff3_PowerAverage, 'puff3_FreqAverage' :self.puff3_FreqAverage} )
+
 
         if puff4_stop > 0 and puff4_stop >= puff4_start:
-            self.puff4Average = getAverage(puff4_start, puff4_stop)        
+            self.puff4_PowerAverage, self.puff4_FreqAverage = getAverage(puff4_start, puff4_stop)
+            self.average_dict.update( {'puff4_PowerAverage' : self.puff4_PowerAverage, 'puff4_FreqAverage' :self.puff4_FreqAverage} )
 
-
-        print(self.baselineAverage)
-        print(self.puff1Average)
-        print(self.puff2Average)
-        print(self.puff3Average)
-        print(self.puff4Average)
-
-        
+       
         return
 
+    def exportAverage(self):
+        self.average_DF = pd.DataFrame.from_dict(data=self.average_dict)
+        savePath = os.path.dirname(self.filename)
+        saveName = os.path.join(savePath,'FFT_Chunker_Batch_{}_Averages.csv'.format(self.timeStr))
+        self.average_DF.to_csv(saveName)
+        print('average file saved')
+        
+        return
 
     def runAnalysis(self):        
         chunk_size = self.chunkSize_Box.value()
         timestep = self.timestep_Box.value()
-        timeStr = time.strftime("%Y%m%d-%H%M%S")
+        self.timeStr = time.strftime("%Y%m%d-%H%M%S")
         
         if self.filename == '':
             print('File not loaded!')
             g.m.statusBar().showMessage('File not loaded!')
             return
         else:
-            #import trace/traces
-                        
-            columns = list(self.data) 
+            self.clearPlots()
 
+            #import trace/traces                        
+            columns = list(self.data) 
                         
             #initiate result dict (for multiple traces)
             self.result_dict = {}
@@ -535,15 +577,20 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
             savePath = os.path.dirname(self.filename)
             
             for key in self.result_dict:  
-                saveName = os.path.join(savePath,'FFT_Chunker_Batch_{}_Trace_{}.csv'.format(timeStr,str(key)))
+                saveName = os.path.join(savePath,'FFT_Chunker_Batch_{}_Trace_{}.csv'.format(self.timeStr,str(key)))
                 self.result_dict[key].to_csv(saveName)
                 print('File {} saved'.format(saveName))
                 g.m.statusBar().showMessage('File {} saved'.format(saveName))
-                
+            
+            #generate averages for groups
+            self.makeAverage()
+            self.exportAverage()
+            
+            #plots
             if self.plot_checkbox.isChecked():
                 self.plotData()
-                self.makeAverage()
                 self.plotAverages()
+                
     
  
 fft_Chunker = FFT_Chunker()
