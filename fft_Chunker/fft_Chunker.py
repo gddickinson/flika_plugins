@@ -19,6 +19,7 @@ from flika.window import Window
 from os.path import expanduser
 import os
 import math
+import sys
 
 try:
     from scipy.fft import fft, fftfreq 
@@ -187,39 +188,69 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
                 each results file has power and frequency results for every chunk (columns)
     """
     def __init__(self):
-        if g.settings['fftChunker'] is None or 'timestep' not in g.settings['fftChunker']:
+        if g.settings['fft_Chunker'] is None or 'closeplots' not in g.settings['fft_Chunker']:
             s = dict()            
-            s['timestep'] = 1
-            s['chunkSize'] = 128
+            # s['timestep'] = 1
+            # s['chunkSize'] = 128
+            # s['plot'] = True            
+
+            s['chunkSize'] = 128 
+            s['timestep'] = 1 
+            s['numFrames'] = None
+            s['numChunks'] = None 
+            s['baseline_start'] = 0 
+            s['baseline_stop'] = 2 
+            s['puff1_start'] = 0
+            s['puff1_stop'] = 0
+            s['puff2_start'] = 0
+            s['puff2_stop'] = 0 
+            s['puff3_start'] = 0 
+            s['puff3_stop'] = 0
+            s['puff4_start'] = 0 
+            s['puff4_stop'] = 0 
+            s['filepath'] = None
+            s['run'] = None 
+            s['plot'] = True  
+            s['closeplots'] = None
+
                   
-            g.settings['fftChunker'] = s
+            g.settings['fft_Chunker'] = s
                    
         BaseProcess_noPriorWindow.__init__(self)
-        
-        self.timestep_Max = 1000000
-        self.chunkSize_Max = 1000000      
-        
-        self.filename = ''        
-        self.exportPath = ''
-        self.plotGraph = False
-        
-        #plotting options
-        self.X_min = 0.01
-        self.X_max = 10000
-        self.Y_min = 0.01
-        self.Y_max = 10000
+            
         
 
+
+#chunkSize , timestep , numFrames, numChunks, blank2, blank3, baseline_start , baseline_stop, puff1_start ,puff1_stop, puff2_start, puff2_stop, puff3_start , puff3_stop, puff4_start , puff4_stop, filepath , run, plot, closeplots
     def __call__(self):
         '''
         reset saved parameters
         '''
-        g.settings['fftChunker']['timestep'] = 1
-        g.settings['fftChunker']['chunkSize'] = 128
-             
-        #currently not saving parameter changes
+        
+        #currently not saving parameter changes on call - using updateParms()
         self.clearPlots()
+        self.updateParams()
         return
+
+
+    def updateParams(self):
+        g.settings['fft_Chunker']['chunkSize'] = self.chunkSize_Box.value()
+        g.settings['fft_Chunker']['timestep'] = self.timestep_Box.value()
+        # g.settings['fft_Chunker']['baseline_start'] = baseline_start
+        # g.settings['fft_Chunker']['baseline_stop'] = baseline_stop
+        # g.settings['fft_Chunker']['puff1_start'] = puff1_start
+        # g.settings['fft_Chunker']['puff1_stop'] = puff1_stop
+        # g.settings['fft_Chunker']['puff2_start'] = puff2_start 
+        # g.settings['fft_Chunker']['puff2_stop'] = puff2_stop
+        # g.settings['fft_Chunker']['puff3_start'] = puff3_start 
+        # g.settings['fft_Chunker']['puff3_stop'] = puff3_stop
+        # g.settings['fft_Chunker']['puff4_start'] = puff4_start
+        # g.settings['fft_Chunker']['puff4_stop'] = puff4_stop
+        # g.settings['fft_Chunker']['filepath'] = filepath
+        g.settings['fft_Chunker']['plot'] = self.plot_checkbox.isChecked()     
+        
+        return
+
 
     def closeEvent(self, event):
         self.clearPlots()
@@ -227,26 +258,33 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         return
 
     def gui(self):
-        self.gui_reset()
-        s=g.settings['fftChunker']
+        
+        self.filename = ''  
+        
+        self.gui_reset()        
+        s=g.settings['fft_Chunker']
+
 
         #buttons      
         self.runAnalysis_button = QPushButton('Run Analysis')
         self.runAnalysis_button.pressed.connect(self.runAnalysis)  
+        self.setSavename_button = QPushButton('Set SaveName')        
+        self.setSavename_button.pressed.connect(self.setSavename)  
 
         self.closePlots_button = QPushButton('Close plots')
         self.closePlots_button.pressed.connect(self.clearPlots)              
               
         #checkbox
         self.plot_checkbox = CheckBox()
-        self.plot_checkbox.setChecked(self.plotGraph)
+        self.plot_checkbox.setChecked(s['plot'])
 
         #label
         self.numFrames_label = QLabel()
         self.numFrames_label.setText('No file selected') 
         self.numChunks_label = QLabel()
         self.numChunks_label.setText('No file selected')        
-               
+        self.savename_label = QLabel()
+        self.savename_label.setText('')                 
         #self.setExportFolder_button = FolderSelector('*.csv')
         
         #spinboxes
@@ -323,49 +361,36 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         #################################################################
         #self.exportFolder = FolderSelector('*.txt')
         #MEPPS
-        self.items.append({'name': 'blank ', 'string': '-------------   Parameters    ---------------', 'object': None}) 
+        self.items.append({'name': 'blank1 ', 'string': '-------------   Parameters    ---------------', 'object': None}) 
         self.items.append({'name': 'chunksize ', 'string': 'Set chunk size ', 'object': self.chunkSize_Box})  
         self.items.append({'name': 'timestep ', 'string': 'Set timestep: ', 'object': self.timestep_Box}) 
         self.items.append({'name': 'numFrames', 'string': 'Number of frames in trace: ', 'object': self.numFrames_label})        
         self.items.append({'name': 'numChunks', 'string': 'Number of chunks: ', 'object': self.numChunks_label})         
-        self.items.append({'name': 'blank ', 'string': '-------------    Averaging     ---------------', 'object': None}) 
-        self.items.append({'name': 'blank ', 'string': '--  If  stop = 0 the group will be ignored  --', 'object': None})         
+        self.items.append({'name': 'blank2 ', 'string': '-------------    Averaging     ---------------', 'object': None}) 
+        self.items.append({'name': 'blank3 ', 'string': '--  If  stop = 0 the group will be ignored  --', 'object': None})         
         self.items.append({'name': 'baseline_start ', 'string': 'Baseline start: ', 'object': self.baseline_start})  
         self.items.append({'name': 'baseline_stop', 'string': 'Baseline stop: ', 'object': self.baseline_stop})          
-        self.items.append({'name': 'puff1_start ', 'string': 'Puff start (1): ', 'object': self.puff1_start})  
-        self.items.append({'name': 'puff1_stop', 'string': 'Puff stop (1): ', 'object': self.puff1_stop})           
-        self.items.append({'name': 'puff2_start ', 'string': 'Puff start (2): ', 'object': self.puff2_start})  
-        self.items.append({'name': 'puff2_stop', 'string': 'Puff stop (2): ', 'object': self.puff2_stop})           
-        self.items.append({'name': 'puff3_start ', 'string': 'Puff start (3): ', 'object': self.puff3_start})  
-        self.items.append({'name': 'puff3_stop', 'string': 'Puff stop (3): ', 'object': self.puff3_stop}) 
-        self.items.append({'name': 'puff4_start ', 'string': 'Puff start (4): ', 'object': self.puff4_start})  
-        self.items.append({'name': 'puff4_stop', 'string': 'Puff stop (4): ', 'object': self.puff4_stop})            
+        self.items.append({'name': 'puff1_start ', 'string': 'Puff Range 1 start: ', 'object': self.puff1_start})  
+        self.items.append({'name': 'puff1_stop', 'string': 'Puff Range 1 stop: ', 'object': self.puff1_stop})           
+        self.items.append({'name': 'puff2_start ', 'string': 'Puff Range 2 start: ', 'object': self.puff2_start})  
+        self.items.append({'name': 'puff2_stop', 'string': 'Puff Range 2 stop: ', 'object': self.puff2_stop})           
+        self.items.append({'name': 'puff3_start ', 'string': 'Puff Range 3 start: ', 'object': self.puff3_start})  
+        self.items.append({'name': 'puff3_stop', 'string': 'Puff Range 3 stop: ', 'object': self.puff3_stop}) 
+        self.items.append({'name': 'puff4_start ', 'string': 'Puff Range 4 start: ', 'object': self.puff4_start})  
+        self.items.append({'name': 'puff4_stop', 'string': 'Puff Range 4 stop: ', 'object': self.puff4_stop}) 
+        self.items.append({'name': 'blank ', 'string': '-------------------------------------------', 'object': None})           
         self.items.append({'name': 'filepath ', 'string': '', 'object': self.getFile})              
-        self.items.append({'name': 'run', 'string': '', 'object': self.runAnalysis_button }) 
         self.items.append({'name': 'plot', 'string': 'Plot results', 'object': self.plot_checkbox })    
-        self.items.append({'name': 'closeplots', 'string': '', 'object': self.closePlots_button })          
-             
-        #self.items.append({'name': 'blank ', 'string': '-----------------   Export Path    -----------------', 'object': None})    
-        #self.items.append({'name': 'setPath ', 'string': '', 'object': self.setExportFolder_button })            
+        self.items.append({'name': 'saveName_label', 'string': 'Save Name (if blank, input filename used): ', 'object': self.savename_label})  
+        self.items.append({'name': 'saveName', 'string': '', 'object': self.setSavename_button })         
+        #self.items.append({'name': 'setPath ', 'string': '', 'object': self.setExportFolder_button })     
+        self.items.append({'name': 'run', 'string': '', 'object': self.runAnalysis_button }) 
+        self.items.append({'name': 'closeplots', 'string': '', 'object': self.closePlots_button })  
         
         super().gui()
         ######################################################################
         return
 
-# #TODO replace with function from flika
-#     def getFileName(self):
-#         options = QFileDialog.Options()
-#         options |= QFileDialog.DontUseNativeDialog
-#         fileName, _ = QFileDialog.getOpenFileName(self,"Open File", "","All Files (*);;Python Files (*.py)", options=options)
-#         if fileName:
-#             self.filename= fileName
-#             #newText = "Selected file: " + openFile.currentFile
-#             #self.label1.setText(newText)
-#             openFile.fileType = fileName.split('.')[-1]
-#             print(openFile.fileType)
-#         else:
-#             self.filename = ''
-#         return
     
     def chunkSizeUpdate(self):
         if self.filename == '' :
@@ -395,6 +420,16 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         colNames = list(range(0,nCols))
         self.data.columns = colNames
         self.frameLengthUpdate()
+
+
+    def setSavename(self):
+
+        text, ok = QInputDialog.getText(None, 'SaveName Dialog', 'Enter save name:')
+		
+        if ok:
+
+            fft_Chunker.savename_label.setText(str(text))  
+        return
 
     def plotData(self):
         ### plot test result
@@ -471,79 +506,99 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         return
 
     def makeAverage(self):
-        result_data = self.result_dict[0] 
+        self.averageResults_dict = {}
         
-        self.baseline_PowerAverage = []
-        self.puff1_PowerAverage = []
-        self.puff2_PowerAverage = []
-        self.puff3_PowerAverage = []
-        self.puff4_PowerAverage = []  
-        self.baseline_FreqAverage = []
-        self.puff1_FreqAverage = []
-        self.puff2_FreqAverage = []
-        self.puff3_FreqAverage = []
-        self.puff4_FreqAverage = []        
-
-        self.average_dict = {}
-
-
-        def getAverage(start,end):
-            powerList = []
-            frequencyList = []
+        for key in self.result_dict:
+            result_data = self.result_dict[key] 
             
-            for i in range(start,end):
-                powerList.append(result_data['power_{}'.format(str(i))])
-                frequencyList.append(result_data['frequency_{}'.format(str(i))])                
-            power = np.mean(powerList, axis=0)
-            frequency = np.mean(frequencyList, axis=0)
-            return power, frequency
+            self.baseline_PowerAverage = []
+            self.puff1_PowerAverage = []
+            self.puff2_PowerAverage = []
+            self.puff3_PowerAverage = []
+            self.puff4_PowerAverage = []  
+            self.baseline_FreqAverage = []
+            self.puff1_FreqAverage = []
+            self.puff2_FreqAverage = []
+            self.puff3_FreqAverage = []
+            self.puff4_FreqAverage = []        
+    
+            self.average_dict = {}
+    
+    
+            def getAverage(start,end):
+                powerList = []
+                frequencyList = []
+                
+                for i in range(start,end):
+                    powerList.append(result_data['power_{}'.format(str(i))])
+                    frequencyList.append(result_data['frequency_{}'.format(str(i))])                
+                power = np.mean(powerList, axis=0)
+                frequency = np.mean(frequencyList, axis=0)
+                return power, frequency
+                
+            base_start = self.baseline_start.value()  
+            base_stop = self.baseline_stop.value() 
+            puff1_start = self.puff1_start.value()  
+            puff1_stop = self.puff1_stop.value()         
+            puff2_start = self.puff2_start.value()  
+            puff2_stop = self.puff2_stop.value()         
+            puff3_start = self.puff3_start.value()  
+            puff3_stop = self.puff3_stop.value()         
+            puff4_start = self.puff4_start.value()  
+            puff4_stop = self.puff4_stop.value()         
             
-        base_start = self.baseline_start.value()  
-        base_stop = self.baseline_stop.value() 
-        puff1_start = self.puff1_start.value()  
-        puff1_stop = self.puff1_stop.value()         
-        puff2_start = self.puff2_start.value()  
-        puff2_stop = self.puff2_stop.value()         
-        puff3_start = self.puff3_start.value()  
-        puff3_stop = self.puff3_stop.value()         
-        puff4_start = self.puff4_start.value()  
-        puff4_stop = self.puff4_stop.value()         
-        
-
-        
-        #get average group settings
-        if base_stop > 0 and base_stop >= base_start:
-            self.baseline_PowerAverage, self.baseline_FreqAverage = getAverage(base_start, base_stop) 
-            self.average_dict.update( {'baseline_PowerAverage' : self.baseline_PowerAverage, 'baseline_FreqAverage':self.baseline_FreqAverage} )
-
-        if puff1_stop> 0 and puff1_stop >= puff1_start:
-            self.puff1_PowerAverage, self.puff1_FreqAverage = getAverage(puff1_start, puff1_stop) 
-            self.average_dict.update( {'puff1_PowerAverage' : self.puff1_PowerAverage, 'puff1_FreqAverage' :self.puff1_FreqAverage} )
-
-        if puff2_stop > 0 and puff2_stop >= puff2_start:
-            self.puff2_PowerAverage, self.puff2_FreqAverage = getAverage(puff2_start, puff2_stop) 
-            self.average_dict.update( {'puff2_PowerAverage' : self.puff2_PowerAverage, 'puff2_FreqAverage' :self.puff2_FreqAverage} )
+    
             
-
-        if puff3_stop > 0 and puff3_stop >= puff3_start:
-            self.puff3_PowerAverage, self.puff3_FreqAverage = getAverage(puff3_start, puff3_stop) 
-            self.average_dict.update( {'puff3_PowerAverage' : self.puff3_PowerAverage, 'puff3_FreqAverage' :self.puff3_FreqAverage} )
-
-
-        if puff4_stop > 0 and puff4_stop >= puff4_start:
-            self.puff4_PowerAverage, self.puff4_FreqAverage = getAverage(puff4_start, puff4_stop)
-            self.average_dict.update( {'puff4_PowerAverage' : self.puff4_PowerAverage, 'puff4_FreqAverage' :self.puff4_FreqAverage} )
-
-       
+            #get average group settings
+            if base_stop > 0 and base_stop >= base_start:
+                self.baseline_PowerAverage, self.baseline_FreqAverage = getAverage(base_start, base_stop) 
+                self.average_dict.update( {'baseline_PowerAverage' : self.baseline_PowerAverage, 'baseline_FreqAverage':self.baseline_FreqAverage} )
+    
+            if puff1_stop> 0 and puff1_stop >= puff1_start:
+                self.puff1_PowerAverage, self.puff1_FreqAverage = getAverage(puff1_start, puff1_stop) 
+                self.average_dict.update( {'puff1_PowerAverage' : self.puff1_PowerAverage, 'puff1_FreqAverage' :self.puff1_FreqAverage} )
+    
+            if puff2_stop > 0 and puff2_stop >= puff2_start:
+                self.puff2_PowerAverage, self.puff2_FreqAverage = getAverage(puff2_start, puff2_stop) 
+                self.average_dict.update( {'puff2_PowerAverage' : self.puff2_PowerAverage, 'puff2_FreqAverage' :self.puff2_FreqAverage} )
+                
+    
+            if puff3_stop > 0 and puff3_stop >= puff3_start:
+                self.puff3_PowerAverage, self.puff3_FreqAverage = getAverage(puff3_start, puff3_stop) 
+                self.average_dict.update( {'puff3_PowerAverage' : self.puff3_PowerAverage, 'puff3_FreqAverage' :self.puff3_FreqAverage} )
+    
+    
+            if puff4_stop > 0 and puff4_stop >= puff4_start:
+                self.puff4_PowerAverage, self.puff4_FreqAverage = getAverage(puff4_start, puff4_stop)
+                self.average_dict.update( {'puff4_PowerAverage' : self.puff4_PowerAverage, 'puff4_FreqAverage' :self.puff4_FreqAverage} )
+    
+        self.averageResults_dict.update( {'AverageResult_{}'.format(str(key)) : self.average_dict} )  
         return
 
     def exportAverage(self):
-        self.average_DF = pd.DataFrame.from_dict(data=self.average_dict)
+        for key in self.averageResults_dict:
+            self.average_DF = pd.DataFrame.from_dict(data=self.averageResults_dict[key])
+            savePath = os.path.dirname(self.filename)
+            if self.savename_label.text() == '':
+                saveName = os.path.join(savePath,'FFT_Chunker_Batch_{}_{}.csv'.format(self.timeStr,str(key)))
+            else:
+                saveName = os.path.join(savePath,'{}_{}.csv'.format(self.savename_label.text(),str(key)))                
+            self.average_DF.to_csv(saveName)
+            print('average file saved')        
+        return
+
+
+    def exportResult(self):
         savePath = os.path.dirname(self.filename)
-        saveName = os.path.join(savePath,'FFT_Chunker_Batch_{}_Averages.csv'.format(self.timeStr))
-        self.average_DF.to_csv(saveName)
-        print('average file saved')
         
+        for key in self.result_dict:
+            if self.savename_label.text() == '':
+                saveName = os.path.join(savePath,'FFT_Chunker_Batch_{}_Trace_{}.csv'.format(self.timeStr,str(key)))
+            else:
+                saveName = os.path.join(savePath,'{}_Trace_{}.csv'.format(self.savename_label.text(),str(key)))
+            self.result_dict[key].to_csv(saveName)
+            print('File {} saved'.format(saveName))
+            g.m.statusBar().showMessage('File {} saved'.format(saveName))        
         return
 
     def runAnalysis(self):        
@@ -574,13 +629,7 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
                 print('Trace {} analysed, {} chunks processed'.format(str(i), str((len(self.data[i].values )/chunk_size))))
 
             #export results
-            savePath = os.path.dirname(self.filename)
-            
-            for key in self.result_dict:  
-                saveName = os.path.join(savePath,'FFT_Chunker_Batch_{}_Trace_{}.csv'.format(self.timeStr,str(key)))
-                self.result_dict[key].to_csv(saveName)
-                print('File {} saved'.format(saveName))
-                g.m.statusBar().showMessage('File {} saved'.format(saveName))
+            self.exportResult()
             
             #generate averages for groups
             self.makeAverage()
@@ -594,7 +643,7 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
     
  
 fft_Chunker = FFT_Chunker()
-
+	
 
 if __name__ == "__main__":
     pass
