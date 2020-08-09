@@ -399,7 +399,18 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         else:
             self.numChunks = float(self.nFrames/self.chunkSize_Box.value())
             self.numChunks_label.setText(str(self.numChunks)) 
-                        
+            maxChunks = int(self.numChunks)+1
+            self.baseline_start.setMaximum(maxChunks)  
+            self.baseline_stop.setMaximum(maxChunks)  
+            self.puff1_start.setMaximum(maxChunks)    
+            self.puff1_stop.setMaximum(maxChunks)             
+            self.puff2_start.setMaximum(maxChunks)    
+            self.puff2_stop.setMaximum(maxChunks)              
+            self.puff3_start.setMaximum(maxChunks)    
+            self.puff3_stop.setMaximum(maxChunks)              
+            self.puff4_start.setMaximum(maxChunks)    
+            self.puff4_stop.setMaximum(maxChunks)              
+                         
         return
 
     def frameLengthUpdate(self):
@@ -529,11 +540,22 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
                 powerList = []
                 frequencyList = []
                 
+                print('Averaging Group {} - {}'.format(start,end))
+                
                 for i in range(start,end):
+                    print('power_{}'.format(str(i)),)
+                    #print(result_data['power_{}'.format(str(i))])
+                    print('frequency_{}'.format(str(i)),)
+                    #print(result_data['frequency_{}'.format(str(i))])
                     powerList.append(result_data['power_{}'.format(str(i))])
                     frequencyList.append(result_data['frequency_{}'.format(str(i))])                
                 power = np.mean(powerList, axis=0)
                 frequency = np.mean(frequencyList, axis=0)
+                print('power mean'.format(str(i)),)
+                print(power)
+                print('frequency mean'.format(str(i)),)
+                print(frequency)                
+                print('------------')
                 return power, frequency
                 
             base_start = self.baseline_start.value()  
@@ -590,6 +612,7 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
 
     def exportResult(self):
         savePath = os.path.dirname(self.filename)
+        toAverage = []
         
         for key in self.result_dict:
             if self.savename_label.text() == '':
@@ -598,8 +621,24 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
                 saveName = os.path.join(savePath,'{}_Trace_{}.csv'.format(self.savename_label.text(),str(key)))
             self.result_dict[key].to_csv(saveName)
             print('File {} saved'.format(saveName))
-            g.m.statusBar().showMessage('File {} saved'.format(saveName))        
+            g.m.statusBar().showMessage('File {} saved'.format(saveName)) 
+            toAverage.append(self.result_dict[key])
+            
+        #if multiple ROI traces - take average of results and export as seperate file
+        if len(self.result_dict) > 1:
+            if self.savename_label.text() == '':
+                saveName = os.path.join(savePath,'FFT_Chunker_Batch_{}_AveragedTraces.csv'.format(self.timeStr))
+            else:
+                saveName = os.path.join(savePath,'{}_AveragedTraces.csv'.format(self.savename_label.text()))
+                                    
+            averadedDF = pd.concat(toAverage).groupby(level=0).mean()
+            averadedDF.to_csv(saveName)
+            print('Averaged ROI File {} saved'.format(saveName))
+            g.m.statusBar().showMessage('Averaged ROI File {} saved'.format(saveName))             
         return
+
+        
+
 
     def runAnalysis(self):        
         chunk_size = self.chunkSize_Box.value()
