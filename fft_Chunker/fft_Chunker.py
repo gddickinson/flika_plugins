@@ -77,9 +77,9 @@ def fft_chunks(l, n, time_step):
         freq_chunk = np.ma.masked_array(data=freq_chunk,mask=mask,fill_value=np.nan).filled()
         power_chunk = np.ma.masked_array(data=power_chunk,mask=mask,fill_value=np.nan).filled()        
 
-        #convert power and freq to 1og10        
-        power_chunk = np.log10(power_chunk)
-        freq_chunk =  np.log10(freq_chunk)
+        #convert power and freq to 1og10  (should be done after averaging - turned off)      
+        #power_chunk = np.log10(power_chunk)
+        #freq_chunk =  np.log10(freq_chunk)
              
         name1='power_{}'.format(chunk_num)
         name2='frequency_{}'.format(chunk_num)
@@ -426,12 +426,22 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
     def loadData(self):
         self.filename = self.getFile.value()
         self.data = pd.read_csv(self.filename, header=None, skiprows=1, index_col = 0)
-        self.data = self.data.dropna(axis=1, how='all')
+        
+        #drop extra x columns
+        self.data = self.data[self.data.columns[::2]] 
+        #drop columns with na values
+        self.data = self.data.dropna(axis=1, how='all')        
+        #set column names by number
         nCols = len(self.data.columns)
         colNames = list(range(0,nCols))
         self.data.columns = colNames
+        #update
         self.frameLengthUpdate()
 
+        print('-------------------------------------')
+        print('Data loaded (first 5 rows displayed):')
+        print(self.data.head())
+        print('-------------------------------------')
 
     def setSavename(self):
 
@@ -476,7 +486,7 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
             #plt.plot(x,y_mean, label='Mean', color='red')
             
             #plt.xscale('log')
-            #plt.yscale('log')  
+            plt.yscale('log')  
             #plt.xlim(xmin= 0.0001, xmax=self.X_max)
             plt.ylim(ymin=self.Y_min, ymax=self.Y_max)                    
             
@@ -492,11 +502,11 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
         #plot averaged chunks    
         self.fig, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(1, 5, sharex = True, sharey = True)
         self.fig.suptitle('Averaged chunks')
-        ax1.plot(self.baseline_FreqAverage,self.baseline_PowerAverage )
-        ax2.plot(self.puff1_FreqAverage, self.puff1_PowerAverage)
-        ax3.plot(self.puff2_FreqAverage, self.puff2_PowerAverage)    
-        ax4.plot(self.puff3_FreqAverage, self.puff3_PowerAverage)
-        ax5.plot(self.puff4_FreqAverage, self.puff4_PowerAverage)
+        ax1.semilogy(self.baseline_FreqAverage,self.baseline_PowerAverage )
+        ax2.semilogy(self.puff1_FreqAverage, self.puff1_PowerAverage)
+        ax3.semilogy(self.puff2_FreqAverage, self.puff2_PowerAverage)    
+        ax4.semilogy(self.puff3_FreqAverage, self.puff3_PowerAverage)
+        ax5.semilogy(self.puff4_FreqAverage, self.puff4_PowerAverage)
         
         
         ax1.set_title('Baseline')
@@ -553,8 +563,12 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
                 frequency = np.mean(frequencyList, axis=0)
                 print('power mean'.format(str(i)),)
                 print(power)
+                print('log10 power mean'.format(str(i)),) 
+                print(np.log10(power)  )              
                 print('frequency mean'.format(str(i)),)
-                print(frequency)                
+                print(frequency)  
+                print('log10 frequency mean'.format(str(i)),)  
+                print(np.log10(frequency))                
                 print('------------')
                 return power, frequency
                 
@@ -605,7 +619,11 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
                 saveName = os.path.join(savePath,'FFT_Chunker_Batch_{}_{}.csv'.format(self.timeStr,str(key)))
             else:
                 saveName = os.path.join(savePath,'{}_{}.csv'.format(self.savename_label.text(),str(key)))                
-            self.average_DF.to_csv(saveName)
+            #self.average_DF.to_csv(saveName)
+            
+            #take logs
+            logDF = pd.DataFrame(np.log10(self.average_DF), index=self.average_DF.index, columns=self.average_DF.columns) 
+            logDF.to_csv(saveName)
             print('average file saved')        
         return
 
@@ -619,7 +637,13 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
                 saveName = os.path.join(savePath,'FFT_Chunker_Batch_{}_Trace_{}.csv'.format(self.timeStr,str(key)))
             else:
                 saveName = os.path.join(savePath,'{}_Trace_{}.csv'.format(self.savename_label.text(),str(key)))
-            self.result_dict[key].to_csv(saveName)
+            
+            #self.result_dict[key].to_csv(saveName)
+            
+            #takeLogs
+            logDF = pd.DataFrame(np.log10(self.result_dict[key]), index=self.result_dict[key].index, columns=self.result_dict[key].columns)
+            logDF.to_csv(saveName)
+            
             print('File {} saved'.format(saveName))
             g.m.statusBar().showMessage('File {} saved'.format(saveName)) 
             toAverage.append(self.result_dict[key])
@@ -631,8 +655,27 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
             else:
                 saveName = os.path.join(savePath,'{}_AveragedTraces.csv'.format(self.savename_label.text()))
                                     
-            averadedDF = pd.concat(toAverage).groupby(level=0).mean()
-            averadedDF.to_csv(saveName)
+            averagedDF = pd.concat(toAverage).groupby(level=0).mean()
+            
+            #remove extraneous columns for Ian
+            freqCols = [c for c in averagedDF.columns if 'frequency' in c]
+            powerCols = [c for c in averagedDF.columns  if 'power' in c]
+            #chunkCols = [c for c in averagedDF.columns  if 'chunk' in c]            
+                        
+            cols = [freqCols[0]] + powerCols
+            
+            averagedDF = averagedDF[cols]
+
+            #take logs
+            #logsDF = averagedDF.applymap(math.log10)
+            logsDF = pd.DataFrame(np.log10(averagedDF), index=averagedDF.index, columns=averagedDF.columns)
+
+            #print averaged traces df
+            print('-----------------------------------------------')
+            print('Averaged Traces DF')
+            print(logsDF.head())
+            print('-----------------------------------------------')            
+            logsDF.to_csv(saveName)
             print('Averaged ROI File {} saved'.format(saveName))
             g.m.statusBar().showMessage('Averaged ROI File {} saved'.format(saveName))             
         return

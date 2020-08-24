@@ -1,0 +1,18 @@
+<plugin name="roiScaler">
+	<directory>
+		roiScaler
+	</directory>
+	<version>
+		2020.08.23
+	</version>
+	<author>
+		George Dickinson
+	</author>
+	<url>
+	</url>
+	<dependencies>
+	</dependencies>
+	<menu_layout>
+		<action location="roiScaler" function="roiScaler.gui">roiScaler</action>
+	</menu_layout>
+</plugin>
