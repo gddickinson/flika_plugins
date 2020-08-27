@@ -6,7 +6,7 @@
 		synapse_plugin
 	</directory>
 	<version>
-		2019.10.26
+		2020.08.24
 	</version>
     <dependencies>
 		<dependency name='scipy.spatial'></dependency>

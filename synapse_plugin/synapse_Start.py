@@ -34,10 +34,10 @@ try:
     from .Synapse import *
 except:
     from Synapse import *
-try:
-    from .clusterAnalysis import *
-except:
-    from clusterAnalysis import *
+# try:
+#     from .clusterAnalysis import *
+# except:
+#     from clusterAnalysis import *
     
 try:
     from .clusterAnalysis_2 import *
@@ -49,6 +49,7 @@ except:
 class SynapseStart(BaseProcess_noPriorWindow):
     """
     Start Synapse Plugin
+    Version: 2020.08.24
 
     """
     

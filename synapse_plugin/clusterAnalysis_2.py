@@ -33,7 +33,7 @@ from sklearn.neighbors import KDTree
 import random
 import time
 from mpl_toolkits.mplot3d import Axes3D # <--- This is needed for newer versions of matplotlib
-import pyqtgraph.opengl as gl
+#import pyqtgraph.opengl as gl #is this still needed? commenting out for now
 
 import threading
 #from multiprocessing import Pool
@@ -43,6 +43,8 @@ from pathos.pools import ProcessPool
 from pathos.serial import SerialPool
 
 import yaml
+
+from pyqtgraph.graphicsItems.GradientEditorItem import Gradients
 
 #class threading.Thread(group=None, target=None, name=None, args=(), kwargs={}, *, daemon=None)
 
@@ -124,6 +126,9 @@ class ClusterAnalysis:
         self.ignore = {"Z Rejected"}        
         self.Channels = []
         self.empty_channel = Channel('Empty', [], self.emptyChannel_color)
+
+        self.channel1_useIntensity = False                
+        self.channel2_useIntensity = False
         
         #display options
         self.centroidSymbolSize = 10
@@ -242,6 +247,45 @@ class ClusterAnalysis:
         
         return
 
+
+    def getIntensity(self):
+        '''
+        retrieve intensity values from self.data based on point x,y,z values
+
+        '''
+        self.ch1_intensities = []
+        self.ch2_intensities = []
+        
+        for point in self.ch1Points_3D:
+            self.ch1_intensities.append( self.retieveData(point, 'I') )
+        
+        for point in self.ch2Points_3D:
+            self.ch2_intensities.append( self.retieveData(point, 'I') )
+        
+        return
+
+    def getPhoton(self):
+        '''
+        retrieve Photon values from self.data based on point x,y,z values
+
+        '''
+        self.ch1_photons = []
+        self.ch2_photons = []
+        
+        for point in self.ch1Points_3D:
+            self.ch1_photons.append( self.retieveData(point, 'Photons') )
+        
+        for point in self.ch2Points_3D:
+            self.ch2_photons.append( self.retieveData(point, 'Photons') )
+        
+        return
+
+    def retieveData(self, point, keyText):
+        return clusterAnalysis.data[keyText][(point[0] == clusterAnalysis.data['Xc']) &  (point[1] == clusterAnalysis.data['Yc']) & (point[2] == clusterAnalysis.data['Zc'])][0]
+        
+
+
+
     def viewerGUI(self):
         '''MAIN GUI'''
                   
@@ -330,23 +374,23 @@ class ClusterAnalysis:
         self.menubar = self.win.menuBar()
         
         self.fileMenu2 = self.menubar.addMenu('&File Options')
-        self.menu_openFile = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Open File')
+        self.menu_openFile = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Open File',self.win)
         setMenuUp(self.menu_openFile,self.fileMenu2,shortcut='Ctrl+O',statusTip='Open File',connection=lambda f: self.openFileAndDisplay())       
         
         self.fileMenu1 = self.menubar.addMenu('&Display Options')        
-        self.resetLayout = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Reset Layout')
+        self.resetLayout = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Reset Layout',self.win)
         setMenuUp(self.resetLayout,self.fileMenu1,shortcut='Ctrl+R',statusTip='Reset Layout',connection=self.reset_layout)
-        self.showTitles = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Show Titles')
+        self.showTitles = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Show Titles',self.win)
         setMenuUp(self.showTitles,self.fileMenu1,shortcut='Ctrl+G',statusTip='Show Titles',connection=self.show_titles)
-        self.hideTitles = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Hide Titles')
+        self.hideTitles = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Hide Titles',self.win)
         setMenuUp(self.hideTitles,self.fileMenu1,shortcut='Ctrl+H',statusTip='Hide Titles',connection=self.hide_titles)  
-        self.showFileData = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Show File Data')              
+        self.showFileData = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Show File Data',self.win)              
         setMenuUp(self.showFileData,self.fileMenu1,shortcut='Ctrl+l',statusTip='Show File Data',connection=self.displayFileData)  
-        self.plotOptions = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Plot Options')              
+        self.plotOptions = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Plot Options',self.win)              
         setMenuUp(self.plotOptions,self.fileMenu1,shortcut='Ctrl+P',statusTip='Plot Options',connection=self.openPlotOptionWin)          
 
         self.fileMenu3 = self.menubar.addMenu('&Cluster Options')
-        self.clusterMenu = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Cluster Option Window')
+        self.clusterMenu = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Cluster Option Window',self.win)
         setMenuUp(self.clusterMenu,self.fileMenu3,shortcut='Ctrl+o',statusTip='Cluster Option Window',connection=self.openClusterOptionWin)
 
 
@@ -421,6 +465,16 @@ class ClusterAnalysis:
         self.plotOptionDialog.show()
         return
 
+    def getLUT(self, n, cm_text = "spectrum"):
+       #pick one to turn into an actual colormap
+        #self.colormap_2D =  pg.ColorMap(*zip(*Gradients["spectrum"]["ticks"]))
+        
+        pos = np.array([0.0, 0.5, 1.0])
+        color = np.array([[0,0,0,255], [255,128,0,255], [255,255,0,255]], dtype=np.ubyte)
+        cmap = pg.ColorMap(pos, color)
+        lut = cmap.getLookupTable(0.0, 1, n)
+        return lut
+
 
     def display2Ddata_allPoints(self):
         #make point data
@@ -431,8 +485,22 @@ class ClusterAnalysis:
         self.point_s3 = pg.ScatterPlotItem(size=6, pen=pg.mkPen(None), brush=pg.mkBrush(125, 255, 255, 120))          
         point_pos1 = np.array([self.ch1Points_3D[::,0],self.ch1Points_3D[::,1]])
         point_pos2 = np.array([self.ch2Points_3D[::,0],self.ch2Points_3D[::,1]])
-        point_spots1 = [{'pos': point_pos1[:,i], 'data': 1} for i in range(point_n1)]
-        point_spots2 = [{'pos': point_pos2[:,i], 'data': 1} for i in range(point_n2)]
+        
+        if self.channel1_useIntensity or self.channel2_useIntensity:
+            #set colormap
+            self.getIntensity()
+            self.colorArray = self.getLUT(len(self.data['I']))            
+        
+        if self.channel1_useIntensity:
+            point_spots1 = [{'pos': point_pos1[:,i], 'data': 1, 'brush': pg.mkBrush(self.colorArray[i])} for i in range(point_n1)]        
+        else:
+            point_spots1 = [{'pos': point_pos1[:,i], 'data': 1} for i in range(point_n1)]            
+            
+        if self.channel2_useIntensity:               
+            point_spots2 = [{'pos': point_pos2[:,i], 'data': 1, 'brush': pg.mkBrush(self.colorArray[i])} for i in range(point_n2)]        
+        else:
+            point_spots2 = [{'pos': point_pos2[:,i], 'data': 1} for i in range(point_n2)]
+        
         self.point_s1.addPoints(point_spots1)
         self.point_s2.addPoints(point_spots2)
         self.w2.addItem(self.point_s1)
@@ -1902,17 +1970,8 @@ class PlotOption_win(QtWidgets.QDialog):
         self.viewer = viewerInstance
         self.colors  = self.viewer.colors
 
-        #self.viewer.channel1_color
-        #self.viewer.channel2_color 
-        #self.viewer.emptyChannel_color 
-        
-        #self.viewer.channel1_centeroids_color     
-        #self.viewer.channel2_centeroids_color 
-
-        #self.viewer.random1_centeroids_color      
-        #self.viewer.random2_centeroids_color 
-
-
+        self.channel1_useIntensity = False
+        self.channel2_useIntensity = False
         
         #window geometry
         self.left = 300
@@ -1932,6 +1991,7 @@ class PlotOption_win(QtWidgets.QDialog):
         self.plottingTitle = QtWidgets.QLabel("----- Colour Parameters -----") 
         self.label_channel1_Pnts_colour= QtWidgets.QLabel("Channel 1 Points Colour:") 
         self.label_channel1_Pnts_colour_display= QtWidgets.QLabel("      ") 
+        self.label_channel1_useIntensity= QtWidgets.QLabel("Use Intensity") 
 
         self.label_channel1_Pnts_colour_display.setAutoFillBackground(True) 
         self.label_channel1_Pnts_colour_display.setStyleSheet( '* { background-color: '+ self.viewer.channel1_color.name() + ' }')
@@ -1939,6 +1999,7 @@ class PlotOption_win(QtWidgets.QDialog):
                 
         self.label_channel2_Pnts_colour= QtWidgets.QLabel("Channel 2 Points Colour:") 
         self.label_channel2_Pnts_colour_display= QtWidgets.QLabel("      ") 
+        self.label_channel2_useIntensity= QtWidgets.QLabel("Use Intensity") 
 
         self.label_channel2_Pnts_colour_display.setAutoFillBackground(True) 
         self.label_channel2_Pnts_colour_display.setStyleSheet( '* { background-color: '+ self.viewer.channel2_color.name() + ' }')        
@@ -1977,9 +2038,12 @@ class PlotOption_win(QtWidgets.QDialog):
         #self.analysis_Box.addItems(["All Clusters", "Paired Clusters"])
         
         #tickbox
-        #self.multiThread_checkbox = CheckBox()
-        #self.multiThread_checkbox.setChecked(self.multiThreadingFlag)
-        #self.multiThread_checkbox.stateChanged.connect(self.multiThreadClicked)
+        self.channel1useIntensity_checkbox = CheckBox()
+        self.channel1useIntensity_checkbox.setChecked(self.channel1_useIntensity)
+        self.channel1useIntensity_checkbox.stateChanged.connect(self.channel1useIntensity_Clicked)                
+        self.channel2useIntensity_checkbox = CheckBox()        
+        self.channel2useIntensity_checkbox.setChecked(self.channel2_useIntensity)
+        self.channel2useIntensity_checkbox.stateChanged.connect(self.channel2useIntensity_Clicked) 
 
 
         #grid layout
@@ -1989,11 +2053,15 @@ class PlotOption_win(QtWidgets.QDialog):
         
         layout.addWidget(self.label_channel1_Pnts_colour, 1, 0)
         layout.addWidget(self.label_channel1_Pnts_colour_display, 1, 1)
-        layout.addWidget(self.button_getColor_1, 1, 2)  
+        layout.addWidget(self.button_getColor_1, 1, 2) 
+        layout.addWidget(self.label_channel1_useIntensity, 1, 3) 
+        layout.addWidget(self.channel1useIntensity_checkbox, 1, 4)        
         
         layout.addWidget(self.label_channel2_Pnts_colour, 2, 0)
         layout.addWidget(self.label_channel2_Pnts_colour_display, 2, 1)
-        layout.addWidget(self.button_getColor_2, 2, 2)         
+        layout.addWidget(self.button_getColor_2, 2, 2)   
+        layout.addWidget(self.label_channel2_useIntensity, 2, 3) 
+        layout.addWidget(self.channel2useIntensity_checkbox, 2, 4)  
         
         layout.addWidget(self.label_channel1_centroids_colour, 3, 0)
         layout.addWidget(self.label_channel1_centroids_colour_display, 3, 1)
@@ -2014,7 +2082,9 @@ class PlotOption_win(QtWidgets.QDialog):
 
         #connect combobox
         #self.analysis_Box.setCurrentIndex(0)
-        #self.analysis_Box.currentIndexChanged.connect(self.analysisChange)         
+        #self.analysis_Box.currentIndexChanged.connect(self.analysisChange) 
+
+        
         
     def getColor(self, value):
         colour = QColorDialog.getColor()
@@ -2036,8 +2106,37 @@ class PlotOption_win(QtWidgets.QDialog):
         
         self.viewer.refreshDisplays()
         return
-    
 
+    def channel1useIntensity_Clicked(self):
+        self.channel1_useIntensity = self.channel1useIntensity_checkbox.isChecked()
+        self.viewer.channel1_useIntensity = self.channel1_useIntensity
+        self.viewer.refreshDisplays()
+        if self.channel1_useIntensity:
+            self.button_getColor_1.setText('')
+            self.label_channel1_Pnts_colour_display.setStyleSheet( '* { background-color: lightgrey }')
+            self.button_getColor_1.setEnabled(False)
+        else:
+            self.button_getColor_1.setEnabled(True)
+            self.button_getColor_1.setText('Set Color')
+            self.label_channel1_Pnts_colour_display.setStyleSheet( '* { background-color: '+ self.viewer.channel1_color.name() + ' }')
+            
+        return
+
+
+    def channel2useIntensity_Clicked(self):
+        self.channel2_useIntensity = self.channel2useIntensity_checkbox.isChecked()
+        self.viewer.channel2_useIntensity = self.channel2_useIntensity
+        self.viewer.refreshDisplays()
+        if self.channel2_useIntensity:
+            self.button_getColor_2.setText('')
+            self.label_channel2_Pnts_colour_display.setStyleSheet( '* { background-color: lightgrey }')
+            self.button_getColor_2.setEnabled(False)
+        else:
+            self.button_getColor_2.setEnabled(True)
+            self.button_getColor_2.setText('Set Color')
+            self.label_channel2_Pnts_colour_display.setStyleSheet( '* { background-color: '+ self.viewer.channel2_color.name() + ' }')
+            
+        return
 
 class Synapse3D_batch_2(QtWidgets.QDialog):
     def __init__(self, parent = None):
@@ -2290,14 +2389,14 @@ def test():
 
 def test2():
     clusterAnalysis.viewerGUI()   
-    fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\0_trial_1_superes_cropped.txt"
+    #fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\0_trial_1_superes_cropped.txt"
     #fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\trial_1_superes_fullfield.txt"
     #fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\fakeTest.txt" 
     #fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\trial_1_sv2a_test002.txt"
-    clusterAnalysis.open_file(fileName)
-    clusterAnalysis.getClusters() 
-    clusterAnalysis.getCentroids()
-    clusterAnalysis.makeHulls() 
+    #clusterAnalysis.open_file(fileName)
+    #clusterAnalysis.getClusters() 
+    #clusterAnalysis.getCentroids()
+    #clusterAnalysis.makeHulls() 
 
 def test3():
     clusterAnalysis.runBatch(r'C:\Users\g_dic\OneDrive\Desktop\batchTest')    
@@ -2308,8 +2407,8 @@ def test4():
 
 if __name__ == "__main__":
     clusterAnalysis = ClusterAnalysis()
-    test() 
-    #test2()
+    #test() 
+    test2()
     #test3()
     #test4()
     #clusterAnalysis.runBatch_queueing(r'C:\Users\g_dic\OneDrive\Desktop\batchTest')  

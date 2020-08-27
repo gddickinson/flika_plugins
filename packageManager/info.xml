@@ -1,0 +1,19 @@
+<plugin name="packageManager">
+	<directory>
+		packageManager
+	</directory>
+	<version>
+		2020.07.26
+	</version>
+	<author>
+		George Dickinson
+	</author>
+	<url>
+	</url>
+	<dependencies>
+	<dependency name='pip'></dependency>
+	</dependencies>
+	<menu_layout>
+		<action location="packageManager" function="packageManager.gui">Package Manager</action>
+	</menu_layout>
+</plugin>

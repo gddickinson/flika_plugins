@@ -40,6 +40,7 @@ from .texturePlot import *
 from .scatterPlot import *
 from .overlayOptions import *
 from .exportIMS import *
+from .exportFakeSuperRes import *
 
 from pyqtgraph import HistogramLUTWidget
 
@@ -56,6 +57,7 @@ class SliceViewer(BaseProcess):
         super().__init__()
         self.batch = batch
         self.imsExportPath = imsExportPath
+        self.exportFakeSuperRes = True
         
         self.app = QtWidgets.QApplication([])
         
@@ -161,84 +163,84 @@ class SliceViewer(BaseProcess):
         #=================================================================================================================
         self.fileMenu1 = self.menubar.addMenu('&Options')
         
-        self.resetLayout = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Reset Layout')
+        self.resetLayout = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Reset Layout',self.win)
         setMenuUp(self.resetLayout,self.fileMenu1,shortcut='Ctrl+R',statusTip='Reset Layout',connection=self.reset_layout)
 
-        self.showTitles = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Show Titles')
+        self.showTitles = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Show Titles',self.win)
         setMenuUp(self.showTitles,self.fileMenu1,shortcut='Ctrl+G',statusTip='Show Titles',connection=self.show_titles)
 
-        self.hideTitles = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Hide Titles')
+        self.hideTitles = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Hide Titles',self.win)
         setMenuUp(self.hideTitles,self.fileMenu1,shortcut='Ctrl+H',statusTip='Hide Titles',connection=self.hide_titles)        
 
-        self.hideCursors = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Hide Cursors')
+        self.hideCursors = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Hide Cursors',self.win)
         setMenuUp(self.hideCursors,self.fileMenu1,shortcut=None,statusTip='Hide Cursors',connection=self.hide_cursors)         
 
-        self.showCursors = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Show Cursors')
+        self.showCursors = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Show Cursors',self.win)
         setMenuUp(self.showCursors,self.fileMenu1,shortcut=None,statusTip='Show Cursors',connection=self.show_cursors)   
 
-        self.winOptions = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Window Options')
+        self.winOptions = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Window Options',self.win)
         setMenuUp(self.winOptions,self.fileMenu1,shortcut=None,statusTip='Window Options',connection=self.win_options)                 
         #================================================================================================================
         self.fileMenu2 = self.menubar.addMenu('&3D Plot')
 
-        self.plot = QtWidgets.QAction(QtGui.QIcon('open.png'), '3D Plot')
+        self.plot = QtWidgets.QAction(QtGui.QIcon('open.png'), '3D Plot',self.win)
         setMenuUp(self.plot,self.fileMenu2,shortcut='Ctrl+P',statusTip='3D Plot',connection=self.plot3D)
 
-        self.plotOptions = QtWidgets.QAction(QtGui.QIcon('open.png'), '3D Plot Options')
+        self.plotOptions = QtWidgets.QAction(QtGui.QIcon('open.png'), '3D Plot Options',self.win)
         setMenuUp(self.plotOptions,self.fileMenu2,shortcut=None,statusTip='3D Plot Options',connection=self.plot3D_options)        
 
         #================================================================================================================
         self.fileMenu3 = self.menubar.addMenu('&Texture Plot')
         
-        self.texturePlot = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Texture Plot')
+        self.texturePlot = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Texture Plot',self.win)
         setMenuUp(self.texturePlot,self.fileMenu3,shortcut=None,statusTip='Texture Plot',connection=(lambda: self.plotTexture())) 
 
-        self.texturePlotControl = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Texture Plot Control')
+        self.texturePlotControl = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Texture Plot Control',self.win)
         setMenuUp(self.texturePlotControl,self.fileMenu3,shortcut=None,statusTip='Texture Plot Control',connection=self.plotTexture_control)
         #================================================================================================================
         self.fileMenu4 = self.menubar.addMenu('&Export')
         
-        self.exportFlika = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Export to flika')
+        self.exportFlika = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Export to flika',self.win)
         setMenuUp(self.exportFlika,self.fileMenu4,shortcut=None,statusTip='Export to Flikal',connection=self.exportDialog)
         
-        self.export = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Export Volume to Array')
+        self.export = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Export Volume to Array',self.win)
         setMenuUp(self.export,self.fileMenu4,shortcut='Ctrl+E',statusTip='Export to Array',connection=self.exportCurrentVolToArray) 
 
-        self.exportIMS = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Export to Imaris')
+        self.exportIMS = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Export to Imaris',self.win)
         setMenuUp(self.exportIMS,self.fileMenu4,shortcut=None,statusTip='Export to Imaris',connection=self.exportIMSDialog)
                    
         #================================================================================================================                
         self.fileMenu5 = self.menubar.addMenu('&Overlay')
         
-        self.overlayArray = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Overlay (from Array)')
+        self.overlayArray = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Overlay (from Array)',self.win)
         setMenuUp(self.overlayArray,self.fileMenu5,shortcut='Ctrl+O',statusTip='OverlayArray',connection=self.overlayArray_start)          
         
-        self.overlayToggle = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Toggle Overlay')
+        self.overlayToggle = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Toggle Overlay',self.win)
         setMenuUp(self.overlayToggle,self.fileMenu5,shortcut='Ctrl+T',statusTip='OverlayOff',connection=self.toggleOverlay)         
         
-        self.overlayArrayWin = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Overlay Options')
+        self.overlayArrayWin = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Overlay Options',self.win)
         setMenuUp(self.overlayArrayWin,self.fileMenu5,shortcut=None,statusTip='Overlay Options',connection=self.overlayOptions)         
         
-        self.overlayScale_win1 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (Top)')
+        self.overlayScale_win1 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (Top)',self.win)
         setMenuUp(self.overlayScale_win1,self.fileMenu5,shortcut=None,statusTip='Overlay Scale Bar',connection=(lambda: self.overlayScaleOptions(1)))  
         
-        self.overlayScale_win2 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (Y)')
+        self.overlayScale_win2 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (Y)',self.win)
         setMenuUp(self.overlayScale_win2,self.fileMenu5,shortcut=None,statusTip='Overlay Scale Bar',connection=(lambda: self.overlayScaleOptions(2)))               
         
-        self.overlayScale_win3 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (X)')
+        self.overlayScale_win3 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (X)',self.win)
         setMenuUp(self.overlayScale_win3,self.fileMenu5,shortcut=None,statusTip='Overlay Scale Bar',connection=(lambda: self.overlayScaleOptions(3)))  
 
-        self.overlayScale_win6 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (Z)')
+        self.overlayScale_win6 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (Z)',self.win)
         setMenuUp(self.overlayScale_win6,self.fileMenu5,shortcut=None,statusTip='Overlay Scale Bar',connection=(lambda: self.overlayScaleOptions(6)))     
         #================================================================================================================
         self.fileMenu6 = self.menubar.addMenu('&Filters')
         
-        self.gaussian = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Gaussian')
+        self.gaussian = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Gaussian',self.win)
         setMenuUp(self.gaussian,self.fileMenu6,shortcut='Ctrl+F',statusTip='Gaussian',connection=self.gaussianOptions)                
         #================================================================================================================        
         self.fileMenu7 = self.menubar.addMenu('&Quit')
         
-        self.quit = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Quit')
+        self.quit = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Quit',self.win)
         setMenuUp(self.quit,self.fileMenu7,shortcut='Ctrl+Q',statusTip='Quit',connection=self.close)                
         #================================================================================================================  
 
@@ -530,6 +532,11 @@ class SliceViewer(BaseProcess):
         z_c,x_c,y_c = vol_corners.nonzero()
 
         ax.scatter(x_c, y_c, -z_c, zdir='z', c= 'green', s=5)
+        
+        if self.exportFakeSuperRes:
+            saveFolder = r'C:\Users\g_dic\OneDrive\Desktop\batchTest'
+            saveName = os.path.join(saveFolder, 'fakeSuperRes.txt')
+            saveFakeSuperRes(x,y,z, saveName)
 
         x_min,x_max,y_min,y_max,z_min,z_max = getDimensions(self.data)
         maxDim = getMaxDimension(self.data)
