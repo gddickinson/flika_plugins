@@ -202,9 +202,44 @@ class Threshold_cluster(BaseProcess):
         time_factor=SliderLabel(3)
         time_factor.setRange(0,20)
         load_flika_file=CheckBox()
+        
+        self.automateInput=CheckBox()
+        self.rawData_window=WindowSelector()
+        self.baseline=SliderLabel(1)
+        self.baseline.setRange(.1,1000)
+        self.baseline.setSingleStep(.1)
+        self.baseline.setValue(5)       
+        
+        self.firstFrame=SliderLabel(0)
+        self.firstFrame.setRange(1,1000)
+        self.firstFrame.setSingleStep(1)        
+        
+        self.nFrames=SliderLabel(0)
+        self.nFrames.setRange(1,1000)
+        self.nFrames.setSingleStep(1) 
+        self.nFrames.setValue(30)        
+        
+        self.blur=SliderLabel(0)
+        self.blur.setRange(0,100)
+        self.blur.setSingleStep(1)    
+        self.blur.setValue(2)
+        
+
+        self.items.append({'name':'blank','string':'-------------------- Automated Input ---------------------', 'object': None})
+        self.items.append({'name':'raw_data_window','string':'raw data window', 'object': self.rawData_window})
+        self.items.append({'name':'baseline','string':'baseline','object':self.baseline})  
+        self.items.append({'name':'firstFrame','string':'firstFrame','object':self.firstFrame})          
+        self.items.append({'name':'nFrames','string':'nFrames','object':self.nFrames})          
+        self.items.append({'name':'blur','string':'blur','object':self.blur})          
+        self.items.append({'name':'automated_Input','string':'Automate input', 'object': self.automateInput})
+        self.items.append({'name':'blank','string':'----------------------------------------------------------', 'object': None})
+        
         self.items.append({'name':'data_window','string':'Data window containing F/F0 data', 'object': data_window})
         self.items.append({'name':'normalized_window','string':'Normalized window containing data with baseline at 0','object': normalized_window})
         self.items.append({'name':'blurred_window','string': 'Gaussian Blurred normalized window','object': blurred_window})
+        
+        
+        
         self.items.append({'name':'roi_width','string':'roi_width','object':roi_width})
         self.items.append({'name':'paddingXY','string':'paddingXY','object':paddingXY})
         self.items.append({'name':'paddingT_pre','string':'paddingT_pre','object':paddingT_pre})
@@ -224,6 +259,20 @@ class Threshold_cluster(BaseProcess):
                  paddingT_post=15, maxSigmaForGaussianFit=10, rotatedfit=True, radius=np.sqrt(2), maxPuffLen=15,
                  maxPuffDiameter=10, blur_thresh=1, time_factor=1, load_flika_file=True, keepSourceWindow=False):
         g.m.statusBar().showMessage('Performing {}...'.format(self.__name__))
+               
+        if self.automateInput.isChecked() == True:
+            print('automated input activated')
+            rawData = Window(self.getValue('raw_data_window').image)
+            rawData.setAsCurrentWindow()
+            subtract(self.baseline.value())
+            data_window = ratio(self.firstFrame.value(), self.nFrames.value(), 'average')  # ratio(first_frame, nFrames, ratio_type). Now we are in F/F0
+            data_window.setName('Data Window (F/F0)')
+            norm_image = data_window.image - 1
+            norm_window = Window(norm_image)
+            norm_window.setName('Normalized Window')
+            blurred_window = gaussian_blur(self.blur.value(), norm_edges=True, keepSourceWindow=True)
+            blurred_window.setName('Blurred Window') 
+        
         filename = data_window.filename
         filename = os.path.splitext(filename)[0]+'.flika'
         if load_flika_file and os.path.isfile(filename):
