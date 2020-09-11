@@ -178,9 +178,9 @@ class Threshold_cluster(BaseProcess):
 
     def gui(self):
         self.gui_reset()
-        data_window=WindowSelector()
-        normalized_window=WindowSelector()
-        blurred_window=WindowSelector()
+        self.data_window=WindowSelector()
+        self.normalized_window=WindowSelector()
+        self.blurred_window=WindowSelector()
         roi_width=OddSlider(0)
         roi_width.setRange(1,21)
         roi_width.setSingleStep(2)
@@ -203,43 +203,14 @@ class Threshold_cluster(BaseProcess):
         time_factor.setRange(0,20)
         load_flika_file=CheckBox()
         
+        self.autoInput_win = AutomatedInput_win()
         self.automateInput=CheckBox()
-        self.rawData_window=WindowSelector()
-        self.baseline=SliderLabel(1)
-        self.baseline.setRange(.1,1000)
-        self.baseline.setSingleStep(.1)
-        self.baseline.setValue(5)       
-        
-        self.firstFrame=SliderLabel(0)
-        self.firstFrame.setRange(1,1000)
-        self.firstFrame.setSingleStep(1)        
-        
-        self.nFrames=SliderLabel(0)
-        self.nFrames.setRange(1,1000)
-        self.nFrames.setSingleStep(1) 
-        self.nFrames.setValue(30)        
-        
-        self.blur=SliderLabel(0)
-        self.blur.setRange(0,100)
-        self.blur.setSingleStep(1)    
-        self.blur.setValue(2)
-        
-
-        self.items.append({'name':'blank','string':'-------------------- Automated Input ---------------------', 'object': None})
-        self.items.append({'name':'raw_data_window','string':'raw data window', 'object': self.rawData_window})
-        self.items.append({'name':'baseline','string':'baseline','object':self.baseline})  
-        self.items.append({'name':'firstFrame','string':'firstFrame','object':self.firstFrame})          
-        self.items.append({'name':'nFrames','string':'nFrames','object':self.nFrames})          
-        self.items.append({'name':'blur','string':'blur','object':self.blur})          
-        self.items.append({'name':'automated_Input','string':'Automate input', 'object': self.automateInput})
-        self.items.append({'name':'blank','string':'----------------------------------------------------------', 'object': None})
-        
-        self.items.append({'name':'data_window','string':'Data window containing F/F0 data', 'object': data_window})
-        self.items.append({'name':'normalized_window','string':'Normalized window containing data with baseline at 0','object': normalized_window})
-        self.items.append({'name':'blurred_window','string': 'Gaussian Blurred normalized window','object': blurred_window})
-        
-        
-        
+        self.automateInput.stateChanged.connect(self.automateInput_dialog)  
+       
+        self.items.append({'name':'automated_Input','string':'Automate input', 'object': self.automateInput})       
+        self.items.append({'name':'data_window','string':'Data window containing F/F0 data', 'object': self.data_window})
+        self.items.append({'name':'normalized_window','string':'Normalized window containing data with baseline at 0','object': self.normalized_window})
+        self.items.append({'name':'blurred_window','string': 'Gaussian Blurred normalized window','object': self.blurred_window})       
         self.items.append({'name':'roi_width','string':'roi_width','object':roi_width})
         self.items.append({'name':'paddingXY','string':'paddingXY','object':paddingXY})
         self.items.append({'name':'paddingT_pre','string':'paddingT_pre','object':paddingT_pre})
@@ -259,19 +230,11 @@ class Threshold_cluster(BaseProcess):
                  paddingT_post=15, maxSigmaForGaussianFit=10, rotatedfit=True, radius=np.sqrt(2), maxPuffLen=15,
                  maxPuffDiameter=10, blur_thresh=1, time_factor=1, load_flika_file=True, keepSourceWindow=False):
         g.m.statusBar().showMessage('Performing {}...'.format(self.__name__))
-               
-        if self.automateInput.isChecked() == True:
-            print('automated input activated')
-            rawData = Window(self.getValue('raw_data_window').image)
-            rawData.setAsCurrentWindow()
-            subtract(self.baseline.value())
-            data_window = ratio(self.firstFrame.value(), self.nFrames.value(), 'average')  # ratio(first_frame, nFrames, ratio_type). Now we are in F/F0
-            data_window.setName('Data Window (F/F0)')
-            norm_image = data_window.image - 1
-            norm_window = Window(norm_image)
-            norm_window.setName('Normalized Window')
-            blurred_window = gaussian_blur(self.blur.value(), norm_edges=True, keepSourceWindow=True)
-            blurred_window.setName('Blurred Window') 
+        
+        try:
+            self.autoInput_win.close()
+        except:
+            pass
         
         filename = data_window.filename
         filename = os.path.splitext(filename)[0]+'.flika'
@@ -299,12 +262,215 @@ class Threshold_cluster(BaseProcess):
             udc['blur_thresh'] = blur_thresh
             udc['time_factor'] = time_factor
             puffAnalyzer = PuffAnalyzer(data_window, normalized_window, blurred_window, udc)
+        
+        
         g.windows.append(puffAnalyzer)
         g.m.statusBar().showMessage('Finished with {}.'.format(self.__name__))
         return puffAnalyzer
 
 
+    def automateInput_dialog(self):
+        if self.automateInput.isChecked():
+            self.autoInput_win.show()
+        else:
+            self.autoInput_win.close()
+            
+
 threshold_cluster = Threshold_cluster()
+
+
+class AutomatedInput_win(QtWidgets.QDialog):
+    def __init__(self, parent = None):
+        super(AutomatedInput_win, self).__init__(parent)
+
+        self.rawData_window=WindowSelector()
+        
+        self.baseline=SliderLabel(1)
+        self.baseline.setRange(0,1000)
+        self.baseline.setSingleStep(.1)
+        self.baseline.setValue(0)       
+
+        self.blackLevel=SliderLabel(1)
+        self.blackLevel.setRange(0,1000)
+        self.blackLevel.setSingleStep(.1)
+        self.blackLevel.setValue(0)   
+        
+        self.firstFrame=SliderLabel(0)
+        self.firstFrame.setRange(1,1000)
+        self.firstFrame.setSingleStep(1)        
+        
+        self.nFrames=SliderLabel(0)
+        self.nFrames.setRange(1,1000)
+        self.nFrames.setSingleStep(1) 
+        self.nFrames.setValue(30)        
+        
+        self.blur=SliderLabel(0)
+        self.blur.setRange(0,100)
+        self.blur.setSingleStep(1)    
+        self.blur.setValue(2)
+
+        self.trimRaw=CheckBox()
+
+        self.firstFrame_trim=SliderLabel(0)
+        self.firstFrame_trim.setRange(0,10000)
+        self.firstFrame_trim.setSingleStep(1) 
+        self.firstFrame_trim.setValue(0)
+        
+        self.lastFrame_trim=SliderLabel(0)
+        self.lastFrame_trim.setRange(1,100000)
+        self.lastFrame_trim.setSingleStep(1)
+
+        self.firstFrame_flash=SliderLabel(0)
+        self.firstFrame_flash.setRange(0,10000)
+        self.firstFrame_flash.setSingleStep(1) 
+        
+        self.lastFrame_flash=SliderLabel(0)
+        self.lastFrame_flash.setRange(1,100000)
+        self.lastFrame_flash.setSingleStep(1)
+
+        self.removeFlash=CheckBox()    
+
+        self.nFrame_butter=SliderLabel(0)
+        self.nFrame_butter.setRange(0,1000)
+        self.nFrame_butter.setSingleStep(1)  
+        self.nFrame_butter.setValue(25)        
+        
+        self.filter_order = SliderLabel(0)
+        self.filter_order.setRange(1,10)
+        self.filter_order.setSingleStep(1)
+        self.filter_order.setValue(1)
+               
+        self.low = SliderLabel(2)
+        self.low.setRange(0,1)
+        self.low.setSingleStep(0.01) 
+        self.low.setValue(0.1)         
+        
+        self.high = SliderLabel(2)
+        self.high.setRange(0,1)
+        self.high.setSingleStep(0.01)        
+        self.high.setValue(1)         
+        
+        self.framerate = SliderLabel(0)
+        self.framerate.setRange(1,1000)
+        self.framerate.setSingleStep(1)
+        self.framerate.setValue(227)        
+
+        self.run = QtWidgets.QPushButton('Create input windows')
+        self.run.clicked.connect(self.automateInput)
+        
+        #window geometry
+        self.left = 300
+        self.top = 300
+        self.width = 500
+        self.height = 500
+
+        #labels
+        self.raw_data_window_label = QtWidgets.QLabel('raw data window')
+        self.firstFrame_trim_label = QtWidgets.QLabel('trim raw: first Frame')          
+        self.lastFrame_trim_label = QtWidgets.QLabel('trim raw: last Frame')        
+        self.trimRaw_label = QtWidgets.QLabel('trim raw data')                
+        self.baseline_label = QtWidgets.QLabel('baseline') 
+        self.blackLevel_label = QtWidgets.QLabel('camera black level')         
+        self.firstFrame_label = QtWidgets.QLabel('DF/F0 ratio: firstFrame')          
+        self.nFrames_label = QtWidgets.QLabel('DF/F0 ratio: nFrames')          
+        self.firstFrame_flash_label = QtWidgets.QLabel('flash: first Frame')          
+        self.lastFrame_flash_label = QtWidgets.QLabel('flash: last Frame')         
+        self.removeFlash_label = QtWidgets.QLabel('remove flash artifact')                 
+        self.nFrame_butter_label = QtWidgets.QLabel('butter filter: n frames to trim from ends')                                  
+        self.filter_order_label = QtWidgets.QLabel('butterworth filter: order')
+        self.low_label = QtWidgets.QLabel('butterworth filter: low')
+        self.high_label = QtWidgets.QLabel('butterworth filter: high')
+        self.framerate_label = QtWidgets.QLabel('butterworth filter: framerate')    
+        self.blur_label = QtWidgets.QLabel('Gaussian blur: sigma')
+
+                           
+        #grid layout
+        layout = QtWidgets.QGridLayout()
+        layout.setSpacing(3)
+        #widgets
+        layout.addWidget(self.rawData_window, 1, 1)
+        layout.addWidget(self.firstFrame_trim, 2, 1)          
+        layout.addWidget(self.lastFrame_trim, 3, 1)       
+        layout.addWidget(self.trimRaw, 4, 1)                
+        layout.addWidget(self.baseline, 5, 1)
+        layout.addWidget(self.blackLevel, 6, 1)        
+        layout.addWidget(self.firstFrame, 7, 1)         
+        layout.addWidget(self.nFrames, 8, 1)         
+        layout.addWidget(self.firstFrame_flash, 9, 1)          
+        layout.addWidget(self.lastFrame_flash, 10, 1)         
+        layout.addWidget(self.removeFlash, 11, 1)                 
+        layout.addWidget(self.nFrame_butter, 12, 1)                                   
+        layout.addWidget(self.filter_order, 13, 1) 
+        layout.addWidget(self.low, 14, 1)
+        layout.addWidget(self.high, 15, 1) 
+        layout.addWidget(self.framerate, 16, 1)       
+        layout.addWidget(self.blur, 17, 1)    
+        layout.addWidget(self.run, 18, 1)            
+        #labels
+        layout.addWidget(self.raw_data_window_label, 1, 0)
+        layout.addWidget(self.firstFrame_trim_label, 2, 0)          
+        layout.addWidget(self.lastFrame_trim_label, 3, 0)       
+        layout.addWidget(self.trimRaw_label, 4, 0)                
+        layout.addWidget(self.baseline_label, 5, 0)
+        layout.addWidget(self.blackLevel_label, 6, 0)        
+        layout.addWidget(self.firstFrame_label, 7, 0)         
+        layout.addWidget(self.nFrames_label, 8, 0)         
+        layout.addWidget(self.firstFrame_flash_label, 9, 0)          
+        layout.addWidget(self.lastFrame_flash_label, 10, 0)         
+        layout.addWidget(self.removeFlash_label, 11, 0)                 
+        layout.addWidget(self.nFrame_butter_label, 12, 0)                                  
+        layout.addWidget(self.filter_order_label, 13, 0) 
+        layout.addWidget(self.low_label, 14, 0)
+        layout.addWidget(self.high_label, 15, 0) 
+        layout.addWidget(self.framerate_label, 16, 0)       
+        layout.addWidget(self.blur_label, 17, 0) 
+        
+        self.setLayout(layout)
+        self.setGeometry(self.left, self.top, self.width, self.height)
+
+        #add window title
+        self.setWindowTitle("Automated Input Options")
+       
+    def automateInput(self):
+        print('automated input activated')
+        rawData = Window(self.rawData_window.value().image)
+        rawData.setAsCurrentWindow()
+        #subtract baseline
+        subtract(self.baseline.value(), keepSourceWindow=False)
+        #trim frames
+        if self.trimRaw.isChecked():
+            trim(self.firstFrame_trim.value(), self.lastFrame_trim.value(), increment=1, delete=False, keepSourceWindow=True)
+        #create DF/F0
+        data_window = ratio(self.firstFrame.value(), self.nFrames.value(), 'average', self.blackLevel.value())  # ratio(first_frame, nFrames, ratio_type). Now we are in F/F0
+        data_window.setName('Data Window (F/F0)')
+        #remove flash artifact
+        if self.removeFlash.isChecked():
+            set_value(1,self.firstFame_flash.value(),self.lastFrame_flash.value(), restrictToROI=False, KeepSourceWindow=False)
+        #create normalised image using butterworth filtered image
+        butter_image = butterworth_filter(self.filter_order.value(), self.low.value(), self.high.value(), self.framerate.value(), keepSourceWindow=True)            
+        #get n frames
+        nFrames = butter_image.image.shape[0]            
+        #trim ends of filtered image to remove windowing artifacts
+        trim(self.nFrame_butter.value(), nFrames-self.nFrame_butter.value(), increment=1, keepSourceWindow=False)
+        #ratio filtered image by standard deviation
+        norm_window = ratio(self.firstFrame.value()+self.nFrame_butter.value(), self.nFrames.value(), 'standard deviation', keepSourceWindow=False)
+        #set norm_window 
+        norm_window.setName('Normalized Window')            
+        #create blurred image
+        blurred_window = gaussian_blur(self.blur.value(), norm_edges=True, keepSourceWindow=True)
+        blurred_window.setName('Blurred Window') 
+        #set DF/F0 window as current
+        data_window.setAsCurrentWindow()
+        #trimDF/F0 window to match norm and blurred
+        data_window = trim(self.nFrame_butter.value(), nFrames-self.nFrame_butter.value(), increment=1, keepSourceWindow=False)   
+        #rename DF/F0
+        data_window.setName('Data Window (F/F0)')
+        #update window selectors
+        threshold_cluster.data_window.setWindow(window=data_window)
+        threshold_cluster.normalized_window.setWindow(window=norm_window)
+        threshold_cluster.blurred_window.setWindow(window=blurred_window)
+        #finised message
+        g.m.statusBar().showMessage('Generated Input Windows')
 
 
 class PuffAnalyzer(QWidget):
