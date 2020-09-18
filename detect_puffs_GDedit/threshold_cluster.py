@@ -206,8 +206,9 @@ class Threshold_cluster(BaseProcess):
         self.autoInput_win = AutomatedInput_win()
         self.automateInput=CheckBox()
         self.automateInput.stateChanged.connect(self.automateInput_dialog)  
+            
        
-        self.items.append({'name':'automated_Input','string':'Automate input', 'object': self.automateInput})       
+        self.items.append({'name':'automated_Input','string':'Automate input', 'object': self.automateInput})  
         self.items.append({'name':'data_window','string':'Data window containing F/F0 data', 'object': self.data_window})
         self.items.append({'name':'normalized_window','string':'Normalized window containing data with baseline at 0','object': self.normalized_window})
         self.items.append({'name':'blurred_window','string': 'Gaussian Blurred normalized window','object': self.blurred_window})       
@@ -284,19 +285,15 @@ class AutomatedInput_win(QtWidgets.QDialog):
         super(AutomatedInput_win, self).__init__(parent)
 
         self.rawData_window=WindowSelector()
-        
-        self.baseline=SliderLabel(1)
-        self.baseline.setRange(0,1000)
-        self.baseline.setSingleStep(.1)
-        self.baseline.setValue(0)       
-
+        self.rawData_window.valueChanged.connect(self.updateSliders)
+            
         self.blackLevel=SliderLabel(1)
-        self.blackLevel.setRange(0,1000)
+        self.blackLevel.setRange(0,10000)
         self.blackLevel.setSingleStep(.1)
         self.blackLevel.setValue(0)   
         
         self.firstFrame=SliderLabel(0)
-        self.firstFrame.setRange(1,1000)
+        self.firstFrame.setRange(0,1000)
         self.firstFrame.setSingleStep(1)        
         
         self.nFrames=SliderLabel(0)
@@ -341,19 +338,21 @@ class AutomatedInput_win(QtWidgets.QDialog):
         self.filter_order.setValue(1)
                
         self.low = SliderLabel(2)
-        self.low.setRange(0,1)
+        self.low.setRange(0,1000)
         self.low.setSingleStep(0.01) 
         self.low.setValue(0.1)         
         
         self.high = SliderLabel(2)
-        self.high.setRange(0,1)
+        self.high.setRange(0,1000)
         self.high.setSingleStep(0.01)        
         self.high.setValue(1)         
         
         self.framerate = SliderLabel(0)
-        self.framerate.setRange(1,1000)
+        self.framerate.setRange(1,5000)
         self.framerate.setSingleStep(1)
-        self.framerate.setValue(227)        
+        self.framerate.setValue(227)      
+        
+        self.saveDetails=CheckBox()
 
         self.run = QtWidgets.QPushButton('Create input windows')
         self.run.clicked.connect(self.automateInput)
@@ -369,8 +368,7 @@ class AutomatedInput_win(QtWidgets.QDialog):
         self.firstFrame_trim_label = QtWidgets.QLabel('trim raw: first Frame')          
         self.lastFrame_trim_label = QtWidgets.QLabel('trim raw: last Frame')        
         self.trimRaw_label = QtWidgets.QLabel('trim raw data')                
-        self.baseline_label = QtWidgets.QLabel('baseline') 
-        self.blackLevel_label = QtWidgets.QLabel('camera black level')         
+        self.blackLevel_label = QtWidgets.QLabel('camera black level to subtract')         
         self.firstFrame_label = QtWidgets.QLabel('DF/F0 ratio: firstFrame')          
         self.nFrames_label = QtWidgets.QLabel('DF/F0 ratio: nFrames')          
         self.firstFrame_flash_label = QtWidgets.QLabel('flash: first Frame')          
@@ -382,6 +380,7 @@ class AutomatedInput_win(QtWidgets.QDialog):
         self.high_label = QtWidgets.QLabel('butterworth filter: high')
         self.framerate_label = QtWidgets.QLabel('butterworth filter: framerate')    
         self.blur_label = QtWidgets.QLabel('Gaussian blur: sigma')
+        self.saveDetails_label = QtWidgets.QLabel('Save details:')        
 
                            
         #grid layout
@@ -392,7 +391,6 @@ class AutomatedInput_win(QtWidgets.QDialog):
         layout.addWidget(self.firstFrame_trim, 2, 1)          
         layout.addWidget(self.lastFrame_trim, 3, 1)       
         layout.addWidget(self.trimRaw, 4, 1)                
-        layout.addWidget(self.baseline, 5, 1)
         layout.addWidget(self.blackLevel, 6, 1)        
         layout.addWidget(self.firstFrame, 7, 1)         
         layout.addWidget(self.nFrames, 8, 1)         
@@ -405,13 +403,13 @@ class AutomatedInput_win(QtWidgets.QDialog):
         layout.addWidget(self.high, 15, 1) 
         layout.addWidget(self.framerate, 16, 1)       
         layout.addWidget(self.blur, 17, 1)    
-        layout.addWidget(self.run, 18, 1)            
+        layout.addWidget(self.run, 19, 1)   
+        layout.addWidget(self.saveDetails, 18, 1)           
         #labels
         layout.addWidget(self.raw_data_window_label, 1, 0)
         layout.addWidget(self.firstFrame_trim_label, 2, 0)          
         layout.addWidget(self.lastFrame_trim_label, 3, 0)       
         layout.addWidget(self.trimRaw_label, 4, 0)                
-        layout.addWidget(self.baseline_label, 5, 0)
         layout.addWidget(self.blackLevel_label, 6, 0)        
         layout.addWidget(self.firstFrame_label, 7, 0)         
         layout.addWidget(self.nFrames_label, 8, 0)         
@@ -424,51 +422,97 @@ class AutomatedInput_win(QtWidgets.QDialog):
         layout.addWidget(self.high_label, 15, 0) 
         layout.addWidget(self.framerate_label, 16, 0)       
         layout.addWidget(self.blur_label, 17, 0) 
+        layout.addWidget(self.saveDetails_label, 18, 0)   
         
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
 
         #add window title
         self.setWindowTitle("Automated Input Options")
-       
+        
+ 
+    def updateSliders(self):
+        nFrames = self.rawData_window.value().image.shape[0]
+        self.firstFrame.setRange(0,nFrames)
+        self.nFrames.setRange(1,nFrames)        
+        self.firstFrame_trim.setRange(0,nFrames)
+        self.lastFrame_trim.setRange(1,nFrames)
+        self.firstFrame_flash.setRange(0,nFrames)
+        self.lastFrame_flash.setRange(1,nFrames)
+        self.nFrame_butter.setRange(0,int(nFrames/2))
+ 
     def automateInput(self):
+        #initiate save details list
+        self.saveDetailsList = []
         print('automated input activated')
         rawData = Window(self.rawData_window.value().image)
         rawData.setAsCurrentWindow()
-        #subtract baseline
-        subtract(self.baseline.value(), keepSourceWindow=False)
+        self.windowName = self.rawData_window.value().filename
+        self.saveDetailsList.append('Raw Data: {}'.format(self.windowName))
+
         #trim frames
         if self.trimRaw.isChecked():
-            trim(self.firstFrame_trim.value(), self.lastFrame_trim.value(), increment=1, delete=False, keepSourceWindow=True)
+            rawData = trim(self.firstFrame_trim.value(), self.lastFrame_trim.value(), increment=1, delete=False, keepSourceWindow=False)
+            self.saveDetailsList.append('Trimming: trim({}, {}, increment=1, delete=False, keepSourceWindow=False)'.format(self.firstFrame_trim.value(), self.lastFrame_trim.value()))
+                
         #create DF/F0
         data_window = ratio(self.firstFrame.value(), self.nFrames.value(), 'average', self.blackLevel.value())  # ratio(first_frame, nFrames, ratio_type). Now we are in F/F0
         data_window.setName('Data Window (F/F0)')
+        self.saveDetailsList.append('DF/F0 data window: ratio({}, {}, {}, {})'.format(self.firstFrame.value(), self.nFrames.value(), "average", self.blackLevel.value()))
+
         #remove flash artifact
         if self.removeFlash.isChecked():
-            set_value(1,self.firstFame_flash.value(),self.lastFrame_flash.value(), restrictToROI=False, KeepSourceWindow=False)
+            data_window = set_value(1,self.firstFrame_flash.value(),self.lastFrame_flash.value(), restrictToROI=False, keepSourceWindow=False)
+            self.saveDetailsList.append('Remove flash: set_value(1,{}, {}, restrictToROI=False, KeepSourceWindow=False)'.format(self.firstFrame_flash.value(),self.lastFrame_flash.value()))
+            data_window.setName('Data Window (F/F0)')
+
         #create normalised image using butterworth filtered image
         butter_image = butterworth_filter(self.filter_order.value(), self.low.value(), self.high.value(), self.framerate.value(), keepSourceWindow=True)            
+        self.saveDetailsList.append('Butterworth filter: butterworth_filter({}, {}, {}, {}, keepSourceWindow=True)'.format(self.filter_order.value(), self.low.value(), self.high.value(), self.framerate.value()))
+
         #get n frames
         nFrames = butter_image.image.shape[0]            
+
         #trim ends of filtered image to remove windowing artifacts
         trim(self.nFrame_butter.value(), nFrames-self.nFrame_butter.value(), increment=1, keepSourceWindow=False)
+        self.saveDetailsList.append('Trim ends: trim({}, {}, increment=1, keepSourceWindow=False)'.format(self.nFrame_butter.value(), nFrames-self.nFrame_butter.value()))
+
         #ratio filtered image by standard deviation
         norm_window = ratio(self.firstFrame.value()+self.nFrame_butter.value(), self.nFrames.value(), 'standard deviation', keepSourceWindow=False)
+        self.saveDetailsList.append('Normalized Window: ratio({}, {}, "standard deviation", keepSourceWindow=False)'.format(self.firstFrame.value()+self.nFrame_butter.value(), self.nFrames.value()))
+
         #set norm_window 
         norm_window.setName('Normalized Window')            
+
         #create blurred image
         blurred_window = gaussian_blur(self.blur.value(), norm_edges=True, keepSourceWindow=True)
         blurred_window.setName('Blurred Window') 
+        self.saveDetailsList.append('Blurred Window: gaussian_blur({}, norm_edges=True, keepSourceWindow=True)'.format(self.blur.value()))
+
         #set DF/F0 window as current
         data_window.setAsCurrentWindow()
+
         #trimDF/F0 window to match norm and blurred
         data_window = trim(self.nFrame_butter.value(), nFrames-self.nFrame_butter.value(), increment=1, keepSourceWindow=False)   
+        self.saveDetailsList.append('Trim DF/F0 ends: trim({}, {}, increment=1, keepSourceWindow=False)'.format(self.nFrame_butter.value(), nFrames-self.nFrame_butter.value()))
+
         #rename DF/F0
         data_window.setName('Data Window (F/F0)')
+
         #update window selectors
         threshold_cluster.data_window.setWindow(window=data_window)
         threshold_cluster.normalized_window.setWindow(window=norm_window)
         threshold_cluster.blurred_window.setWindow(window=blurred_window)
+
+        #save details
+        if self.saveDetails.isChecked():
+            
+            filepath = self.windowName.split('.')[0] + '_autoInput.txt'
+            
+            with open(filepath, 'w') as file_handler:
+                for item in self.saveDetailsList:
+                    file_handler.write("{}\n".format(item))
+
         #finised message
         g.m.statusBar().showMessage('Generated Input Windows')
 
