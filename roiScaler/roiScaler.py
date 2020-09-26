@@ -67,10 +67,10 @@ class RoiScaler(BaseProcess_noPriorWindow):
         
         #create rois
         self.center_ROI = makeROI('rectangle',[[height/2, width/2], [10, 10]], color=QColor(255, 0, 0, 127), window=self.win)
-        self.surround_ROI = makeROI('rectangle',[[height/2, width/2], [20, 20]], color=QColor(0, 0, 255, 127), window=self.win)
+        self.surround_ROI = makeROI('surround',[[height/2, width/2], [20, 20]], color=QColor(0, 0, 255, 127), window=self.win)
         
         #link rois
-        self.center_ROI.link(self.surround_ROI)
+        self.center_ROI.addSurround(self.surround_ROI)
         
         #plot roi average trace
         self.plotROI = self.center_ROI.plot()        

@@ -26,6 +26,7 @@ import numpy as np
 from pyqtgraph.graphicsItems.ROI import Handle
 import flika.global_vars as g
 from flika.utils.misc import random_color, open_file_gui, nonpartial
+
 class ROI_Drawing(pg.GraphicsObject):
     """Graphics Object for ROIs while initially being drawn. Extends pyqtrgaph.GraphicsObject
 
@@ -134,6 +135,7 @@ class ROI_Base():
         self.linkedROIs = set()
         self.resetSignals()
         self.makeMenu()
+        self.surroundROI = False
 
     def mouseClickEvent(self, ev):
         self.window.currentROI = self
@@ -154,13 +156,30 @@ class ROI_Base():
     def updateLinkedROIs(self, finish=False):
         for roi in self.linkedROIs:
             roi.blockSignals(True)
+
             roi.draw_from_points(self.pts, finish=False)
+                        
             if roi.traceWindow is not None:
                 if not finish:
                     roi.traceWindow.translated(roi)
                 else:
                     roi.traceWindow.translateFinished(roi)
             roi.blockSignals(False)
+
+    def updateSurround(self, finish=False):
+        self.surroundROI.blockSignals(True)
+        pts = self.pts
+        pts[1][0] = pts[1][0] + 10
+        pts[1][1] = pts[1][1] + 10                
+        self.surroundROI.draw_from_points(pts, finish=False)
+                
+        if self.surroundROI.traceWindow is not None:
+            if not finish:
+                self.surroundROI.traceWindow.translated(self.surroundROI)
+            else:
+                self.surroundROI.traceWindow.translateFinished(self.surroundROI)
+        self.surroundROI.blockSignals(False)
+
 
     def redraw_trace(self):
         """Emit the translateFinished signal which redraws the ROI trace
@@ -171,10 +190,15 @@ class ROI_Base():
     def onRegionChange(self):
         self.pts = self.getPoints()
         self.updateLinkedROIs(finish=False)
+        if self.surroundROI != False:
+            self.updateSurround()
+            
         
     def onRegionChangeFinished(self):
         self.pts = self.getPoints()
         self.updateLinkedROIs(finish=True)
+        if self.surroundROI != False:
+            self.updateSurround()
 
     def link(self,roi):
         '''Link this roi to another, so a translation of one will cause a translation of the other'''
@@ -183,6 +207,11 @@ class ROI_Base():
         join = self.linkedROIs | roi.linkedROIs | {self, roi}
         self.linkedROIs = join - {self}
         roi.linkedROIs = join - {roi}
+
+    def addSurround(self, roi):
+        self.surroundROI = roi
+        roi.centerROI = self
+
 
     def getMask(self):
         '''Returns the list of integer points contained within the ROI, differs by ROI type
@@ -367,6 +396,8 @@ class ROI_Base():
         w.paste()
         return w
 
+    def surround(self):
+        return self.surroundROI
 
 class ROI_line(ROI_Base, pg.LineSegmentROI):
     '''ROI Line class for selecting a straight line of pixels between two points.
@@ -487,6 +518,9 @@ class ROI_line(ROI_Base, pg.LineSegmentROI):
         self.sigRegionChanged.disconnect(self.update_kymograph)
         self.kymograph=None
 
+
+
+
 class ROI_rectangle(ROI_Base, pg.ROI):
     '''ROI rectangle class for selecting a set width and height group of pixels on an image.
 
@@ -596,6 +630,65 @@ class ROI_rectangle(ROI_Base, pg.ROI):
         w.imageview.setImage(newtif, axes=self.window.imageview.axes)
         w.image = newtif
         return w
+
+
+class ROI_surround(ROI_rectangle, pg.ROI):
+    '''ROI rectangle class for selecting area around central ROI.
+
+    Extends from :class:`ROI_Base <flika.roi.ROI_Base>` and pyqtgraph.ROI
+    '''
+    kind = 'surround'
+    plotSignal = QtCore.Signal()
+
+
+    def __init__(self, window, pos, size, resizable=False, **kargs):
+        """__init__ of ROI_rectangle class
+
+        Args:
+            pos (2-tuple): position of top left corner
+            size: (2-tuple): width and height of the rectangle
+            resizable (bool): add resize handles to ROI, this cannot be changed after creation
+        """
+        roiArgs = self.INITIAL_ARGS.copy()
+        roiArgs.update(kargs)
+        pos = np.array(pos, dtype=int)
+        size = np.array(size, dtype=int)
+
+        pg.ROI.__init__(self, pos, size, **roiArgs)
+        if resizable:
+            self.addScaleHandle([0, 1], [1, 0])
+            self.addScaleHandle([1, 0], [0, 1])
+            self.addScaleHandle([0, 0], [1, 1])
+            self.addScaleHandle([1, 1], [0, 0])
+        self.cropAction = QtWidgets.QAction('&Crop', self, triggered=self.crop)
+        ROI_Base.__init__(self, window, [pos, size])
+
+    def updateCenterROI(self, finish=False):
+
+        self.centerROI.blockSignals(True)
+        pts = self.pts
+        pts[1][0] = pts[1][0] - 10
+        pts[1][1] = pts[1][1] - 10  
+        self.centerROI.draw_from_points(pts, finish=False)
+                    
+        if self.centerROI.traceWindow is not None:
+            if not finish:
+                self.centerROI.traceWindow.translated(self.centerROI)
+            else:
+                self.centerROI.traceWindow.translateFinished(self.centerROI)
+        self.centerROI.blockSignals(False)
+
+    def onRegionChange(self):
+        self.pts = self.getPoints()
+        self.updateCenterROI(finish=False)
+                    
+    def onRegionChangeFinished(self):
+        self.pts = self.getPoints()
+        self.updateCenterROI(finish=False)
+
+    
+    def surround(self):
+        return True
 
 class ROI_freehand(ROI_Base, pg.ROI):
     """ROI freehand class for selecting a polygon from the original image.
@@ -1087,6 +1180,15 @@ def makeROI(kind, pts, window=None, color=None, **kargs):
         roi = ROI_line(window, (pts), **kargs)
     elif kind == 'rect_line':
         roi = ROI_rect_line(window, pts, **kargs)
+    elif kind == 'surround':
+        if len(pts) > 2:
+            size = np.ptp(pts,0)
+            top_left = np.min(pts,0)
+        else:
+            size = pts[1]
+            top_left = pts[0]
+        roi = ROI_surround(window, top_left, size, **kargs) 
+        
     else:
         g.alert("ERROR: THIS KIND OF ROI COULD NOT BE FOUND: {}".format(kind))
         return None
