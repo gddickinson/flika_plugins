@@ -236,9 +236,16 @@ class PuffMapper(BaseProcess_noPriorWindow):
     def createHeatmap(self):
         ### create heatmap image
         if self.sorted_checkbox.isChecked():
-            mapData = self.dataSorted.to_numpy()
+            try:
+                mapData = self.dataSorted.to_numpy()
+            except:
+                mapData = self.dataSorted.values
         else:
-            mapData = self.data.to_numpy()
+            try:
+                mapData = self.data.to_numpy()
+            except:
+                mapData = self.data.values              
+            
         nRows,nCols = mapData.shape
         print(nRows,nCols)
         start = self.startFrame_Box.value()
