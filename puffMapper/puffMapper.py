@@ -32,7 +32,30 @@ else:
 
 import pandas as pd
 from matplotlib import pyplot as plt
+from skimage.measure import block_reduce
 
+# def groupedAvg(myArray, N=2):
+#     #no extra libraries needed  
+#     cum = np.cumsum(myArray,0)
+#     result = cum[N-1::N]/float(N)
+#     result[1:] = result[1:] - result[:-1]
+
+#     remainder = myArray.shape[0] % N
+#     if remainder != 0:
+#         if remainder < myArray.shape[0]:
+#             lastAvg = (cum[-1]-cum[-1-remainder])/float(remainder)
+#         else:
+#             lastAvg = cum[-1]/float(remainder)
+#         result = np.vstack([result, lastAvg])
+
+#     return result
+
+def groupedAvg(A, block_size=(2,1), func=np.mean):
+    #uses skimage
+    cval=np.mean(A)
+    print('x binning every {} values using {}'.format(block_size[0],func.__name__))
+    return block_reduce(A, block_size=block_size, func=func, cval=cval)
+    
 
 
 def open_file_gui(prompt="Open File", directory=None, filetypes=''):
@@ -113,26 +136,30 @@ class PuffMapper(BaseProcess_noPriorWindow):
     output:     
     """
     def __init__(self):
-        if g.settings['puffMapper'] is None or 'sortedByMax' not in g.settings['puffMapper']:
+        if g.settings['puffMapper'] is None or 'yExpand' not in g.settings['puffMapper']:
             s = dict()            
             s['nFrames'] = 1000           
             s['startFrame'] = 0 
             s['sortedByMax'] = False             
-                  
+            s['xBin'] = 0 
+            s['yExpand'] = 0                  
+            
             g.settings['puffMapper'] = s
                    
         BaseProcess_noPriorWindow.__init__(self)
             
         
 
-    def __call__(self, nFrames,startFrame,sortedByMax, keepSourceWindow=False):
+    def __call__(self, nFrames, startFrame, sortedByMax, xBin, yExpand, keepSourceWindow=False):
         '''
         '''
 
         #currently not saving parameter changes on call
         g.settings['puffMapper']['nFrames'] = nFrames         
         g.settings['puffMapper']['startFrame'] = startFrame   
-        g.settings['puffMapper']['sortedByMax'] = sortedByMax           
+        g.settings['puffMapper']['sortedByMax'] = sortedByMax  
+        g.settings['puffMapper']['xBin'] = xBin  
+        g.settings['puffMapper']['yExpand'] = yExpand         
         
         g.m.statusBar().showMessage("Starting puff mapper...")
         return
@@ -161,6 +188,11 @@ class PuffMapper(BaseProcess_noPriorWindow):
         self.sorted_checkbox = CheckBox()
         self.sorted_checkbox.setChecked(s['sortedByMax'])
 
+        #comboboxes
+        self.xFunc_Box = pg.ComboBox()
+        xFuncs = {'mean':np.mean, 'max':np.max, 'median':np.median}
+        self.xFunc_Box.setItems(xFuncs)
+
         
         #spinboxes
         #Frames
@@ -168,12 +200,22 @@ class PuffMapper(BaseProcess_noPriorWindow):
         self.startFrame_Box.setMinimum(0)
         self.startFrame_Box.setMaximum(1000000)  
         self.startFrame_Box.setValue(s['startFrame'])            
-        
-        
+                
         self.nFrames_Box = pg.SpinBox(int=True, step=1)
         self.nFrames_Box.setMinimum(0)
         self.nFrames_Box.setMaximum(1000000)  
         self.nFrames_Box.setValue(s['nFrames'])          
+
+        self.xBin_Box = pg.SpinBox(int=True, step=2)
+        self.xBin_Box.setMinimum(1)
+        self.xBin_Box.setMaximum(10000)  
+        self.xBin_Box.setValue(s['xBin'])   
+
+        self.yExpand_Box = pg.SpinBox(int=True, step=1)
+        self.yExpand_Box.setMinimum(1)
+        self.yExpand_Box.setMaximum(1000)  
+        self.yExpand_Box.setValue(s['yExpand'])   
+
 
         #export file selector
         self.getFile = FileSelector()
@@ -187,6 +229,9 @@ class PuffMapper(BaseProcess_noPriorWindow):
         self.items.append({'name': 'blank1 ', 'string': '-------------   Parameters    ---------------', 'object': None}) 
         self.items.append({'name': 'startFrame', 'string': 'Set start frame ', 'object': self.startFrame_Box})          
         self.items.append({'name': 'nFrames', 'string': 'Set number of frames ', 'object': self.nFrames_Box}) 
+        self.items.append({'name': 'xBin', 'string': 'Set x-axis binning number ', 'object': self.xBin_Box})  
+        self.items.append({'name': 'xBinType', 'string': 'Set x-axis bin function ', 'object': self.xFunc_Box})  
+        self.items.append({'name': 'yExpand', 'string': 'Set y-axis expansion value ', 'object': self.yExpand_Box})          
         self.items.append({'name': 'sortedByMax', 'string': 'Sorted by maximum', 'object': self.sorted_checkbox})         
         self.items.append({'name': 'blank ', 'string': '-------------------------------------------', 'object': None})           
         
@@ -218,6 +263,11 @@ class PuffMapper(BaseProcess_noPriorWindow):
         self.dataSorted = self.data.copy()
         self.dataSorted = self.dataSorted.iloc[:, self.dataSorted.max().sort_values(ascending=False).index]
 
+        #set nFrames max
+        nRows = len(self.data)
+        self.nFrames_Box.setMaximum(nRows)  
+        self.nFrames_Box.setValue(nRows)  
+
         print('-------------------------------------')
         print('Data loaded (first 5 rows displayed):')
         print(self.data.head())
@@ -246,15 +296,30 @@ class PuffMapper(BaseProcess_noPriorWindow):
             except:
                 mapData = self.data.values              
             
+
         nRows,nCols = mapData.shape
-        print(nRows,nCols)
+        print('original data has: {} columns, {} rows'.format(nRows, nCols))
         start = self.startFrame_Box.value()
         end = self.startFrame_Box.value() + self.nFrames_Box.value()
         
         if end > nRows:
             end = nRows
+
+        #crop data
+        img = mapData[start:end]
         
-        self.heatmapImg = Window(mapData[start:end],name='puff map')
+        #x binning
+        img = groupedAvg(img,block_size=(self.xBin_Box.value(),1),func=self.xFunc_Box.value())
+
+        #y expansion
+        img = np.repeat(img,self.yExpand_Box.value(),axis=1)
+        print('y-axis expanded by {}'.format(self.yExpand_Box.value()))
+        
+        #get new img shape
+        nRows_img,nCols_img = img.shape
+        print('displayed image has: {} columns, {} rows'.format(nRows_img, nCols_img))
+      
+        self.heatmapImg = Window(img,name='puff map')
         print('puff map created')
         return
 
@@ -265,6 +330,8 @@ class PuffMapper(BaseProcess_noPriorWindow):
         except:
             pass
         return
+
+
 
 
 puffMapper = PuffMapper()
