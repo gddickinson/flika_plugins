@@ -37,6 +37,7 @@ from .gaussianFitting import fitGaussian, gaussian, generate_gaussian
 from .SLD_histogram import SLD_Histogram
 from .MSD_Plot import MSD_Plot
 
+import pandas as pd
 
 halt_current_computation = False
 
@@ -266,6 +267,8 @@ class Pynsight():
         self.SLD_histogram = None
         self.microns_per_pixel = 0.160
         self.seconds_per_frame = 0.1
+        self.intensities = []
+        self.dataArray = None
 
     def gui(self):
         gui = uic.loadUi(os.path.join(os.path.dirname(__file__), 'pynsight.ui'))
@@ -286,6 +289,7 @@ class Pynsight():
         gui.create_MSD_button.pressed.connect(self.create_MSD)
         gui.save_insight_button.pressed.connect(self.saveInsight)
         gui.savetracksjson_button.pressed.connect(self.savetracksjson)
+        gui.savetracksCSV_button.pressed.connect(self.savetracksCSV)        
         gui.loadtracksjson_button.pressed.connect(self.loadtracksjson)
         gui.microns_per_pixel_SpinBox.valueChanged.connect(self.set_microns_per_pixel)
         gui.seconds_per_frame_SpinBox.valueChanged.connect(self.set_seconds_per_frame)
@@ -390,6 +394,7 @@ class Pynsight():
 
     def create_MSD(self):
         self.MSD_plot = MSD_Plot(self.points, self.microns_per_pixel)
+    
     def create_SLD(self):
         self.SLD_histogram = SLD_Histogram(self.points, self.microns_per_pixel, self.seconds_per_frame)
 
@@ -406,6 +411,107 @@ class Pynsight():
         filename = save_file_gui("Save tracks as json", filetypes='*.json')
         pts = {'tracks': tracks, 'txy_pts': txy_pts}
         json.dump(pts, codecs.open(filename, 'w', encoding='utf-8'), separators=(',', ':'), sort_keys=True, indent=4)  ### this saves the array in .json format
+
+
+    def getIntensities(self):
+        #intensities retrieved from image stack using point data (converted from floats to ints)
+        
+        n, w, h = self.dataArray.shape
+        
+        #clear intensity list
+        self.intensities = []
+        
+        for point in self.txy_pts:
+            frame = int(round(point[0]))
+            x = int(round(point[1]))
+            y = int(round(point[2]))
+            
+            #set x,y bounds for 3x3 pixel square
+            xMin = x - 1
+            xMax = x + 2
+            
+            yMin = y - 1
+            yMax = y + 2
+            
+            #deal with edge cases
+            if xMin < 0:
+                xMin = 0
+            if xMax > w:
+                xMax = w
+                
+            if yMin <0:
+                yMin = 0
+            if yMax > h:
+                yMax = h
+            
+            #get mean pixels values for 3x3 square
+            self.intensities.append((np.mean(self.dataArray[frame][xMin:xMax,yMin:yMax])))
+        
+        #update points instance
+        self.points.intensities = self.intensities
+        
+
+    def savetracksCSV(self):
+        #TODO Add intensity value export if needed
+        # if self.blurred_window_selector.window is None:
+        #     g.alert('You must select a Blurred Window to determine point intensity values.')
+        #     return
+        # self.dataArray = self.blurred_window_selector.window.imageArray()
+        # #get intensities
+        # self.getIntensities()
+        
+        tracks = self.points.tracks
+        if isinstance(tracks[0][0], np.int64):
+            tracks = [[np.asscalar(a) for a in b] for b in tracks]
+        txy_pts = self.points.txy_pts.tolist()
+        #txy_intensities = self.points.intensities
+        
+        filename = save_file_gui("Save tracks as CSV", filetypes='*.csv')
+        
+        #filter tracks list to only include linked tracks
+        linkedTracks = [item for item in tracks if len(item) > 1]
+        
+        
+        #get xy coordinates and intensities for linked tracks
+        trackNumber = []
+        txy_ptsByTrack = []
+        #txy_intensitiesByTrack = []
+
+        
+        # for i, indices in enumerate(linkedTracks):
+        #     trackNumber.append( i )
+        #     txy_ptsByTrack.append(list(txy_pts[j] for j in indices))
+        #     #txy_intensitiesByTrack.append(list(txy_intensities[k] for k in indices))
+
+        
+        frameList = []
+        xList = []
+        yList = []
+
+        for i, indices in enumerate(linkedTracks):            
+            ptsList = list(txy_pts[j] for j in indices)
+            
+            for pts in ptsList:
+                trackNumber.append(i)
+                frameList.append(pts[0])
+                xList.append(pts[1])
+                yList.append(pts[2])
+
+            
+
+        #make dataframe of tracks, xy coordianates and intensities for linked tracks
+        #dict = {'track_number': trackNumber, 'pts': txy_ptsByTrack, 'intensities': txy_intensitiesByTrack}
+        #dict = {'track_number': trackNumber, 'pts': txy_ptsByTrack}        
+        dict = {'track_number': trackNumber, 'frame':frameList, 'x': xList, 'y':yList}            
+        
+        self.linkedtrack_DF = pd.DataFrame(dict)
+        
+        #save df as csv
+        self.linkedtrack_DF.to_csv(filename, index=False)
+        
+        print('CSV file {} saved'.format(filename))
+        
+
 
     def loadtracksjson(self):
         filename = open_file_gui("Open tracks from json", filetypes='*.json')
