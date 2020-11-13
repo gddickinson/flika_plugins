@@ -169,14 +169,19 @@ class ClusterAnalysis:
     def clear(self):
         self.Channels = []
     
-    def open_file(self, filename='', batch=False):
+    def open_file(self, filename='', batch=False, fileType='STORM'):
         '''Open .txt files - import localization data'''                
         if filename == '':
             filename = getFilename(filter='Text or Bin Files (*.txt *.bin)')
         self.clear()
         if self.dataLoaded:
             self.clearAll(batch=batch)
-        self.data = importFile(filename,evaluateLines=False)
+            
+        if fileType=='STORM':
+            self.data = importFile(filename,evaluateLines=False)
+        elif fileType=='NIKON_2':
+            self.data = importFile(filename,evaluateLines=False, skipFirstRow=True, encoding='UTF-16')           
+                        
         try:        
             for i in range(len(self.data[0])):
                 if '\n' in self.data[0][i]:
@@ -186,10 +191,14 @@ class ClusterAnalysis:
             self.displayMessage('Data load failed')
             return
 
+        self.data[0][:] = ['Channel Name' if x=='Channel' else x for x in self.data[0]]
+        print(self.data[0])
+
         #print(len(self.data[0]))
 
         self.loadedFile = filename
         self.colNames = list(self.data[0])
+        
         #remove any quotation marks
         #self.colNames = [s.strip('"') for s in self.colNames]
         #print(self.colNames)
@@ -198,7 +207,8 @@ class ClusterAnalysis:
         #self.data = self.data[0:5000]
     	
         self.data = {d[0]: d[1:] for d in np.transpose(self.data)}
-       
+
+            
         for k in self.data:
             if k != 'Channel Name':
                 self.data[k] = self.data[k].astype(float)
@@ -246,6 +256,7 @@ class ClusterAnalysis:
         self.dataLoaded = True
         
         return
+
 
 
     def getIntensity(self):
@@ -375,7 +386,9 @@ class ClusterAnalysis:
         
         self.fileMenu2 = self.menubar.addMenu('&File Options')
         self.menu_openFile = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Open File',self.win)
+        self.menu_openFile_2 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Open File NIKON_2',self.win)        
         setMenuUp(self.menu_openFile,self.fileMenu2,shortcut='Ctrl+O',statusTip='Open File',connection=lambda f: self.openFileAndDisplay())       
+        setMenuUp(self.menu_openFile_2,self.fileMenu2,shortcut='Ctrl+o',statusTip='Open File',connection=lambda f: self.openFileAndDisplay_2())       
         
         self.fileMenu1 = self.menubar.addMenu('&Display Options')        
         self.resetLayout = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Reset Layout',self.win)
@@ -442,7 +455,15 @@ class ClusterAnalysis:
         self.display3Ddata_allPoints()
         return
         
+    def openFileAndDisplay_2(self):
+        #open txt file and setup data channels
+        self.open_file(fileType='NIKON_2')
+        #display data
+        self.display2Ddata_allPoints()
+        self.display3Ddata_allPoints()
+        return  
         
+  
     def reset_layout(self):
         self.area.restoreState(self.state)
 
@@ -2364,8 +2385,9 @@ class Synapse3D_batch_2(QtWidgets.QDialog):
 
 ### TESTING ####
 def test():
-    fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\0_trial_1_superes_cropped.txt"
+    #fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\0_trial_1_superes_cropped.txt"
     #fileName = r"C:\Users\g_dic\OneDrive\Desktop\batchTest\trial_1_superes_fullfield.txt"
+    fileName = r"C:\Users\g_dic\Documents\Ian_S\george_simple_export.txt"
     clusterAnalysis.viewerGUI()
     clusterAnalysis.open_file(fileName)
     clusterAnalysis.getClusters()  
@@ -2404,14 +2426,23 @@ def test3():
 def test4():
     clusterAnalysis.viewerGUI()      
   
+def test5():
+    fileName = r"C:\Users\g_dic\Documents\Ian_S\george_simple_export.txt"
+    clusterAnalysis.viewerGUI()
+    clusterAnalysis.open_file(fileName, fileType='NIKON_2')    
+
+def test6():
+    fileName = r"C:\Users\g_dic\Documents\Ian_S\george_STORM_export.txt"
+    clusterAnalysis.viewerGUI()
+    clusterAnalysis.open_file(fileName)  
 
 if __name__ == "__main__":
     clusterAnalysis = ClusterAnalysis()
     #test() 
-    test2()
+    #test2()
     #test3()
     #test4()
     #clusterAnalysis.runBatch_queueing(r'C:\Users\g_dic\OneDrive\Desktop\batchTest')  
-
+    test5()
 
 
