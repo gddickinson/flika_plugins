@@ -452,19 +452,24 @@ class Pynsight():
         
 
     def savetracksCSV(self):
-        #TODO Add intensity value export if needed
-        # if self.blurred_window_selector.window is None:
-        #     g.alert('You must select a Blurred Window to determine point intensity values.')
-        #     return
-        # self.dataArray = self.blurred_window_selector.window.imageArray()
-        # #get intensities
-        # self.getIntensities()
+        self.exportIntensity = True
+        #Intensity value export option
+        if self.blurred_window_selector.window is None:
+            g.alert('If you wish to export intensity values (mean for 3x3 pixel around x,y position) first set a Blurred Window. Otherwise just x,y coordinates exported')
+            self.exportIntensity = False
+
+        if self.exportIntensity:
+            self.dataArray = self.blurred_window_selector.window.imageArray()
+            #get intensities
+            self.getIntensities()
         
         tracks = self.points.tracks
         if isinstance(tracks[0][0], np.int64):
             tracks = [[np.asscalar(a) for a in b] for b in tracks]
         txy_pts = self.points.txy_pts.tolist()
-        #txy_intensities = self.points.intensities
+        
+        if self.exportIntensity:
+            txy_intensities = self.points.intensities
         
         filename = save_file_gui("Save tracks as CSV", filetypes='*.csv')
         
@@ -474,8 +479,8 @@ class Pynsight():
         
         #get xy coordinates and intensities for linked tracks
         trackNumber = []
-        txy_ptsByTrack = []
-        #txy_intensitiesByTrack = []
+
+        txy_intensitiesByTrack = []
 
         
         # for i, indices in enumerate(linkedTracks):
@@ -490,19 +495,27 @@ class Pynsight():
 
         for i, indices in enumerate(linkedTracks):            
             ptsList = list(txy_pts[j] for j in indices)
+            if self.exportIntensity:
+                intensitiesList =list(txy_intensities[k] for k in indices)
             
             for pts in ptsList:
                 trackNumber.append(i)
                 frameList.append(pts[0])
                 xList.append(pts[1])
                 yList.append(pts[2])
-
+                
+            if self.exportIntensity:
+                for intensity in intensitiesList:
+                    txy_intensitiesByTrack.append(intensity)
             
 
         #make dataframe of tracks, xy coordianates and intensities for linked tracks
-        #dict = {'track_number': trackNumber, 'pts': txy_ptsByTrack, 'intensities': txy_intensitiesByTrack}
-        #dict = {'track_number': trackNumber, 'pts': txy_ptsByTrack}        
-        dict = {'track_number': trackNumber, 'frame':frameList, 'x': xList, 'y':yList}            
+        
+        if self.exportIntensity:  
+            dict = {'track_number': trackNumber, 'frame':frameList, 'x': xList, 'y':yList, 'intensities': txy_intensitiesByTrack}              
+            
+        else: 
+            dict = {'track_number': trackNumber, 'frame':frameList, 'x': xList, 'y':yList}            
         
         self.linkedtrack_DF = pd.DataFrame(dict)
         
