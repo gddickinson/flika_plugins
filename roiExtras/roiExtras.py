@@ -34,12 +34,16 @@ class HistoWindow(BaseProcess):
         self.win = pg.GraphicsWindow()
         self.win.resize(300, 300)
         self.win.setWindowTitle('ROI Extras Display')
-        self.plt1 = self.win.addPlot()       
+        self.plt1 = self.win.addPlot()  
+        
+        self.label = pg.LabelItem(justify='right')
+        self.win.addItem(self.label)
 
-    def update(self, vals, start=-3, end=8, n=50):  
+    def update(self, vals, start=-3, end=8, n=50, n_pixels=0):  
         ## compute standard histogram
         y,x = np.histogram(vals, bins=np.linspace(start, end, n))     
         self.plt1.plot(x, y, stepMode=True, fillLevel=0, brush=(0,0,255,150), clear=True) 
+        self.label.setText("<span style='font-size: 12pt'>pixels={}".format(n_pixels))
     
     def show(self):
         self.win.show()
@@ -67,35 +71,23 @@ class RoiExtras(BaseProcess_noPriorWindow):
         self.n = 50
         
         self.frame = 0
-        
+        self.ROIwindowExists = False
         
 
     def __call__(self):
         '''
         
         '''
-        self.currentWin = None
-        self.currentROI = None
-        self.displayStarted = False
-        self.data = None
-        self.img = None
-        try:
-            self.currentROI.sigRegionChanged.disconnect()
-        except:
-            pass
-        try:
-            self.currentWin.sigTimeChanged.disconnect()
-        except:
-            pass        
-        self.histoWindow.close()       
+        self.closeAction()     
         return
 
-    def closeEvent(self, event):
+    def closeAction(self):
         self.currentWin = None
         self.currentROI = None
         self.displayStarted = False
         self.data = None
         self.img = None
+        self.ROIwindowExists = False
         try:
             self.currentROI.sigRegionChanged.disconnect()
         except:
@@ -103,9 +95,19 @@ class RoiExtras(BaseProcess_noPriorWindow):
         try:
             self.currentWin.sigTimeChanged.disconnect()
         except:
-            pass        
-        self.histoWindow.close()        
-        BaseProcess_noPriorWindow.closeEvent(self, event)
+            pass
+        try:
+            self.ROIwindow.close()
+        except:
+            pass
+        
+        self.histoWindow.close() 
+
+
+    def closeEvent(self, event):
+        self.closeAction()
+        #BaseProcess_noPriorWindow.closeEvent(self, event)
+        event.accept()
                                    
 
     def gui(self):
@@ -163,14 +165,38 @@ class RoiExtras(BaseProcess_noPriorWindow):
                    
         self.update()
         
+        #create window to plot ROI
+        self.ROIwindow = Window(self.selected, name='ROI')
+        self.ROIwindowExists = True
+        
     def update(self): 
         #get frame index
         self.frame = self.currentWin.currentIndex  
         #get roi region
         self.selected = self.currentROI.getArrayRegion(self.data[self.frame], self.currentWin.imageview.getImageItem())
         #print(self.selected)
+        
+        #get roi mask (needed for freehand roi which returns square array)     
+        mask = self.currentROI.getMask()
+        #reset indices to cropped roi
+        mask_norm = (mask[0]-min(mask[0]),mask[1]-min(mask[1]) )      
+        #invert mask
+        invertMask = np.ones_like(self.selected, dtype=bool)
+        invertMask[mask_norm] = False
+        #select region within roi boundary
+        self.selected[invertMask] = 0 #using 0 for now, np.nan is slow
+        
+        #count number of pixels
+        n_pixels = (self.selected>0).sum()
+        print(n_pixels)
+        
         #update plot
-        self.histoWindow.update(self.selected, self.startScale, self.endScale, self.n)
+        self.histoWindow.update(self.selected, start=self.startScale, end=self.endScale, n=self.n, n_pixels=n_pixels)
+        #update roi window
+        if self.ROIwindowExists:
+            self.ROIwindow.imageview.setImage(self.selected)
+
+        
 
  
     def startPlot(self):
