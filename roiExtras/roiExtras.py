@@ -34,25 +34,20 @@ class HistoWindow(BaseProcess):
         self.win = pg.GraphicsWindow()
         self.win.resize(300, 300)
         self.win.setWindowTitle('ROI Extras Display')
-        self.plt1 = self.win.addPlot()
+        self.plt1 = self.win.addPlot()       
 
-        ## make interesting distribution of values
-        vals = np.array([0,0,0,0])
-        
+    def update(self, vals, start=-3, end=8, n=50):  
         ## compute standard histogram
-        y,x = np.histogram(vals, bins=np.linspace(-3, 8, 40))
-        
-        ## Using stepMode=True causes the plot to draw two lines for each sample.
-        ## notice that len(x) == len(y)+1
-        self.plt1.plot(x, y, stepMode=True, fillLevel=0, brush=(0,0,255,150), clear=True)        
-
-    def update(self, vals):        
-        ## compute standard histogram
-        y,x = np.histogram(vals, bins=np.linspace(-3, 8, 40))        
+        y,x = np.histogram(vals, bins=np.linspace(start, end, n))     
         self.plt1.plot(x, y, stepMode=True, fillLevel=0, brush=(0,0,255,150), clear=True) 
     
     def show(self):
         self.win.show()
+    
+    def close(self):
+        self.win.close()
+
+
 
 class RoiExtras(BaseProcess_noPriorWindow):
     """
@@ -67,20 +62,49 @@ class RoiExtras(BaseProcess_noPriorWindow):
         self.data = None
         self.img = None
         
-
+        self.startScale = -3
+        self.endScale = 50
+        self.n = 50
+        
+        self.frame = 0
+        
+        
 
     def __call__(self):
         '''
         
         '''
-        pass
-        return
-
-    def closeEvent(self, event):
+        self.currentWin = None
+        self.currentROI = None
+        self.displayStarted = False
+        self.data = None
+        self.img = None
         try:
             self.currentROI.sigRegionChanged.disconnect()
         except:
             pass
+        try:
+            self.currentWin.sigTimeChanged.disconnect()
+        except:
+            pass        
+        self.histoWindow.close()       
+        return
+
+    def closeEvent(self, event):
+        self.currentWin = None
+        self.currentROI = None
+        self.displayStarted = False
+        self.data = None
+        self.img = None
+        try:
+            self.currentROI.sigRegionChanged.disconnect()
+        except:
+            pass
+        try:
+            self.currentWin.sigTimeChanged.disconnect()
+        except:
+            pass        
+        self.histoWindow.close()        
         BaseProcess_noPriorWindow.closeEvent(self, event)
                                    
 
@@ -108,6 +132,12 @@ class RoiExtras(BaseProcess_noPriorWindow):
             self.currentROI.sigRegionChanged.disconnect()
         except:
             pass
+
+        #disconnect previous time update (if exists)
+        try:
+            self.currentWin.sigTimeChanged.disconnect(self.update)
+        except:
+            pass        
         
         #select current ROI
         self.currentROI = self.currentWin.currentROI                
@@ -117,20 +147,32 @@ class RoiExtras(BaseProcess_noPriorWindow):
         
         #set updates
         self.currentROI.sigRegionChanged.connect(self.update)
+        self.currentWin.sigTimeChanged.connect(self.update)
         
         #start plotting
         if self.displayStarted == False:
             self.startPlot()
             self.displayStarted = True
-            
+        
+        #get stack data
+        self.data =  np.array(deepcopy(self.currentWin.image))
+        
+        #get histo range from whole stack
+        self.startScale = np.min(self.data)
+        self.endScale = np.max(self.data)
+                   
         self.update()
         
-    def update(self):
-        self.data =  np.array(deepcopy(self.currentWin.image))
-        self.selected = self.currentROI.getArrayRegion(self.data, self.currentWin.imageview.getImageItem())
+    def update(self): 
+        #get frame index
+        self.frame = self.currentWin.currentIndex  
+        #get roi region
+        self.selected = self.currentROI.getArrayRegion(self.data[self.frame], self.currentWin.imageview.getImageItem())
         #print(self.selected)
-        self.histoWindow.update(self.selected)
-        
+        #update plot
+        self.histoWindow.update(self.selected, self.startScale, self.endScale, self.n)
+
+ 
     def startPlot(self):
         self.histoWindow = HistoWindow()
         self.histoWindow.show()
