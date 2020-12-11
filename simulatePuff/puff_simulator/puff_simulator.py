@@ -220,6 +220,7 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         
         frame = self.currentWin.currentIndex  
         self.currentWin.imageview.setImage(self.data)
+        self.currentWin.image = self.data
         self.currentWin.setIndex(frame)
         
         return
