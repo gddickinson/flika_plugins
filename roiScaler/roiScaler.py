@@ -66,8 +66,8 @@ class RoiScaler(BaseProcess_noPriorWindow):
         width = self.win.mx
         
         #create rois
-        self.center_ROI = makeROI('rectangle',[[height/2, width/2], [10, 10]], color=QColor(255, 0, 0, 127), window=self.win)
-        self.surround_ROI = makeROI('surround',[[height/2, width/2], [20, 20]], color=QColor(0, 0, 255, 127), window=self.win)
+        self.center_ROI = makeROI('center',[[height/2, width/2], [10, 10]], color=QColor(255, 0, 0, 127), window=self.win)
+        self.surround_ROI = makeROI('surround',[[(height/2)-5, (width/2)-5], [20, 20]], color=QColor(0, 0, 255, 127), window=self.win)
         
         #link rois
         self.center_ROI.addSurround(self.surround_ROI)

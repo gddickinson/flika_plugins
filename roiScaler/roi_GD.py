@@ -169,6 +169,9 @@ class ROI_Base():
     def updateSurround(self, finish=False):
         self.surroundROI.blockSignals(True)
         pts = self.pts
+        pts[0][0] = pts[0][0] - 5
+        pts[0][1] = pts[0][1] - 5         
+        
         pts[1][0] = pts[1][0] + 10
         pts[1][1] = pts[1][1] + 10                
         self.surroundROI.draw_from_points(pts, finish=False)
@@ -667,6 +670,8 @@ class ROI_surround(ROI_rectangle, pg.ROI):
 
         self.centerROI.blockSignals(True)
         pts = self.pts
+        pts[0][0] = pts[0][0] +5
+        pts[0][1] = pts[0][1] +5        
         pts[1][0] = pts[1][0] - 10
         pts[1][1] = pts[1][1] - 10  
         self.centerROI.draw_from_points(pts, finish=False)
@@ -689,6 +694,117 @@ class ROI_surround(ROI_rectangle, pg.ROI):
     
     def surround(self):
         return True
+
+class ROI_center(ROI_Base, pg.ROI):
+    '''ROI rectangle class for selecting a set width and height group of pixels on an image.
+
+    Extends from :class:`ROI_Base <flika.roi.ROI_Base>` and pyqtgraph.ROI
+    '''
+    kind = 'center'
+    plotSignal = QtCore.Signal()
+
+    def __init__(self, window, pos, size, resizable=True, **kargs):
+        """__init__ of ROI_rectangle class
+
+        Args:
+            pos (2-tuple): position of top left corner
+            size: (2-tuple): width and height of the rectangle
+            resizable (bool): add resize handles to ROI, this cannot be changed after creation
+        """
+        roiArgs = self.INITIAL_ARGS.copy()
+        roiArgs.update(kargs)
+        pos = np.array(pos, dtype=int)
+        size = np.array(size, dtype=int)
+
+        pg.ROI.__init__(self, pos, size, **roiArgs)
+        if resizable:
+            self.addScaleHandle([0, 1], [1, 0])
+            self.addScaleHandle([1, 0], [0, 1])
+            self.addScaleHandle([0, 0], [1, 1])
+            self.addScaleHandle([1, 1], [0, 0])
+        self.cropAction = QtWidgets.QAction('&Crop', self, triggered=self.crop)
+        ROI_Base.__init__(self, window, [pos, size])
+
+    def center_around(self, x, y):
+        """Relocate ROI so center lies at Point (x, y). size is not changed
+
+        Args:
+            x (int): new center for rectangle on X axis
+            y (int): new center for rectangle on Y axis
+        """
+        old_pts = self.getPoints()
+        old_center = old_pts[0] + .5 * old_pts[1]
+        new_center = np.array([x, y])
+        diff = new_center - old_center
+        new_pts = np.array([old_pts[0]+diff, old_pts[1]])
+        self.draw_from_points(new_pts)
+
+    def getPoints(self):
+        return np.array([self.state['pos'], self.state['size']], dtype=int)
+
+    def contains_pts(self, x, y):
+        target = np.array([x, y])
+        return np.all(self.pts[0] < target) and np.all(target < self.pts[0]+self.pts[1])
+
+    def getMask(self):
+        x, y = self.state['pos']
+        ww, hh = self.state['size']
+
+        xmin = max(x, 0)
+        ymin = max(y, 0)
+        xmax = min(x+ww, self.window.mx)
+        ymax = min(y+hh, self.window.my)
+
+        xx, yy = np.meshgrid(np.arange(xmin, xmax, dtype=int), np.arange(ymin, ymax, dtype=int))
+
+        return xx.flatten(), yy.flatten()
+
+    def draw_from_points(self, pts, finish=True):
+        self.setPos(pts[0], finish=False)
+        self.setSize(pts[1], finish=False)
+        self.pts = np.array(pts)
+        self.sigRegionChanged.emit(self)
+        if finish:
+            self.sigRegionChangeFinished.emit(self)
+
+    def makeMenu(self):
+        ROI_Base.makeMenu(self)
+        self.menu.addAction(self.cropAction)
+
+    def crop(self):
+        """Create a new window of the image cropped to this ROI
+
+        Returns:
+            window.Window: cropped image Window
+        """
+        from flika.window import Window
+        r = self.boundingRect()
+        p1 = r.topLeft() + self.state['pos']
+        p2 = r.bottomRight() + self.state['pos']
+        x1, y1 = int(p1.x()), int(p1.y())
+        x2, y2 = int(p2.x()), int(p2.y())
+
+        if x1<0: x1=0
+        if y1<0: y1=0
+
+        tif=self.window.image
+        #if self.window.imageview.hasTimeAxis():
+        if self.window.mt > 1:
+            mt, mx, my = tif.shape[:3]
+            if x2>=mx: x2=mx-1
+            if y2>=my: y2=my-1
+            newtif=tif[:,x1:x2,y1:y2]
+        else:
+            mx, my = tif.shape[:2]
+            if x2>=mx: x2=mx-1
+            if y2>=my: y2=my-1
+            newtif=tif[x1:x2,y1:y2]
+
+        w =  Window(newtif, self.window.name+' Cropped', metadata=self.window.metadata)
+        w.imageview.setImage(newtif, axes=self.window.imageview.axes)
+        w.image = newtif
+        return w
+
 
 class ROI_freehand(ROI_Base, pg.ROI):
     """ROI freehand class for selecting a polygon from the original image.
@@ -1188,6 +1304,14 @@ def makeROI(kind, pts, window=None, color=None, **kargs):
             size = pts[1]
             top_left = pts[0]
         roi = ROI_surround(window, top_left, size, **kargs) 
+    elif kind == 'center':
+        if len(pts) > 2:
+            size = np.ptp(pts,0)
+            top_left = np.min(pts,0)
+        else:
+            size = pts[1]
+            top_left = pts[0]
+        roi = ROI_center(window, top_left, size, **kargs)
         
     else:
         g.alert("ERROR: THIS KIND OF ROI COULD NOT BE FOUND: {}".format(kind))
