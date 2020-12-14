@@ -26,6 +26,7 @@ import numpy as np
 from pyqtgraph.graphicsItems.ROI import Handle
 import flika.global_vars as g
 from flika.utils.misc import random_color, open_file_gui, nonpartial
+from flika.window import Window
 
 class ROI_Drawing(pg.GraphicsObject):
     """Graphics Object for ROIs while initially being drawn. Extends pyqtrgaph.GraphicsObject
@@ -656,6 +657,7 @@ class ROI_surround(ROI_rectangle, pg.ROI):
         roiArgs.update(kargs)
         pos = np.array(pos, dtype=int)
         size = np.array(size, dtype=int)
+        self.surroundWidth = 5
 
         pg.ROI.__init__(self, pos, size, **roiArgs)
         if resizable:
@@ -670,8 +672,8 @@ class ROI_surround(ROI_rectangle, pg.ROI):
 
         self.centerROI.blockSignals(True)
         pts = self.pts
-        pts[0][0] = pts[0][0] +5
-        pts[0][1] = pts[0][1] +5        
+        pts[0][0] = pts[0][0] +self.surroundWidth
+        pts[0][1] = pts[0][1] +self.surroundWidth        
         pts[1][0] = pts[1][0] - 10
         pts[1][1] = pts[1][1] - 10  
         self.centerROI.draw_from_points(pts, finish=False)
@@ -691,7 +693,36 @@ class ROI_surround(ROI_rectangle, pg.ROI):
         self.pts = self.getPoints()
         self.updateCenterROI(finish=False)
 
-    
+    def getTrace(self, bounds=None):
+        '''Compute the average of the pixels within this ROI in its window
+
+        Returns:
+            Average value within ROI mask, as an array. Cropped to bounds if specified
+        '''
+        trace = None
+        if self.window.image.ndim == 4 or self.window.metadata['is_rgb']:
+            g.alert("Plotting trace of RGB movies is not supported. Try splitting the channels.")
+            return None
+        s1, s2 = self.getMask()
+        if np.size(s1) == 0 or np.size(s2) == 0:
+            trace = np.zeros(self.window.mt)
+
+        elif self.window.image.ndim == 3:
+            trace = self.window.image[:, s1, s2]
+            #set center area to 0
+            trace[self.surroundWidth:-self.surroundWidth,self.surroundWidth:-self.surroundWidth] = 0
+            while trace.ndim > 1:
+                trace = np.average(trace, 1)
+        elif self.window.image.ndim == 2:
+            trace = self.window.image[s1, s2]
+            #set center area to 0
+            trace[self.surroundWidth:-self.surroundWidth] = 0            
+            trace = [np.average(trace)]
+
+        if bounds:
+            trace = trace[bounds[0]:bounds[1]]
+        return trace
+   
     def surround(self):
         return True
 

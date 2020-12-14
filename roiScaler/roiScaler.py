@@ -73,10 +73,13 @@ class RoiScaler(BaseProcess_noPriorWindow):
         self.center_ROI.addSurround(self.surround_ROI)
         
         #plot roi average trace
-        self.plotROI = self.center_ROI.plot()        
+        self.plotCenter = self.center_ROI.plot()  
+        self.plotSurround = self.surround_ROI.plot()  
         
         #get trace data
-        self.traceCenter = self.center_ROI.getTrace()                    
+        self.traceCenter = self.center_ROI.getTrace() 
+        self.traceSurround = self.surround_ROI.getTrace()   
+        
 
     def gui(self):
         self.gui_reset()
@@ -92,8 +95,8 @@ class RoiScaler(BaseProcess_noPriorWindow):
         self.scaleImages = CheckBox()
 
         self.items.append({'name': 'active_window', 'string': 'Select Window', 'object': self.active_window})
-        self.items.append({'name': 'scaleImages', 'string': 'Scale trace', 'object': self.scaleImages})
-        self.items.append({'name': 'displaySurround_button', 'string': '          ', 'object': self.displaySurroundButton})
+        #self.items.append({'name': 'scaleImages', 'string': 'Scale trace', 'object': self.scaleImages})
+        #self.items.append({'name': 'displaySurround_button', 'string': '          ', 'object': self.displaySurroundButton})
         self.items.append({'name': 'start_button', 'string': '          ', 'object': self.startButton})        
         
 
