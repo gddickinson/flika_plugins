@@ -38,12 +38,23 @@ class HistoWindow(BaseProcess):
         
         self.label = pg.LabelItem(justify='right')
         self.win.addItem(self.label)
+        
+        self.autoscaleX = roiExtras.autoscaleX.isChecked()
+        self.autoscaleY = roiExtras.autoscaleY.isChecked()
+        
 
     def update(self, vals, start=-3, end=8, n=50, n_pixels=0):  
         ## compute standard histogram
         y,x = np.histogram(vals, bins=np.linspace(start, end, n))     
         self.plt1.plot(x, y, stepMode=True, fillLevel=0, brush=(0,0,255,150), clear=True) 
         self.label.setText("<span style='font-size: 12pt'>pixels={}".format(n_pixels))
+        
+        if self.autoscaleX:
+            self.plt1.setXRange(np.min(x),np.max(x),padding=0)
+        if self.autoscaleY:
+            self.plt1.setYRange(np.min(y),np.max(y),padding=0)
+            
+            
     
     def show(self):
         self.win.show()
@@ -101,7 +112,10 @@ class RoiExtras(BaseProcess_noPriorWindow):
         except:
             pass
         
-        self.histoWindow.close() 
+        try:
+            self.histoWindow.close() 
+        except:
+            pass
 
 
     def closeEvent(self, event):
@@ -115,9 +129,21 @@ class RoiExtras(BaseProcess_noPriorWindow):
         self.active_window = WindowSelector()    
         
         self.startButton = QPushButton('Start')
-        self.startButton.pressed.connect(self.start)    
+        self.startButton.pressed.connect(self.start)  
+        
+        self.autoscaleX = CheckBox()
+        self.autoscaleY = CheckBox()    
+        
+        self.autoscaleX.setChecked(True)
+        self.autoscaleY.setChecked(True)
+        
+        self.autoscaleX.stateChanged.connect(self.updateX)
+        self.autoscaleY.stateChanged.connect(self.updateY)     
+        
         
         self.items.append({'name': 'active_window', 'string': 'Select Window', 'object': self.active_window})
+        self.items.append({'name': 'autoScaleX', 'string': 'Autoscale Histogram X-axis', 'object': self.autoscaleX})    
+        self.items.append({'name': 'autoScaleY', 'string': 'Autoscale Histogram Y-axis', 'object': self.autoscaleY})            
         self.items.append({'name': 'start_button', 'string': 'Click to select current ROI', 'object': self.startButton})  
         
         super().gui()
@@ -188,7 +214,6 @@ class RoiExtras(BaseProcess_noPriorWindow):
         
         #count number of pixels
         n_pixels = (self.selected>0).sum()
-        print(n_pixels)
         
         #update plot
         self.histoWindow.update(self.selected, start=self.startScale, end=self.endScale, n=self.n, n_pixels=n_pixels)
@@ -196,7 +221,17 @@ class RoiExtras(BaseProcess_noPriorWindow):
         if self.ROIwindowExists:
             self.ROIwindow.imageview.setImage(self.selected)
 
-        
+    def updateX(self):
+        try:
+            self.histoWindow.autoscaleX = self.autoscaleX.isChecked()
+        except:
+            pass
+
+    def updateY(self):
+        try:
+            self.histoWindow.autoscaleY = self.autoscaleY.isChecked()
+        except:
+            pass
 
  
     def startPlot(self):
