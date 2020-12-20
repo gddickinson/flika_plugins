@@ -28,6 +28,8 @@ import flika.global_vars as g
 from flika.utils.misc import random_color, open_file_gui, nonpartial
 from flika.window import Window
 
+from copy import deepcopy
+
 class ROI_Drawing(pg.GraphicsObject):
     """Graphics Object for ROIs while initially being drawn. Extends pyqtrgaph.GraphicsObject
 
@@ -137,6 +139,7 @@ class ROI_Base():
         self.resetSignals()
         self.makeMenu()
         self.surroundROI = False
+        self.surroundWidth = 5
 
     def mouseClickEvent(self, ev):
         self.window.currentROI = self
@@ -170,11 +173,11 @@ class ROI_Base():
     def updateSurround(self, finish=False):
         self.surroundROI.blockSignals(True)
         pts = self.pts
-        pts[0][0] = pts[0][0] - 5
-        pts[0][1] = pts[0][1] - 5         
+        pts[0][0] = pts[0][0] - self.surroundWidth 
+        pts[0][1] = pts[0][1] - self.surroundWidth        
         
-        pts[1][0] = pts[1][0] + 10
-        pts[1][1] = pts[1][1] + 10                
+        pts[1][0] = pts[1][0] + (self.surroundWidth *2)
+        pts[1][1] = pts[1][1] + (self.surroundWidth *2)            
         self.surroundROI.draw_from_points(pts, finish=False)
                 
         if self.surroundROI.traceWindow is not None:
@@ -658,8 +661,10 @@ class ROI_surround(ROI_rectangle, pg.ROI):
         pos = np.array(pos, dtype=int)
         size = np.array(size, dtype=int)
         self.surroundWidth = 5
+        self.centerWidth = 10
 
         pg.ROI.__init__(self, pos, size, **roiArgs)
+        
         if resizable:
             self.addScaleHandle([0, 1], [1, 0])
             self.addScaleHandle([1, 0], [0, 1])
@@ -668,15 +673,38 @@ class ROI_surround(ROI_rectangle, pg.ROI):
         self.cropAction = QtWidgets.QAction('&Crop', self, triggered=self.crop)
         ROI_Base.__init__(self, window, [pos, size])
 
-    def updateCenterROI(self, finish=False):
+    def updateWidth(self, width, finish=False):
+        self.surroundWidth = width
+        self.centerROI.surroundWidth = width
 
+        self.blockSignals(True)
+        pts = deepcopy(self.centerROI.pts)
+        pts[0][0] = pts[0][0] - width
+        pts[0][1] = pts[0][1] - width     
+     
+        pts[1][0] = pts[1][0] + (width*2)
+        pts[1][1] = pts[1][1] + (width*2)   
+     
+          
+        self.draw_from_points(pts, finish=False)
+                
+        self.blockSignals(False)
+        
+        self.pts = self.getPoints()
+
+
+        
+    def updateCenterROI(self, finish=False):
         self.centerROI.blockSignals(True)
         pts = self.pts
+
         pts[0][0] = pts[0][0] +self.surroundWidth
         pts[0][1] = pts[0][1] +self.surroundWidth        
-        pts[1][0] = pts[1][0] - 10
-        pts[1][1] = pts[1][1] - 10  
+        pts[1][0] = pts[1][0] -(self.surroundWidth*2)
+        pts[1][1] = pts[1][1] -(self.surroundWidth*2)
         self.centerROI.draw_from_points(pts, finish=False)
+        
+        self.centerROI.pts = self.centerROI.getPoints()
                     
         if self.centerROI.traceWindow is not None:
             if not finish:
@@ -772,6 +800,15 @@ class ROI_center(ROI_Base, pg.ROI):
 
     def getPoints(self):
         return np.array([self.state['pos'], self.state['size']], dtype=int)
+    
+    def onRegionChange(self):
+        self.pts = self.getPoints()
+        self.updateSurround(finish=False)
+                    
+    def onRegionChangeFinished(self):
+        self.pts = self.getPoints()
+        self.updateSurround(finish=False)
+
 
     def contains_pts(self, x, y):
         target = np.array([x, y])

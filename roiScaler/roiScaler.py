@@ -35,6 +35,7 @@ class RoiScaler(BaseProcess_noPriorWindow):
         BaseProcess_noPriorWindow.__init__(self)
         self.center_ROI = None
         self.surround_ROI = None
+        self.surroundWidth = 5
 
     def __call__(self):
         '''
@@ -90,16 +91,26 @@ class RoiScaler(BaseProcess_noPriorWindow):
         
         self.startButton = QPushButton('Start')
         self.startButton.pressed.connect(self.startROItrace)        
-        
+
+        self.width = SliderLabel(0)
+        self.width.setRange(1,10) 
+        self.width.setValue(self.surroundWidth)
+        self.width.valueChanged.connect(self.updateWidth)
         
         self.scaleImages = CheckBox()
 
         self.items.append({'name': 'active_window', 'string': 'Select Window', 'object': self.active_window})
+        self.items.append({'name': 'width', 'string': 'Set Surround Width', 'object': self.width})        #TODO FIX RESIZE PROBLEM
         #self.items.append({'name': 'scaleImages', 'string': 'Scale trace', 'object': self.scaleImages})
         #self.items.append({'name': 'displaySurround_button', 'string': '          ', 'object': self.displaySurroundButton})
         self.items.append({'name': 'start_button', 'string': '          ', 'object': self.startButton})        
         
 
         super().gui()
+
+    def updateWidth(self):
+        self.surroundWidth = self.width.value()
+        self.surround_ROI.updateWidth(self.surroundWidth)
+
 
 roiScaler = RoiScaler()
