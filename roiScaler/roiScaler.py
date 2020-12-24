@@ -80,7 +80,8 @@ class RoiScaler(BaseProcess_noPriorWindow):
         #get trace data
         self.traceCenter = self.center_ROI.getTrace() 
         self.traceSurround = self.surround_ROI.getTrace()   
-        
+    
+       
 
     def gui(self):
         self.gui_reset()

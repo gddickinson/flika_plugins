@@ -671,7 +671,7 @@ class ROI_surround(ROI_rectangle, pg.ROI):
             self.addScaleHandle([0, 0], [1, 1])
             self.addScaleHandle([1, 1], [0, 0])
         self.cropAction = QtWidgets.QAction('&Crop', self, triggered=self.crop)
-        ROI_Base.__init__(self, window, [pos, size])
+        ROI_Base.__init__(self, window, [pos, size])        
 
     def updateWidth(self, width, finish=False):
         self.surroundWidth = width
@@ -732,23 +732,38 @@ class ROI_surround(ROI_rectangle, pg.ROI):
             g.alert("Plotting trace of RGB movies is not supported. Try splitting the channels.")
             return None
         s1, s2 = self.getMask()
+        c1, c2 = self.centerROI.getMask()
         if np.size(s1) == 0 or np.size(s2) == 0:
             trace = np.zeros(self.window.mt)
 
         elif self.window.image.ndim == 3:
-            trace = self.window.image[:, s1, s2]
-            #set center area to 0
-            trace[self.surroundWidth:-self.surroundWidth,self.surroundWidth:-self.surroundWidth] = 0
+            #get image data
+            image = deepcopy(self.window.image)   
+            #use masked array to mask center region
+            mask = np.zeros_like(image)
+            mask[:,c1,c2] = 1
+            maskImage = np.ma.masked_array(image, mask=mask)
+            #get trace data
+            trace = maskImage[:, s1, s2]
+            #get average
             while trace.ndim > 1:
-                trace = np.average(trace, 1)
+                trace = np.ma.average(trace, 1)
+        
         elif self.window.image.ndim == 2:
-            trace = self.window.image[s1, s2]
-            #set center area to 0
-            trace[self.surroundWidth:-self.surroundWidth] = 0            
-            trace = [np.average(trace)]
+            #get image data
+            image = deepcopy(self.window.image)
+            #use masked array to mask center region
+            mask = np.zeros_like(image)
+            mask[c1,c2] = 1
+            maskImage = np.ma.masked_array(image, mask=mask)
+            #get trace data            
+            trace = maskImage[s1, s2]                    
+            #get average
+            trace = [np.ma.average(trace)]
 
         if bounds:
-            trace = trace[bounds[0]:bounds[1]]
+            trace = trace[bounds[0]:bounds[1]]          
+        
         return trace
    
     def surround(self):
