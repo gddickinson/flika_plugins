@@ -80,8 +80,16 @@ class RoiScaler(BaseProcess_noPriorWindow):
         #get trace data
         self.traceCenter = self.center_ROI.getTrace() 
         self.traceSurround = self.surround_ROI.getTrace()   
-    
-       
+
+        #link roi changes to subtract update    
+        self.center_ROI.sigRegionChangeFinished.connect(self.getSubtract)
+        self.surround_ROI.sigRegionChangeFinished.connect(self.getSubtract)
+        
+        #start subtract plot
+        self.subtractPlotWidget = pg.PlotWidget(name='Subtract')
+        self.subtractPlot = self.subtractPlotWidget.plot(title="Subtract")
+        self.subtractPlotWidget.show()
+        self.getSubtract()
 
     def gui(self):
         self.gui_reset()
@@ -101,7 +109,7 @@ class RoiScaler(BaseProcess_noPriorWindow):
         self.scaleImages = CheckBox()
 
         self.items.append({'name': 'active_window', 'string': 'Select Window', 'object': self.active_window})
-        self.items.append({'name': 'width', 'string': 'Set Surround Width', 'object': self.width})        #TODO FIX RESIZE PROBLEM
+        self.items.append({'name': 'width', 'string': 'Set Surround Width', 'object': self.width})       
         #self.items.append({'name': 'scaleImages', 'string': 'Scale trace', 'object': self.scaleImages})
         #self.items.append({'name': 'displaySurround_button', 'string': '          ', 'object': self.displaySurroundButton})
         self.items.append({'name': 'start_button', 'string': '          ', 'object': self.startButton})        
@@ -113,5 +121,9 @@ class RoiScaler(BaseProcess_noPriorWindow):
         self.surroundWidth = self.width.value()
         self.surround_ROI.updateWidth(self.surroundWidth)
 
+    def getSubtract(self):
+        subtract = np.array(np.subtract(self.center_ROI.getTrace(),self.surround_ROI.getTrace()))
+        self.subtractPlot.setData(y=subtract,x=np.arange(len(subtract)))
+        
 
 roiScaler = RoiScaler()
