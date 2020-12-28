@@ -36,31 +36,41 @@ class RoiScaler(BaseProcess_noPriorWindow):
         self.center_ROI = None
         self.surround_ROI = None
         self.surroundWidth = 5
+        self.subtractPlotWidget = None
+        self.subtractPlot = None
+        self.initiated = False
 
     def __call__(self):
         '''
         
         '''
-        pass
+        if self.initiated: 
+            self.closeAll()
         return
 
     def closeEvent(self, event):
-        self.unlink_frames(self.current_red, self.current_green)
+        if self.initiated: 
+            self.closeAll()
         BaseProcess_noPriorWindow.closeEvent(self, event)
 
+    def closeAll(self):
+        self.center_ROI.sigRegionChangeFinished.disconnect(self.getSubtract)
+        self.surround_ROI.sigRegionChangeFinished.disconnect(self.getSubtract)
+        self.subtractPlotWidget.close()
+        self.center_ROI.traceWindow.close()
+        self.center_ROI.delete()
+        self.surround_ROI.delete() 
+        self.initiated = False
 
-    def unlink_frames(self, *windows):
-        for window in windows:
-            if window != None:
-                try:
-                    window.sigTimeChanged.disconnect(self.indexChanged)
-                except:
-                    pass
 
     def displaySurround(self):
         print('clicked')                    
 
     def startROItrace(self):
+        #check start button state
+        if self.startButton.isEnabled == False:
+            return
+        
         self.win = self.getValue('active_window')
         #get window shape
         height = self.win.my
@@ -86,10 +96,14 @@ class RoiScaler(BaseProcess_noPriorWindow):
         self.surround_ROI.sigRegionChangeFinished.connect(self.getSubtract)
         
         #start subtract plot
-        self.subtractPlotWidget = pg.PlotWidget(name='Subtract')
+        self.subtractPlotWidget = pg.PlotWidget(name='Subtract',title='Subtract')
         self.subtractPlot = self.subtractPlotWidget.plot(title="Subtract")
         self.subtractPlotWidget.show()
         self.getSubtract()
+        
+        #only allow one start action
+        self.startButton.setEnabled(False)
+        self.initiated = True
 
     def gui(self):
         self.gui_reset()
