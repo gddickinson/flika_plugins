@@ -1,9 +1,9 @@
-<plugin name="roiScaler">
+<plugin name="centerSurroundROI">
 	<directory>
-		roiScaler
+		centerSurroundROI
 	</directory>
 	<version>
-		2020.08.23
+		2021.01.08
 	</version>
 	<author>
 		George Dickinson
@@ -13,6 +13,6 @@
 	<dependencies>
 	</dependencies>
 	<menu_layout>
-		<action location="roiScaler" function="roiScaler.gui">roiScaler</action>
+		<action location="centerSurroundROI" function="centerSurroundROI.gui">centerSurroundROI</action>
 	</menu_layout>
 </plugin>

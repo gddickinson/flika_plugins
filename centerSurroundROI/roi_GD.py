@@ -660,8 +660,7 @@ class ROI_surround(ROI_rectangle, pg.ROI):
         roiArgs.update(kargs)
         pos = np.array(pos, dtype=int)
         size = np.array(size, dtype=int)
-        self.surroundWidth = 5
-        self.centerWidth = 10
+        self.surroundWidth = size
 
         pg.ROI.__init__(self, pos, size, **roiArgs)
         
@@ -824,6 +823,16 @@ class ROI_center(ROI_Base, pg.ROI):
         self.pts = self.getPoints()
         self.updateSurround(finish=False)
 
+    def updateWidth(self,width):
+        w,h = self.size()
+        self.setSize((width,h),finish=False)
+        
+    def updateHeight(self,height):
+        w,h = self.size()
+        self.setSize((w,height),finish=False)  
+
+    def updateSize(self,size):
+        self.setSize(size,finish=False)         
 
     def contains_pts(self, x, y):
         target = np.array([x, y])
