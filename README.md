@@ -8,6 +8,6 @@ http://flika-org.github.io/plugins.html
 
 ABOUT
 -----
-*	Author: George Dickinson
+*	Author: George Dickinson (Several of the plugins extended from original code by Kyle Ellefsen and Brett Settle)
 *	Date: August 23, 2020
 *	Lab: Ian Parker Lab, McGaugh Hall, UCI
