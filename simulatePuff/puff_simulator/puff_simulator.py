@@ -2,7 +2,7 @@
 """
 Created on Fri Oct 02 12:23:06 2015
 
-@author: Kyle Ellefsen
+@author: George Dickinson adpated from Kyle Ellefsen
 """
 import numpy as np
 import os
@@ -15,7 +15,7 @@ import numpy.random as random
 import shutil
 from distutils.version import StrictVersion
 from copy import deepcopy
-
+import pyqtgraph as pg
 
 import flika
 try:
@@ -122,6 +122,9 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         s['startFrame'] = 100
         s['sigma'] = 20
         s['useROI'] = False
+        s['meanExp'] = 5.0
+        s['nPuffs'] = 0     
+        
 
         return s
 
@@ -146,7 +149,16 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         self.previewButton = QPushButton('Preview Puff')
         self.previewButton.pressed.connect(self.previewPuff) 
         self.puffButton = QPushButton('Add Puff')
-        self.puffButton.pressed.connect(self.addPuff)    
+        self.puffButton.pressed.connect(self.addPuff)  
+
+        self.nPuffs_slider = SliderLabel(0)
+        self.nPuffs_slider.setRange(1, 1000)      
+        
+        self.meanExp_slider = pg.SpinBox(int=False, step=.01)
+        self.meanExp_slider.setValue(5.0) 
+        
+        self.randomPuffButton = QPushButton('Add Puffs')
+        self.randomPuffButton.pressed.connect(self.addRandomPuffs)          
         
         self.items.append({'name': 'active_window', 'string': 'Select Window', 'object': self.active_window})             
         self.items.append({'name':'nFrames','string':'Duration (frames)','object':self.nFrames})
@@ -159,6 +171,10 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         self.items.append({'name': 'sigma', 'string': 'sigma', 'object': self.sigma})  
         self.items.append({'name': 'preview_Button', 'string': 'Click to preview Puff', 'object': self.previewButton})         
         self.items.append({'name': 'puff_Button', 'string': 'Click to add Puff', 'object': self.puffButton}) 
+        self.items.append({'name': 'blank', 'string': '---------- RANDOM PUFFS ---------------------------', 'object': None}) 
+        self.items.append({'name': 'nPuffs', 'string': 'Number of puffs to add', 'object': self.nPuffs_slider})  
+        self.items.append({'name': 'meanExp', 'string': 'Mean of exponential distibution', 'object': self.meanExp_slider})         
+        self.items.append({'name': 'random_puff_Button', 'string': 'Click to add randomly distibuted puffs', 'object': self.randomPuffButton}) 
 
         super().gui()
 
@@ -183,7 +199,7 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         
         self.sigma.setRange(1,int(self.dx/7))
 
-    def addPuff(self):
+    def addPuff(self, time=False):
         '''add synthetic blip to image stack'''
         #select window
         self.currentWin = self.getValue('active_window')
@@ -205,7 +221,10 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         
         
         #add blip to stack
-        t = self.getValue('startFrame')
+        if time == False:
+            t = self.getValue('startFrame')
+        else:
+            t = time
         x = self.getValue('x')
         y = self.getValue('y')
         
@@ -213,15 +232,49 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         xx = np.arange(x-x_size-1, x+x_size, dtype=np.int)
         yy = np.arange(y-y_size-1, y+y_size, dtype=np.int)
         
-        try:
+        
+        if time==False:
+            try:
+                self.data[np.ix_(tt,xx,yy)] = self.data[np.ix_(tt,xx,yy)] + blip
+            except:
+                g.alert('Puff too large, too long or too close to edge')
+        else:
             self.data[np.ix_(tt,xx,yy)] = self.data[np.ix_(tt,xx,yy)] + blip
-        except:
-            g.alert('Puff too large, too long or too close to edge')
+        
         
         frame = self.currentWin.currentIndex  
         self.currentWin.imageview.setImage(self.data)
         self.currentWin.image = self.data
         self.currentWin.setIndex(frame)
+        
+        return
+
+
+    def addRandomPuffs(self):
+        if self.getValue('active_window') == None:
+            g.alert('First select window')
+            return                
+        
+        mean = self.getValue('meanExp')
+        nPuffs = self.getValue('nPuffs')
+        
+        puffsAdded = 0
+        puffsOutsideOfRange = 0
+        
+        # select n frames from exponential distrabution scaled by mean value
+        frames = np.random.exponential(scale=mean, size=nPuffs)
+       
+        # add puff at each frame - scaled by start time 
+        # casting the exponential continous value as an int to select frame
+        #TODO check with Ian if this is OK
+        for time in frames:
+            try:
+                self.addPuff(time = int(time+self.getValue('startFrame')))
+                puffsAdded +=1 
+            except:
+                puffsOutsideOfRange += 1    
+        
+        print('{} puffs added, {} puffs out of range'.format(puffsAdded,puffsOutsideOfRange))
         
         return
 
