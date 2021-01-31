@@ -16,6 +16,8 @@ import shutil
 from distutils.version import StrictVersion
 from copy import deepcopy
 import pyqtgraph as pg
+from matplotlib import pyplot as plt 
+
 
 import flika
 try:
@@ -157,6 +159,9 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         self.meanExp_slider = pg.SpinBox(int=False, step=.01)
         self.meanExp_slider.setValue(5.0) 
         
+        self.plotHistoTimes = CheckBox()
+        self.plotHistoTimes.setValue(False)
+        
         self.randomPuffButton = QPushButton('Add Puffs')
         self.randomPuffButton.pressed.connect(self.addRandomPuffs)          
         
@@ -173,7 +178,8 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         self.items.append({'name': 'puff_Button', 'string': 'Click to add Puff', 'object': self.puffButton}) 
         self.items.append({'name': 'blank', 'string': '---------- RANDOM PUFFS ---------------------------', 'object': None}) 
         self.items.append({'name': 'nPuffs', 'string': 'Number of puffs to add', 'object': self.nPuffs_slider})  
-        self.items.append({'name': 'meanExp', 'string': 'Mean of exponential distibution', 'object': self.meanExp_slider})         
+        self.items.append({'name': 'meanExp', 'string': 'Mean of exponential distibution', 'object': self.meanExp_slider})  
+        self.items.append({'name': 'histoTimes', 'string': 'Plot histogram of puff start times:', 'object': self.plotHistoTimes})          
         self.items.append({'name': 'random_puff_Button', 'string': 'Click to add randomly distibuted puffs', 'object': self.randomPuffButton}) 
 
         super().gui()
@@ -260,6 +266,7 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         
         puffsAdded = 0
         puffsOutsideOfRange = 0
+        timesAdded = []
         
         # select n frames from exponential distrabution scaled by mean value
         frames = np.random.exponential(scale=mean, size=nPuffs)
@@ -269,12 +276,20 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         #TODO check with Ian if this is OK
         for time in frames:
             try:
-                self.addPuff(time = int(time+self.getValue('startFrame')))
+                insertionTime = int(time+self.getValue('startFrame'))
+                self.addPuff(time = insertionTime)
+                timesAdded.append(insertionTime)            
                 puffsAdded +=1 
             except:
                 puffsOutsideOfRange += 1    
         
         print('{} puffs added, {} puffs out of range'.format(puffsAdded,puffsOutsideOfRange))
+        
+        if self.plotHistoTimes.isChecked():
+            plt.hist(timesAdded)
+            plt.xlabel('Time puff added (frames)')
+            plt.ylabel('Number of puffs added')
+            plt.show()
         
         return
 
