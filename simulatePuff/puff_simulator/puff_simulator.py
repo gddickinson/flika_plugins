@@ -17,7 +17,7 @@ from distutils.version import StrictVersion
 from copy import deepcopy
 import pyqtgraph as pg
 from matplotlib import pyplot as plt 
-
+import csv 
 
 import flika
 try:
@@ -137,8 +137,8 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         self.startFrame = SliderLabel(0)
         self.startFrame.setRange(0,10000)        
         
-        self.puffAmplitude = SliderLabel(2)
-        self.puffAmplitude.setRange(0,50)
+        self.puffAmplitude = pg.SpinBox(int=False, step=.01)
+        self.puffAmplitude.setValue(1.0) 
         self.sigma = SliderLabel(0)
         self.sigma.setRange(1,1000)
         self.x = SliderLabel(0)
@@ -152,6 +152,8 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         self.previewButton.pressed.connect(self.previewPuff) 
         self.puffButton = QPushButton('Add Puff')
         self.puffButton.pressed.connect(self.addPuff)  
+        
+        self.randomPuffsAdded = False
 
         self.nPuffs_slider = SliderLabel(0)
         self.nPuffs_slider.setRange(1, 1000)      
@@ -162,8 +164,12 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         self.plotHistoTimes = CheckBox()
         self.plotHistoTimes.setValue(False)
         
+        self.exportTimes_button = QPushButton('Export times')
+        self.exportTimes_button.pressed.connect(self.exportTimes)  
+        
         self.randomPuffButton = QPushButton('Add Puffs')
         self.randomPuffButton.pressed.connect(self.addRandomPuffs)          
+
         
         self.items.append({'name': 'active_window', 'string': 'Select Window', 'object': self.active_window})             
         self.items.append({'name':'nFrames','string':'Duration (frames)','object':self.nFrames})
@@ -177,10 +183,11 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         self.items.append({'name': 'preview_Button', 'string': 'Click to preview Puff', 'object': self.previewButton})         
         self.items.append({'name': 'puff_Button', 'string': 'Click to add Puff', 'object': self.puffButton}) 
         self.items.append({'name': 'blank', 'string': '---------- RANDOM PUFFS ---------------------------', 'object': None}) 
-        self.items.append({'name': 'nPuffs', 'string': 'Number of puffs to add', 'object': self.nPuffs_slider})  
+        #self.items.append({'name': 'nPuffs', 'string': 'Number of puffs to add', 'object': self.nPuffs_slider})  
         self.items.append({'name': 'meanExp', 'string': 'Mean of exponential distibution', 'object': self.meanExp_slider})  
-        self.items.append({'name': 'histoTimes', 'string': 'Plot histogram of puff start times:', 'object': self.plotHistoTimes})          
+        self.items.append({'name': 'histoTimes', 'string': 'Plot histogram of puff start times:', 'object': self.plotHistoTimes})
         self.items.append({'name': 'random_puff_Button', 'string': 'Click to add randomly distibuted puffs', 'object': self.randomPuffButton}) 
+        self.items.append({'name': 'listTimes', 'string': 'Export list of puff start times', 'object': self.exportTimes_button})          
 
         super().gui()
 
@@ -200,7 +207,7 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         self.y.setValue(int((self.dy-1)/2))        
         
         self.nFrames.setRange(0,self.dt)
-        self.startFrame.setRange(0,self.dt)        
+        self.startFrame.setRange(0,self.dt-1)        
         
         
         self.sigma.setRange(1,int(self.dx/7))
@@ -262,23 +269,29 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
             return                
         
         mean = self.getValue('meanExp')
-        nPuffs = self.getValue('nPuffs')
+        #nPuffs = self.getValue('nPuffs')
         
         puffsAdded = 0
         puffsOutsideOfRange = 0
-        timesAdded = []
+        self.timesAdded = []
         
-        # select n frames from exponential distrabution scaled by mean value
-        frames = np.random.exponential(scale=mean, size=nPuffs)
+        # add first puff
+        try:
+            time = int(np.random.exponential(scale=mean, size=1) + self.getValue('startFrame'))
+            self.addPuff(time = time)
+        except:
+            puffsOutsideOfRange += 1 
+            print('{} puffs added, {} puffs out of range'.format(puffsAdded,puffsOutsideOfRange))
+            print('1st puff outside of range, aborting')
+            return
        
-        # add puff at each frame - scaled by start time 
-        # casting the exponential continous value as an int to select frame
-        #TODO check with Ian if this is OK
-        for time in frames:
+        # add puff after each time selection untill end of stack
+        # casting the exponential continous value as an int to select frame        
+        while time < self.dt-self.getValue('nFrames'):
             try:
-                insertionTime = int(time+self.getValue('startFrame'))
-                self.addPuff(time = insertionTime)
-                timesAdded.append(insertionTime)            
+                time = int(time + np.random.exponential(scale=mean, size=1))
+                self.addPuff(time = time)
+                self.timesAdded.append(time)            
                 puffsAdded +=1 
             except:
                 puffsOutsideOfRange += 1    
@@ -286,12 +299,43 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         print('{} puffs added, {} puffs out of range'.format(puffsAdded,puffsOutsideOfRange))
         
         if self.plotHistoTimes.isChecked():
-            plt.hist(timesAdded)
+            plt.hist(self.timesAdded)
             plt.xlabel('Time puff added (frames)')
             plt.ylabel('Number of puffs added')
             plt.show()
-        
+
+        self.randomPuffsAdded = True
+
         return
+
+
+    def exportTimes(self):
+        if self.getValue('active_window') == None:
+            g.alert('First select window')
+            return  
+        
+        if self.randomPuffsAdded == False:
+            g.alert('Add puffs first')
+            return
+        
+        #set export path
+        savePath, _ = QFileDialog.getSaveFileName(None, "Save file","","Text Files (*.csv)")        
+
+        #write file
+        try:
+            # opening the csv file in 'w+' mode 
+            file = open(savePath, 'w+', newline ='') 
+              
+            # writing the data into the file 
+            with file:     
+                write = csv.writer(file) 
+                write.writerows(map(lambda x: [x], self.timesAdded)) 
+            
+            print('List of times saved to: {}'.format(savePath))
+        except BaseException as e:
+            print(e)
+            print('Export of times failed, printing times to console')
+            print(self.timesAdded)
 
     def previewPuff(self):
         '''preview blip to be added'''
