@@ -9,91 +9,91 @@ http://flika-org.github.io/plugins.html
 LIST of PLUGINS
 -----------------
 
-*[annotator](https://github.com/gddickinson/flika_plugins/tree/master/annotator)
+* [annotator](https://github.com/gddickinson/flika_plugins/tree/master/annotator)
 Author: George Dickinson
 Function:
                                                           
-*[centerSurroundROI](https://github.com/gddickinson/flika_plugins/tree/master/centerSurroundROI)
+* [centerSurroundROI](https://github.com/gddickinson/flika_plugins/tree/master/centerSurroundROI)
 Author: George Dickinson
 Function:
                                                           
                                                   
-*[detect_puffs](https://github.com/gddickinson/flika_plugins/tree/master/detect_puffs)
+* [detect_puffs](https://github.com/gddickinson/flika_plugins/tree/master/detect_puffs)
 Author: Kyle Ellefsen
 Function:
                                                           
                                                        
-*[dipoleAnalysis](https://github.com/gddickinson/flika_plugins/tree/master/dipoleAnalysis) 
+* [dipoleAnalysis](https://github.com/gddickinson/flika_plugins/tree/master/dipoleAnalysis) 
 Author: George Dickinson 
 Function:
                                                           
                                                     
-*[fft_Chunker](https://github.com/gddickinson/flika_plugins/tree/master/fft_Chunker) 
+* [fft_Chunker](https://github.com/gddickinson/flika_plugins/tree/master/fft_Chunker) 
 Author: George Dickinson
 Function:
                                                           
                                                        
-*[fileLoader](https://github.com/gddickinson/flika_plugins/tree/master/fft_Chunker) 
+* [fileLoader](https://github.com/gddickinson/flika_plugins/tree/master/fft_Chunker) 
 Author: George Dickinson
 Function:
                                                           
                                                         
-*[GlobalAnalysisPlugin](https://github.com/gddickinson/flika_plugins/tree/master/GlobalAnalysisPlugin)
+* [GlobalAnalysisPlugin](https://github.com/gddickinson/flika_plugins/tree/master/GlobalAnalysisPlugin)
 Author:
 Function:
                                                           
                                                
-*[lightSheet_tiffLoader](https://github.com/gddickinson/flika_plugins/tree/master/lightSheet_tiffLoader) 
+* [lightSheet_tiffLoader](https://github.com/gddickinson/flika_plugins/tree/master/lightSheet_tiffLoader) 
 Author: George Dickinson
 Function:
                                                           
                                              
-*[light_sheet_analyzer](https://github.com/gddickinson/flika_plugins/tree/master/light_sheet_analyzer) 
+* [light_sheet_analyzer](https://github.com/gddickinson/flika_plugins/tree/master/light_sheet_analyzer) 
 Author: Kyle Ellefsen
 Function:
                                                           
                                               
-*[linescan](https://github.com/gddickinson/flika_plugins/tree/master/linescan)    
+* [linescan](https://github.com/gddickinson/flika_plugins/tree/master/linescan)    
 Author: George Dickinson
 Function:
                                                           
                                                        
-*[neuroLab_207](https://github.com/gddickinson/flika_plugins/tree/master/neuroLab_207) 
+* [neuroLab_207](https://github.com/gddickinson/flika_plugins/tree/master/neuroLab_207) 
 Author: George Dickinson
 Function:
                                                           
                                                       
-*[onTheFly_Reconstruction](https://github.com/gddickinson/flika_plugins/tree/master/onTheFly_Reconstruction)  
+* [onTheFly_Reconstruction](https://github.com/gddickinson/flika_plugins/tree/master/onTheFly_Reconstruction)  
 Author: George Dickinson
 Function:
                                                           
                                           
-*[openCV](https://github.com/gddickinson/flika_plugins/tree/master/openCV) 
+* [openCV](https://github.com/gddickinson/flika_plugins/tree/master/openCV) 
 Author: George Dickinson
 Function:
                                                           
                                                            
-*[overlay](https://github.com/gddickinson/flika_plugins/tree/master/overlay) 
+* [overlay](https://github.com/gddickinson/flika_plugins/tree/master/overlay) 
 Author: George Dickinson
 Function:
                                                           
                                                            
-*[packageManager](https://github.com/gddickinson/flika_plugins/tree/master/packageManager) 
+* [packageManager](https://github.com/gddickinson/flika_plugins/tree/master/packageManager) 
 Author: George Dickinson
 Function:
                                                           
                                                     
-*[puffMapper](https://github.com/gddickinson/flika_plugins/tree/master/puffMapper) 
+* [puffMapper](https://github.com/gddickinson/flika_plugins/tree/master/puffMapper) 
 Author: George Dickinson
 Function:
                                                           
                                                         
-*[pynsight](https://github.com/gddickinson/flika_plugins/tree/master/pynsight) 
+* [pynsight](https://github.com/gddickinson/flika_plugins/tree/master/pynsight) 
 Author: Kyle Ellefsen
 Function:
                                                           
                                                           
-*[quantimus](https://github.com/gddickinson/flika_plugins/tree/master/quantimus) 
+* [quantimus](https://github.com/gddickinson/flika_plugins/tree/master/quantimus) 
 Author: Kyle Ellefsen
 Function:
                                                           
@@ -103,32 +103,32 @@ Author: Kyle Ellefsen
 Function:
                                                           
                                                       
-*[roiExtras](https://github.com/gddickinson/flika_plugins/tree/master/roiExtras)  
+*  [roiExtras](https://github.com/gddickinson/flika_plugins/tree/master/roiExtras)  
 Author: George Dickinson
 Function:
                                                           
                                                         
-*[scaledAverageSubtract](https://github.com/gddickinson/flika_plugins/tree/master/scaledAverageSubtract)
+* [scaledAverageSubtract](https://github.com/gddickinson/flika_plugins/tree/master/scaledAverageSubtract)
 Author: George Dickinson
 Function:
                                                           
                                               
-*[simulateMEPP](https://github.com/gddickinson/flika_plugins/tree/master/simulateMEPP) 
+* [simulateMEPP](https://github.com/gddickinson/flika_plugins/tree/master/simulateMEPP) 
 Author: George Dickinson
 Function:
                                                           
                                                       
-*[simulatePuff](https://github.com/gddickinson/flika_plugins/tree/master/simulatePuff) 
+* [simulatePuff](https://github.com/gddickinson/flika_plugins/tree/master/simulatePuff) 
 Author: George Dickinson
 Function:
                                                           
                                                       
-*[synapse_plugin](https://github.com/gddickinson/flika_plugins/tree/master/synapse_plugin) 
+* [synapse_plugin](https://github.com/gddickinson/flika_plugins/tree/master/synapse_plugin) 
 Author: George Dickinson (adapted from Brett Settle)
 Function:
                                                           
                                                     
-*[volumeSlider](https://github.com/gddickinson/flika_plugins/tree/master/volumeSlider) 
+* [volumeSlider](https://github.com/gddickinson/flika_plugins/tree/master/volumeSlider) 
 Author: George Dickinson (adapted from Kyle Ellefsen)
 Function:
                                                           
