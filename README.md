@@ -98,12 +98,12 @@ Author: Kyle Ellefsen
 Function:
                                                           
                                                          
-*[rodentTracker](https://github.com/gddickinson/flika_plugins/tree/master/rodentTracker)
+* [rodentTracker](https://github.com/gddickinson/flika_plugins/tree/master/rodentTracker)
 Author: Kyle Ellefsen
 Function:
                                                           
                                                       
-*  [roiExtras](https://github.com/gddickinson/flika_plugins/tree/master/roiExtras)  
+* [roiExtras](https://github.com/gddickinson/flika_plugins/tree/master/roiExtras)  
 Author: George Dickinson
 Function:
                                                           
