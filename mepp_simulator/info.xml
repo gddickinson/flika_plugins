@@ -1,6 +1,6 @@
-<plugin name="simulateMEPP">
+<plugin name="mepp_simulator">
     <directory>
-        simulateMEPP
+        mepp_simulator
     </directory>
 	<version>
 		2021.02.06
@@ -18,6 +18,6 @@
 		<dependency name='openpyxl'></dependency>
 	</dependencies>
 	<menu_layout>
-		<action location="mepp_simulator.mepp_simulator" function="simulate_mepp.gui">Simulate MEPP</action>
+		<action location="mepp_simulator" function="simulate_mepp.gui">Simulate MEPP</action>
 	</menu_layout>
 </plugin>

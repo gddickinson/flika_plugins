@@ -55,7 +55,27 @@ else:
 
 cwd = os.path.dirname(os.path.abspath(__file__)) # cwd=r'C:\Users\Kyle Ellefsen\Documents\GitHub\Flika\plugins\mepp_simulator'
 
-       
+class PlotWindow(BaseProcess_noPriorWindow):
+    def __init__(self, title):  
+        self.win = pg.GraphicsWindow(title="MEPP Generator")
+        self.win.resize(1000,600)
+        self.win.setWindowTitle('MEPP Generator')
+        self.p1 = self.win.addPlot(title=title)
+        self.curve = self.p1.plot(pen='y')
+        self.curve.setData(y=np.zeros(1000))
+        self.p1.enableAutoRange('xy', False) 
+   
+    def update(self,data, xRange, yRange):
+        #xRange and yRange are lists [start,end]
+        self.curve.setData(data)
+        self.p1.setRange(xRange=xRange, yRange=yRange)  
+        
+    def show(self):
+        self.win.show()
+    
+    def hide(self):
+        self.win.hide()
+    
 class Simulate_mepp(BaseProcess_noPriorWindow):
     """
     Simulate MEPP events in a noisy time trace
@@ -76,61 +96,68 @@ class Simulate_mepp(BaseProcess_noPriorWindow):
         
     """
     def __init__(self):
+        
+        if g.settings['mepp_simulator'] is None or 'decayTime' not in g.settings['mepp_simulator']:
+            s = dict()
+            s['traceLength'] = 10000
+            s['meppAmplitude'] = 5
+            s['meppDuration'] = 1        
+            s['startTime'] = 0
+            s['meanExp'] = 1000.0
+            s['baseline'] = 0.0
+            s['noiseSigma'] = 0.1
+            s['riseTime'] = 1.0
+            #s['riseTime_sigma'] = 0.01        
+            s['decayTime'] = 10.0
+            #s['decayTime_sigma'] = 0.1  
+            g.settings['mepp_simulator'] = s
         super().__init__()
+        
         self.data = np.array([])
 
-    def get_init_settings_dict(self):
-        s = dict()
-        s['traceLength'] = 10000
-        s['meppAmplitude'] = 5
-        s['meppDuration'] = 1        
-        s['startTime'] = 0
-        s['meanExp'] = 1000.0
-        s['nmepps'] = 0 
-        s['baseline'] = 0.0
-        s['noiseSigma'] = 0.1
-        s['riseTime'] = 1.0
-        #s['riseTime_sigma'] = 0.01        
-        s['decayTime'] = 10.0
-        #s['decayTime_sigma'] = 0.1          
-        
-        return s
 
     def gui(self):
+        s=g.settings['mepp_simulator']
         self.gui_reset()
+        self.meppWindow = PlotWindow('Single MEPP (No noise)')
+        self.traceWindow = PlotWindow('Time Trace')
+        self.meppWindow.hide()
+        self.traceWindow.hide()        
+        
         self.traceLength = SliderLabel(0)
         self.traceLength.setRange(0,1000000)
-        self.traceLength.setValue(10000)        
+        self.traceLength.setValue(s['traceLength'])        
         
         self.startTime = SliderLabel(0)
-        self.startTime.setRange(0,10000)        
+        self.startTime.setRange(0,s['traceLength'])  
+        self.startTime.setValue(s['startTime'])
 
         self.meppDuration_slider = pg.SpinBox(int=True, step=1)
-        self.meppDuration_slider.setValue(100)
+        self.meppDuration_slider.setValue(s['meppDuration'])
         
         self.meppDuration_sigma_slider = pg.SpinBox(int=True, step=1)
         self.meppDuration_sigma_slider.setValue(1)        
 
         self.baseline_slider = pg.SpinBox(int=False, step=.01)
-        self.baseline_slider.setValue(0.0)
+        self.baseline_slider.setValue(s['baseline'])
         
         self.noiseSigma_slider = pg.SpinBox(int=False, step=.01)
-        self.noiseSigma_slider.setValue(0.1)                
+        self.noiseSigma_slider.setValue(s['noiseSigma'])                
         
         self.meppAmplitude_slider = pg.SpinBox(int=False, step=.01)
-        self.meppAmplitude_slider.setValue(100.0)  
+        self.meppAmplitude_slider.setValue(s['meppAmplitude'])  
         
         self.meppAmplitude_sigma_slider = pg.SpinBox(int=False, step=.01)
         self.meppAmplitude_sigma_slider.setValue(1.0)         
 
         self.meppRiseTime_slider = pg.SpinBox(int=False, step=.01)
-        self.meppRiseTime_slider.setValue(1.0) 
+        self.meppRiseTime_slider.setValue(s['riseTime']) 
         
         #self.meppRiseTime_sigma_slider = pg.SpinBox(int=False, step=.01)
         #self.meppRiseTime_sigma_slider.setValue(0.01) 
 
         self.meppDecayTime_slider = pg.SpinBox(int=False, step=.01)
-        self.meppDecayTime_slider.setValue(10.0) 
+        self.meppDecayTime_slider.setValue(s['decayTime']) 
         
         #self.meppDecayTime_sigma_slider = pg.SpinBox(int=False, step=.01)
         #self.meppDecayTime_sigma_slider.setValue(0.1) 
@@ -178,8 +205,17 @@ class Simulate_mepp(BaseProcess_noPriorWindow):
         self.items.append({'name': 'plotMEPP', 'string': 'Plot single MEPP (without noise)', 'object': self.plotmeppButton}) 
         super().gui()
 
-    def __call__(self):
-        pass
+    def __call__(self, keepSourceWindow=False):
+        g.settings['mepp_simulator']['traceLength']=self.getValue('traceLength')
+        g.settings['mepp_simulator']['meppAmplitude']=self.getValue('meppAmplitude')
+        g.settings['mepp_simulator']['meppDuration']=self.getValue('meppDuration')
+        g.settings['mepp_simulator']['startTime'] = self.getValue('startTime')
+        g.settings['mepp_simulator']['meanExp'] = self.getValue('meanExp')
+        g.settings['mepp_simulator']['baseline'] = self.getValue('baseline')        
+        g.settings['mepp_simulator']['noiseSigma'] = self.getValue('noiseSigma')
+        g.settings['mepp_simulator']['riseTime'] = self.getValue('riseTime')
+        g.settings['mepp_simulator']['decayTime'] = self.getValue('decayTime')
+
         return 
 
 
@@ -209,11 +245,13 @@ class Simulate_mepp(BaseProcess_noPriorWindow):
         ampList = []        
         for t in range(0,duration) :
             ampList.append( amplitude*(math.exp(-t/dT) - math.exp(-t/rT)) )  
-        #plot
-        plt.figure(3)
-        plt.plot(range(0,duration),ampList)
-        plt.show()
-
+        #plot matplot
+        #plt.figure(3)
+        #plt.plot(range(0,duration),ampList)
+        #plt.show()
+        #plot pg
+        self.meppWindow.update(ampList,[0,len(ampList)],[0,self.getValue('meppAmplitude')])
+        self.meppWindow.show()
 
 
     def addRandommepps(self):
@@ -249,10 +287,10 @@ class Simulate_mepp(BaseProcess_noPriorWindow):
             meppsAdded +=1 
         except BaseException as e:
             #print(e)
-            meppsOutsideOfRange += 1 
-            print('{} MEPPs added, {} MEPPs out of time range'.format(meppsAdded,meppsOutsideOfRange))
-            print('1st MEPP outside of time range, aborting')
-            return
+            #meppsOutsideOfRange += 1 
+            #print('{} MEPPs added, {} MEPPs out of time range'.format(meppsAdded,meppsOutsideOfRange))
+            #print('1st MEPP outside of time range, aborting')
+            pass
        
         # add mepp after each time selection untill end of stack
         # casting the exponential continous value as an int to select frame        
@@ -273,7 +311,8 @@ class Simulate_mepp(BaseProcess_noPriorWindow):
                 #print(e)
                 meppsOutsideOfRange += 1    
         
-        print('{} MEPPs added, {} MEPPs out of time range'.format(meppsAdded,meppsOutsideOfRange))
+        #print number of MEPPS added to console
+        #print('{} MEPPs added, {} MEPPs out of time range'.format(meppsAdded,meppsOutsideOfRange))
         
         if self.plotHistoTimes.isChecked():
             plt.figure(1)
@@ -284,11 +323,17 @@ class Simulate_mepp(BaseProcess_noPriorWindow):
 
         self.randommeppsAdded = True
         
-        print(self.data)
-        plt.figure(0)
-        plt.plot(self.data)
-        plt.show()
-
+        #print data to console
+        #print(self.data)
+        
+        #plot data matplotlib
+        #plt.figure(0)
+        #plt.plot(self.data)
+        #plt.show()
+        
+        #plot data pg
+        self.traceWindow.update(self.data,[0,len(self.data)],[self.getValue('baseline')-(3*self.getValue('noiseSigma')),self.getValue('meppAmplitude')+(3*self.getValue('meppAmplitude_sigma'))])
+        self.traceWindow.show()
         return
 
 
