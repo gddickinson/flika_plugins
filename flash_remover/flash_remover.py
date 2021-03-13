@@ -37,11 +37,31 @@ class Flash_remover(BaseProcess_noPriorWindow):
         pass
         return
 
-                    
     def removeFlash(self):
+        #interpolation method
+        self.removeFlash_interpolate()
+        #subtraction method
+        #TODO
+        
+
+    def autodetectFlash(self):
+        rangeStart =  self.getValue('flashRangeStart')
+        rangeEnd = self.getValue('flashRangeEnd') 
+                    
+    def removeFlash_interpolate(self):
         img = deepcopy(self.getValue('window').image)
-        flashStart = self.getValue('flashStart')-1
-        flashEnd = self.getValue('flashEnd')+2      
+        
+        if self.getValue('manualFlash'):
+            #manual
+            flashStart = self.getValue('flashStart')-1
+            flashEnd = self.getValue('flashEnd')+2  
+            
+        else:
+            #TODO
+            #autodetect
+            flashStart = self.getValue('flashStart')-1
+            flashEnd = self.getValue('flashEnd')+2  
+            
         
         flash = img[flashStart:flashEnd]
         n, r, c = flash.shape
@@ -70,15 +90,35 @@ class Flash_remover(BaseProcess_noPriorWindow):
         self.removeFlash_button = QPushButton('Remove Flash')
         self.removeFlash_button.pressed.connect(self.removeFlash)
         
+        self.manuallySetFlash_check = CheckBox()
+        self.manuallySetFlash_check.setValue(False)
+        
         self.flashStart_slider = pg.SpinBox(int=True, step=1)
-        self.flashStart_slider.setValue(313)
+        self.flashStart_slider.setValue(0)
 
         self.flashEnd_slider = pg.SpinBox(int=True, step=1)
-        self.flashEnd_slider.setValue(344)        
+        self.flashEnd_slider.setValue(1)  
+        
+        self.flashRangeStart_slider = pg.SpinBox(int=True, step=1)
+        self.flashRangeStart_slider.setValue(0)
+
+        self.flashRangeEnd_slider = pg.SpinBox(int=True, step=1)
+        self.flashRangeEnd_slider.setValue(1)   
+        
+        self.removeMethod = pg.ComboBox()
+        self.methods = {'linear interpolation': 1, 'subtraction': 2}
+        self.removeMethod.setItems(self.methods)
         
         self.items.append({'name': 'window', 'string': 'Select Window', 'object': self.window})
+        self.items.append({'name': 'method', 'string': 'Select Method', 'object': self.removeMethod})        
+        self.items.append({'name': 'blank', 'string': '----- Manual Flash -----', 'object': None})        
+        self.items.append({'name': 'manualFlash', 'string': 'Manualy Set Flash', 'object': self.manuallySetFlash_check})          
         self.items.append({'name': 'flashStart', 'string': 'Select Flash Start', 'object': self.flashStart_slider})        
-        self.items.append({'name': 'flashEnd', 'string': 'Select Flash End', 'object': self.flashEnd_slider})          
+        self.items.append({'name': 'flashEnd', 'string': 'Select Flash End', 'object': self.flashEnd_slider})        
+        self.items.append({'name': 'blank', 'string': '----- Automatic Flash Detection -----', 'object': None})  
+        self.items.append({'name': 'flashRangeStart', 'string': 'Select Flash Range Start', 'object': self.flashRangeStart_slider})        
+        self.items.append({'name': 'flashRangeEnd', 'string': 'Select Flash Range End', 'object': self.flashRangeEnd_slider})
+        
         self.items.append({'name': 'removeFlash_button', 'string': '', 'object': self.removeFlash_button})
 
         super().gui()
