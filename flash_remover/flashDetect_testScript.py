@@ -34,6 +34,7 @@ start_flika()
 
 #set filename
 filename = r"C:\Users\g_dic\OneDrive\Desktop\trial_2_Cal520_cip3.tif"
+#filename = r"C:\Users\g_dic\OneDrive\Desktop\2021_02_05_KRAP_800ms001.tif"
 windowSize = 100
 #averageSize = 100
 
@@ -69,11 +70,15 @@ movingAverage[movingAverage <= 0] = 0.0000001
 #add moving average trace to plot
 plot.p1.plot(movingAverage , pen=(1,3), symbol=None)
 
-#identify peak of trace
-peakFrame = np.argmax(movingAverage)
+#identify peak of trace - first frame of flash
+flashStart = np.argmax(movingAverage)
 
-#plot peak
-plot.p1.plot(np.array([peakFrame]),np.array([movingAverage[peakFrame]]) , pen=None, symbol='o', symbolSize =20)
+#identify 1st drop after peak - end of flash
+flashEnd = flashStart + np.argmin(movingAverage[flashStart:-1])
+
+#plot flash start and end
+plot.p1.plot(np.array([flashStart]),np.array([movingAverage[flashStart]]) , pen=None, symbol='o', symbolSize =20)
+plot.p1.plot(np.array([flashEnd]),np.array([movingAverage[flashEnd]]) , pen=None, symbol='o', symbolSize =20)
 
 
 
