@@ -32,10 +32,11 @@ class Flash_remover(BaseProcess_noPriorWindow):
     """
     def __init__(self):
 
-        if g.settings['flash_remover'] is None or 'flashRangeEnd' not in g.settings['flash_remover']:
+        if g.settings['flash_remover'] is None or 'windowSize' not in g.settings['flash_remover']:
             s = dict()
             s['flashRangeStart'] = 0
             s['flashRangeEnd'] = 1000
+            s['windowSize'] = 100            
  
             g.settings['flash_remover'] = s
         super().__init__()
@@ -44,6 +45,7 @@ class Flash_remover(BaseProcess_noPriorWindow):
     def __call__(self, keepSourceWindow=False):
         g.settings['flash_remover']['flashRangeStart'] = self.getValue('flashRangeStart')
         g.settings['flash_remover']['flashRangeEnd'] = self.getValue('flashRangeEnd')
+        g.settings['flash_remover']['windowSize'] = self.getValue('windowSize')        
         return
 
     def removeFlash(self):
@@ -128,43 +130,57 @@ class Flash_remover(BaseProcess_noPriorWindow):
         
 
     def removeFlash_subtraction(self): 
-        print('Not implemented')
-        return
-        # img = deepcopy(self.getValue('window').image)        
+        #print('Not implemented')
+        #return
+        img = deepcopy(self.getValue('window').image)        
 
-        # if self.getValue('manualFlash'):
-        #     #manual
-        #     flashStart = self.getValue('flashStart')
-        #     flashEnd = self.getValue('flashEnd')  
+        if self.getValue('manualFlash'):
+            #manual
+            flashStart = self.getValue('flashStart')
+            flashEnd = self.getValue('flashEnd')  
             
-        # else:
-        #     #autodetect
-        #     flashStart, flashEnd = self.autodetectFlash()        
+        else:
+            #autodetect
+            flashStart, flashEnd = self.autodetectFlash()        
 
-        # #buffer flash time ends
-        # flashStart = flashStart -1 
-        # flashEnd = flashEnd +2       
+        #buffer flash time ends
+        flashStart = flashStart -1 
+        flashEnd = flashEnd +2       
                     
-        # flash = img[flashStart:flashEnd]
+        flash = img[flashStart:flashEnd]
 
-        # #TODO
-        # #get baseline from 100 frames before flash
-        # baseline = np.mean(img[flashStart-100:flashStart], axis=0)
-        # self.baseline_win = Window(baseline,'baseline')        
+        #TODO
+        #get baseline from 100 frames before flash
+        baseline = np.mean(img[flashStart-102:flashStart-2], axis=0)
+        #self.baseline_win = Window(baseline,'baseline')   
         
-        # #get mean inital flash increase
-        # flashIncrease = np.mean(flash[2:6], axis=0) - baseline
-        # self.flashIncrease_win = Window(flashIncrease,'flashIncrease') 
+        #determine noise of baseline
+        baseNoise = np.std(img[flashStart-102:flashStart-2])
+        print('baseNoise: ',baseNoise)
         
-        # #subtract flashIncrease from img
-        # flashReplace = flash - flashIncrease
-        # self.flashReplace_win = Window(flashReplace,'flashReplace')         
+        #get mean inital flash increase
+        flashIncrease = np.mean(flash[2:12], axis=0) - baseline
+        #self.flashIncrease_win = Window(flashIncrease,'flashIncrease') 
         
-        # img[flashStart:flashEnd] = flashReplace
+        #get noise of flash
+        flashNoise = np.std(flash[2:12])
+        print('flashNoise: ',flashNoise)
+
+        #flashNoise:baseNoise ratio
+        noiseRatio = flashNoise/baseNoise
         
-        # #display stack in new window
-        # self.flashRemoved_win = Window(img,'Flash Removed (subtraction)')
-        # return
+        #subtract flashIncrease from img
+        #flashReplace = flash - flashIncrease
+        #self.flashReplace_win = Window(flashReplace,'flashReplace')         
+        
+        #scaled reduction of flash
+        flashReplace = np.divide(img[flashStart-1:flashEnd+1], noiseRatio)
+        #self.flashReplace_win = Window(flashReplace,'flashReplace')          
+        img[flashStart-1:flashEnd+1] = flashReplace
+        
+        #display stack in new window
+        self.flashRemoved_win = Window(img,'Flash Removed (subtraction)')
+        return
 
                     
     def removeFlash_interpolate(self):
@@ -273,7 +289,7 @@ class Flash_remover(BaseProcess_noPriorWindow):
         self.removeMethod.setItems(self.methods)
         
         self.movingAverageWindow_slider = pg.SpinBox(int=True, step=1)
-        self.movingAverageWindow_slider.setValue(100)     
+        self.movingAverageWindow_slider.setValue(s['windowSize'])     
         
         self.plotAverage_check = CheckBox()
         self.plotAverage_check.setValue(False)
@@ -284,7 +300,7 @@ class Flash_remover(BaseProcess_noPriorWindow):
         
         self.items.append({'name': 'window', 'string': 'Select Window', 'object': self.window})
         self.items.append({'name': 'method', 'string': 'Select Method', 'object': self.removeMethod})  
-        self.items.append({'name': 'addNoise', 'string': 'Add noise', 'object': self.addNoise_check})          
+        self.items.append({'name': 'addNoise', 'string': 'Add noise (linear interpolation only)', 'object': self.addNoise_check})          
         self.items.append({'name': 'blank', 'string': '----- Manual Flash -----', 'object': None})        
         self.items.append({'name': 'manualFlash', 'string': 'Manualy Set Flash', 'object': self.manuallySetFlash_check})          
         self.items.append({'name': 'flashStart', 'string': 'Select Flash Start', 'object': self.flashStart_slider})        
