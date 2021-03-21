@@ -56,8 +56,8 @@ class Flash_remover(BaseProcess_noPriorWindow):
             self.removeFlash_interpolate()
         elif method == 2:
             #subtraction method
-            print('subtraction')
-            self.removeFlash_subtraction()
+            print('scale using noise')
+            self.removeFlash_noiseScaling()
         else:
             print('no method')
         return
@@ -129,7 +129,7 @@ class Flash_remover(BaseProcess_noPriorWindow):
         return flashStart, flashEnd
         
 
-    def removeFlash_subtraction(self): 
+    def removeFlash_noiseScaling(self): 
         #print('Not implemented')
         #return
         img = deepcopy(self.getValue('window').image)        
@@ -174,12 +174,12 @@ class Flash_remover(BaseProcess_noPriorWindow):
         #self.flashReplace_win = Window(flashReplace,'flashReplace')         
         
         #scaled reduction of flash
-        flashReplace = np.divide(img[flashStart-1:flashEnd+1], noiseRatio)
+        flashReplace = np.divide(img[flashStart+1:flashEnd-1], noiseRatio)
         #self.flashReplace_win = Window(flashReplace,'flashReplace')          
-        img[flashStart-1:flashEnd+1] = flashReplace
+        img[flashStart+1:flashEnd-1] = flashReplace
         
         #display stack in new window
-        self.flashRemoved_win = Window(img,'Flash Removed (subtraction)')
+        self.flashRemoved_win = Window(img,'Flash Removed (noise scaling)')
         return
 
                     
@@ -285,7 +285,7 @@ class Flash_remover(BaseProcess_noPriorWindow):
         self.flashRangeEnd_slider.setValue(s['flashRangeEnd'])   
         
         self.removeMethod = pg.ComboBox()
-        self.methods = {'linear interpolation': 1, 'subtraction': 2}
+        self.methods = {'linear interpolation': 1, 'scaling by noise': 2}
         self.removeMethod.setItems(self.methods)
         
         self.movingAverageWindow_slider = pg.SpinBox(int=True, step=1)
