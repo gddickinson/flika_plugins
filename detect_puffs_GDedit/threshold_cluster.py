@@ -647,6 +647,9 @@ class PuffAnalyzer(QWidget):
         self.savePointsButton.pressed.connect(self.savePoints)
         self.saveButton = QPushButton('Save (.flika)')
         self.saveButton.pressed.connect(self.save)
+        self.deleteToolButton = QPushButton('Delete puffs in Current ROI')
+        self.deleteToolButton.pressed.connect(self.deleteTool)        
+        
         self.control_panel.addWidget(self.currentPuff_spinbox,0,0)
         self.control_panel.addWidget(self.discardButton,1,0)
         self.control_panel.addWidget(self.togglePuffsButton,2,0)
@@ -660,6 +663,7 @@ class PuffAnalyzer(QWidget):
         self.control_panel.addWidget(self.compareWithManualButton, 10, 0)
         self.control_panel.addWidget(self.savePointsButton, 11, 0)
         self.control_panel.addWidget(self.saveButton, 12, 0)
+        self.control_panel.addWidget(self.deleteToolButton, 13, 0)        
         self.control_panelWidget = QWidget()
         self.control_panelWidget.setLayout(self.control_panel)
         self.d3.addWidget(self.control_panelWidget)
@@ -1092,6 +1096,13 @@ class PuffAnalyzer(QWidget):
         self.setCurrPuff(self.puffs.index,force=True)
         self.currentPuff_spinbox.setMaximum(len(self.puffs.puffs)-1)
         # remove points from scatter plot
+      
+
+    def deleteTool(self):    
+        #GD edit - added to allow deletion of multiple puffs at once
+        puffs=[pt.data() for pt in self.s1.points() if self.data_window.currentROI.contains_pts(pt.pos().x(), pt.pos().y())]
+        self.discard_puffs(puffs) 
+
 
     def togglePuffs(self):
         if self.puffsVisible:
