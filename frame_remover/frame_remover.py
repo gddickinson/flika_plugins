@@ -23,7 +23,7 @@ else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector
 
 from flika.roi import makeROI
-from tqdm import tqdm
+
 
 class Frame_remover(BaseProcess_noPriorWindow):
     """
