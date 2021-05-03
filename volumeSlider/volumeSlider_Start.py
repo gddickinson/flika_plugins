@@ -53,6 +53,7 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
             s['inputChoice'] = 'Current Window'              
             s['keepOriginalWindow'] = False   
             s['slicesPerVolume'] =    1
+            s['slicesDeletedPerVolume'] =    0            
             s['baselineValue'] = 0
             s['f0Start'] = 0
             s['f0End'] = 0

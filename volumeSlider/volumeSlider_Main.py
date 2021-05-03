@@ -240,6 +240,12 @@ class CamVolumeSlider(BaseProcess):
 
         #reshape to 4D
         self.B = np.reshape(self.B, (self.getFramesPerVol(),self.getNVols(),self.x,self.y), order='F')
+        print(self.B.shape)
+        
+        #delete frames from start of each volume
+        if self.framesToDelete != 0:
+            self.B = self.B[self.framesToDelete:-1,:,:,:]
+                
         self.displayWindow.imageview.setImage(self.B[0],autoLevels=False)
         return
 
@@ -258,9 +264,10 @@ class CamVolumeSlider(BaseProcess):
     def getFramesPerVol(self):
         return self.framesPerVol
 
-    def updateVolsandFramesPerVol(self, nVols, framesPerVol):
+    def updateVolsandFramesPerVol(self, nVols, framesPerVol, framesToDelete = 0):
         self.nVols = nVols
         self.framesPerVol = framesPerVol
+        self.framesToDelete = framesToDelete
 
     def closeEvent(self, event):
         event.accept()

@@ -63,6 +63,9 @@ class Form2(QtWidgets.QDialog):
         windowGeometry(self, left=300, top=300, height=600, width=400)
 
         self.slicesPerVolume = self.s['slicesPerVolume']
+        
+        self.slicesDeletedPerVolume = self.s['slicesDeletedPerVolume']       
+        
         self.baselineValue = self.s['baselineValue']
         self.f0Start = self.s['f0Start']
         self.f0End = self.s['f0End']
@@ -90,6 +93,15 @@ class Form2(QtWidgets.QDialog):
             self.SpinBox2.setValue(self.slicesPerVolume)
         else:
             self.SpinBox2.setValue(1)
+
+        self.spinLabel13 = QtWidgets.QLabel("# of slices removed per volume: ")
+        self.SpinBox13 = QtWidgets.QSpinBox()
+        self.SpinBox13.setRange(0,self.viewer.getNFrames())
+        if self.slicesDeletedPerVolume < self.viewer.getNFrames():
+            self.SpinBox13.setValue(self.slicesDeletedPerVolume)
+        else:
+            self.SpinBox13.setValue(0)
+
 
         self.spinLabel4 = QtWidgets.QLabel("baseline value: ")
         self.SpinBox4 = QtWidgets.QSpinBox()
@@ -216,7 +228,11 @@ class Form2(QtWidgets.QDialog):
 
         layout.addWidget(self.spinLabel2, 4, 0)
         layout.addWidget(self.SpinBox2, 4, 1)
-        layout.addWidget(self.button2, 4, 2)
+        layout.addWidget(self.button2, 4, 4)
+
+        layout.addWidget(self.spinLabel13, 4, 2)
+        layout.addWidget(self.SpinBox13, 4, 3)
+
 
         layout.addWidget(self.spinLabel4, 6, 0)
         layout.addWidget(self.SpinBox4, 6, 1)
@@ -331,18 +347,19 @@ class Form2(QtWidgets.QDialog):
     def updateVolumeValue(self):
         self.slicesPerVolume = self.SpinBox2.value()
         noVols = int(self.viewer.getNFrames()/self.slicesPerVolume)
-        self.viewer.updateVolsandFramesPerVol(noVols, self.slicesPerVolume)
+        self.framesToDelete = self.SpinBox13.value()
+        self.viewer.updateVolsandFramesPerVol(noVols, self.slicesPerVolume, framesToDelete = self.framesToDelete)
         self.volumeText.setText(str(noVols))
 
         self.viewer.updateDisplay_volumeSizeChange()
         self.shapeText.setText(str(self.viewer.getArrayShape()))
 
         if (self.slicesPerVolume)%2 == 0:
-            self.SpinBox1.setRange(0,self.slicesPerVolume-1) #if even, display the last volume
-            self.slider1.setMaximum(self.slicesPerVolume-1)
+            self.SpinBox1.setRange(0,self.slicesPerVolume - 1 - self.framesToDelete) #if even, display the last volume
+            self.slider1.setMaximum(self.slicesPerVolume - 1 - self.framesToDelete)
         else:
-            self.SpinBox1.setRange(0,self.slicesPerVolume-2) #else, don't display the last volume
-            self.slider1.setMaximum(self.slicesPerVolume-2)
+            self.SpinBox1.setRange(0,self.slicesPerVolume - 2 - self.framesToDelete) #else, don't display the last volume
+            self.slider1.setMaximum(self.slicesPerVolume - 2 - self.framesToDelete)
 
         self.updateVolSpinBoxes()
         return
@@ -426,6 +443,7 @@ class Form2(QtWidgets.QDialog):
     def saveSettings(self):
         self.s['theta'] = self.theta
         self.s['slicesPerVolume'] = self.slicesPerVolume
+        self.s['slicesDeletedPerVolume'] = self.slicesDeletedPerVolume      
         self.s['baselineValue'] = self.baselineValue
         self.s['f0Start'] = self.f0Start
         self.s['f0End'] = self.f0End
