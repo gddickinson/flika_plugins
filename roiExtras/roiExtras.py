@@ -83,6 +83,7 @@ class RoiExtras(BaseProcess_noPriorWindow):
         
         self.frame = 0
         self.ROIwindowExists = False
+        self.ROI_ID = 0
         
 
     def __call__(self):
@@ -166,21 +167,34 @@ class RoiExtras(BaseProcess_noPriorWindow):
             self.currentWin.sigTimeChanged.disconnect(self.update)
         except:
             pass        
+
+        try:
+            self.ROIwindow.close()
+        except:
+            pass
+        
+        try:
+            self.histoWindow.close() 
+        except:
+            pass
+
         
         #select current ROI
-        self.currentROI = self.currentWin.currentROI                
+        self.currentROI = self.currentWin.currentROI   
+
         if self.currentWin.currentROI == None:
             g.alert('First draw an ROI')      
             return
-        
-        #set updates
+                    
+        #set updates   
         self.currentROI.sigRegionChanged.connect(self.update)
         self.currentWin.sigTimeChanged.connect(self.update)
+        self.currentWin.imageview.scene.sigMouseClicked.connect(self.update)
+        
         
         #start plotting
-        if self.displayStarted == False:
-            self.startPlot()
-            self.displayStarted = True
+        self.startPlot()
+        self.displayStarted = True
         
         #get stack data
         self.data =  np.array(deepcopy(self.currentWin.image))
@@ -191,11 +205,13 @@ class RoiExtras(BaseProcess_noPriorWindow):
                    
         self.update()
         
-        #create window to plot ROI
-        self.ROIwindow = Window(self.selected, name='ROI')
-        self.ROIwindowExists = True
         
-    def update(self): 
+    def update(self):
+        if self.currentROI != self.currentWin.currentROI :
+            self.currentROI = self.currentWin.currentROI
+            self.currentROI.sigRegionChanged.connect(self.update)
+            self.currentROI.sigClicked.connect(self.update)   
+            
         #get frame index
         self.frame = self.currentWin.currentIndex  
         #get roi region
@@ -218,8 +234,15 @@ class RoiExtras(BaseProcess_noPriorWindow):
         #update plot
         self.histoWindow.update(self.selected, start=self.startScale, end=self.endScale, n=self.n, n_pixels=n_pixels)
         #update roi window
-        if self.ROIwindowExists:
+        try:
             self.ROIwindow.imageview.setImage(self.selected)
+        except:
+            self.ROIwindow = Window(self.selected, name='ROI')
+            self.ROIwindowExists = True
+            
+                
+
+            
 
     def updateX(self):
         try:
