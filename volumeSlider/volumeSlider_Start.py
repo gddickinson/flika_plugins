@@ -34,6 +34,8 @@ else:
 from .volumeSlider_Main import *
 from .helperFunctions import *
 from .tiffLoader import openTiff
+from .lightSheet_tiffLoader import Load_tiff
+load_tiff = Load_tiff()
 #########################################################################################
 #############          FLIKA Base Menu             #####################################
 #########################################################################################
@@ -48,7 +50,7 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
     """
     
     def __init__(self):
-        if g.settings['volumeSlider'] is None or 'UPDATE' not in g.settings['volumeSlider']:
+        if g.settings['volumeSlider'] is None or 'preProcess' not in g.settings['volumeSlider']:
             s = dict() 
             s['inputChoice'] = 'Current Window'              
             s['keepOriginalWindow'] = False   
@@ -79,19 +81,23 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
             s['IMS_ColorRange'] =  '0 255'
             s['IMS_LSMEmissionWavelength'] = 0
             s['IMS_LSMExcitationWavelength'] = 0
+            s['preProcess'] = False
                             
             g.settings['volumeSlider'] = s
                 
         BaseProcess_noPriorWindow.__init__(self)
         
-    def __call__(self, inputChoice,keepOriginalWindow,keepSourceWindow=False):
+    def __call__(self, inputChoice,keepOriginalWindow,preProcess, slicesPerVolume, slicesDeletedPerVolume, keepSourceWindow=False):
         g.settings['volumeSlider']['inputChoice'] = inputChoice
         g.settings['volumeSlider']['keepOriginalWindow'] = keepOriginalWindow
+        g.settings['volumeSlider']['preProcess'] = preProcess        
+        g.settings['volumeSlider']['slicesPerVolume'] = slicesPerVolume   
+        g.settings['volumeSlider']['slicesDeletedPerVolume'] = slicesDeletedPerVolume        
 
         g.m.statusBar().showMessage("Starting Volume Slider...")
         
         if inputChoice == 'Current Window':
-            camVolumeSlider.startVolumeSlider(keepWindow=keepOriginalWindow)
+            camVolumeSlider.startVolumeSlider(keepWindow=keepOriginalWindow, preProcess=preProcess, framesPerVol = slicesPerVolume, framesToDelete = slicesDeletedPerVolume)
             
         elif inputChoice == 'Numpy Array':
             A_path = open_file_gui(directory=os.path.expanduser("~/Desktop"),filetypes='*.npy')
@@ -102,6 +108,13 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
         elif inputChoice == 'Batch Process':
             g.m.statusBar().showMessage("Starting Batch Processing...")            
             camVolumeSlider.startVolumeSlider(batch=True)
+            
+        elif inputChoice == 'Load file':
+            g.m.statusBar().showMessage("Loading file...")   
+            #Open file using tiff loader
+            load_tiff.gui()
+            #start volumeSlider
+            camVolumeSlider.startVolumeSlider(keepWindow=keepOriginalWindow, preProcess=preProcess, framesPerVol = slicesPerVolume, framesToDelete = slicesDeletedPerVolume) 
                         
         return
 
@@ -114,16 +127,33 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
         #combobox
         inputChoice = ComboBox()
         inputChoice.addItem('Current Window')
+        inputChoice.addItem('Load file')        
         inputChoice.addItem('Numpy Array')
         inputChoice.addItem('Batch Process')        
         
         #checkbox
         self.keepOriginalWindow = CheckBox()
-        self.keepOriginalWindow.setValue(False)          
+        self.keepOriginalWindow.setValue(False)   
+
+        self.preProcess = CheckBox()
+        self.preProcess.setValue(g.settings['volumeSlider']['preProcess'])        
+
+
+        self.framesPerVolume = pg.SpinBox(int=True, step=1)
+        self.framesPerVolume.setValue(g.settings['volumeSlider']['slicesPerVolume'])        
+        
+        self.framesRemoved = pg.SpinBox(int=True, step=1)
+        self.framesRemoved.setValue(g.settings['volumeSlider']['slicesDeletedPerVolume'])        
+        
         
         #populate GUI
         self.items.append({'name': 'inputChoice', 'string': 'Choose Input Data:', 'object': inputChoice}) 
-        self.items.append({'name': 'keepOriginalWindow','string':'Keep Original Window','object': self.keepOriginalWindow})                                     
+        self.items.append({'name': 'keepOriginalWindow','string':'Keep Original Window','object': self.keepOriginalWindow}) 
+        self.items.append({'name': 'preProcess','string':'Preprocess Image stack','object': self.preProcess})  
+
+        self.items.append({'name': 'slicesPerVolume','string':'Slices per Volume','object': self.framesPerVolume})  
+        self.items.append({'name': 'slicesDeletedPerVolume','string':'Frames to remove per volume','object': self.framesRemoved})                                     
+        
         super().gui()
         
         

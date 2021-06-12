@@ -114,7 +114,7 @@ class CamVolumeSlider(BaseProcess):
         self.savePath = ''
         return
 
-    def startVolumeSlider(self, A=[], keepWindow=False, batch=False):
+    def startVolumeSlider(self, A=[], keepWindow=False, batch=False, preProcess=False, nVols = None, framesPerVol = None, framesToDelete = 0):
         if batch:
             self.batch = True
             self.batchOptions = BatchOptions()
@@ -143,7 +143,11 @@ class CamVolumeSlider(BaseProcess):
         self.displayWindow = Window(self.A,'Volume Slider Window')
         #open gui
         self.dialogbox = Form2(camVolumeSlider)
-        self.dialogbox.show()        
+        self.dialogbox.show()    
+        
+        if preProcess:
+            self.preProcess_stack(framesPerVol, framesToDelete = 0)
+        
         return
 
     def updateVolumeSlider(self, A):
@@ -151,6 +155,11 @@ class CamVolumeSlider(BaseProcess):
         self.B = []
         self.nFrames, self.x, self.y = self.A.shape
         self.framesPerVol = int(self.nFrames/self.nVols)
+        
+
+    def preProcess_stack(self, framesPerVol, framesToDelete = 0):
+        print('Precrocessing Image Stack')  
+        self.dialogbox.updateVolumeValue()
         
 
     def batchProcess(self, paramDict):
