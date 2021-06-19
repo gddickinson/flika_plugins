@@ -35,6 +35,9 @@ from .volumeSlider_Main import *
 from .helperFunctions import *
 from .tiffLoader import openTiff
 from .lightSheet_tiffLoader import Load_tiff
+
+from flika.process.stacks import trim
+
 load_tiff = Load_tiff()
 #########################################################################################
 #############          FLIKA Base Menu             #####################################
@@ -50,12 +53,13 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
     """
     
     def __init__(self):
-        if g.settings['volumeSlider'] is None or 'preProcess' not in g.settings['volumeSlider']:
+        if g.settings['volumeSlider'] is None or 'overlay' not in g.settings['volumeSlider']:
             s = dict() 
             s['inputChoice'] = 'Current Window'              
             s['keepOriginalWindow'] = False   
             s['slicesPerVolume'] =    1
-            s['slicesDeletedPerVolume'] =    0            
+            s['slicesDeletedPerVolume'] =    0     
+            s['slicesDeletedPerMovie'] =    0                 
             s['baselineValue'] = 0
             s['f0Start'] = 0
             s['f0End'] = 0
@@ -82,21 +86,40 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
             s['IMS_LSMEmissionWavelength'] = 0
             s['IMS_LSMExcitationWavelength'] = 0
             s['preProcess'] = False
+            s['overlayStart'] = 1           
+            s['overlay'] = False    
                             
             g.settings['volumeSlider'] = s
                 
         BaseProcess_noPriorWindow.__init__(self)
         
-    def __call__(self, inputChoice,keepOriginalWindow,preProcess, slicesPerVolume, slicesDeletedPerVolume, keepSourceWindow=False):
+    def __call__(self, inputChoice,keepOriginalWindow,preProcess, slicesPerVolume, slicesDeletedPerVolume, slicesDeletedPerMovie, overlay, overlayStart, keepSourceWindow=False):
         g.settings['volumeSlider']['inputChoice'] = inputChoice
         g.settings['volumeSlider']['keepOriginalWindow'] = keepOriginalWindow
         g.settings['volumeSlider']['preProcess'] = preProcess        
         g.settings['volumeSlider']['slicesPerVolume'] = slicesPerVolume   
-        g.settings['volumeSlider']['slicesDeletedPerVolume'] = slicesDeletedPerVolume        
+        g.settings['volumeSlider']['slicesDeletedPerVolume'] = slicesDeletedPerVolume  
+        g.settings['volumeSlider']['slicesDeletedPerMovie'] = slicesDeletedPerMovie
+        g.settings['volumeSlider']['overlay'] = overlay        
+        g.settings['volumeSlider']['overlayStart'] = overlayStart  
 
         g.m.statusBar().showMessage("Starting Volume Slider...")
         
         if inputChoice == 'Current Window':
+            #Get overlay
+            if overlay:
+                A = np.array(deepcopy(g.win.image))
+                print(A.shape)
+                endFrame = g.win.mt -1
+                g.win.close()
+                overlayWin =  Window(A[overlayStart:endFrame,:,:],'Overlay')
+                dataWin = Window(A[0:overlayStart,:,:],'Overlay')
+            
+            #Trim movie
+            if preProcess and slicesDeletedPerMovie != 0:
+                trim(0, slicesDeletedPerMovie, delete=True)  
+            
+            #start volumeSlider
             camVolumeSlider.startVolumeSlider(keepWindow=keepOriginalWindow, preProcess=preProcess, framesPerVol = slicesPerVolume, framesToDelete = slicesDeletedPerVolume)
             
         elif inputChoice == 'Numpy Array':
@@ -113,6 +136,21 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
             g.m.statusBar().showMessage("Loading file...")   
             #Open file using tiff loader
             load_tiff.gui()
+            
+            #Get overlay
+            if overlay:
+                A = np.array(deepcopy(g.win.image))
+                print(A.shape)
+                endFrame = g.win.mt -1
+                g.win.close()
+                overlayWin =  Window(A[overlayStart:endFrame,:,:],'Overlay')
+                dataWin = Window(A[0:overlayStart,:,:],'Overlay')      
+            
+            #Trim movie
+            if preProcess and slicesDeletedPerMovie != 0:
+                trim(0, slicesDeletedPerMovie, delete=True)   
+                
+                
             #start volumeSlider
             camVolumeSlider.startVolumeSlider(keepWindow=keepOriginalWindow, preProcess=preProcess, framesPerVol = slicesPerVolume, framesToDelete = slicesDeletedPerVolume) 
                         
@@ -138,21 +176,34 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
         self.preProcess = CheckBox()
         self.preProcess.setValue(g.settings['volumeSlider']['preProcess'])        
 
-
         self.framesPerVolume = pg.SpinBox(int=True, step=1)
         self.framesPerVolume.setValue(g.settings['volumeSlider']['slicesPerVolume'])        
         
         self.framesRemoved = pg.SpinBox(int=True, step=1)
-        self.framesRemoved.setValue(g.settings['volumeSlider']['slicesDeletedPerVolume'])        
+        self.framesRemoved.setValue(g.settings['volumeSlider']['slicesDeletedPerVolume'])   
         
+        self.framesRemovedStart = pg.SpinBox(int=True, step=1)
+        self.framesRemovedStart.setValue(g.settings['volumeSlider']['slicesDeletedPerMovie'])          
+        
+        self.overlay = CheckBox()
+        self.overlay.setValue(g.settings['volumeSlider']['overlay'])         
+        
+        self.overlayStart = pg.SpinBox(int=True, step=1)
+        self.overlayStart.setValue(g.settings['volumeSlider']['overlayStart']) 
         
         #populate GUI
         self.items.append({'name': 'inputChoice', 'string': 'Choose Input Data:', 'object': inputChoice}) 
         self.items.append({'name': 'keepOriginalWindow','string':'Keep Original Window','object': self.keepOriginalWindow}) 
-        self.items.append({'name': 'preProcess','string':'Preprocess Image stack','object': self.preProcess})  
-
+        
+        self.items.append({'name': 'spacer','string':'------------ Preprocessing Options --------------','object': None})         
+        self.items.append({'name': 'preProcess','string':'Preprocess Image Stack','object': self.preProcess})  
         self.items.append({'name': 'slicesPerVolume','string':'Slices per Volume','object': self.framesPerVolume})  
-        self.items.append({'name': 'slicesDeletedPerVolume','string':'Frames to remove per volume','object': self.framesRemoved})                                     
+        self.items.append({'name': 'slicesDeletedPerVolume','string':'Frames to Remove per Volume','object': self.framesRemoved})                                     
+        self.items.append({'name': 'slicesDeletedPerMovie','string':'Frames to Remove From Start of Stack','object': self.framesRemovedStart})                                     
+
+        self.items.append({'name': 'spacer','string':'------------ Overlay Options --------------','object': None}) 
+        self.items.append({'name': 'overlay','string':'Overlay Image in Stack','object': self.overlay}) 
+        self.items.append({'name': 'overlayStart','string':'1st Frame of Overlay','object': self.overlayStart}) 
         
         super().gui()
         
