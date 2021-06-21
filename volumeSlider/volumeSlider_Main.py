@@ -114,7 +114,7 @@ class CamVolumeSlider(BaseProcess):
         self.savePath = ''
         return
 
-    def startVolumeSlider(self, A=[], keepWindow=False, batch=False, preProcess=False, nVols = None, framesPerVol = None, framesToDelete = 0):
+    def startVolumeSlider(self, A=[], keepWindow=False, batch=False, preProcess=False, nVols = None, framesPerVol = None, framesToDelete = 0, overlayEmbeded = False, A_overlay = None):
         if batch:
             self.batch = True
             self.batchOptions = BatchOptions()
@@ -147,6 +147,11 @@ class CamVolumeSlider(BaseProcess):
         
         if preProcess:
             self.preProcess_stack(framesPerVol, framesToDelete = 0)
+
+        if overlayEmbeded:
+            self.A_overlay = A_overlay
+            self.overlayWindow = Window(self.A_overlay,'Overlay Window')
+            self.processOverlay(framesPerVol, framesToDelete = 0)
         
         return
 
@@ -161,6 +166,11 @@ class CamVolumeSlider(BaseProcess):
         print('Precrocessing Image Stack')  
         self.dialogbox.updateVolumeValue()
         
+    def processOverlay(self, framesPerVol, framesToDelete = 0):
+        print("Processing overlay"):
+        #TODO
+        return
+
 
     def batchProcess(self, paramDict):
         print(paramDict)

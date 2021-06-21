@@ -143,7 +143,7 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
                 print(A.shape)
                 endFrame = g.win.mt -1
                 g.win.close()
-                overlayWin =  Window(A[overlayStart:endFrame,:,:],'Overlay')
+                #overlayWin =  Window(A[overlayStart:endFrame,:,:],'Overlay')
                 dataWin = Window(A[0:overlayStart,:,:],'Overlay')      
             
             #Trim movie
@@ -152,7 +152,12 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
                 
                 
             #start volumeSlider
-            camVolumeSlider.startVolumeSlider(keepWindow=keepOriginalWindow, preProcess=preProcess, framesPerVol = slicesPerVolume, framesToDelete = slicesDeletedPerVolume) 
+            
+            if overlay:
+                camVolumeSlider.startVolumeSlider(keepWindow=keepOriginalWindow, preProcess=preProcess, framesPerVol = slicesPerVolume, framesToDelete = slicesDeletedPerVolume, overlayEmbeded = True, A_overlay = A[overlayStart:endFrame,:,:]) 
+                
+            else:
+                camVolumeSlider.startVolumeSlider(keepWindow=keepOriginalWindow, preProcess=preProcess, framesPerVol = slicesPerVolume, framesToDelete = slicesDeletedPerVolume) 
                         
         return
 
@@ -201,7 +206,7 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
         self.items.append({'name': 'slicesDeletedPerVolume','string':'Frames to Remove per Volume','object': self.framesRemoved})                                     
         self.items.append({'name': 'slicesDeletedPerMovie','string':'Frames to Remove From Start of Stack','object': self.framesRemovedStart})                                     
 
-        self.items.append({'name': 'spacer','string':'------------ Overlay Options --------------','object': None}) 
+        self.items.append({'name': 'spacer','string':'------------    Overlay Options    --------------','object': None}) 
         self.items.append({'name': 'overlay','string':'Overlay Image in Stack','object': self.overlay}) 
         self.items.append({'name': 'overlayStart','string':'1st Frame of Overlay','object': self.overlayStart}) 
         
