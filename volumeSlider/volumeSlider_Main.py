@@ -115,6 +115,7 @@ class CamVolumeSlider(BaseProcess):
         return
 
     def startVolumeSlider(self, A=[], keepWindow=False, batch=False, preProcess=False, nVols = None, framesPerVol = None, framesToDelete = 0, overlayEmbeded = False, A_overlay = None):
+        self.overlayEmbeded = overlayEmbeded
         if batch:
             self.batch = True
             self.batchOptions = BatchOptions()
@@ -149,6 +150,7 @@ class CamVolumeSlider(BaseProcess):
             self.preProcess_stack(framesPerVol, framesToDelete = 0)
 
         if overlayEmbeded:
+            print('Generating overlay window...')
             self.A_overlay = A_overlay
             self.overlayWindow = Window(self.A_overlay,'Overlay Window')
             self.processOverlay(framesPerVol, framesToDelete = 0)
@@ -167,7 +169,7 @@ class CamVolumeSlider(BaseProcess):
         self.dialogbox.updateVolumeValue()
         
     def processOverlay(self, framesPerVol, framesToDelete = 0):
-        print("Processing overlay"):
+        print("Processing overlay")
         #TODO
         return
 
@@ -419,7 +421,16 @@ class CamVolumeSlider(BaseProcess):
             if self.batch:
                 self.viewer = SliceViewer(camVolumeSlider, self.B, batch=True, imsExportPath=self.imsPath)
                 return
+            
+            #start viewer with GUI
+            print('3D viewer starting...')
             self.viewer = SliceViewer(camVolumeSlider, self.B)
+            print(self.overlayEmbeded)
+            #add overlay embedded in  stack
+            if self.overlayEmbeded:
+                print('overlay added from stack')
+                self.viewer.overlayArray_start(overlayFromStack=True, overlayArray = self.A_overlay)
+
         return
 
     def closeViewer(self):

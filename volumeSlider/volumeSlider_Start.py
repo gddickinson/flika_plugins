@@ -112,7 +112,7 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
                 print(A.shape)
                 endFrame = g.win.mt -1
                 g.win.close()
-                overlayWin =  Window(A[overlayStart:endFrame,:,:],'Overlay')
+                #overlayWin =  Window(A[overlayStart:endFrame,:,:],'Overlay')
                 dataWin = Window(A[0:overlayStart,:,:],'Overlay')
             
             #Trim movie
@@ -120,7 +120,11 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
                 trim(0, slicesDeletedPerMovie, delete=True)  
             
             #start volumeSlider
-            camVolumeSlider.startVolumeSlider(keepWindow=keepOriginalWindow, preProcess=preProcess, framesPerVol = slicesPerVolume, framesToDelete = slicesDeletedPerVolume)
+            if overlay:
+                camVolumeSlider.startVolumeSlider(keepWindow=keepOriginalWindow, preProcess=preProcess, framesPerVol = slicesPerVolume, framesToDelete = slicesDeletedPerVolume, overlayEmbeded = True, A_overlay = A[overlayStart:endFrame,:,:]) 
+                
+            else:
+                camVolumeSlider.startVolumeSlider(keepWindow=keepOriginalWindow, preProcess=preProcess, framesPerVol = slicesPerVolume, framesToDelete = slicesDeletedPerVolume) 
             
         elif inputChoice == 'Numpy Array':
             A_path = open_file_gui(directory=os.path.expanduser("~/Desktop"),filetypes='*.npy')

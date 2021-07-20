@@ -751,11 +751,16 @@ class SliceViewer(BaseProcess):
             self.exportIMSdialogWin.export()
 
 
-    def overlayArray_start(self):
+    def overlayArray_start(self, overlayFromStack=False, overlayArray = None):
         #get array data
-        A_path = open_file_gui(directory=os.path.expanduser("~/Desktop"),filetypes='*.npy')
-        g.m.statusBar().showMessage("Importing Array: " + A_path)
-        self.A_overlay = np.load(str(A_path))
+        if overlayFromStack:
+            self.A_overlay = overlayArray
+            
+        else:
+            A_path = open_file_gui(directory=os.path.expanduser("~/Desktop"),filetypes='*.npy')
+            g.m.statusBar().showMessage("Importing Array: " + A_path)
+            self.A_overlay = np.load(str(A_path))
+        
         #perform transform
         self.A_overlay= perform_shear_transform(self.A_overlay, self.shift_factor, self.interpolate, self.originalData.dtype, self.theta, inputArrayOrder=self.inputArrayOrder,displayArrayOrder=self.displayArrayOrder)
         #set flags
