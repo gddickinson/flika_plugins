@@ -771,7 +771,8 @@ class SliceViewer(BaseProcess):
         self.overlayUpdate(0)
         #link TOP overlay histgramLUT to other windows
         self.bgItem_imv1.hist_luttt.item.sigLevelsChanged.connect(self.setOverlayLevels)
-        self.bgItem_imv1.hist_luttt.item.sigLookupTableChanged.connect(self.setOverlayLUTs)        
+        self.bgItem_imv1.hist_luttt.item.sigLookupTableChanged.connect(self.setOverlayLUTs)    
+
         return
 
 

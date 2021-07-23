@@ -154,6 +154,8 @@ class CamVolumeSlider(BaseProcess):
             self.A_overlay = A_overlay
             self.overlayWindow = Window(self.A_overlay,'Overlay Window')
             self.processOverlay(framesPerVol, framesToDelete = 0)
+            #start 3D display
+            self.startViewer()
         
         return
 
