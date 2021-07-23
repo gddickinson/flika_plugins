@@ -429,7 +429,10 @@ class CamVolumeSlider(BaseProcess):
             #add overlay embedded in  stack
             if self.overlayEmbeded:
                 print('overlay added from stack')
-                self.viewer.overlayArray_start(overlayFromStack=True, overlayArray = self.A_overlay)
+                #overlay_nFrames, overlay_x, overlay_y = self.A.shape
+                A_overlay_trim = self.A_overlay[0:self.getFramesPerVol(),:,:] #first volume only
+                A_overlay_4D = np.reshape(A_overlay_trim, (self.getFramesPerVol(),1,self.x,self.y), order='F')
+                self.viewer.overlayArray_start(overlayFromStack=True, overlayArray = A_overlay_4D)
 
         return
 

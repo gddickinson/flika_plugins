@@ -762,6 +762,7 @@ class SliceViewer(BaseProcess):
             self.A_overlay = np.load(str(A_path))
         
         #perform transform
+        print('overlay shape: ',self.A_overlay.shape)
         self.A_overlay= perform_shear_transform(self.A_overlay, self.shift_factor, self.interpolate, self.originalData.dtype, self.theta, inputArrayOrder=self.inputArrayOrder,displayArrayOrder=self.displayArrayOrder)
         #set flags
         self.overlayFlag = True      
