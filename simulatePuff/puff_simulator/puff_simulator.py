@@ -164,6 +164,9 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         self.plotHistoTimes = CheckBox()
         self.plotHistoTimes.setValue(False)
         
+        self.addPuffsSequentially = CheckBox()
+        self.addPuffsSequentially.setValue(False)
+        
         self.exportTimes_button = QPushButton('Export times')
         self.exportTimes_button.pressed.connect(self.exportTimes)  
         
@@ -184,7 +187,8 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         self.items.append({'name': 'puff_Button', 'string': 'Click to add Puff', 'object': self.puffButton}) 
         self.items.append({'name': 'blank', 'string': '---------- RANDOM PUFFS ---------------------------', 'object': None}) 
         #self.items.append({'name': 'nPuffs', 'string': 'Number of puffs to add', 'object': self.nPuffs_slider})  
-        self.items.append({'name': 'meanExp', 'string': 'Mean of exponential distibution', 'object': self.meanExp_slider})  
+        self.items.append({'name': 'meanExp', 'string': 'Mean of exponential distibution', 'object': self.meanExp_slider}) 
+        self.items.append({'name': 'puffsSequential', 'string': 'Wait until puff ends before adding next puff:', 'object': self.addPuffsSequentially})        
         self.items.append({'name': 'histoTimes', 'string': 'Plot histogram of puff start times:', 'object': self.plotHistoTimes})
         self.items.append({'name': 'random_puff_Button', 'string': 'Click to add randomly distibuted puffs', 'object': self.randomPuffButton}) 
         self.items.append({'name': 'listTimes', 'string': 'Export list of puff start times', 'object': self.exportTimes_button})          
@@ -290,7 +294,14 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         while time < self.dt-self.getValue('nFrames'):
             try:
                 time = int(time + np.random.exponential(scale=mean, size=1))
-                self.addPuff(time = time)
+                
+                #if sequental, add puff duration to time
+                if self.getValue('puffsSequential'):
+                    time = time + self.getValue('nFrames')                    
+                    
+                #add puff at time    
+                self.addPuff(time = time)                    
+
                 self.timesAdded.append(time)            
                 puffsAdded +=1 
             except:
