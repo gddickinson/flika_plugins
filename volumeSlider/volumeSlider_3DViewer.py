@@ -55,6 +55,11 @@ class SliceViewer(BaseProcess):
 
     def __init__(self, viewerInstance, A, batch=False, imsExportPath=''):
         super().__init__()
+        #init mouse position
+        self.crosshairX = 0.0
+        self.crosshairY = 0.0
+        self.crosshairZ = 0.0
+        
         self.batch = batch
         self.imsExportPath = imsExportPath
         self.exportFakeSuperRes = True
@@ -120,6 +125,7 @@ class SliceViewer(BaseProcess):
         self.dock5 = Dock("Time Slider", size=(950,50))
         self.dock6 = Dock("Z Slice", size=(500,400), closable=True)
         self.dock7 = Dock("Quick Buttons",size=(50,50))
+        self.dock8 = Dock("Logging Buttons",size=(1000,50), closable=True)
 
         #add docks to area
         self.area.addDock(self.dock1, 'left')                   ## place d1 at left edge of dock area
@@ -129,6 +135,7 @@ class SliceViewer(BaseProcess):
         self.area.addDock(self.dock5, 'bottom')                 ## place d4 at bottom edge of d2
         self.area.addDock(self.dock6, 'below', self.dock4)      ## tab below d4
         self.area.addDock(self.dock7, 'right', self.dock5)      ## d7 right of d5
+        self.area.addDock(self.dock8, 'bottom', self.dock5)      ## d8 below of d5        
 
         #initialise image widgets
         self.imv1 = pg.ImageView()
@@ -155,6 +162,7 @@ class SliceViewer(BaseProcess):
         #hide dock title-bars at start
         self.dock5.hideTitleBar()
         self.dock7.hideTitleBar()
+        self.dock8.hideTitleBar()        
 
         #add menu functions
         self.state = self.area.saveState()
@@ -253,6 +261,20 @@ class SliceViewer(BaseProcess):
         self.quickOverlayButton = QtWidgets.QPushButton("Overlay") 
         self.dock7.addWidget(self.quickOverlayButton)
         self.quickOverlayButton.clicked.connect(self.quickOverlay)
+
+        #add buttons to 'logging' dock
+        self.logPuffButton = QtWidgets.QPushButton("Log Puff") 
+        self.dock8.addWidget(self.logPuffButton)
+        self.logPuffButton.clicked.connect(self.logPuff)  
+
+        self.logMarkerButton = QtWidgets.QPushButton("Log Marker") 
+        self.dock8.addWidget(self.logMarkerButton)
+        self.logMarkerButton.clicked.connect(self.logMarker)          
+
+        self.loggingText =  'Crosshair position: x = {}, y = {}, z = {}'.format(int(self.crosshairX),int(self.crosshairY),int(self.crosshairZ))       
+        self.loggingLabel = QtWidgets.QLabel(self.loggingText)
+        self.dock8.addWidget(self.loggingLabel)        
+        
 
         #display window
         if self.batch == False:
@@ -443,6 +465,23 @@ class SliceViewer(BaseProcess):
     
             if self.overlayFlag:
                 self.runOverlayUpdate(6)
+        
+        self.updateCrosshairLabel()
+        
+
+    def logPuff(self):
+        print("Puff logged at: ", self.crosshairX, self.crosshairY, self.crosshairZ)
+        
+    def logMarker(self):
+        print("Marker logged at: ", self.crosshairX, self.crosshairY, self.crosshairZ)        
+
+    def updateCrosshairLabel(self):
+        self.crosshairX = self.roiCenter.pos()[0] + 10
+        self.crosshairY = self.roiCenter.pos()[1] + 10
+    
+        self.loggingText =  'Crosshair position: x = {}, y = {}, z = {}'.format(int(self.crosshairX),int(self.crosshairY),int(self.crosshairZ))       
+        self.loggingLabel.setText(self.loggingText)
+
 
     def update_center_fromLines(self):
         #move center roi after cursor lines moved
