@@ -192,12 +192,19 @@ class Form2(QtWidgets.QDialog):
         self.button13 = QtWidgets.QPushButton("close 3D viewer")
         
         self.button14 = QtWidgets.QPushButton("load new file")
+        
+        self.button15 = QtWidgets.QPushButton("Set overlay to current volume")       
+        
 
         #labels
         self.ratioVolStartLabel = QtWidgets.QLabel("ratio start volume: ")
         self.ratioVolEndLabel = QtWidgets.QLabel("ratio End volume: ")        
         self.volumeLabel = QtWidgets.QLabel("# of volumes: ")
         self.volumeText = QtWidgets.QLabel("  ")
+        
+        self.currentVolumeLabel = QtWidgets.QLabel("current volume: ")
+        self.currentVolumeText = QtWidgets.QLabel("0")        
+        
 
         self.shapeLabel = QtWidgets.QLabel("array shape: ")
         self.shapeText = QtWidgets.QLabel(str(self.viewer.getArrayShape()))
@@ -251,45 +258,52 @@ class Form2(QtWidgets.QDialog):
 
         layout.addWidget(self.volumeLabel, 9, 0)
         layout.addWidget(self.volumeText, 9, 1)
+        
+        layout.addWidget(self.currentVolumeLabel, 9, 2)
+        layout.addWidget(self.currentVolumeText, 9, 3)        
+        
         layout.addWidget(self.shapeLabel, 10, 0)
         layout.addWidget(self.shapeText, 10, 1)
 
         layout.addWidget(self.spinLabel8, 11, 0)
         layout.addWidget(self.SpinBox8, 11, 1)
         layout.addWidget(self.button8, 11, 2)
+        
+        layout.addWidget(self.button15, 12, 0)       
+        
 
-        layout.addWidget(self.dataTypeLabel, 12, 0)
-        layout.addWidget(self.dataTypeText, 12, 1)
-        layout.addWidget(self.dataTypeChangeLabel, 12, 2)
-        layout.addWidget(self.dTypeSelectorBox, 12,3)
-        layout.addWidget(self.button7, 12, 4)
+        layout.addWidget(self.dataTypeLabel, 13, 0)
+        layout.addWidget(self.dataTypeText, 13, 1)
+        layout.addWidget(self.dataTypeChangeLabel, 13, 2)
+        layout.addWidget(self.dTypeSelectorBox, 13,3)
+        layout.addWidget(self.button7, 13, 4)
 
-        layout.addWidget(self.button6, 14, 0)
-        layout.addWidget(self.button1, 14, 4)
-        layout.addWidget(self.button6, 14, 0)
-        layout.addWidget(self.button1, 14, 4)
-        layout.addWidget(self.button9, 15, 0)
+        layout.addWidget(self.button6, 15, 0)
+        layout.addWidget(self.button1, 15, 4)
+        layout.addWidget(self.button6, 15, 0)
+        layout.addWidget(self.button1, 15, 4)
+        layout.addWidget(self.button9, 16, 0)
       
-        layout.addWidget(self.arraySavePathLabel, 15, 1, 1, 4)      
+        layout.addWidget(self.arraySavePathLabel, 16, 1, 1, 4)      
         
         
-        layout.addWidget(self.spinLabel9, 17, 0)
-        layout.addWidget(self.SpinBox9, 17, 1)
+        layout.addWidget(self.spinLabel9, 18, 0)
+        layout.addWidget(self.SpinBox9, 18, 1)
 
-        layout.addWidget(self.spinLabel10, 18, 0)
-        layout.addWidget(self.SpinBox10, 18, 1)
-        layout.addWidget(self.trim_last_frameLabel, 19, 0)
-        layout.addWidget(self.trim_last_frame_checkbox, 19, 1)
+        layout.addWidget(self.spinLabel10, 19, 0)
+        layout.addWidget(self.SpinBox10, 19, 1)
+        layout.addWidget(self.trim_last_frameLabel, 20, 0)
+        layout.addWidget(self.trim_last_frame_checkbox, 20, 1)
 
-        layout.addWidget(self.inputArrayLabel, 20, 0)
-        layout.addWidget(self.inputArraySelectorBox, 20, 1)
+        layout.addWidget(self.inputArrayLabel, 21, 0)
+        layout.addWidget(self.inputArraySelectorBox, 21, 1)
 
-        layout.addWidget(self.displayArrayLabel, 20, 2)
-        layout.addWidget(self.displayArraySelectorBox, 20, 3)
+        layout.addWidget(self.displayArrayLabel, 21, 2)
+        layout.addWidget(self.displayArraySelectorBox, 21, 3)
 
-        layout.addWidget(self.button12, 21, 0)
-        layout.addWidget(self.button13, 21, 1)
-        layout.addWidget(self.button14, 21, 2)  
+        layout.addWidget(self.button12, 22, 0)
+        layout.addWidget(self.button13, 22, 1)
+        layout.addWidget(self.button14, 22, 2)  
 
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -315,7 +329,8 @@ class Form2(QtWidgets.QDialog):
         self.button9.clicked.connect(self.exportArray)            
         self.button12.clicked.connect(self.startViewer)
         self.button13.clicked.connect(self.closeViewer)
-        self.button14.clicked.connect(lambda: self.loadNewFile(''))        
+        self.button14.clicked.connect(lambda: self.loadNewFile(''))   
+        self.button15.clicked.connect(self.setOverlay)
 
         return
 
@@ -418,6 +433,9 @@ class Form2(QtWidgets.QDialog):
         self.saveSettings()
         self.viewer.startViewer()
         return
+
+    def setOverlay(self):
+        self.viewer.setOverlay()
 
     def closeViewer(self):
         self.viewer.closeViewer()

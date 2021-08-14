@@ -175,6 +175,26 @@ class CamVolumeSlider(BaseProcess):
         #TODO
         return
 
+    def setOverlay(self):
+        
+        if self.B == []:
+            print('first set number of frames per volume')
+            g.m.statusBar().showMessage("first set number of frames per volume")
+        
+        self.overlayVolume = self.displayWindow.imageview.currentIndex
+        print("Setting overlay from currrent volume: " + str(self.overlayVolume) )  
+
+        #create overlay
+        self.A_overlay = self.B[:,self.overlayVolume,:,:]
+        self.overlayWindow = Window(self.A_overlay[0],'Overlay Window')
+        self.overlayEmbeded = True
+        
+        #update main display
+        self.B = self.B[:,0:self.overlayVolume,:,:]
+        self.displayWindow.imageview.setImage(self.B[0], autoLevels=False)
+        self.displayWindow.imageview.setCurrentIndex(self.overlayVolume-1)        
+        return
+
 
     def batchProcess(self, paramDict):
         print(paramDict)
@@ -270,12 +290,21 @@ class CamVolumeSlider(BaseProcess):
             self.B = self.B[self.framesToDelete:-1,:,:,:]
                 
         self.displayWindow.imageview.setImage(self.B[0],autoLevels=False)
+        
+        self.displayWindow.imageview.timeLine.sigPositionChanged.connect(self.displayCurrentVolume)
+        
         return
 
     def updateDisplay_sliceNumberChange(self, index):
         displayIndex = self.displayWindow.imageview.currentIndex
         self.displayWindow.imageview.setImage(self.B[index],autoLevels=False)
         self.displayWindow.imageview.setCurrentIndex(displayIndex)
+
+        if self.overlayEmbeded:
+            self.overlayWindow.imageview.setImage(self.A_overlay[index],autoLevels=False)
+            self.overlayWindow.imageview.setCurrentIndex(displayIndex)
+        
+        
         return
 
     def getNFrames(self):
@@ -440,6 +469,11 @@ class CamVolumeSlider(BaseProcess):
 
     def closeViewer(self):
         self.viewer.close()
+        return
+
+
+    def displayCurrentVolume(self):
+        self.dialogbox.currentVolumeText.setText(str(self.displayWindow.imageview.currentIndex))
         return
 
 camVolumeSlider = CamVolumeSlider()
