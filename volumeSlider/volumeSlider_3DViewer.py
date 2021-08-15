@@ -48,6 +48,8 @@ dataType = np.float16
 from matplotlib import cm
 from pathlib import Path
 
+import pandas as pd
+
 #########################################################################################
 #############                  slice viewer (3D Display)                #################
 #########################################################################################
@@ -59,6 +61,11 @@ class SliceViewer(BaseProcess):
         self.crosshairX = 0.0
         self.crosshairY = 0.0
         self.crosshairZ = 0.0
+        
+        #init pandas tables for logging
+        columnNames = ["x","y","z"]
+        self.puffDF = pd.DataFrame(columns=columnNames)
+        self.markerDF = pd.DataFrame(columns=columnNames)
         
         self.batch = batch
         self.imsExportPath = imsExportPath
@@ -125,7 +132,7 @@ class SliceViewer(BaseProcess):
         self.dock5 = Dock("Time Slider", size=(950,50))
         self.dock6 = Dock("Z Slice", size=(500,400), closable=True)
         self.dock7 = Dock("Quick Buttons",size=(50,50))
-        self.dock8 = Dock("Logging Buttons",size=(1000,50), closable=True)
+        self.dock8 = Dock("Logging Buttons",size=(1050,50), closable=True)
 
         #add docks to area
         self.area.addDock(self.dock1, 'left')                   ## place d1 at left edge of dock area
@@ -263,19 +270,39 @@ class SliceViewer(BaseProcess):
         self.quickOverlayButton.clicked.connect(self.quickOverlay)
 
         #add buttons to 'logging' dock
+        self.loggingText =  'Crosshair position: x = {}, y = {}, z = {}'.format(int(self.crosshairX),int(self.crosshairY),int(self.crosshairZ))       
+        self.loggingLabel = QtWidgets.QLabel(self.loggingText)
+        self.dock8.addWidget(self.loggingLabel, col=0, row=0)
+
         self.logPuffButton = QtWidgets.QPushButton("Log Puff") 
-        self.dock8.addWidget(self.logPuffButton)
+        self.dock8.addWidget(self.logPuffButton, col=1, row=0)
         self.logPuffButton.clicked.connect(self.logPuff)  
 
         self.logMarkerButton = QtWidgets.QPushButton("Log Marker") 
-        self.dock8.addWidget(self.logMarkerButton)
-        self.logMarkerButton.clicked.connect(self.logMarker)          
+        self.dock8.addWidget(self.logMarkerButton, col=2, row=0)
+        self.logMarkerButton.clicked.connect(self.logMarker) 
+                            
+        self.deletePuffButton = QtWidgets.QPushButton("Delete last Puff") 
+        self.dock8.addWidget(self.deletePuffButton, col=3, row=0)
+        self.deletePuffButton.clicked.connect(self.deletePuff)                              
+                             
+        self.deleteMarkerButton = QtWidgets.QPushButton("Delete last Marker") 
+        self.dock8.addWidget(self.deleteMarkerButton, col=4, row=0)
+        self.deleteMarkerButton.clicked.connect(self.deleteMarker) 
 
-        self.loggingText =  'Crosshair position: x = {}, y = {}, z = {}'.format(int(self.crosshairX),int(self.crosshairY),int(self.crosshairZ))       
-        self.loggingLabel = QtWidgets.QLabel(self.loggingText)
-        self.dock8.addWidget(self.loggingLabel)        
+        self.clearPuffButton = QtWidgets.QPushButton("Clear Puffs") 
+        self.dock8.addWidget(self.clearPuffButton, col=5, row=0)
+        self.clearPuffButton.clicked.connect(self.clearPuff)                              
+                             
+        self.clearMarkerButton = QtWidgets.QPushButton("Clear Markers") 
+        self.dock8.addWidget(self.clearMarkerButton, col=6, row=0)
+        self.clearMarkerButton.clicked.connect(self.clearMarker) 
+
+        self.exportLogButton = QtWidgets.QPushButton("Export Log") 
+        self.dock8.addWidget(self.exportLogButton, col=7, row=0)
+        self.exportLogButton.clicked.connect(self.exportLogs) 
+
         
-
         #display window
         if self.batch == False:
             self.win.show()
@@ -470,14 +497,44 @@ class SliceViewer(BaseProcess):
         
 
     def logPuff(self):
+        self.puffDF = self.puffDF.append({'x':self.crosshairX,'y':self.crosshairY,'z':self.crosshairZ}, ignore_index=True)
         print("Puff logged at: ", self.crosshairX, self.crosshairY, self.crosshairZ)
         
     def logMarker(self):
-        print("Marker logged at: ", self.crosshairX, self.crosshairY, self.crosshairZ)        
+        self.markerDF = self.markerDF.append({'x':self.crosshairX,'y':self.crosshairY,'z':self.crosshairZ}, ignore_index=True)          
+        print("Marker logged at: ", self.crosshairX, self.crosshairY, self.crosshairZ)    
+      
+    def deletePuff(self):
+        self.puffDF.drop(self.puffDF.tail(1).index, inplace=True)
+        print("Last puff from list removed")
+        
+    def deleteMarker(self): 
+        self.markerDF.drop(self.markerDF.tail(1).index, inplace=True)        
+        print("Last marker from list removed")        
+
+    def clearPuff(self):
+        columnNames = ["x","y","z"]
+        self.puffDF = pd.DataFrame(columns=columnNames)
+        print("Puff list cleared")        
+
+    def clearMarker(self):
+        columnNames = ["x","y","z"]
+        self.markerDF = pd.DataFrame(columns=columnNames)        
+        print("Marker list cleared")
+
+    def exportLogs(self):
+        savePath = QtWidgets.QFileDialog.getSaveFileName(self.win,'Save Log', os.path.expanduser("~/Desktop"), 'csv (*.csv)')
+        savePath = str(savePath[0])   
+        frames = [self.puffDF,self.markerDF]
+        keys = ['puff','marker']
+        exportDF = pd.concat(frames,keys=keys)
+        exportDF.to_csv(savePath)
+        print('Log data exported')
 
     def updateCrosshairLabel(self):
         self.crosshairX = self.roiCenter.pos()[0] + 10
         self.crosshairY = self.roiCenter.pos()[1] + 10
+        self.crosshairZ = self.imv6.currentIndex
     
         self.loggingText =  'Crosshair position: x = {}, y = {}, z = {}'.format(int(self.crosshairX),int(self.crosshairY),int(self.crosshairZ))       
         self.loggingLabel.setText(self.loggingText)
@@ -492,6 +549,7 @@ class SliceViewer(BaseProcess):
         #move cursor lines as center roi is moved
         self.roi2.setPos((self.roi2.pos()[0],self.roiCenter.pos()[1]-int(self.height/2)+10), finish=False)
         self.roi3.setPos((self.roiCenter.pos()[0]-int(self.width/2)+10,self.roi3.pos()[1]), finish=False)
+
 
     def runOverlayUpdate(self, win):
             self.updateOverlayLevels()
@@ -738,7 +796,7 @@ class SliceViewer(BaseProcess):
         else:
             z=imv.currentIndex
             value=image[int(self.x),int(self.y)]
-            g.m.statusBar().showMessage('x={}, y={}, z={}, value={}'.format(int(self.x),int(self.y),z,value))
+            g.m.statusBar().showMessage('x={}, y={}, value={}'.format(int(self.x),int(self.y),value))
 
     def mouseMoved_1(self,point):
         self.mouseMoved(point,self.imv1)
