@@ -125,7 +125,8 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         s['sigma'] = 20
         s['useROI'] = False
         s['meanExp'] = 5.0
-        s['nPuffs'] = 0     
+        s['nPuffs'] = 0    
+        s['nSites'] = 100
         
 
         return s
@@ -154,6 +155,8 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         self.puffButton.pressed.connect(self.addPuff)  
         
         self.randomPuffsAdded = False
+        
+        self.nSites = 100
 
         self.nPuffs_slider = SliderLabel(0)
         self.nPuffs_slider.setRange(1, 1000)      
@@ -170,8 +173,15 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         self.exportTimes_button = QPushButton('Export times')
         self.exportTimes_button.pressed.connect(self.exportTimes)  
         
-        self.randomPuffButton = QPushButton('Add Puffs')
-        self.randomPuffButton.pressed.connect(self.addRandomPuffs)          
+        self.randomPuffButton = QPushButton('Add Puffs to site')
+        self.randomPuffButton.pressed.connect(self.addRandomPuffs)     
+        
+        self.multipleRandomPuffButton = QPushButton('Add Puffs inside ROI')
+        self.multipleRandomPuffButton.pressed.connect(self.addMultipleRandomPuffs)          
+        
+        self.nSites_box = QSpinBox()
+        self.nSites_box.setRange(0,10000)
+        self.nSites_box.setValue(self.nSites)
 
         
         self.items.append({'name': 'active_window', 'string': 'Select Window', 'object': self.active_window})             
@@ -190,7 +200,10 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         self.items.append({'name': 'meanExp', 'string': 'Mean of exponential distibution', 'object': self.meanExp_slider}) 
         self.items.append({'name': 'puffsSequential', 'string': 'Wait until puff ends before adding next puff:', 'object': self.addPuffsSequentially})        
         self.items.append({'name': 'histoTimes', 'string': 'Plot histogram of puff start times:', 'object': self.plotHistoTimes})
-        self.items.append({'name': 'random_puff_Button', 'string': 'Click to add randomly distibuted puffs', 'object': self.randomPuffButton}) 
+        self.items.append({'name': 'random_puff_Button', 'string': 'Click to add randomly distibuted puffs at one site', 'object': self.randomPuffButton}) 
+        self.items.append({'name': 'multipleRandom_puff_Button', 'string': 'Click to add randomly distibuted puffs at multiple sites', 'object': self.multipleRandomPuffButton})
+        self.items.append({'name': 'nSites', 'string': 'Number of Sites to add', 'object': self.nSites_box})
+        self.items.append({'name': 'blank', 'string': '---------- Export Puffs ---------------------------', 'object': None})                 
         self.items.append({'name': 'listTimes', 'string': 'Export list of puff start times', 'object': self.exportTimes_button})          
 
         super().gui()
@@ -216,7 +229,7 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         
         self.sigma.setRange(1,int(self.dx/7))
 
-    def addPuff(self, time=False):
+    def addPuff(self, time=False, singleSite = True, x=None, y=None):
         '''add synthetic blip to image stack'''
         #select window
         self.currentWin = self.getValue('active_window')
@@ -242,8 +255,11 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
             t = self.getValue('startFrame')
         else:
             t = time
-        x = self.getValue('x')
-        y = self.getValue('y')
+            
+        if singleSite:
+            x = self.getValue('x')
+            y = self.getValue('y')
+            
         
         tt = np.arange(t,t+duration,dtype=np.int)
         xx = np.arange(x-x_size-1, x+x_size, dtype=np.int)
@@ -267,7 +283,7 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         return
 
 
-    def addRandomPuffs(self):
+    def addRandomPuffs(self, singleSite=True, x=None, y=None):
         if self.getValue('active_window') == None:
             g.alert('First select window')
             return                
@@ -282,7 +298,7 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         # add first puff
         try:
             time = int(np.random.exponential(scale=mean, size=1) + self.getValue('startFrame'))
-            self.addPuff(time = time)
+            self.addPuff(time = time, singleSite=singleSite, x=x, y=y)
         except:
             puffsOutsideOfRange += 1 
             print('{} puffs added, {} puffs out of range'.format(puffsAdded,puffsOutsideOfRange))
@@ -300,7 +316,7 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
                     time = time + self.getValue('nFrames')                    
                     
                 #add puff at time    
-                self.addPuff(time = time)                    
+                self.addPuff(time = time, singleSite=singleSite, x=x, y=y)                    
 
                 self.timesAdded.append(time)            
                 puffsAdded +=1 
@@ -319,6 +335,68 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
 
         return
 
+    def addMultipleRandomPuffs(self):
+        nSites = self.getValue('nSites')
+        
+        if self.currentWin == None:
+            g.alert('First select window')
+            return
+
+        #select current ROI
+        self.currentROI = self.currentWin.currentROI   
+
+        if self.currentWin.currentROI == None:
+            g.alert('First draw an ROI')      
+            return
+        bounds = self.currentROI.parentBounds()
+        
+        topLeft_x = bounds.topLeft().x()
+        topLeft_y = bounds.topLeft().y()        
+        
+        bottomRight_x = bounds.bottomRight().x()
+        bottomRight_y = bounds.bottomRight().y()        
+        
+        print('adding puffs to {} sites from {},{} to {},{}'.format(nSites, topLeft_x, topLeft_y, bottomRight_x, bottomRight_y))
+        
+        sites = self.getRandomSites(topLeft_x,bottomRight_x,topLeft_y,bottomRight_y,nSites)
+        
+        n = 1
+        
+        for site in sites:
+            print("Puff site: ", n)
+            self.addRandomPuffs(singleSite=False, x=site[0], y=site[1])
+            n +=1
+            
+        print('Finished adding sites')
+        
+        return
+
+
+    def getRandomSites(self, xStart, xEnd, yStart, yEnd, qty, radius=0):
+        import random
+
+        rangeX = (xStart, xEnd)
+        rangeY = (yStart, yEnd)
+        
+        deltas = set()
+        for x in range(-radius, radius+1):
+            for y in range(-radius, radius+1):
+                if x*x + y*y <= radius*radius:
+                    deltas.add((x,y))
+        
+        randPoints = []
+        excluded = set()
+        i = 0
+
+        while i < qty:
+            x = random.randrange(*rangeX)
+            y = random.randrange(*rangeY)
+            if (x,y) in excluded: continue
+            randPoints.append((x,y))
+            i += 1
+            excluded.update((x+dx, y+dy) for (dx,dy) in deltas)
+        
+        return randPoints
 
     def exportTimes(self):
         if self.getValue('active_window') == None:
@@ -394,6 +472,7 @@ class Simulate_Blips(BaseProcess_noPriorWindow):
         self.newtif = generateBlipImage()
         self.newname = ' Simulated Blips '
         return self.end()
+
 simulate_blips = Simulate_Blips()
 
 def generateBlip(sigma=1, amplitude=1, duration=1):
@@ -446,5 +525,6 @@ def generateBlipImage(amplitude=1):
         y = np.arange(y-dy,y+dy+1,dtype=np.int)
         x = np.arange(x-dx,x+dx+1,dtype=np.int)
         A[np.ix_(t,y,x)] = A[np.ix_(t,y,x)]+amplitude*blip
+    
     return Window(A)
 
