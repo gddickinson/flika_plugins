@@ -18,6 +18,7 @@ from copy import deepcopy
 import pyqtgraph as pg
 from matplotlib import pyplot as plt 
 import csv 
+import pandas as pd
 
 import flika
 try:
@@ -126,7 +127,7 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         s['useROI'] = False
         s['meanExp'] = 5.0
         s['nPuffs'] = 0    
-        s['nSites'] = 100
+        s['nSites'] = 10
         
 
         return s
@@ -156,7 +157,10 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         
         self.randomPuffsAdded = False
         
-        self.nSites = 100
+        self.nSites = 10
+        columnNames = ['time of puff', 'site']
+        self.timesAdded = pd.DataFrame(columns=columnNames)
+        self.siteNumber = int(0)
 
         self.nPuffs_slider = SliderLabel(0)
         self.nPuffs_slider.setRange(1, 1000)      
@@ -293,7 +297,6 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         
         puffsAdded = 0
         puffsOutsideOfRange = 0
-        self.timesAdded = []
         
         # add first puff
         try:
@@ -318,7 +321,9 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
                 #add puff at time    
                 self.addPuff(time = time, singleSite=singleSite, x=x, y=y)                    
 
-                self.timesAdded.append(time)            
+                #update puff time log                
+                self.timesAdded = self.timesAdded.append({'time of puff': time, 'site': int(self.siteNumber)},ignore_index=True)                     
+                    
                 puffsAdded +=1 
             except:
                 puffsOutsideOfRange += 1    
@@ -332,6 +337,8 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
             plt.show()
 
         self.randomPuffsAdded = True
+        if singleSite:
+            self.siteNumber += 1
 
         return
 
@@ -358,14 +365,13 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         
         print('adding puffs to {} sites from {},{} to {},{}'.format(nSites, topLeft_x, topLeft_y, bottomRight_x, bottomRight_y))
         
-        sites = self.getRandomSites(topLeft_x,bottomRight_x,topLeft_y,bottomRight_y,nSites)
+        sites = self.getRandomSites(topLeft_x, bottomRight_x, topLeft_y, bottomRight_y, nSites)
         
-        n = 1
         
         for site in sites:
-            print("Puff site: ", n)
+            print("Puff site: ", self.siteNumber)
             self.addRandomPuffs(singleSite=False, x=site[0], y=site[1])
-            n +=1
+            self.siteNumber += 1
             
         print('Finished adding sites')
         
@@ -411,20 +417,24 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         savePath, _ = QFileDialog.getSaveFileName(None, "Save file","","Text Files (*.csv)")        
 
         #write file
-        try:
-            # opening the csv file in 'w+' mode 
-            file = open(savePath, 'w+', newline ='') 
+        self.timesAdded.to_csv(savePath)
+        print('List of times saved to: {}'.format(savePath))
+        
+        # #write file
+        # try:
+        #     # opening the csv file in 'w+' mode 
+        #     file = open(savePath, 'w+', newline ='') 
               
-            # writing the data into the file 
-            with file:     
-                write = csv.writer(file) 
-                write.writerows(map(lambda x: [x], self.timesAdded)) 
+        #     # writing the data into the file 
+        #     with file:     
+        #         write = csv.writer(file) 
+        #         write.writerows(map(lambda x: [x], self.timesAdded)) 
             
-            print('List of times saved to: {}'.format(savePath))
-        except BaseException as e:
-            print(e)
-            print('Export of times failed, printing times to console')
-            print(self.timesAdded)
+        #     print('List of times saved to: {}'.format(savePath))
+        # except BaseException as e:
+        #     print(e)
+        #     print('Export of times failed, printing times to console')
+        #     print(self.timesAdded)
 
     def previewPuff(self):
         '''preview blip to be added'''
