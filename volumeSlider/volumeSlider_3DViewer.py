@@ -57,13 +57,14 @@ class SliceViewer(BaseProcess):
 
     def __init__(self, viewerInstance, A, batch=False, imsExportPath=''):
         super().__init__()
+        
         #init mouse position
         self.crosshairX = 0.0
         self.crosshairY = 0.0
         self.crosshairZ = 0.0
         
         #init pandas tables for logging
-        self.columnNames = ["x","y","z","time","intensity","comments"]
+        self.columnNames = ["x","y","z","time","intensity","comments","file"]
         self.puffDF = pd.DataFrame(columns=self.columnNames)
         self.markerDF = pd.DataFrame(columns=self.columnNames)
         
@@ -74,6 +75,8 @@ class SliceViewer(BaseProcess):
         self.app = QtWidgets.QApplication([])
         
         self.viewer = viewerInstance
+        #init filename
+        self.fileName = self.viewer.getFileName()
         self.overlayFlag = False
 
         self.shift_factor = self.viewer.dialogbox.shiftFactor
@@ -508,11 +511,11 @@ class SliceViewer(BaseProcess):
         
 
     def logPuff(self):
-        self.puffDF = self.puffDF.append({'x':self.crosshairX,'y':self.crosshairY,'z':self.crosshairZ, 'time': self.currentVolume, 'intensity':self.intensity, 'comments':self.textBox.text()}, ignore_index=True)
+        self.puffDF = self.puffDF.append({'x':self.crosshairX,'y':self.crosshairY,'z':self.crosshairZ, 'time': self.currentVolume, 'intensity':self.intensity, 'comments':self.textBox.text(), 'file':self.fileName}, ignore_index=True)
         print("Puff logged at: ", self.crosshairX, self.crosshairY, self.crosshairZ)
         
     def logMarker(self):          
-        self.markerDF = self.markerDF.append({'x':self.crosshairX,'y':self.crosshairY,'z':self.crosshairZ, 'time': self.currentVolume, 'intensity':self.intensity, 'comments':self.textBox.text()}, ignore_index=True)          
+        self.markerDF = self.markerDF.append({'x':self.crosshairX,'y':self.crosshairY,'z':self.crosshairZ, 'time': self.currentVolume, 'intensity':self.intensity, 'comments':self.textBox.text(), 'file':self.fileName}, ignore_index=True)          
         print("Marker logged at: ", self.crosshairX, self.crosshairY, self.crosshairZ)    
       
     def deletePuff(self):

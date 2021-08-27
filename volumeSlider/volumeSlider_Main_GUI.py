@@ -53,7 +53,8 @@ class Form2(QtWidgets.QDialog):
         super(Form2, self).__init__(parent)
         self.batch = False
         self.viewer = viewerInstance
-
+        self.fileName = self.viewer.getFileName()
+        #print('loaded: ',self.fileName)
         self.s = g.settings['volumeSlider']
 
         self.arraySavePath = self.viewer.savePath
@@ -222,6 +223,9 @@ class Form2(QtWidgets.QDialog):
         self.trim_last_frame_checkbox = CheckBox()
         self.trim_last_frame_checkbox.setChecked(self.trim_last_frame)
         self.trim_last_frame_checkbox.stateChanged.connect(self.trim_last_frameClicked)
+        
+        self.fileNameLabel = QtWidgets.QLabel("file name: ")
+        self.fileNameText = QtWidgets.QLabel(str(self.fileName))
 
 
         #grid layout
@@ -304,6 +308,9 @@ class Form2(QtWidgets.QDialog):
         layout.addWidget(self.button12, 22, 0)
         layout.addWidget(self.button13, 22, 1)
         layout.addWidget(self.button14, 22, 2)  
+        
+        layout.addWidget(self.fileNameLabel, 23, 0)
+        layout.addWidget(self.fileNameText, 23, 1, 1, 4)        
 
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -342,7 +349,9 @@ class Form2(QtWidgets.QDialog):
             
         A, _, _ = openTiff(fileName)
         self.viewer.updateVolumeSlider(A)
-        self.viewer.displayWindow.imageview.setImage(A)        
+        self.viewer.displayWindow.imageview.setImage(A)  
+        self.setFileName(fileName) 
+        self.viewer.setFileName(fileName)
         return
 
 
@@ -477,6 +486,12 @@ class Form2(QtWidgets.QDialog):
         
         return
 
+    def setFileName(self, fileName):
+        self.fileName = fileName
+        self.fileNameText.setText(self.fileName)
+        
+    def getFileName(self):
+        return self.fileName
 
     def close(self):
         self.saveSettings()

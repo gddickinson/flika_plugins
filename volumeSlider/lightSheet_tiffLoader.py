@@ -20,11 +20,11 @@ class Load_tiff ():
     def gui(self):
         filetypes = 'Image Files (*.tif *.tiff);;All Files (*.*)'
         prompt = 'Open File'
-        filename = open_file_gui(prompt, filetypes=filetypes)
-        if filename is None:
+        self.filename = open_file_gui(prompt, filetypes=filetypes)
+        if self.filename is None:
             return None
         
-        self.openTiff(filename)    
+        self.openTiff(self.filename)    
             
     def openTiff(self, filename):
         Tiff = tifffile.TiffFile(str(filename))
@@ -121,6 +121,9 @@ class Load_tiff ():
             
             #clear A array to reduce memory use
             A = np.zeros((2,2))
+
+    def getFileName(self):
+        return self.filename
 
 load_tiff = Load_tiff()
 

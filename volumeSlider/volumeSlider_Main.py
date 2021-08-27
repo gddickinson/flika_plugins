@@ -63,6 +63,9 @@ class CamVolumeSlider(BaseProcess):
 
     def __init__(self):
         super().__init__()
+        #init fileName variable
+        self.fileName = ''
+        
         self.nVols = 1
 
         #create dtype dict
@@ -475,6 +478,12 @@ class CamVolumeSlider(BaseProcess):
     def displayCurrentVolume(self):
         self.dialogbox.currentVolumeText.setText(str(self.displayWindow.imageview.currentIndex))
         return
+
+    def setFileName(self, fileName):
+        self.fileName = fileName
+
+    def getFileName(self):
+        return self.fileName
 
 camVolumeSlider = CamVolumeSlider()
 

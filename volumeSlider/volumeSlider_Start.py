@@ -106,6 +106,7 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
         g.m.statusBar().showMessage("Starting Volume Slider...")
         
         if inputChoice == 'Current Window':
+            windowName = g.win.filename
             #Get overlay
             if overlay:
                 A = np.array(deepcopy(g.win.image))
@@ -118,6 +119,8 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
             #Trim movie
             if preProcess and slicesDeletedPerMovie != 0:
                 trim(0, slicesDeletedPerMovie, delete=True)  
+
+            camVolumeSlider.setFileName(windowName)   
             
             #start volumeSlider
             if overlay:
@@ -125,12 +128,17 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
                 
             else:
                 camVolumeSlider.startVolumeSlider(keepWindow=keepOriginalWindow, preProcess=preProcess, framesPerVol = slicesPerVolume, framesToDelete = slicesDeletedPerVolume) 
-            
+        
+            #print('loading:',windowName)
+
+        
         elif inputChoice == 'Numpy Array':
             A_path = open_file_gui(directory=os.path.expanduser("~/Desktop"),filetypes='*.npy')
             g.m.statusBar().showMessage("Importing Array: " + A_path)
             A = np.load(str(A_path))
+            camVolumeSlider.setFileName(A_path) 
             camVolumeSlider.startVolumeSlider(A=A,keepWindow=keepOriginalWindow)
+
 
         elif inputChoice == 'Batch Process':
             g.m.statusBar().showMessage("Starting Batch Processing...")            
@@ -156,12 +164,15 @@ class VolumeSliderBase(BaseProcess_noPriorWindow):
                 
                 
             #start volumeSlider
+            camVolumeSlider.setFileName(load_tiff.getFileName()) 
             
             if overlay:
                 camVolumeSlider.startVolumeSlider(keepWindow=keepOriginalWindow, preProcess=preProcess, framesPerVol = slicesPerVolume, framesToDelete = slicesDeletedPerVolume, overlayEmbeded = True, A_overlay = A[overlayStart:endFrame,:,:]) 
                 
             else:
                 camVolumeSlider.startVolumeSlider(keepWindow=keepOriginalWindow, preProcess=preProcess, framesPerVol = slicesPerVolume, framesToDelete = slicesDeletedPerVolume) 
+
+
                         
         return
 
