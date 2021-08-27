@@ -63,9 +63,9 @@ class SliceViewer(BaseProcess):
         self.crosshairZ = 0.0
         
         #init pandas tables for logging
-        columnNames = ["x","y","z"]
-        self.puffDF = pd.DataFrame(columns=columnNames)
-        self.markerDF = pd.DataFrame(columns=columnNames)
+        self.columnNames = ["x","y","z","time","intensity","comments"]
+        self.puffDF = pd.DataFrame(columns=self.columnNames)
+        self.markerDF = pd.DataFrame(columns=self.columnNames)
         
         self.batch = batch
         self.imsExportPath = imsExportPath
@@ -131,7 +131,7 @@ class SliceViewer(BaseProcess):
         self.dock4 = Dock("Free ROI", size=(500,400), closable=True)
         self.dock5 = Dock("Time Slider", size=(950,50))
         self.dock6 = Dock("Z Slice", size=(500,400), closable=True)
-        self.dock7 = Dock("Quick Buttons",size=(50,50))
+        #self.dock7 = Dock("Quick Buttons",size=(50,50))
         self.dock8 = Dock("Logging Buttons",size=(1050,50), closable=True)
 
         #add docks to area
@@ -141,7 +141,7 @@ class SliceViewer(BaseProcess):
         self.area.addDock(self.dock4, 'bottom', self.dock2)     ## place d4 at bottom edge of d2
         self.area.addDock(self.dock5, 'bottom')                 ## place d4 at bottom edge of d2
         self.area.addDock(self.dock6, 'below', self.dock4)      ## tab below d4
-        self.area.addDock(self.dock7, 'right', self.dock5)      ## d7 right of d5
+        #self.area.addDock(self.dock7, 'right', self.dock5)      ## d7 right of d5
         self.area.addDock(self.dock8, 'bottom', self.dock5)      ## d8 below of d5        
 
         #initialise image widgets
@@ -168,7 +168,7 @@ class SliceViewer(BaseProcess):
 
         #hide dock title-bars at start
         self.dock5.hideTitleBar()
-        self.dock7.hideTitleBar()
+        #self.dock7.hideTitleBar()
         self.dock8.hideTitleBar()        
 
         #add menu functions
@@ -247,6 +247,10 @@ class SliceViewer(BaseProcess):
 
         self.overlayScale_win6 = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Scale Bar Options (Z)',self.win)
         setMenuUp(self.overlayScale_win6,self.fileMenu5,shortcut=None,statusTip='Overlay Scale Bar',connection=(lambda: self.overlayScaleOptions(6)))     
+        
+        self.quickOverlay_option = QtWidgets.QAction(QtGui.QIcon('open.png'), 'Quick overlay (for testing)',self.win)
+        setMenuUp(self.quickOverlay_option ,self.fileMenu5,statusTip='QuickOverlay',connection=self.quickOverlay)         
+        
         #================================================================================================================
         self.fileMenu6 = self.menubar.addMenu('&Filters')
         
@@ -265,12 +269,12 @@ class SliceViewer(BaseProcess):
         self.dock5.addWidget(self.slider1)
 
         #add buttons to 'quick button' dock
-        self.quickOverlayButton = QtWidgets.QPushButton("Overlay") 
-        self.dock7.addWidget(self.quickOverlayButton)
-        self.quickOverlayButton.clicked.connect(self.quickOverlay)
+        #self.quickOverlayButton = QtWidgets.QPushButton("Overlay") 
+        #self.dock7.addWidget(self.quickOverlayButton)
+        #self.quickOverlayButton.clicked.connect(self.quickOverlay)
 
         #add buttons to 'logging' dock
-        self.loggingText =  'Crosshair position: x = {}, y = {}, z = {}'.format(int(self.crosshairX),int(self.crosshairY),int(self.crosshairZ))       
+        self.loggingText =  'x: {}, y: {}, z: {}, t: {}, value: {}'.format(int(self.crosshairX),int(self.crosshairY),int(self.crosshairZ),int(0), int(0))       
         self.loggingLabel = QtWidgets.QLabel(self.loggingText)
         self.dock8.addWidget(self.loggingLabel, col=0, row=0)
 
@@ -302,6 +306,13 @@ class SliceViewer(BaseProcess):
         self.dock8.addWidget(self.exportLogButton, col=7, row=0)
         self.exportLogButton.clicked.connect(self.exportLogs) 
 
+
+        #add text box for comments
+        self.textBox = QtWidgets.QLineEdit()
+        self.dock8.addWidget(self.textBox, col=8, row=0)
+
+        #initiate intensity variable
+        self.intensity = 0
         
         #display window
         if self.batch == False:
@@ -497,11 +508,11 @@ class SliceViewer(BaseProcess):
         
 
     def logPuff(self):
-        self.puffDF = self.puffDF.append({'x':self.crosshairX,'y':self.crosshairY,'z':self.crosshairZ}, ignore_index=True)
+        self.puffDF = self.puffDF.append({'x':self.crosshairX,'y':self.crosshairY,'z':self.crosshairZ, 'time': self.currentVolume, 'intensity':self.intensity, 'comments':self.textBox.text()}, ignore_index=True)
         print("Puff logged at: ", self.crosshairX, self.crosshairY, self.crosshairZ)
         
-    def logMarker(self):
-        self.markerDF = self.markerDF.append({'x':self.crosshairX,'y':self.crosshairY,'z':self.crosshairZ}, ignore_index=True)          
+    def logMarker(self):          
+        self.markerDF = self.markerDF.append({'x':self.crosshairX,'y':self.crosshairY,'z':self.crosshairZ, 'time': self.currentVolume, 'intensity':self.intensity, 'comments':self.textBox.text()}, ignore_index=True)          
         print("Marker logged at: ", self.crosshairX, self.crosshairY, self.crosshairZ)    
       
     def deletePuff(self):
@@ -513,13 +524,11 @@ class SliceViewer(BaseProcess):
         print("Last marker from list removed")        
 
     def clearPuff(self):
-        columnNames = ["x","y","z"]
-        self.puffDF = pd.DataFrame(columns=columnNames)
+        self.puffDF = pd.DataFrame(columns=self.columnNames)
         print("Puff list cleared")        
 
     def clearMarker(self):
-        columnNames = ["x","y","z"]
-        self.markerDF = pd.DataFrame(columns=columnNames)        
+        self.markerDF = pd.DataFrame(columns=self.columnNames)        
         print("Marker list cleared")
 
     def exportLogs(self):
@@ -527,7 +536,7 @@ class SliceViewer(BaseProcess):
         savePath = str(savePath[0])   
         frames = [self.puffDF,self.markerDF]
         keys = ['puff','marker']
-        exportDF = pd.concat(frames,keys=keys)
+        exportDF = pd.concat(frames,keys=keys).round({'x':2, 'y':2, 'z':2, 'time':2, 'intensity':2})
         exportDF.to_csv(savePath)
         print('Log data exported')
 
@@ -535,8 +544,8 @@ class SliceViewer(BaseProcess):
         self.crosshairX = self.roiCenter.pos()[0] + 10
         self.crosshairY = self.roiCenter.pos()[1] + 10
         self.crosshairZ = self.imv6.currentIndex
-    
-        self.loggingText =  'Crosshair position: x = {}, y = {}, z = {}'.format(int(self.crosshairX),int(self.crosshairY),int(self.crosshairZ))       
+        self.intensity = self.imv1.getImageItem().image[int(self.crosshairX),int(self.crosshairY)]     
+        self.loggingText =  'x: {}, y: {}, z: {}, t: {}, value: {}'.format(int(self.crosshairX),int(self.crosshairY),int(self.crosshairZ),int(self.currentVolume), int(self.intensity))       
         self.loggingLabel.setText(self.loggingText)
 
 
