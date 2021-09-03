@@ -19,6 +19,7 @@ import pyqtgraph as pg
 from matplotlib import pyplot as plt 
 import csv 
 import pandas as pd
+from math import ceil
 
 import flika
 try:
@@ -128,6 +129,7 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         s['meanExp'] = 5.0
         s['nPuffs'] = 0    
         s['nSites'] = 10
+        s['meanDuration'] = 10        
         
 
         return s
@@ -168,6 +170,14 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         self.meanExp_slider = pg.SpinBox(int=False, step=.01)
         self.meanExp_slider.setValue(5.0) 
         
+        self.randomDuration = CheckBox()
+        self.randomDuration.setValue(False)   
+        
+        self.durationMean = 10
+        self.durationMean_box = QSpinBox()
+        self.durationMean_box.setRange(0,10000)
+        self.durationMean_box.setValue(self.durationMean)
+        
         self.plotHistoTimes = CheckBox()
         self.plotHistoTimes.setValue(False)
         
@@ -189,7 +199,9 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
 
         
         self.items.append({'name': 'active_window', 'string': 'Select Window', 'object': self.active_window})             
-        self.items.append({'name':'nFrames','string':'Duration (frames)','object':self.nFrames})
+        self.items.append({'name':'nFrames','string':'Duration (frames)','object':self.nFrames})        
+        self.items.append({'name':'randomDuration','string':'Use exponentially distributed random duration','object':self.randomDuration})        
+        self.items.append({'name':'meanDuration','string':'Mean duration','object':self.durationMean_box})          
         self.items.append({'name':'startFrame','string':'Start Frame','object':self.startFrame}) 
         #self.items.append({'name': 'useCurrentFrame', 'string': 'Use Current Frame For Start', 'object': self.useFrame})          
         self.items.append({'name':'puffAmplitude','string':'Amplitude','object':self.puffAmplitude})
@@ -233,7 +245,7 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         
         self.sigma.setRange(1,int(self.dx/7))
 
-    def addPuff(self, time=False, singleSite = True, x=None, y=None):
+    def addPuff(self, time=False, singleSite = True, x=None, y=None, duration=False):
         '''add synthetic blip to image stack'''
         #select window
         self.currentWin = self.getValue('active_window')
@@ -244,7 +256,20 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         #generate blip
         sigma = self.getValue('sigma')
         amp = self.getValue('puffAmplitude')
-        duration = self.getValue('nFrames')
+        
+        if self.randomDuration.isChecked():
+            #get random duration
+            if duration == False:
+                duration = np.random.exponential(scale=self.getValue('meanDuration'), size=1)
+                
+            #scale puff amplitude to account for spread across fames
+            
+            #round duration to nearest integer number of frames
+            duration = ceil(duration)
+            
+            
+        else:    
+            duration = self.getValue('nFrames')
         
         blip = generateBlip(sigma=sigma,amplitude=amp,duration=duration)
         
@@ -309,17 +334,23 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
             return
        
         # add puff after each time selection untill end of stack
-        # casting the exponential continous value as an int to select frame        
+        # rounding the exponential continous value to an int to select frame        
         while time < self.dt-self.getValue('nFrames'):
             try:
                 time = int(time + np.random.exponential(scale=mean, size=1))
                 
                 #if sequental, add puff duration to time
                 if self.getValue('puffsSequential'):
-                    time = time + self.getValue('nFrames')                    
-                    
-                #add puff at time    
-                self.addPuff(time = time, singleSite=singleSite, x=x, y=y)                    
+                    if self.randomDuration.isChecked():
+                        duration = np.random.exponential(scale=self.getValue('meanDuration'), size=1)                        
+                        time = time + ceil(duration)
+                        #add puff at time    
+                        self.addPuff(time = time, singleSite=singleSite, x=x, y=y, duration=duration) 
+                                                
+                    else:
+                        time = time + self.getValue('nFrames')                    
+                        #add puff at time    
+                        self.addPuff(time = time, singleSite=singleSite, x=x, y=y)                    
 
                 #update puff time log                
                 self.timesAdded = self.timesAdded.append({'time of puff': time, 'site': int(self.siteNumber)},ignore_index=True)                     
