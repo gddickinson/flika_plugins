@@ -262,8 +262,12 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
             if duration == False:
                 duration = np.random.exponential(scale=self.getValue('meanDuration'), size=1)
                 
-            #scale puff amplitude to account for spread across fames
-            
+            #scale puff amplitude to account for durations <1 frame or spread across 2 frames
+            spread = ceil(duration) 
+
+            if spread < 2:
+                amp = amp * (duration/spread)
+                                
             #round duration to nearest integer number of frames
             duration = ceil(duration)
             
@@ -471,9 +475,24 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         '''preview blip to be added'''
         sigma = self.getValue('sigma')
         amp = self.getValue('puffAmplitude')
-        duration = self.getValue('nFrames')
+        
+        if self.randomDuration.isChecked():
+            #get random duration
+            duration = np.random.exponential(scale=self.getValue('meanDuration'), size=1)
+                
+            #scale puff amplitude to account for durations <1 frame or spread across 2 frames
+            spread = ceil(duration)            
+            if spread < 2:
+                amp = amp * (duration/spread)
+                                
+            #round duration to nearest integer number of frames
+            duration = ceil(duration)
+            
+        else:
+            duration = self.getValue('nFrames')       
         
         blip = generateBlip(sigma=sigma,amplitude=amp,duration=duration)
+        
         Window(blip)
         
         return
