@@ -160,7 +160,7 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         self.randomPuffsAdded = False
         
         self.nSites = 10
-        columnNames = ['time of puff', 'site']
+        columnNames = ['time of puff', 'duration', 'site']
         self.timesAdded = pd.DataFrame(columns=columnNames)
         self.siteNumber = int(0)
 
@@ -329,8 +329,21 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         
         # add first puff
         try:
-            time = int(np.random.exponential(scale=mean, size=1) + self.getValue('startFrame'))
-            self.addPuff(time = time, singleSite=singleSite, x=x, y=y)
+            if self.randomDuration.isChecked():
+                startTime = int(np.random.exponential(scale=mean, size=1) + self.getValue('startFrame'))
+                duration = np.random.exponential(scale=self.getValue('meanDuration'), size=1)  
+                self.addPuff(time = startTime, singleSite=singleSite, x=x, y=y, duration=duration)
+                
+            else:
+                startTime = int(np.random.exponential(scale=mean, size=1) + self.getValue('startFrame'))
+                duration = self.getValue('nFrames')
+                self.addPuff(time = startTime, singleSite=singleSite, x=x, y=y)
+            
+            if self.getValue('puffsSequential'):
+                endTime = startTime + duration
+            else:
+                endTime = startTime 
+                
         except:
             puffsOutsideOfRange += 1 
             print('{} puffs added, {} puffs out of range'.format(puffsAdded,puffsOutsideOfRange))
@@ -339,25 +352,40 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
        
         # add puff after each time selection untill end of stack
         # rounding the exponential continous value to an int to select frame        
-        while time < self.dt-self.getValue('nFrames'):
+        while startTime < self.dt-self.getValue('nFrames'):
             try:
-                time = int(time + np.random.exponential(scale=mean, size=1))
+                startTime = int(endTime + np.random.exponential(scale=mean, size=1))
                 
-                #if sequental, add puff duration to time
-                if self.getValue('puffsSequential'):
-                    if self.randomDuration.isChecked():
-                        duration = np.random.exponential(scale=self.getValue('meanDuration'), size=1)                        
-                        time = time + ceil(duration)
-                        #add puff at time    
-                        self.addPuff(time = time, singleSite=singleSite, x=x, y=y, duration=duration) 
-                                                
+                #if random duration
+                if self.randomDuration.isChecked():
+                    print('original time: ', startTime)
+                    duration = np.random.exponential(scale=self.getValue('meanDuration'), size=1)                        
+                    startTime = startTime + ceil(duration)
+                    print('time: ', startTime)
+                    print('duration: ', duration)
+                    #add puff at time    
+                    self.addPuff(time = startTime, singleSite=singleSite, x=x, y=y, duration=duration) 
+                    
+                    #if sequental, add puff duration to time
+                    if self.getValue('puffsSequential'):
+                        endTime = startTime + duration
                     else:
-                        time = time + self.getValue('nFrames')                    
-                        #add puff at time    
-                        self.addPuff(time = time, singleSite=singleSite, x=x, y=y)                    
-
+                        endTime = startTime                       
+                #else use duration from GUI                                                   
+                else:
+                    startTime = startTime + self.getValue('nFrames')  
+                    duration = self.getValue('nFrames')
+                    #add puff at time    
+                    self.addPuff(time = startTime, singleSite=singleSite, x=x, y=y)     
+                    
+                    #if sequental, add puff duration to time
+                    if self.getValue('puffsSequential'):
+                        endTime = startTime + duration
+                    else:
+                        endTime = startTime                               
+                    
                 #update puff time log                
-                self.timesAdded = self.timesAdded.append({'time of puff': time, 'site': int(self.siteNumber)},ignore_index=True)                     
+                self.timesAdded = self.timesAdded.append({'time of puff': startTime, 'duration': duration, 'site': int(self.siteNumber)},ignore_index=True)                     
                     
                 puffsAdded +=1 
             except:
