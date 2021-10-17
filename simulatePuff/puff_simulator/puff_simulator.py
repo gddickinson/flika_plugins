@@ -136,8 +136,8 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
 
     def gui(self):
         self.gui_reset()
-        self.nFrames = SliderLabel(0)
-        self.nFrames.setRange(0,10000)
+        self.nFrames = pg.SpinBox(int=False, step=.01)
+        #self.nFrames.setRange(0,10000)
         self.startFrame = SliderLabel(0)
         self.startFrame.setRange(0,10000)        
         
@@ -261,20 +261,20 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
             #get random duration
             if duration == False:
                 duration = np.random.exponential(scale=self.getValue('meanDuration'), size=1)
-                
-            #scale puff amplitude to account for durations <1 frame or spread across 2 frames
-            spread = ceil(duration) 
-
-            if spread < 2:
-                amp = amp * (duration/spread)
-                                
-            #round duration to nearest integer number of frames
-            duration = ceil(duration)
-            
             
         else:    
             duration = self.getValue('nFrames')
+            
+            
+        #scale puff amplitude to account for durations <1 frame
+        if duration < 1:
+            amp = amp * duration
+            duration = ceil(duration) 
         
+        else:                    
+            #round duration to nearest integer number of frames
+            duration = round(duration)    
+            
         blip = generateBlip(sigma=sigma,amplitude=amp,duration=duration)
         
         blip_time, blip_x_size, blip_y_size = blip.shape
