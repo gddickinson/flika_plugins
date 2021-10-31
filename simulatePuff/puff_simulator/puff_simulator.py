@@ -173,8 +173,8 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         self.randomDuration = CheckBox()
         self.randomDuration.setValue(False)   
         
-        self.durationMean = 10
-        self.durationMean_box = QSpinBox()
+        self.durationMean = 10.0
+        self.durationMean_box = pg.SpinBox(int=False, step=.01)
         self.durationMean_box.setRange(0,10000)
         self.durationMean_box.setValue(self.durationMean)
         
@@ -213,7 +213,7 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         self.items.append({'name': 'puff_Button', 'string': 'Click to add Puff', 'object': self.puffButton}) 
         self.items.append({'name': 'blank', 'string': '---------- RANDOM PUFFS ---------------------------', 'object': None}) 
         #self.items.append({'name': 'nPuffs', 'string': 'Number of puffs to add', 'object': self.nPuffs_slider})  
-        self.items.append({'name': 'meanExp', 'string': 'Mean of exponential distibution', 'object': self.meanExp_slider}) 
+        self.items.append({'name': 'meanExp', 'string': 'Mean of exponential distibution of puff start times', 'object': self.meanExp_slider}) 
         self.items.append({'name': 'puffsSequential', 'string': 'Wait until puff ends before adding next puff:', 'object': self.addPuffsSequentially})        
         self.items.append({'name': 'histoTimes', 'string': 'Plot histogram of puff start times:', 'object': self.plotHistoTimes})
         self.items.append({'name': 'random_puff_Button', 'string': 'Click to add randomly distibuted puffs at one site', 'object': self.randomPuffButton}) 
@@ -257,11 +257,13 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         sigma = self.getValue('sigma')
         amp = self.getValue('puffAmplitude')
         
+        
         if self.randomDuration.isChecked():
             #get random duration
             if duration == False:
-                duration = np.random.exponential(scale=self.getValue('meanDuration'), size=1)
-            
+                duration = float(np.random.exponential(scale=self.getValue('meanDuration'), size=1)[0])
+                
+           
         else:    
             duration = self.getValue('nFrames')
             
@@ -273,8 +275,9 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         
         else:                    
             #round duration to nearest integer number of frames
-            duration = round(duration)    
-            
+            duration = ceil(duration)    
+          
+ 
         blip = generateBlip(sigma=sigma,amplitude=amp,duration=duration)
         
         blip_time, blip_x_size, blip_y_size = blip.shape
@@ -303,7 +306,7 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
             try:
                 self.data[np.ix_(tt,xx,yy)] = self.data[np.ix_(tt,xx,yy)] + blip
             except:
-                g.alert('Puff too large, too long or too close to edge')
+                g.alert('Error - Puff might be too large, too long or too close to edge')
         else:
             self.data[np.ix_(tt,xx,yy)] = self.data[np.ix_(tt,xx,yy)] + blip
         
@@ -312,6 +315,8 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         self.currentWin.imageview.setImage(self.data)
         self.currentWin.image = self.data
         self.currentWin.setIndex(frame)
+        
+        print('Puff added at time: {}, x: {}, y: {} with duration: {}, sigma: {}, amplitude:{}'.format(t,x,y,duration,sigma,amp))
         
         return
 
@@ -331,7 +336,7 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
         try:
             if self.randomDuration.isChecked():
                 startTime = int(np.random.exponential(scale=mean, size=1) + self.getValue('startFrame'))
-                duration = np.random.exponential(scale=self.getValue('meanDuration'), size=1)  
+                duration = float(np.random.exponential(scale=self.getValue('meanDuration'), size=1)[0])  
                 self.addPuff(time = startTime, singleSite=singleSite, x=x, y=y, duration=duration)
                 
             else:
@@ -344,7 +349,8 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
             else:
                 endTime = startTime 
                 
-        except:
+        except Exception as e:
+            print(e)
             puffsOutsideOfRange += 1 
             print('{} puffs added, {} puffs out of range'.format(puffsAdded,puffsOutsideOfRange))
             print('1st puff outside of range, aborting')
@@ -358,11 +364,11 @@ class Simulate_Puff(BaseProcess_noPriorWindow):
                 
                 #if random duration
                 if self.randomDuration.isChecked():
-                    print('original time: ', startTime)
+                    #print('original time: ', startTime)
                     duration = np.random.exponential(scale=self.getValue('meanDuration'), size=1)                        
                     startTime = startTime + ceil(duration)
-                    print('time: ', startTime)
-                    print('duration: ', duration)
+                    #print('time: ', startTime)
+                    #print('duration: ', duration)
                     #add puff at time    
                     self.addPuff(time = startTime, singleSite=singleSite, x=x, y=y, duration=duration) 
                     
