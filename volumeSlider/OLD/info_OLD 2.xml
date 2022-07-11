@@ -1,0 +1,19 @@
+<plugin name="Volume slider">
+	<directory>
+		volumeSlider
+	</directory>
+	<version>
+		2019.01.11
+	</version>
+	<author>
+		George Dickinson
+	</author>
+	<url>
+	</url>
+	<dependencies>
+	</dependencies>
+	<menu_layout>
+		<action location="volumeSlider" function="volumeSlider.startVolumeSlider">volume from file</action>
+        <action location="volumeSlider" function="camVolumeSlider.startVolumeSlider">camera recording - current window</action>
+	</menu_layout>
+</plugin>

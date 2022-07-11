@@ -1,0 +1,19 @@
+<plugin name="Volume slider">
+	<directory>
+		volumeSlider
+	</directory>
+	<version>
+		2019.01.11
+	</version>
+	<author>
+		George Dickinson
+	</author>
+	<url>
+	</url>
+	<dependencies>
+	</dependencies>
+	<menu_layout>
+		<action location="volumeSlider_Start" function="volumeSliderBase.gui">volume slider</action>
+        
+	</menu_layout>
+</plugin>

@@ -1,0 +1,20 @@
+<plugin name="openCV">
+	<directory>
+		openCV
+	</directory>
+	<version>
+		2018.12.05
+	</version>
+	<author>
+		George Dickinson
+	</author>
+	<url>
+	</url>
+	<dependencies>
+	<dependency name='cv2'></dependency>
+	</dependencies>
+	<menu_layout>
+		<action location="openCV" function="openCVcam.startCamera">Start Camera</action>
+        <action location="openCV" function="openFile.startFileOpener">Open File</action>
+	</menu_layout>
+</plugin>

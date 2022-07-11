@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Jan 18 18:43:39 2020
+
+@author: gdickinson
+"""
+
+import numpy as np
+from sklearn.neighbors import KDTree
+
+rng = np.random.RandomState(0)
+X = rng.random_sample((10, 3))  # 10 points in 3 dimensions
+tree = KDTree(X, leaf_size=2)              # doctest: +SKIP
+
+test = np.array([[1,1,1],[20,20,20]])
+k = 1 #number of neighbours
+
+dist, ind = tree.query(test, k=k)                # doctest: +SKIP
+print(ind)  # indices of 3 closest neighbors
+
+print(dist)  # distances to 3 closest neighbors

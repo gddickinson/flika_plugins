@@ -1,0 +1,18 @@
+<plugin name="lightSheet_tiffLoader">
+	<directory>
+		lightSheet_tiffLoader
+	</directory>
+	<version>
+		2018.12.210
+	</version>
+	<author>
+		George Dickinson
+	</author>
+	<url>
+	</url>
+	<dependencies>
+	</dependencies>
+	<menu_layout>
+		<action location="tiffLoader" function="load_tiff.gui">Load Tiff</action>
+	</menu_layout>
+</plugin>

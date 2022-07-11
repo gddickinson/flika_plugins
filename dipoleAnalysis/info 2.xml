@@ -1,0 +1,18 @@
+<plugin name="dipoleAnalysis">
+	<directory>
+		dipoleAnalysis
+	</directory>
+	<version>
+		2019.05.21
+	</version>
+	<author>
+		George Dickinson
+	</author>
+	<url>
+	</url>
+	<dependencies>
+	</dependencies>
+	<menu_layout>
+		<action location="dipoleAnalysis" function="dipoleAnalysis.gui">dipoleAnalysis</action>
+	</menu_layout>
+</plugin>

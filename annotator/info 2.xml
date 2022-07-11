@@ -1,0 +1,18 @@
+<plugin name="Annotator">
+	<directory>
+		annotator
+	</directory>
+	<version>
+		2019.01.25
+	</version>
+	<author>
+		George Dickinson
+	</author>
+	<url>
+	</url>
+	<dependencies>
+	</dependencies>
+	<menu_layout>
+		<action location="annotator" function="annotator.gui">annotator</action>
+	</menu_layout>
+</plugin>

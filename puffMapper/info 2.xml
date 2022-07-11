@@ -1,0 +1,18 @@
+<plugin name="puffMapper">
+	<directory>
+		puffMapper
+	</directory>
+	<version>
+		2020.10.02
+	</version>
+	<author>
+		George Dickinson
+	</author>
+	<url>
+	</url>
+	<dependencies>
+	</dependencies>
+	<menu_layout>
+		<action location="puffMapper" function="puffMapper.gui">puffMapper</action>
+	</menu_layout>
+</plugin>

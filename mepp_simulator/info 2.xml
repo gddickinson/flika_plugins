@@ -1,0 +1,23 @@
+<plugin name="mepp_simulator">
+    <directory>
+        mepp_simulator
+    </directory>
+	<version>
+		2021.02.06
+	</version>
+	<author>
+		George Dickinson
+	</author>
+	<url>
+	</url>
+	<dependencies>
+		<dependency name='skimage'></dependency>
+		<dependency name='leastsqbound'></dependency>
+		<dependency name='matplotlib'></dependency>
+		<dependency name='PyOpenGL'></dependency>
+		<dependency name='openpyxl'></dependency>
+	</dependencies>
+	<menu_layout>
+		<action location="mepp_simulator" function="simulate_mepp.gui">Simulate MEPP</action>
+	</menu_layout>
+</plugin>

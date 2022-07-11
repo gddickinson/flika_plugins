@@ -1,0 +1,18 @@
+<plugin name="fft_Chunker">
+	<directory>
+		fft_Chunker
+	</directory>
+	<version>
+		2020.06.25
+	</version>
+	<author>
+		George Dickinson
+	</author>
+	<url>
+	</url>
+	<dependencies>
+	</dependencies>
+	<menu_layout>
+		<action location="fft_Chunker" function="fft_Chunker.gui">fft_Chunker</action>
+	</menu_layout>
+</plugin>
