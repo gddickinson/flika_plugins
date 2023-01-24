@@ -16,6 +16,9 @@ from flika.process.file_ import get_permutation_tuple
 from flika.utils.misc import open_file_gui
 
 
+import numba
+pg.setConfigOption('useNumba', True)
+
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
     from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector
