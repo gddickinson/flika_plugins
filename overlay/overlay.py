@@ -28,6 +28,10 @@ else:
 
 from pyqtgraph import HistogramLUTWidget
 
+def gammaCorrect(img, gamma):
+    gammaCorrection = 1/gamma
+    maxIntensity = np.max(img)
+    return np.array(maxIntensity*(img / maxIntensity) ** gammaCorrection)
 
 
 class Overlay(BaseProcess_noPriorWindow):
@@ -45,6 +49,8 @@ class Overlay(BaseProcess_noPriorWindow):
         self.redIntensity =0
         self.greenMinValue=0
         self.redMinValue=0
+        
+        self.gammaWindow = None
 
     def __call__(self):
         '''
@@ -121,7 +127,7 @@ class Overlay(BaseProcess_noPriorWindow):
 
     def overlay(self):
         red = self.getValue('red_window').image
-        green = self.getValue('green_window').image
+        green = self.getValue('green_window').image[0] #just 1st image of stack
         
         self.displayWindow_Overlay = Window(red,'Overlay')
         
@@ -144,8 +150,10 @@ class Overlay(BaseProcess_noPriorWindow):
         self.overlayFlag = False
         self.overlayArrayLoaded = False
 
-        self.bgItem = pg.ImageItem()        
-        self.bgItem.setImage(green[0], autoRange=False, autoLevels=False, levels=levels, opacity=self.OverlayOPACITY)
+        self.bgItem = pg.ImageItem()
+        if self.gammaCorrect.isChecked():
+            green = gammaCorrect(green, self.gamma.value())
+        self.bgItem.setImage(green, autoRange=False, autoLevels=False, levels=levels, opacity=self.OverlayOPACITY)
         self.bgItem.setCompositionMode(self.OverlayMODE)
         self.displayWindow_Overlay.imageview.view.addItem(self.bgItem)
 
@@ -197,6 +205,19 @@ class Overlay(BaseProcess_noPriorWindow):
 #         return          
 # =============================================================================
 
+    def previewWindow(self):
+        if self.gammaWindow is not None and not self.gammaWindow.closed:
+            self.gammaWindow.close() 
+        else:
+            self.gammaImg = self.getValue('green_window').image[0]
+            self.gammaWindow = Window(self.gammaImg, 'Gamma Preview')
+
+    def updateGamma(self, value):
+        if self.gammaWindow is not None and not self.gammaWindow.closed:
+            levels = self.gammaWindow.imageview.getHistogramWidget().getLevels()
+            gammaCorrrectedImg = gammaCorrect(self.gammaImg, value)
+            self.gammaWindow.imageview.setImage(gammaCorrrectedImg, autoLevels=False, levels=levels)
+
 
     def gui(self):
         self.gui_reset()
@@ -230,13 +251,28 @@ class Overlay(BaseProcess_noPriorWindow):
         #self.redScale.valueChanged.connect(self.updateRedIntensity)        
         #self.greenMin.valueChanged.connect(self.updateGreenMin)
         #self.redMin.valueChanged.connect(self.updateRedMin)  
+        
+        
+        #Gamma correct
+        self.gammaCorrect = CheckBox()
+        self.previewGamma = CheckBox()
+        self.gamma = SliderLabel(1)
+        self.gamma.setRange(0.0,20.0)
+        self.gamma.setValue(0.0) 
+        
+        self.previewGamma.stateChanged.connect(self.previewWindow)
+        self.gamma.valueChanged.connect(self.updateGamma)
 
         self.items.append({'name': 'red_window', 'string': 'CH1 (r)', 'object': self.red_window})
         self.items.append({'name': 'green_window', 'string': 'CH2 (g)', 'object': self.green_window})
         #self.items.append({'name': 'scaleImages', 'string': 'Scale?', 'object': self.scaleImages})
         #self.items.append({'name': 'merge_button', 'string': '', 'object': self.mergeButton})
-        self.items.append({'name': 'overlay_button', 'string': '', 'object': self.overlayButton})        
-
+        self.items.append({'name': 'overlay_button', 'string': '', 'object': self.overlayButton})  
+        
+        self.items.append({'name': 'gammaCorrect', 'string': 'Gamma Corrrect', 'object': self.gammaCorrect})          
+        self.items.append({'name': 'gamma', 'string': 'Gamma', 'object': self.gamma}) 
+        self.items.append({'name': 'gammaPreview', 'string': 'preview Gamma', 'object': self.previewGamma})          
+        
         #self.items.append({'name': 'red_scaler', 'string': 'red', 'object': self.redScale})
         #self.items.append({'name': 'green_scaler', 'string': 'green', 'object': self.greenScale})       
         

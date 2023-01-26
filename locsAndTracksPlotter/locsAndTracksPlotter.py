@@ -120,19 +120,19 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
     output:     
     """
     def __init__(self):
-        if g.settings['locsAndTracksPlotter'] is None or 'pixelSize' not in g.settings['locsAndTracksPlotter']:
+        if g.settings['locsAndTracksPlotter'] is None or 'set_track_colour' not in g.settings['locsAndTracksPlotter']:
             s = dict()            
             s['filename'] = '' 
             s['filetype'] = 'flika'   
             s['pixelSize'] = 108                         
-            
+            s['set_track_colour'] = False
             g.settings['locsAndTracksPlotter'] = s
                    
         BaseProcess_noPriorWindow.__init__(self)
             
         
 
-    def __call__(self, filename, filetype, pixelSize, keepSourceWindow=False):
+    def __call__(self, filename, filetype, pixelSize, set_track_colour,  keepSourceWindow=False):
         '''
         '''
 
@@ -140,6 +140,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         g.settings['locsAndTracksPlotter']['filename'] = filename 
         g.settings['locsAndTracksPlotter']['filetype'] = filetype       
         g.settings['locsAndTracksPlotter']['pixelSize'] = pixelSize 
+        g.settings['locsAndTracksPlotter']['set_track_colour'] = set_track_colour      
         
         g.m.statusBar().showMessage("plotting data...")
         return
@@ -156,6 +157,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.pixelSize= 108      
         self.plotWindow = None
         self.pathitems = []
+        self.useFilteredData = False
         self.gui_reset()        
         s=g.settings['locsAndTracksPlotter']  
         
@@ -171,11 +173,17 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.plotTrackData_button.pressed.connect(self.plotTrackData)  
         
         self.clearTrackData_button = QPushButton('Clear Tracks')
-        self.clearTrackData_button.pressed.connect(self.clearTracks)         
+        self.clearTrackData_button.pressed.connect(self.clearTracks)  
+        
+        self.filterData_button = QPushButton('Filter')
+        self.filterData_button.pressed.connect(self.filterData)          
+        
+        self.clearFilterData_button = QPushButton('Clear Filter')
+        self.clearFilterData_button.pressed.connect(self.clearFilterData)  
                          
         #checkbox
-        #self.sorted_checkbox = CheckBox()
-        #self.sorted_checkbox.setChecked(s['sortedByMax'])
+        self.trackColour_checkbox = CheckBox()
+        self.trackColour_checkbox.setChecked(s['set_track_colour'])
 
         #comboboxes
         self.filetype_Box = pg.ComboBox()
@@ -197,7 +205,30 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.trackCol_Box = pg.ComboBox()
         self.trackcols = {'None':'None'}
         self.trackCol_Box.setItems(self.trackcols)   
-         
+        
+        self.filterCol_Box = pg.ComboBox()
+        self.filtercols = {'None':'None'}
+        self.filterCol_Box.setItems(self.filtercols)  
+
+        self.trackColourCol_Box = pg.ComboBox()
+        self.trackcolourcols = {'None':'None'}
+        self.trackColourCol_Box.setItems(self.trackcolourcols)  
+        
+        self.colourMap_Box = pg.ComboBox()
+        self.colourMaps = dictFromList(pg.colormap.listMaps())
+        self.colourMap_Box.setItems(self.colourMaps)         
+
+        self.filterOp_Box = pg.ComboBox()
+        self.filterOps = {'=':'==', '<':'<', '>':'>'}
+        self.filterOp_Box.setItems(self.filterOps)  
+        
+        self.filterValue_Box = QLineEdit()     
+        
+        self.trackDefaultColour_Box = pg.ComboBox()
+        self.trackdefaultcolours = {'green': Qt.green, 'red': Qt.red, 'blue': Qt.blue}
+        self.trackDefaultColour_Box.setItems(self.trackdefaultcolours)
+        
+        
         #data file selector
         self.getFile = FileSelector()
         
@@ -213,13 +244,24 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         
        
         #self.items.append({'name': 'blank ', 'string': '-------------------------------------------', 'object': None})   
-        self.items.append({'name': 'frameCol', 'string': 'Frame col', 'object': self.frameCol_Box})          
-        self.items.append({'name': 'xCol', 'string': 'X col', 'object': self.xCol_Box})          
-        self.items.append({'name': 'yCol', 'string': 'Y col', 'object': self.yCol_Box})   
-        self.items.append({'name': 'trackCol', 'string': 'Track col', 'object': self.trackCol_Box})   
-          
+        #self.items.append({'name': 'frameCol', 'string': 'Frame col', 'object': self.frameCol_Box})          
+        #self.items.append({'name': 'xCol', 'string': 'X col', 'object': self.xCol_Box})          
+        #self.items.append({'name': 'yCol', 'string': 'Y col', 'object': self.yCol_Box})   
+        #self.items.append({'name': 'trackCol', 'string': 'Track col', 'object': self.trackCol_Box})   
+        self.items.append({'name': 'blank ', 'string': '---- FILTER -----', 'object': None})          
+        
+        self.items.append({'name': 'filterCol', 'string': 'Filter col', 'object': self.filterCol_Box})
+        self.items.append({'name': 'filterOp', 'string': 'Operator', 'object': self.filterOp_Box})  
+        self.items.append({'name': 'filterValue', 'string': 'Value', 'object': self.filterValue_Box})         
+        self.items.append({'name': 'filterData', 'string': '', 'object': self.filterData_button })         
+        self.items.append({'name': 'clearFilterData', 'string': '', 'object': self.clearFilterData_button })    
+        self.items.append({'name': 'blank ', 'string': '----  PLOT  -----', 'object': None})           
         self.items.append({'name': 'plotPoints', 'string': '', 'object': self.plotPointData_button }) 
-        self.items.append({'name': 'hidePoints', 'string': '', 'object': self.hidePointData_button })         
+        self.items.append({'name': 'hidePoints', 'string': '', 'object': self.hidePointData_button })
+        self.items.append({'name': 'trackDefaultColour', 'string': 'Track Default Colour', 'object': self.trackDefaultColour_Box })        
+        self.items.append({'name': 'trackColour', 'string': 'Set Track Colour', 'object': self.trackColour_checkbox})           
+        self.items.append({'name': 'trackColourCol', 'string': 'Colour by', 'object': self.trackColourCol_Box})
+        self.items.append({'name': 'trackColourMap', 'string': 'Colour Map', 'object': self.colourMap_Box})           
         self.items.append({'name': 'plotTracks', 'string': '', 'object': self.plotTrackData_button })         
         self.items.append({'name': 'clearTracks', 'string': '', 'object': self.clearTrackData_button })          
         
@@ -247,22 +289,23 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.yCol_Box.setItems(self.colDict)
         self.frameCol_Box.setItems(self.colDict)        
         self.trackCol_Box.setItems(self.colDict)   
-        
+        self.filterCol_Box.setItems(self.colDict)  
+        self.trackColourCol_Box.setItems(self.colDict)  
 
-    def makePointDataDF(self):   
+    def makePointDataDF(self, data):   
         if self.filetype_Box.value() == 'thunderstorm':
             ######### load FLIKA pyinsight data into DF ############
             df = pd.DataFrame()
-            df['frame'] = self.data['frame'].astype(int)-1
-            df['x'] = self.data['x [nm]']/self.pixelSize
-            df['y'] = self.data['y [nm]']/self.pixelSize   
+            df['frame'] = data['frame'].astype(int)-1
+            df['x'] = data['x [nm]']/self.pixelSize
+            df['y'] = data['y [nm]']/self.pixelSize   
 
         elif self.filetype_Box.value() == 'flika':
             ######### load FLIKA pyinsight data into DF ############
             df = pd.DataFrame()
-            df['frame'] = self.data['frame'].astype(int)-1
-            df['x'] = self.data['x']
-            df['y'] = self.data['y']
+            df['frame'] = data['frame'].astype(int)-1
+            df['x'] = data['x']
+            df['y'] = data['y']
 
                      
         return df
@@ -298,7 +341,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
     def plotPointData(self):
         ### plot point data to current window
-        self.points = self.makePointDataDF()
+        if self.useFilteredData == False:
+            self.points = self.makePointDataDF(self.data)
+        else:
+            self.points = self.makePointDataDF(self.filteredData)
         self.plotWindow = g.win
         self.plotPointsOnStack()
 
@@ -308,22 +354,27 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
 
 
-    def makeTrackDF(self):
+    def makeTrackDF(self, data):
         if self.filetype_Box.value() == 'thunderstorm':
             ######### load FLIKA pyinsight data into DF ############
             df = pd.DataFrame()
-            df['frame'] = self.data['frame'].astype(int)-1
-            df['x'] = self.data['x [nm]']/self.pixelSize
-            df['y'] = self.data['y [nm]']/self.pixelSize  
-            df['track_number'] = self.data['track_number']
+            df['frame'] = data['frame'].astype(int)-1
+            df['x'] = data['x [nm]']/self.pixelSize
+            df['y'] = data['y [nm]']/self.pixelSize  
+            df['track_number'] = data['track_number']
 
         elif self.filetype_Box.value() == 'flika':
             ######### load FLIKA pyinsight data into DF ############
             df = pd.DataFrame()
-            df['frame'] = self.data['frame'].astype(int)-1
-            df['x'] = self.data['x']
-            df['y'] = self.data['y']
-            df['track_number'] = self.data['track_number']
+            df['frame'] = data['frame'].astype(int)-1
+            df['x'] = data['x']
+            df['y'] = data['y']
+            df['track_number'] = data['track_number']
+            
+            
+            if self.trackColour_checkbox.isChecked():
+                cm = pg.colormap.get(self.colourMap_Box.value()) #cm goes from 0-1, need to scale input values
+                df['colour'] = cm.mapToQColor(self.data[self.trackColourCol_Box.value()].to_numpy()/max(self.data[self.trackColourCol_Box.value()]))
         
                      
         return df.groupby(['track_number'])
@@ -339,13 +390,20 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         # clear self.pathitems
         self.clearTracks()
         
-        pen = QPen(Qt.green, .4)
+        #setup pen
+        pen = QPen(self.trackDefaultColour_Box.value(), .4)
         pen.setCosmetic(True)
         pen.setWidth(2)
         
         for track_idx in self.trackIDs:
             tracks = self.tracks.get_group(track_idx)
             pathitem = QGraphicsPathItem(self.plotWindow.imageview.view)
+            
+            if self.trackColour_checkbox.isChecked():
+                #print(tracks['colour'].to_list()[0].rgb())
+                pen.setColor(tracks['colour'].to_list()[0])
+                
+            
             pathitem.setPen(pen)
             self.plotWindow.imageview.view.addItem(pathitem)
             self.pathitems.append(pathitem)
@@ -363,12 +421,44 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         ### plot track data to current window
         self.trackIDs = np.unique(self.data['track_number']).astype(np.int)
         
-        self.tracks = self.makeTrackDF()
+        if self.useFilteredData == False:
+            self.tracks = self.makeTrackDF(self.data)
+        else:
+            self.tracks = self.makeTrackDF(self.filteredData)           
         
         self.showTracks()
 
         g.m.statusBar().showMessage('track data plotted to current window') 
         print('track data plotted to current window')    
+        return
+
+
+
+    def filterData(self):
+        
+        op = self.filterOp_Box.value()
+        filterCol = self.filterCol_Box.value()
+        dtype = self.data[filterCol].dtype 
+        value = float(self.filterValue_Box.text())
+        
+        
+        if op == '==':
+            self.filteredData = self.data[self.data[filterCol] == value]
+ 
+        elif op == '<':
+            self.filteredData = self.data[self.data[filterCol] < value]
+        
+        elif op == '>':
+             self.filteredData = self.data[self.data[filterCol] > value]           
+            
+        
+        print(self.filteredData.head())
+        self.useFilteredData = True
+        return
+
+
+    def clearFilterData(self):
+        self.useFilteredData = False
         return
 
     
