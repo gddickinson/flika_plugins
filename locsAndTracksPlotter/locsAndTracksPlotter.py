@@ -180,6 +180,15 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         
         self.clearFilterData_button = QPushButton('Clear Filter')
         self.clearFilterData_button.pressed.connect(self.clearFilterData)  
+
+
+        self.ROIFilterData_button = QPushButton(' Filter by ROI(s)')
+        self.ROIFilterData_button.pressed.connect(self.ROIFilterData)  
+
+
+        self.clearROIFilterData_button = QPushButton('Clear ROI Filter')
+        self.clearROIFilterData_button.pressed.connect(self.clearROIFilterData)  
+
                          
         #checkbox
         self.trackColour_checkbox = CheckBox()
@@ -248,13 +257,18 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         #self.items.append({'name': 'xCol', 'string': 'X col', 'object': self.xCol_Box})          
         #self.items.append({'name': 'yCol', 'string': 'Y col', 'object': self.yCol_Box})   
         #self.items.append({'name': 'trackCol', 'string': 'Track col', 'object': self.trackCol_Box})   
-        self.items.append({'name': 'blank ', 'string': '---- FILTER -----', 'object': None})          
-        
+        self.items.append({'name': 'blank ', 'string': '---- FILTER -----', 'object': None})                  
         self.items.append({'name': 'filterCol', 'string': 'Filter col', 'object': self.filterCol_Box})
         self.items.append({'name': 'filterOp', 'string': 'Operator', 'object': self.filterOp_Box})  
         self.items.append({'name': 'filterValue', 'string': 'Value', 'object': self.filterValue_Box})         
         self.items.append({'name': 'filterData', 'string': '', 'object': self.filterData_button })         
-        self.items.append({'name': 'clearFilterData', 'string': '', 'object': self.clearFilterData_button })    
+        self.items.append({'name': 'clearFilterData', 'string': '', 'object': self.clearFilterData_button })  
+
+        self.items.append({'name': 'blank ', 'string': '--- ROI FILTER ----', 'object': None})                  
+        self.items.append({'name': 'filterROI', 'string': '', 'object': self.ROIFilterData_button})
+        self.items.append({'name': 'clearFilterROI', 'string': '', 'object': self.clearROIFilterData_button})  
+        
+        
         self.items.append({'name': 'blank ', 'string': '----  PLOT  -----', 'object': None})           
         self.items.append({'name': 'plotPoints', 'string': '', 'object': self.plotPointData_button }) 
         self.items.append({'name': 'hidePoints', 'string': '', 'object': self.hidePointData_button })
@@ -461,6 +475,51 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.useFilteredData = False
         return
 
+    def getScatterPointsAsQPoints(self):
+        qpoints = np.array(self.plotWindow.scatterPlot.getData()).T
+        qpoints = [QPointF(pt[0],pt[1]) for pt in qpoints]
+        return qpoints
+
+    def ROIFilterData(self):
+        self.roiFilterPoints = []
+        self.rois = self.plotWindow.rois
+        #print(self.rois)
+        
+        self.oldScatterPoints = self.plotWindow.scatterPoints
+        
+        for roi in self.rois:
+            currentFrame = self.plotWindow.currentIndex
+            for i in range(0,self.plotWindow.mt):
+                # get ROI shape in coordinate system of the scatter plot
+                self.plotWindow.setIndex(i)
+                roiShape = roi.mapToItem(self.plotWindow.scatterPlot, roi.shape())
+                # Get list of all points inside shape
+                selected = [[i, pt.x(), pt.y()] for pt in self.getScatterPointsAsQPoints() if roiShape.contains(pt)]
+                self.roiFilterPoints.extend((selected))
+            self.plotWindow.setIndex(currentFrame)
+        
+        #print(self.roiFilterPoints) 
+        
+        self.plotWindow.scatterPoints = [[] for _ in np.arange(self.plotWindow.mt)]
+        
+        
+        for pt in self.roiFilterPoints:
+            t = int(pt[0])
+            if self.plotWindow.mt == 1:
+                t = 0
+            pointSize = g.m.settings['point_size']
+            pointColor = QColor(g.m.settings[g.m.settings['point_color']])
+            #position = [pt[1]+(.5* (1/pixelSize)), pt[2]+(.5* (1/pixelSize)), pointColor, pointSize]
+            position = [pt[1], pt[2], pointColor, pointSize]    
+            self.plotWindow.scatterPoints[t].append(position)
+        self.plotWindow.updateindex()
+        
+        return
+
+    def clearROIFilterData(self):
+        self.plotWindow.scatterPoints = self.oldScatterPoints 
+        self.plotWindow.updateindex()
+        return
     
     def clearPlots(self):
         try:
