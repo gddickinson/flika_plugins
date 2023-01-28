@@ -159,6 +159,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.pathitems = []
         self.useFilteredData = False
         self.useFilteredTracks = False
+        self.useMatplotCM = False
         self.gui_reset()        
         s=g.settings['locsAndTracksPlotter']  
         
@@ -168,8 +169,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         
         self.hidePointData_button = QPushButton('Toggle Points')
         self.hidePointData_button.pressed.connect(self.hidePointData)         
-        
-        #buttons      
+            
         self.plotTrackData_button = QPushButton('Plot Tracks')
         self.plotTrackData_button.pressed.connect(self.plotTrackData)  
         
@@ -182,18 +182,23 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.clearFilterData_button = QPushButton('Clear Filter')
         self.clearFilterData_button.pressed.connect(self.clearFilterData)  
 
-
         self.ROIFilterData_button = QPushButton(' Filter by ROI(s)')
         self.ROIFilterData_button.pressed.connect(self.ROIFilterData)  
 
-
         self.clearROIFilterData_button = QPushButton('Clear ROI Filter')
         self.clearROIFilterData_button.pressed.connect(self.clearROIFilterData)  
+        
+        self.saveData_button = QPushButton('Save Tracks')
+        self.saveData_button.pressed.connect(self.saveData)         
 
                          
         #checkbox
         self.trackColour_checkbox = CheckBox()
         self.trackColour_checkbox.setChecked(s['set_track_colour'])
+        
+        self.matplotCM_checkbox = CheckBox()
+        self.matplotCM_checkbox.setChecked(False)   
+        self.matplotCM_checkbox.stateChanged.connect(self.setColourMap)
 
         #comboboxes
         self.filetype_Box = pg.ComboBox()
@@ -265,7 +270,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.items.append({'name': 'filterData', 'string': '', 'object': self.filterData_button })         
         self.items.append({'name': 'clearFilterData', 'string': '', 'object': self.clearFilterData_button })  
 
-        self.items.append({'name': 'blank ', 'string': '--- ROI FILTER ----', 'object': None})                  
+        #self.items.append({'name': 'blank ', 'string': '--- ROI FILTER ----', 'object': None})                  
         self.items.append({'name': 'filterROI', 'string': '', 'object': self.ROIFilterData_button})
         self.items.append({'name': 'clearFilterROI', 'string': '', 'object': self.clearROIFilterData_button})  
         
@@ -276,9 +281,11 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.items.append({'name': 'trackDefaultColour', 'string': 'Track Default Colour', 'object': self.trackDefaultColour_Box })        
         self.items.append({'name': 'trackColour', 'string': 'Set Track Colour', 'object': self.trackColour_checkbox})           
         self.items.append({'name': 'trackColourCol', 'string': 'Colour by', 'object': self.trackColourCol_Box})
-        self.items.append({'name': 'trackColourMap', 'string': 'Colour Map', 'object': self.colourMap_Box})           
+        self.items.append({'name': 'trackColourMap', 'string': 'Colour Map', 'object': self.colourMap_Box})   
+        self.items.append({'name': 'matplotClourMap', 'string': 'Use matplot map', 'object': self.matplotCM_checkbox})          
         self.items.append({'name': 'plotTracks', 'string': '', 'object': self.plotTrackData_button })         
-        self.items.append({'name': 'clearTracks', 'string': '', 'object': self.clearTrackData_button })          
+        self.items.append({'name': 'clearTracks', 'string': '', 'object': self.clearTrackData_button })     
+        self.items.append({'name': 'saveTracks', 'string': '', 'object': self.saveData_button })  
         
         super().gui()
         ######################################################################
@@ -390,7 +397,11 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             
             
             if self.trackColour_checkbox.isChecked():
-                cm = pg.colormap.get(self.colourMap_Box.value()) #cm goes from 0-1, need to scale input values
+                if self.useMatplotCM:
+                    cm = pg.colormap.getFromMatplotlib(self.colourMap_Box.value()) #cm goes from 0-1, need to scale input values   
+                else:    
+                    cm = pg.colormap.get(self.colourMap_Box.value()) #cm goes from 0-1, need to scale input values
+                
                 df['colour'] = cm.mapToQColor(self.data[self.trackColourCol_Box.value()].to_numpy()/max(self.data[self.trackColourCol_Box.value()]))
         
                      
@@ -561,7 +572,21 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             pass
         return
 
+    def setColourMap(self):
+        if self.matplotCM_checkbox.isChecked():
+            self.colourMaps = dictFromList(pg.colormap.listMaps('matplotlib'))
+            self.colourMap_Box.setItems(self.colourMaps)  
+            self.useMatplotCM = True
+        else:
+            self.colourMaps = dictFromList(pg.colormap.listMaps())
+            self.colourMap_Box.setItems(self.colourMaps) 
+            self.useMatplotCM = False
+            
 
+    def saveData(self):
+        pass
+        #TODO!
+        return
 
 
 locsAndTracksPlotter = LocsAndTracksPlotter()
