@@ -8,6 +8,8 @@ Created on Fri Jan 27 11:15:18 2023
 
 import numpy as np
 from qtpy.QtCore import *
+import pandas as pd
+
 
 test = np.array([  4.447,   4.938,   6.548,   5.553,   7.464,  12.944,  13.145,
         15.046,  18.277,  15.322,  17.704,  18.098,  19.105,  18.942,
@@ -182,9 +184,24 @@ test = np.array([  4.447,   4.938,   6.548,   5.553,   7.464,  12.944,  13.145,
        524.697, 423.57 ,  84.599, 480.308, 453.901, 247.071,  27.341,
         66.612, 408.39 , 123.345, 380.094, 104.632, 375.332, 229.301,
        377.205, 345.993, 419.088, 518.853, 256.638, 397.583])
-                                                                      
+
+df = pd.DataFrame()
+
+df['x'] = test[0][0:3]
+df['y'] = test[1][0:3]                                                                         
+df['id'] = [1,2,3]                                                                    
+                                                                         
 qpoints = np.array(test).T
 qpoints = [QPointF(pt[0],pt[1]) for pt in qpoints]
+
+newDF = df.set_index(['x', 'y'])
+
+for i in range(len(test[0])):
+    try:
+        print(newDF.at[(test[0][i],test[1][i]), 'id'])
+    except:
+        pass
+
 
 
 

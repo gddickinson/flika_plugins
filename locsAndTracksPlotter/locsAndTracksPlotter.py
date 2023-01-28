@@ -158,6 +158,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.plotWindow = None
         self.pathitems = []
         self.useFilteredData = False
+        self.useFilteredTracks = False
         self.gui_reset()        
         s=g.settings['locsAndTracksPlotter']  
         
@@ -305,6 +306,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.trackCol_Box.setItems(self.colDict)   
         self.filterCol_Box.setItems(self.colDict)  
         self.trackColourCol_Box.setItems(self.colDict)  
+        
 
     def makePointDataDF(self, data):   
         if self.filetype_Box.value() == 'thunderstorm':
@@ -321,6 +323,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             df['x'] = data['x']
             df['y'] = data['y']
 
+        self.indexDF = self.data.set_index(['x', 'y'])
                      
         return df
 
@@ -409,7 +412,13 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         pen.setCosmetic(True)
         pen.setWidth(2)
         
-        for track_idx in self.trackIDs:
+        if self.useFilteredTracks:
+            trackIDs = self.filteredTrackIds
+            
+        else:
+           trackIDs = self.trackIDs
+        
+        for track_idx in trackIDs:
             tracks = self.tracks.get_group(track_idx)
             pathitem = QGraphicsPathItem(self.plotWindow.imageview.view)
             
@@ -480,10 +489,30 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         qpoints = [QPointF(pt[0],pt[1]) for pt in qpoints]
         return qpoints
 
+
+    def getDataFromScatterPoints(self):
+        trackIDs = []
+        for pt in self.plotWindow.scatterPoints:
+            try:
+                #print((pt[0][0],pt[0][1]))
+                trackIDs.append(self.indexDF.at[(pt[0][0],pt[0][1]), 'track_number'])
+            except:
+                pass
+
+        
+        self.filteredTrackIds = np.unique(trackIDs)
+        
+        self.filteredData = self.data[self.data['track_number'].isin(self.filteredTrackIds)]
+        
+
+
+        self.useFilteredData = True
+        self.useFilteredTracks = True
+        
+
     def ROIFilterData(self):
         self.roiFilterPoints = []
         self.rois = self.plotWindow.rois
-        #print(self.rois)
         
         self.oldScatterPoints = self.plotWindow.scatterPoints
         
@@ -498,7 +527,6 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
                 self.roiFilterPoints.extend((selected))
             self.plotWindow.setIndex(currentFrame)
         
-        #print(self.roiFilterPoints) 
         
         self.plotWindow.scatterPoints = [[] for _ in np.arange(self.plotWindow.mt)]
         
@@ -508,17 +536,22 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             if self.plotWindow.mt == 1:
                 t = 0
             pointSize = g.m.settings['point_size']
-            pointColor = QColor(g.m.settings[g.m.settings['point_color']])
+            pointColor = QColor(0,255,0)
             #position = [pt[1]+(.5* (1/pixelSize)), pt[2]+(.5* (1/pixelSize)), pointColor, pointSize]
-            position = [pt[1], pt[2], pointColor, pointSize]    
+            position = [pt[1], pt[2], pointColor, pointSize]  
+            #print(position)
             self.plotWindow.scatterPoints[t].append(position)
         self.plotWindow.updateindex()
+
+        self.getDataFromScatterPoints()
         
         return
 
     def clearROIFilterData(self):
         self.plotWindow.scatterPoints = self.oldScatterPoints 
         self.plotWindow.updateindex()
+        self.useFilteredData = False
+        self.useFilteredTracks = False
         return
     
     def clearPlots(self):
