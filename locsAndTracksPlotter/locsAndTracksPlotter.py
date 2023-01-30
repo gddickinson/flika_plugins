@@ -94,6 +94,9 @@ class FileSelector(QWidget):
         self.pixelSize = 108
         
     def buttonclicked(self):
+        if g.win == None:
+            g.alert('Load tiff stack and set as current window first')
+            return
         prompt = 'testing fileSelector'
         self.filename = open_file_gui(prompt, filetypes=self.filetypes)
         self.label.setText('...'+os.path.split(self.filename)[-1][-20:])
@@ -245,7 +248,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         
         
         #data file selector
-        self.getFile = FileSelector()
+        self.getFile = FileSelector(filetypes='*.csv')
         
         #connections
         self.getFile.valueChanged.connect(self.loadData)
@@ -276,7 +279,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         
         
         self.items.append({'name': 'blank ', 'string': '----  PLOT  -----', 'object': None})           
-        self.items.append({'name': 'plotPoints', 'string': '', 'object': self.plotPointData_button }) 
+        #self.items.append({'name': 'plotPoints', 'string': '', 'object': self.plotPointData_button }) 
         self.items.append({'name': 'hidePoints', 'string': '', 'object': self.hidePointData_button })
         self.items.append({'name': 'trackDefaultColour', 'string': 'Track Default Colour', 'object': self.trackDefaultColour_Box })        
         self.items.append({'name': 'trackColour', 'string': 'Set Track Colour', 'object': self.trackColour_checkbox})           
@@ -313,6 +316,8 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.trackCol_Box.setItems(self.colDict)   
         self.filterCol_Box.setItems(self.colDict)  
         self.trackColourCol_Box.setItems(self.colDict)  
+        
+        self.plotPointData()
         
 
     def makePointDataDF(self, data):   
@@ -488,11 +493,17 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         
         print(self.filteredData.head())
         self.useFilteredData = True
+        
+        
+        self.plotPointData()
+        
         return
 
 
     def clearFilterData(self):
         self.useFilteredData = False
+        
+        self.plotPointData()
         return
 
     def getScatterPointsAsQPoints(self):
@@ -583,10 +594,25 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             self.useMatplotCM = False
             
 
-    def saveData(self):
-        pass
-        #TODO!
-        return
+    def saveData(self):      
+        if self.useFilteredData == False:
+            print('filter data first')
+            g.alert('Filter data first')
+            return
+        
+        #set export path
+        savePath, _ = QFileDialog.getSaveFileName(None, "Save file","","Text Files (*.csv)")        
+
+        #write file
+        try:
+            # writing the data into the file 
+            self.filteredData.to_csv(savePath)
+            
+            print('Filtered data saved to: {}'.format(savePath))
+        except BaseException as e:
+            print(e)
+            print('Export of filtered data failed')
+
 
 
 locsAndTracksPlotter = LocsAndTracksPlotter()
