@@ -188,7 +188,8 @@ test = np.array([  4.447,   4.938,   6.548,   5.553,   7.464,  12.944,  13.145,
 df = pd.DataFrame()
 
 df['x'] = test[0][0:3]
-df['y'] = test[1][0:3]                                                                         
+df['y'] = test[1][0:3]   
+df['frame'] = [0,1,2]                                                                      
 df['id'] = [1,2,3]                                                                    
                                                                          
 qpoints = np.array(test).T

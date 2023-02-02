@@ -335,9 +335,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             df['x'] = data['x']
             df['y'] = data['y']
 
-        self.indexDF = self.data.set_index(['x', 'y'])
-                     
         return df
+
+
 
     def plotPointsOnStack(self):
             
@@ -376,6 +376,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             self.points = self.makePointDataDF(self.filteredData)
         self.plotWindow = g.win
         self.plotPointsOnStack()
+        
 
         g.m.statusBar().showMessage('point data plotted to current window') 
         print('point data plotted to current window')    
@@ -432,7 +433,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             trackIDs = self.filteredTrackIds
             
         else:
-           trackIDs = self.trackIDs
+            trackIDs = self.trackIDs
+
+
+        print('tracks to plot {}'.format(trackIDs))
         
         for track_idx in trackIDs:
             tracks = self.tracks.get_group(track_idx)
@@ -456,13 +460,14 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
 
     def plotTrackData(self):
-        self.plotWindow = g.win
         ### plot track data to current window
-        self.trackIDs = np.unique(self.data['track_number']).astype(np.int)
+        self.plotWindow = g.win
         
-        if self.useFilteredData == False:
+        if self.useFilteredData == False:            
+            self.trackIDs = np.unique(self.data['track_number']).astype(np.int)
             self.tracks = self.makeTrackDF(self.data)
         else:
+            self.trackIDs = np.unique(self.filteredData['track_number']).astype(np.int)
             self.tracks = self.makeTrackDF(self.filteredData)           
         
         self.showTracks()
@@ -514,19 +519,24 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
     def getDataFromScatterPoints(self):
         trackIDs = []
-        for pt in self.plotWindow.scatterPoints:
-            try:
-                #print((pt[0][0],pt[0][1]))
-                trackIDs.append(self.indexDF.at[(pt[0][0],pt[0][1]), 'track_number'])
-            except:
-                pass
+        
+        flat_ptList = [pt for sublist in self.plotWindow.scatterPoints for pt in sublist]
+        
+        for pt in flat_ptList:            
+            #print('point x: {} y: {}'.format(pt[0][0],pt[0][1]))
+
+            ptFilterDF = self.data[(self.data['x']==pt[0]) & (self.data['y']==pt[1])]
+            
+            trackIDs.extend(ptFilterDF['track_number'])
 
         
         self.filteredTrackIds = np.unique(trackIDs)
-        
+
         self.filteredData = self.data[self.data['track_number'].isin(self.filteredTrackIds)]
         
-
+        #self.filteredData = self.data[self.data['track_number'].isin(self.filteredTrackIds)]
+        
+        #self.filteredTrackIds = np.unique(self.filteredData['track_number'])
 
         self.useFilteredData = True
         self.useFilteredTracks = True
