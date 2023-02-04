@@ -35,6 +35,10 @@ pg.setConfigOption('useNumba', True)
 import pandas as pd
 from matplotlib import pyplot as plt
 
+from pyqtgraph.dockarea.Dock import Dock
+from pyqtgraph.dockarea.DockArea import DockArea
+
+
 def dictFromList(l):
     # Create a zip object from two lists
     zipbObj = zip(l, l)
@@ -148,7 +152,74 @@ class TrackWindow(BaseProcess):
     def hide(self):
         self.win.hide()
 
+class ChartDock():
+    def __init__(self):
+        super().__init__()    
+        
+        self.win =QMainWindow()
+        self.area = DockArea()
+        self.win.setCentralWidget(self.area)
+        self.win.resize(1000,500)
+        self.win.setWindowTitle('Plots')
+        
+        ## Create docks, place them into the window one at a time.
+        self.d1 = Dock("plot options", size=(500, 100))
+        self.d2 = Dock("plot", size=(500,400))
+        self.d3 = Dock("histogram options", size=(500,100))
+        self.d4 = Dock("histogram", size=(500,400))
+        
+        self.area.addDock(self.d1, 'left') 
+        self.area.addDock(self.d3, 'right', self.d1)       
+        self.area.addDock(self.d2, 'bottom', self.d1)     
 
+        self.area.addDock(self.d4, 'bottom', self.d3)     
+    
+        self.w1 = pg.LayoutWidget()
+        self.plotOptionlabel = QLabel("Select plot options")     
+    
+        self.xColSelector = pg.ComboBox()
+        self.xcols = {'None':'None'}
+        self.xColSelector.setItems(self.xcols)
+    
+        self.yColSelector = pg.ComboBox()
+        self.ycols = {'None':'None'}
+        self.yColSelector.setItems(self.ycols)    
+        
+        self.w1.addWidget(self.plotOptionlabel , row=0, col=0)
+        self.w1.addWidget(self.xColSelector , row=1, col=0)
+        self.w1.addWidget(self.yColSelector , row=2, col=0)
+        self.d1.addWidget(self.w1)    
+    
+        self.w2 = pg.LayoutWidget()
+        self.histoOptionlabel = QLabel("Select histogram options")     
+    
+        self.colSelector = pg.ComboBox()
+        self.cols = {'None':'None'}
+        self.colSelector.setItems(self.cols)
+        
+        self.w2.addWidget(self.histoOptionlabel , row=0, col=0)
+        self.w2.addWidget(self.colSelector , row=1, col=0)
+        self.w2.addWidget(self.colSelector , row=2, col=0)
+        self.d3.addWidget(self.w2)      
+    
+        self.w3 = pg.PlotWidget(title="plot")
+        self.w3.plot(np.random.normal(size=100))
+        self.d2.addWidget(self.w3)    
+    
+        self.w4 = pg.PlotWidget(title="histogram")
+        self.w4.plot(np.random.normal(size=100))
+        self.d4.addWidget(self.w4)      
+    
+    def show(self):
+        self.win.show()
+    
+    def close(self):
+        self.win.close()
+
+    def hide(self):
+        self.win.hide()
+    
+    
 
 class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
     """
@@ -173,7 +244,6 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             g.settings['locsAndTracksPlotter'] = s
                    
         BaseProcess_noPriorWindow.__init__(self)
-            
         
 
     def __call__(self, filename, filetype, pixelSize, set_track_colour,  keepSourceWindow=False):
@@ -208,6 +278,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.selectedTrack = None
         self.displayTrack = None
         
+        self.chartWindow = None
+        self.displayCharts = False
+        
         self.trackWindow = TrackWindow()
         self.trackWindow.hide()
         
@@ -240,7 +313,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.clearROIFilterData_button.pressed.connect(self.clearROIFilterData)  
         
         self.saveData_button = QPushButton('Save Tracks')
-        self.saveData_button.pressed.connect(self.saveData)         
+        self.saveData_button.pressed.connect(self.saveData)    
+        
+        self.showCharts_button = QPushButton('Show Charts')
+        self.showCharts_button.pressed.connect(self.toggleCharts)          
 
                          
         #checkbox
@@ -249,7 +325,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         
         self.matplotCM_checkbox = CheckBox() 
         self.matplotCM_checkbox.stateChanged.connect(self.setColourMap)
-        self.matplotCM_checkbox.setChecked(True)  
+        self.matplotCM_checkbox.setChecked(False)  
 
         #comboboxes
         self.filetype_Box = pg.ComboBox()
@@ -337,6 +413,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.items.append({'name': 'plotTracks', 'string': '', 'object': self.plotTrackData_button })         
         self.items.append({'name': 'clearTracks', 'string': '', 'object': self.clearTrackData_button })     
         self.items.append({'name': 'saveTracks', 'string': '', 'object': self.saveData_button })  
+        self.items.append({'name': 'showCharts', 'string': '', 'object': self.showCharts_button })          
         
         super().gui()
         ######################################################################
@@ -366,6 +443,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.trackColourCol_Box.setItems(self.colDict)  
         
         self.plotPointData()
+        
         
         
 
@@ -705,6 +783,19 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             print('Export of filtered data failed')
 
 
+    def toggleCharts(self):
+        if self.chartWindow == None:
+            #create plot window
+            self.chartWindow = ChartDock()
+        
+        if self.displayCharts == False:
+            self.chartWindow.show()
+            self.displayCharts = True
+            self.showCharts_button.setText('Hide Charts')
+        else:
+            self.chartWindow.hide()
+            self.displayCharts = False   
+            self.showCharts_button.setText('Show Charts')
 
 locsAndTracksPlotter = LocsAndTracksPlotter()
 	
