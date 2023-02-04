@@ -109,6 +109,47 @@ class FileSelector(QWidget):
         self.filename = str(filename)
         self.label.setText('...' + os.path.split(self.filename)[-1][-20:])    
 
+
+
+class TrackWindow(BaseProcess):
+    def __init__(self):
+        super().__init__()
+               
+        self.win = pg.GraphicsWindow()
+        self.win.resize(600, 300)
+        self.win.setWindowTitle('Track Display')
+        self.plt1 = self.win.addPlot()  
+        
+        self.label = pg.LabelItem(justify='right')
+        self.plt1.setLabel('left', 'Intensity', units ='Arbitary')
+        self.plt1.setLabel('bottom', 'Time', units ='Frames')        
+        self.win.addItem(self.label)
+        
+        self.autoscaleX = True
+        self.autoscaleY = True
+        
+
+    def update(self, x,y,ID):  
+        ## compute standard histogram
+        self.plt1.plot(x, y, stepMode=False, brush=(0,0,255,150), clear=True) 
+        self.label.setText("<span style='font-size: 12pt'>track ID={}".format(ID))
+        
+        if self.autoscaleX:
+            self.plt1.setXRange(np.min(x),np.max(x),padding=0)
+        if self.autoscaleY:
+            self.plt1.setYRange(np.min(y),np.max(y),padding=0)
+                            
+    def show(self):
+        self.win.show()
+    
+    def close(self):
+        self.win.close()
+
+    def hide(self):
+        self.win.hide()
+
+
+
 class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
     """
     plots loc and track data onto current window
@@ -163,6 +204,13 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.useFilteredData = False
         self.useFilteredTracks = False
         self.useMatplotCM = False
+        
+        self.selectedTrack = None
+        self.displayTrack = None
+        
+        self.trackWindow = TrackWindow()
+        self.trackWindow.hide()
+        
         self.gui_reset()        
         s=g.settings['locsAndTracksPlotter']  
         
@@ -199,9 +247,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.trackColour_checkbox = CheckBox()
         self.trackColour_checkbox.setChecked(s['set_track_colour'])
         
-        self.matplotCM_checkbox = CheckBox()
-        self.matplotCM_checkbox.setChecked(False)   
+        self.matplotCM_checkbox = CheckBox() 
         self.matplotCM_checkbox.stateChanged.connect(self.setColourMap)
+        self.matplotCM_checkbox.setChecked(True)  
 
         #comboboxes
         self.filetype_Box = pg.ComboBox()
@@ -319,6 +367,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         
         self.plotPointData()
         
+        
 
     def makePointDataDF(self, data):   
         if self.filetype_Box.value() == 'thunderstorm':
@@ -360,7 +409,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             position = [pt[1], pt[2], pointColor, pointSize]    
             self.plotWindow.scatterPoints[t].append(position)
         self.plotWindow.updateindex()
-
+        
 
     def hidePointData(self):
         if self.plotWindow.scatterPlot in self.plotWindow.imageview.ui.graphicsView.items():
@@ -471,11 +520,43 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             self.tracks = self.makeTrackDF(self.filteredData)           
         
         self.showTracks()
-
+        
+        #get mouse events from plot window
+        self.plotWindow.imageview.scene.sigMouseMoved.connect(self.updateTrackSelector)
+        
+        #use key press to select tracks to display
+        self.plotWindow.keyPressSignal.connect(self.selectTrack)
+        
+        self.trackWindow.show()
+        
         g.m.statusBar().showMessage('track data plotted to current window') 
         print('track data plotted to current window')    
         return
 
+
+    def updateTrackSelector(self, point):
+        pos =  self.plotWindow.imageview.getImageItem().mapFromScene(point)
+
+        #print('x: {}, y: {}'.format(pos.x(),pos.y()))
+                
+        for i, path in enumerate(self.pathitems):
+            if path.contains(pos):
+                #print('mouse at {}'.format(pos))
+                #print('track ID:  {}'.format(self.trackIDs[i]))
+                #print('track pos {}{}'.format(path.pos().x(),path.pos().y()))
+                self.selectedTrack = self.trackIDs[i]                 
+                
+
+    def selectTrack(self,ev):
+        if ev.key() == Qt.Key_T:
+            if self.selectedTrack != self.displayTrack:
+                self.displayTrack = self.selectedTrack    
+                print(self.selectedTrack)
+                trackData = self.data[self.data['track_number'] == int(self.displayTrack)]
+                x = trackData['frame'].to_numpy()
+                y = trackData['intensity'].to_numpy()                
+                self.trackWindow.update(x,y,self.displayTrack)
+        
 
 
     def filterData(self):
