@@ -153,8 +153,10 @@ class TrackWindow(BaseProcess):
         self.win.hide()
 
 class ChartDock():
-    def __init__(self):
+    def __init__(self, mainGUI):
         super().__init__()    
+        
+        self.mainGUI = mainGUI
         
         self.win =QMainWindow()
         self.area = DockArea()
@@ -176,6 +178,9 @@ class ChartDock():
     
         self.w1 = pg.LayoutWidget()
         self.plotOptionlabel = QLabel("Select plot options")     
+
+        self.xlabel = QLabel("x:")  
+        self.ylabel = QLabel("y:")  
     
         self.xColSelector = pg.ComboBox()
         self.xcols = {'None':'None'}
@@ -184,31 +189,99 @@ class ChartDock():
         self.yColSelector = pg.ComboBox()
         self.ycols = {'None':'None'}
         self.yColSelector.setItems(self.ycols)    
+
+        self.plotTypeSelector = pg.ComboBox()
+        self.plotTypes= {'scatter':'scatter', 'line':'line'}
+        self.plotTypeSelector.setItems(self.plotTypes)  
+        self.selectorLabel = QLabel("Plot type")  
+        
+        self.plot_button = QPushButton('Plot')
+        self.plot_button.pressed.connect(self.updatePlot)
         
         self.w1.addWidget(self.plotOptionlabel , row=0, col=0)
-        self.w1.addWidget(self.xColSelector , row=1, col=0)
-        self.w1.addWidget(self.yColSelector , row=2, col=0)
+        self.w1.addWidget(self.xColSelector, row=1, col=1)
+        self.w1.addWidget(self.yColSelector, row=2, col=1)
+        self.w1.addWidget(self.xlabel, row=1, col=0)
+        self.w1.addWidget(self.ylabel, row=2, col=0) 
+        self.w1.addWidget(self.plotTypeSelector, row=3,col=1)
+        self.w1.addWidget(self.selectorLabel, row=3,col=0)       
+        self.w1.addWidget(self.plot_button, row=4, col=1)         
+        
         self.d1.addWidget(self.w1)    
     
         self.w2 = pg.LayoutWidget()
-        self.histoOptionlabel = QLabel("Select histogram options")     
+        self.histoOptionlabel = QLabel("Select histogram options") 
+        self.collabel = QLabel("col:")  
     
         self.colSelector = pg.ComboBox()
         self.cols = {'None':'None'}
         self.colSelector.setItems(self.cols)
         
+        self.histo_button = QPushButton('Plot Histo')
+        self.histo_button.pressed.connect(self.updateHisto)
+        
         self.w2.addWidget(self.histoOptionlabel , row=0, col=0)
-        self.w2.addWidget(self.colSelector , row=1, col=0)
-        self.w2.addWidget(self.colSelector , row=2, col=0)
+        self.w2.addWidget(self.colSelector, row=1, col=1)
+        self.w2.addWidget(self.collabel, row=1, col=0)  
+        self.w2.addWidget(self.histo_button, row=2, col=1)         
+        
         self.d3.addWidget(self.w2)      
     
         self.w3 = pg.PlotWidget(title="plot")
-        self.w3.plot(np.random.normal(size=100))
+        self.w3.plot()
+        self.w3.setLabel('left', 'y-axis', units ='')
+        self.w3.setLabel('bottom', 'x-axis', units ='')  
         self.d2.addWidget(self.w3)    
     
         self.w4 = pg.PlotWidget(title="histogram")
-        self.w4.plot(np.random.normal(size=100))
+        self.w4.plot()
+        self.w4.setLabel('left', '# of observations', units ='')
+        self.w4.setLabel('bottom', 'value', units ='')          
+        
         self.d4.addWidget(self.w4)      
+
+    def updatePlot(self):
+        self.w3.clear()
+        
+        if self.mainGUI.useFilteredData == False:
+            x = self.mainGUI.data[self.xColSelector.value()]
+            y = self.mainGUI.data[self.yColSelector.value()] 
+        else:
+            x = self.mainGUI.filteredData[self.xColSelector.value()]
+            y = self.mainGUI.filteredData[self.yColSelector.value()]             
+
+        if self.plotTypeSelector.value() == 'line':
+            self.w3.plot(x, y, stepMode=False, brush=(0,0,255,150), clear=True) 
+        elif self.plotTypeSelector.value() == 'scatter':
+            self.w3.plot(x, y,
+                         pen = None,
+                         symbol='o',
+                         symbolPen=pg.mkPen(color=(0, 0, 255), width=0),                                      
+                         symbolBrush=pg.mkBrush(0, 0, 255, 255),
+                         symbolSize=7)    
+            
+        
+        self.w3.setLabel('left', self.yColSelector.value(), units = None)
+        self.w3.setLabel('bottom', self.xColSelector.value(), units = None)             
+            
+        return
+    
+    def updateHisto(self):
+        self.w4.clear()        
+        if self.mainGUI.useFilteredData == False:
+            vals = self.mainGUI.data[self.colSelector.value()]
+        else:
+            vals = self.mainGUI.filteredData[self.colSelector.value()]            
+
+        start=0
+        end=np.max(vals)
+        n=100
+
+        y,x = np.histogram(vals, bins=np.linspace(start, end, n))     
+        self.w4.plot(x, y, stepMode=True, fillLevel=0, brush=(0,0,255,150), clear=True) 
+        self.w4.setLabel('bottom', self.colSelector.value(), units = None)     
+        return
+
     
     def show(self):
         self.win.show()
@@ -226,7 +299,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
     plots loc and track data onto current window
     ------------------
     
-    input:      csv file with x, y positions and track info
+    input: csv file with x, y positions and track info
     
     variables:  
     
@@ -629,7 +702,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         if ev.key() == Qt.Key_T:
             if self.selectedTrack != self.displayTrack:
                 self.displayTrack = self.selectedTrack    
-                print(self.selectedTrack)
+                #print(self.selectedTrack)
                 trackData = self.data[self.data['track_number'] == int(self.displayTrack)]
                 x = trackData['frame'].to_numpy()
                 y = trackData['intensity'].to_numpy()                
@@ -786,8 +859,16 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
     def toggleCharts(self):
         if self.chartWindow == None:
             #create plot window
-            self.chartWindow = ChartDock()
-        
+            self.chartWindow = ChartDock(self)
+            self.chartWindow.xColSelector.setItems(self.colDict)
+            self.chartWindow.yColSelector.setItems(self.colDict)
+            self.chartWindow.colSelector.setItems(self.colDict)    
+            
+            self.chartWindow.xcols = self.colDict
+            self.chartWindow.ycols = self.colDict            
+            self.chartWindow.cols = self.colDict
+            
+            
         if self.displayCharts == False:
             self.chartWindow.show()
             self.displayCharts = True
