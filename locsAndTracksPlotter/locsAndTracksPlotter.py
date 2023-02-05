@@ -219,11 +219,21 @@ class ChartDock():
         
         self.histo_button = QPushButton('Plot Histo')
         self.histo_button.pressed.connect(self.updateHisto)
+
+        self.histoBin_selector = pg.SpinBox(value=100, int=True)
+        self.histoBin_selector.setSingleStep(1)       
+        self.histoBin_selector.setMinimum(1)
+        self.histoBin_selector.setMaximum(100000) 
+        self.histoBin_selector.sigValueChanged.connect(self.updateHisto)
+        
+        self.histoBin_label = QLabel('# of bins')
         
         self.w2.addWidget(self.histoOptionlabel , row=0, col=0)
         self.w2.addWidget(self.colSelector, row=1, col=1)
         self.w2.addWidget(self.collabel, row=1, col=0)  
-        self.w2.addWidget(self.histo_button, row=2, col=1)         
+        self.w2.addWidget(self.histoBin_selector, row=2, col=1)
+        self.w2.addWidget(self.histoBin_label, row=2, col=0)        
+        self.w2.addWidget(self.histo_button, row=3, col=1)         
         
         self.d3.addWidget(self.w2)      
     
@@ -244,11 +254,11 @@ class ChartDock():
         self.w3.clear()
         
         if self.mainGUI.useFilteredData == False:
-            x = self.mainGUI.data[self.xColSelector.value()]
-            y = self.mainGUI.data[self.yColSelector.value()] 
+            x = self.mainGUI.data[self.xColSelector.value()].to_numpy()
+            y = self.mainGUI.data[self.yColSelector.value()].to_numpy() 
         else:
-            x = self.mainGUI.filteredData[self.xColSelector.value()]
-            y = self.mainGUI.filteredData[self.yColSelector.value()]             
+            x = self.mainGUI.filteredData[self.xColSelector.value()].to_numpy()
+            y = self.mainGUI.filteredData[self.yColSelector.value()].to_numpy()             
 
         if self.plotTypeSelector.value() == 'line':
             self.w3.plot(x, y, stepMode=False, brush=(0,0,255,150), clear=True) 
@@ -271,11 +281,11 @@ class ChartDock():
         if self.mainGUI.useFilteredData == False:
             vals = self.mainGUI.data[self.colSelector.value()]
         else:
-            vals = self.mainGUI.filteredData[self.colSelector.value()]            
+            vals = self.mainGUI.filteredData[self.colSelector.value()]         
 
         start=0
         end=np.max(vals)
-        n=100
+        n=self.histoBin_selector.value()
 
         y,x = np.histogram(vals, bins=np.linspace(start, end, n))     
         self.w4.plot(x, y, stepMode=True, fillLevel=0, brush=(0,0,255,150), clear=True) 
@@ -608,7 +618,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
                 else:    
                     cm = pg.colormap.get(self.colourMap_Box.value()) #cm goes from 0-1, need to scale input values
                 
-                df['colour'] = cm.mapToQColor(self.data[self.trackColourCol_Box.value()].to_numpy()/max(self.data[self.trackColourCol_Box.value()]))
+                df['colour'] = cm.mapToQColor(data[self.trackColourCol_Box.value()].to_numpy()/max(data[self.trackColourCol_Box.value()]))
         
                      
         return df.groupby(['track_number'])
