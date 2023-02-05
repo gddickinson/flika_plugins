@@ -118,30 +118,56 @@ class FileSelector(QWidget):
 class TrackWindow(BaseProcess):
     def __init__(self):
         super().__init__()
-               
-        self.win = pg.GraphicsWindow()
-        self.win.resize(600, 300)
-        self.win.setWindowTitle('Track Display')
-        self.plt1 = self.win.addPlot()  
         
-        self.label = pg.LabelItem(justify='right')
+        #setup window
+        self.win = pg.GraphicsWindow()
+        self.win.resize(500, 1500)
+        self.win.setWindowTitle('Track Display - press "t" to add track')
+        
+        #add widgets
+        self.label = pg.LabelItem(justify='center')
+        self.win.addItem(self.label)
+        self.win.nextRow()
+        self.plt1 = self.win.addPlot(title='intensity')         
+        self.win.nextRow()
+        self.plt2 = self.win.addPlot(title='distance from origin')
+        self.win.nextRow()
+        self.plt3 = self.win.addPlot(title='track')  
+        self.plt3.showGrid(x=True, y=True)
+        self.plt3.setXRange(-5,5)
+        self.plt3.setYRange(-5,5)
+        
+        #add plot labels
         self.plt1.setLabel('left', 'Intensity', units ='Arbitary')
         self.plt1.setLabel('bottom', 'Time', units ='Frames')        
-        self.win.addItem(self.label)
+
+        self.plt2.setLabel('left', 'Distance', units ='pixels')
+        self.plt2.setLabel('bottom', 'Time', units ='Frames') 
         
-        self.autoscaleX = True
-        self.autoscaleY = True
+        self.plt3.setLabel('left', 'x', units ='pixels')
+        self.plt3.setLabel('bottom', 'y', units ='pixels')         
+        
+        #self.autoscaleX = True
+        #self.autoscaleY = True
         
 
-    def update(self, x,y,ID):  
-        ## compute standard histogram
-        self.plt1.plot(x, y, stepMode=False, brush=(0,0,255,150), clear=True) 
-        self.label.setText("<span style='font-size: 12pt'>track ID={}".format(ID))
+    def update(self, time, intensity, distance, zeroed_X, zeroed_Y, ID):  
+        ##Update track ID
+        self.label.setText("<span style='font-size: 12pt'>track ID={}".format(ID))        
+        #update intensity plot
+        self.plt1.plot(time, intensity, stepMode=False, brush=(0,0,255,150), clear=True) 
+        #update distance plot        
+        self.plt2.plot(time, distance, stepMode=False, brush=(0,0,255,150), clear=True)
+        #update position relative to 0 plot          
+        self.plt3.plot(zeroed_X, zeroed_Y, stepMode=False, brush=(0,0,255,150), clear=True) 
         
-        if self.autoscaleX:
-            self.plt1.setXRange(np.min(x),np.max(x),padding=0)
-        if self.autoscaleY:
-            self.plt1.setYRange(np.min(y),np.max(y),padding=0)
+        # if self.autoscaleX:
+        #     self.plt1.setXRange(np.min(x),np.max(x),padding=0)
+            
+        # if self.autoscaleY:
+        #     self.plt1.setYRange(np.min(y),np.max(y),padding=0)
+
+            
                             
     def show(self):
         self.win.show()
@@ -714,9 +740,12 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
                 self.displayTrack = self.selectedTrack    
                 #print(self.selectedTrack)
                 trackData = self.data[self.data['track_number'] == int(self.displayTrack)]
-                x = trackData['frame'].to_numpy()
-                y = trackData['intensity'].to_numpy()                
-                self.trackWindow.update(x,y,self.displayTrack)
+                frame = trackData['frame'].to_numpy()
+                intensity = trackData['intensity'].to_numpy() 
+                distance = trackData['distanceFromOrigin'].to_numpy() 
+                zeroed_X = trackData['zeroed_X'].to_numpy()
+                zeroed_Y = trackData['zeroed_Y'].to_numpy()                            
+                self.trackWindow.update(frame, intensity, distance, zeroed_X, zeroed_Y,  self.displayTrack)
         
 
 
