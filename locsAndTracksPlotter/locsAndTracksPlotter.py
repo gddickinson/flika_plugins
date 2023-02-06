@@ -4,6 +4,9 @@ Created on Sat May 23 10:38:20 2020
 
 @author: george.dickinson@gmail.com
 """
+import warnings
+warnings.simplefilter(action='ignore', category=Warning)
+
 from qtpy.QtCore import *
 from qtpy.QtGui import *
 from qtpy.QtWidgets import *
@@ -128,14 +131,20 @@ class TrackWindow(BaseProcess):
         self.label = pg.LabelItem(justify='center')
         self.win.addItem(self.label)
         self.win.nextRow()
-        self.plt1 = self.win.addPlot(title='intensity')         
+        
+        self.plt1 = self.win.addPlot(title='intensity')
+        self.plt1.getAxis('left').enableAutoSIPrefix(False)         
         self.win.nextRow()
+        
         self.plt2 = self.win.addPlot(title='distance from origin')
+        self.plt2.getAxis('left').enableAutoSIPrefix(False)        
         self.win.nextRow()
+        
         self.plt3 = self.win.addPlot(title='track')  
         self.plt3.showGrid(x=True, y=True)
         self.plt3.setXRange(-5,5)
         self.plt3.setYRange(-5,5)
+        self.plt3.getViewBox().invertY(True)
         
         #add plot labels
         self.plt1.setLabel('left', 'Intensity', units ='Arbitary')
@@ -144,8 +153,8 @@ class TrackWindow(BaseProcess):
         self.plt2.setLabel('left', 'Distance', units ='pixels')
         self.plt2.setLabel('bottom', 'Time', units ='Frames') 
         
-        self.plt3.setLabel('left', 'x', units ='pixels')
-        self.plt3.setLabel('bottom', 'y', units ='pixels')         
+        self.plt3.setLabel('left', 'y', units ='pixels')
+        self.plt3.setLabel('bottom', 'x', units ='pixels')         
         
         #self.autoscaleX = True
         #self.autoscaleY = True
@@ -202,8 +211,12 @@ class ChartDock():
 
         self.area.addDock(self.d4, 'bottom', self.d3)     
     
+        #### SCATTER PLOT
         self.w1 = pg.LayoutWidget()
-        self.plotOptionlabel = QLabel("Select plot options")     
+        
+        self.pointOrTrackData_selector_plot = pg.ComboBox()
+        self.plotDataChoice = {'Point Data':'Point Data', 'Track Means': 'Track Means'}
+        self.pointOrTrackData_selector_plot.setItems(self.plotDataChoice)  
 
         self.xlabel = QLabel("x:")  
         self.ylabel = QLabel("y:")  
@@ -220,28 +233,43 @@ class ChartDock():
         self.plotTypes= {'scatter':'scatter', 'line':'line'}
         self.plotTypeSelector.setItems(self.plotTypes)  
         self.selectorLabel = QLabel("Plot type")  
+
+
+        self.pointSize_selector = pg.SpinBox(value=7, int=True)
+        self.pointSize_selector.setSingleStep(1)       
+        self.pointSize_selector.setMinimum(1)
+        self.pointSize_selector.setMaximum(10) 
+        self.pointSize_selector.sigValueChanged.connect(self.updatePlot)
+        self.pointSizeLabel = QLabel("Point size") 
         
         self.plot_button = QPushButton('Plot')
         self.plot_button.pressed.connect(self.updatePlot)
         
-        self.w1.addWidget(self.plotOptionlabel , row=0, col=0)
+        self.w1.addWidget(self.pointOrTrackData_selector_plot , row=0, col=1)
         self.w1.addWidget(self.xColSelector, row=1, col=1)
         self.w1.addWidget(self.yColSelector, row=2, col=1)
         self.w1.addWidget(self.xlabel, row=1, col=0)
         self.w1.addWidget(self.ylabel, row=2, col=0) 
         self.w1.addWidget(self.plotTypeSelector, row=3,col=1)
-        self.w1.addWidget(self.selectorLabel, row=3,col=0)       
-        self.w1.addWidget(self.plot_button, row=4, col=1)         
+        self.w1.addWidget(self.selectorLabel, row=3,col=0) 
+        self.w1.addWidget(self.pointSizeLabel, row=4, col=0)         
+        self.w1.addWidget(self.pointSize_selector, row=4, col=1)        
+        self.w1.addWidget(self.plot_button, row=5, col=1)         
         
         self.d1.addWidget(self.w1)    
-    
+        
+        #### HISTOGRAM
         self.w2 = pg.LayoutWidget()
-        self.histoOptionlabel = QLabel("Select histogram options") 
-        self.collabel = QLabel("col:")  
+        
+        self.pointOrTrackData_selector_histo = pg.ComboBox()
+        self.histoDataChoice = {'Point Data':'Point Data', 'Track Means': 'Track Means'}
+        self.pointOrTrackData_selector_histo.setItems(self.histoDataChoice)  
     
         self.colSelector = pg.ComboBox()
         self.cols = {'None':'None'}
         self.colSelector.setItems(self.cols)
+        
+        self.collabel = QLabel("col:") 
         
         self.histo_button = QPushButton('Plot Histo')
         self.histo_button.pressed.connect(self.updateHisto)
@@ -254,7 +282,7 @@ class ChartDock():
         
         self.histoBin_label = QLabel('# of bins')
         
-        self.w2.addWidget(self.histoOptionlabel , row=0, col=0)
+        self.w2.addWidget(self.pointOrTrackData_selector_histo , row=0, col=1)
         self.w2.addWidget(self.colSelector, row=1, col=1)
         self.w2.addWidget(self.collabel, row=1, col=0)  
         self.w2.addWidget(self.histoBin_selector, row=2, col=1)
@@ -278,13 +306,26 @@ class ChartDock():
 
     def updatePlot(self):
         self.w3.clear()
+
+        if self.pointOrTrackData_selector_plot.value() == 'Point Data':
         
-        if self.mainGUI.useFilteredData == False:
-            x = self.mainGUI.data[self.xColSelector.value()].to_numpy()
-            y = self.mainGUI.data[self.yColSelector.value()].to_numpy() 
+            if self.mainGUI.useFilteredData == False:
+                x = self.mainGUI.data[self.xColSelector.value()].to_numpy()
+                y = self.mainGUI.data[self.yColSelector.value()].to_numpy() 
+            else:
+                x = self.mainGUI.filteredData[self.xColSelector.value()].to_numpy()
+                y = self.mainGUI.filteredData[self.yColSelector.value()].to_numpy()             
+
         else:
-            x = self.mainGUI.filteredData[self.xColSelector.value()].to_numpy()
-            y = self.mainGUI.filteredData[self.yColSelector.value()].to_numpy()             
+            
+            if self.mainGUI.useFilteredData == False:                
+                plotDF = self.mainGUI.data.groupby('track_number', as_index=False).mean()                
+            else:                
+                plotDF = self.mainGUI.filteredData.groupby('track_number', as_index=False).mean()
+                
+            x = plotDF[self.xColSelector.value()].to_numpy()
+            y = plotDF[self.yColSelector.value()].to_numpy() 
+
 
         if self.plotTypeSelector.value() == 'line':
             self.w3.plot(x, y, stepMode=False, brush=(0,0,255,150), clear=True) 
@@ -294,7 +335,7 @@ class ChartDock():
                          symbol='o',
                          symbolPen=pg.mkPen(color=(0, 0, 255), width=0),                                      
                          symbolBrush=pg.mkBrush(0, 0, 255, 255),
-                         symbolSize=7)    
+                         symbolSize=self.pointSize_selector.value())    
             
         
         self.w3.setLabel('left', self.yColSelector.value(), units = None)
@@ -303,11 +344,23 @@ class ChartDock():
         return
     
     def updateHisto(self):
-        self.w4.clear()        
-        if self.mainGUI.useFilteredData == False:
-            vals = self.mainGUI.data[self.colSelector.value()]
+        self.w4.clear()
+
+        if self.pointOrTrackData_selector_histo.value() == 'Point Data':
+             
+            if self.mainGUI.useFilteredData == False:
+                vals = self.mainGUI.data[self.colSelector.value()]
+            else:
+                vals = self.mainGUI.filteredData[self.colSelector.value()]         
+
         else:
-            vals = self.mainGUI.filteredData[self.colSelector.value()]         
+            if self.mainGUI.useFilteredData == False:                
+                plotDF = self.mainGUI.data.groupby('track_number', as_index=False).mean()                
+            else:                
+                plotDF = self.mainGUI.filteredData.groupby('track_number', as_index=False).mean() 
+                
+            vals = plotDF[self.colSelector.value()] 
+
 
         start=0
         end=np.max(vals)
@@ -333,15 +386,12 @@ class ChartDock():
 class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
     """
     plots loc and track data onto current window
+    performs basic track analysis
     ------------------
     
     input: csv file with x, y positions and track info
+    to add tracks to track plotter: press 't' when hovering cursor over track in active display window 
     
-    variables:  
-    
-    analysis:   
-    
-    output:     
     """
     def __init__(self):
         if g.settings['locsAndTracksPlotter'] is None or 'set_track_colour' not in g.settings['locsAndTracksPlotter']:
@@ -529,12 +579,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         return
 
 
-
     def loadData(self):
         self.filename = self.getFile.value()
         self.data = pd.read_csv(self.filename)
         
-
         print('-------------------------------------')
         print('Data loaded (first 5 rows displayed):')
         print(self.data.head())
@@ -551,10 +599,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.filterCol_Box.setItems(self.colDict)  
         self.trackColourCol_Box.setItems(self.colDict)  
         
+        #format points add to image window
         self.plotPointData()
         
-        
-        
+
 
     def makePointDataDF(self, data):   
         if self.filetype_Box.value() == 'thunderstorm':
@@ -572,7 +620,6 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             df['y'] = data['y']
 
         return df
-
 
 
     def plotPointsOnStack(self):
@@ -739,12 +786,15 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             if self.selectedTrack != self.displayTrack:
                 self.displayTrack = self.selectedTrack    
                 #print(self.selectedTrack)
+                
+                #get track data for plots
                 trackData = self.data[self.data['track_number'] == int(self.displayTrack)]
                 frame = trackData['frame'].to_numpy()
                 intensity = trackData['intensity'].to_numpy() 
                 distance = trackData['distanceFromOrigin'].to_numpy() 
                 zeroed_X = trackData['zeroed_X'].to_numpy()
                 zeroed_Y = trackData['zeroed_Y'].to_numpy()                            
+                #update plots in track display               
                 self.trackWindow.update(frame, intensity, distance, zeroed_X, zeroed_Y,  self.displayTrack)
         
 
@@ -857,12 +907,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.useFilteredTracks = False
         return
     
-    def clearPlots(self):
-        try:
-            plt.close('all')  
-        except:
-            pass
-        return
+
 
     def setColourMap(self):
         if self.matplotCM_checkbox.isChecked():
@@ -874,26 +919,6 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             self.colourMap_Box.setItems(self.colourMaps) 
             self.useMatplotCM = False
             
-
-    def saveData(self):      
-        if self.useFilteredData == False:
-            print('filter data first')
-            g.alert('Filter data first')
-            return
-        
-        #set export path
-        savePath, _ = QFileDialog.getSaveFileName(None, "Save file","","Text Files (*.csv)")        
-
-        #write file
-        try:
-            # writing the data into the file 
-            self.filteredData.to_csv(savePath)
-            
-            print('Filtered data saved to: {}'.format(savePath))
-        except BaseException as e:
-            print(e)
-            print('Export of filtered data failed')
-
 
     def toggleCharts(self):
         if self.chartWindow == None:
@@ -916,6 +941,44 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             self.chartWindow.hide()
             self.displayCharts = False   
             self.showCharts_button.setText('Show Charts')
+
+
+    def createStatsDFs(self):
+            self.meanDF = self.data.groupby('track_number', as_index=False).mean()
+            self.stdDF = self.data.groupby('track_number', as_index=False).std()        
+
+    def createStatsDFs_filtered(self):
+            self.meanDF_filtered = self.filteredData.groupby('track_number', as_index=False).mean()
+            self.stdDF_filtered = self.filteredData.groupby('track_number', as_index=False).std() 
+
+
+    def clearPlots(self):
+        try:
+            plt.close('all')  
+        except:
+            pass
+        return
+
+    def saveData(self):      
+        if self.useFilteredData == False:
+            print('filter data first')
+            g.alert('Filter data first')
+            return
+        
+        #set export path
+        savePath, _ = QFileDialog.getSaveFileName(None, "Save file","","Text Files (*.csv)")        
+
+        #write file
+        try:
+            # writing the data into the file 
+            self.filteredData.to_csv(savePath)
+            
+            print('Filtered data saved to: {}'.format(savePath))
+        except BaseException as e:
+            print(e)
+            print('Export of filtered data failed')
+
+
 
 locsAndTracksPlotter = LocsAndTracksPlotter()
 	
