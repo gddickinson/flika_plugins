@@ -118,6 +118,81 @@ class FileSelector(QWidget):
 
 
 
+class FlowerPlotWindow():
+    def __init__(self, mainGUI):
+        super().__init__()  
+
+        self.mainGUI = mainGUI
+
+        #setup window
+        self.win = pg.GraphicsWindow()
+        self.win.resize(500, 500)
+        self.win.setWindowTitle('Flower Plot')
+
+        self.plt = self.win.addPlot(title='plot')  
+        self.plt.showGrid(x=True, y=True)
+        self.plt.setXRange(-5,5)
+        self.plt.setYRange(-5,5)
+        self.plt.getViewBox().invertY(True)        
+        
+        self.plt.setLabel('left', 'y', units ='pixels')
+        self.plt.setLabel('bottom', 'x', units ='pixels') 
+        
+        self.pathitems = []
+
+    def update(self):  
+        #update position relative to 0 plot  
+        self.clearTracks()
+
+        #setup pen
+        pen = QPen(self.mainGUI.trackDefaultColour_Box.value(), .4)
+        pen.setCosmetic(True)
+        pen.setWidth(1)
+
+        if self.mainGUI.useFilteredData:       
+            #trackIDs = self.mainGUI.filteredTrackIds 
+            #Not working ###
+            #TODO!
+            return
+            ################
+        else:
+            trackIDs = self.mainGUI.trackIDs
+        
+        for track_idx in trackIDs:
+            tracks = self.mainGUI.tracks.get_group(track_idx)
+            pathitem = QGraphicsPathItem(self.plt)
+            
+            if self.mainGUI.trackColour_checkbox.isChecked():
+                #print(tracks['colour'].to_list()[0].rgb())
+                pen.setColor(tracks['colour'].to_list()[0])
+                            
+            pathitem.setPen(pen)
+            self.plt.addItem(pathitem)
+            self.pathitems.append(pathitem)
+            x = tracks['zeroed_X'].to_numpy()
+            y = tracks['zeroed_Y'].to_numpy()  
+            #x = pts[:, 1]+.5; y = pts[:,2]+.5
+            path = QPainterPath(QPointF(x[0],y[0]))
+            for i in np.arange(1, len(x)):
+                path.lineTo(QPointF(x[i],y[i]))
+            pathitem.setPath(path)
+       
+    def clearTracks(self):
+        if self.win is not None and not self.win.closed:
+            for pathitem in self.pathitems:
+                self.plt.removeItem(pathitem)
+        self.pathitems = [] 
+
+    def show(self):
+        self.win.show()
+    
+    def close(self):
+        self.win.close()
+
+    def hide(self):
+        self.win.hide()
+
+
 class TrackWindow(BaseProcess):
     def __init__(self):
         super().__init__()
@@ -432,6 +507,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.pathitems = []
         self.useFilteredData = False
         self.useFilteredTracks = False
+        
+        #self.filteredTrackIds = None
+        
         self.useMatplotCM = False
         
         self.selectedTrack = None
@@ -440,8 +518,13 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.chartWindow = None
         self.displayCharts = False
         
+        #initiate track plot
         self.trackWindow = TrackWindow()
         self.trackWindow.hide()
+        
+        #initiate flower plot
+        self.flowerPlotWindow = FlowerPlotWindow(self)
+        self.flowerPlotWindow.hide()        
         
         self.gui_reset()        
         s=g.settings['locsAndTracksPlotter']  
@@ -603,7 +686,6 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.plotPointData()
         
 
-
     def makePointDataDF(self, data):   
         if self.filetype_Box.value() == 'thunderstorm':
             ######### load FLIKA pyinsight data into DF ############
@@ -684,6 +766,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             df['y'] = data['y']
             df['track_number'] = data['track_number']
             
+            df['zeroed_X'] = data['zeroed_X']
+            df['zeroed_Y'] = data['zeroed_Y']            
+            
             
             if self.trackColour_checkbox.isChecked():
                 if self.useMatplotCM:
@@ -761,7 +846,12 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         #use key press to select tracks to display
         self.plotWindow.keyPressSignal.connect(self.selectTrack)
         
+        #display track window with plots for individual tracks
         self.trackWindow.show()
+        
+        #display flower plot with all tracks origins set to 0,0
+        self.flowerPlotWindow.update()       
+        self.flowerPlotWindow.show()
         
         g.m.statusBar().showMessage('track data plotted to current window') 
         print('track data plotted to current window')    
@@ -794,9 +884,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
                 distance = trackData['distanceFromOrigin'].to_numpy() 
                 zeroed_X = trackData['zeroed_X'].to_numpy()
                 zeroed_Y = trackData['zeroed_Y'].to_numpy()                            
+                
                 #update plots in track display               
                 self.trackWindow.update(frame, intensity, distance, zeroed_X, zeroed_Y,  self.displayTrack)
-        
+                
 
 
     def filterData(self):
@@ -820,8 +911,12 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         print(self.filteredData.head())
         self.useFilteredData = True
         
-        
+        #update point data plot
         self.plotPointData()
+        
+        #update track plots
+        #TODO!
+
         
         return
 
@@ -907,7 +1002,6 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.useFilteredTracks = False
         return
     
-
 
     def setColourMap(self):
         if self.matplotCM_checkbox.isChecked():
