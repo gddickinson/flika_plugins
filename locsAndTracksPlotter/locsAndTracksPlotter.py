@@ -23,7 +23,7 @@ from os.path import expanduser
 import os
 import math
 import sys
-
+from scipy.optimize import curve_fit
 import time
 
 flika_version = flika.__version__
@@ -46,6 +46,19 @@ def dictFromList(l):
     # Create a zip object from two lists
     zipbObj = zip(l, l)
     return dict(zipbObj)
+
+
+def exp_dec(x, A1, tau):
+    return 1 + A1 * np.exp(-x / tau)
+
+def exp_dec_2(x, A1, tau1, tau2):
+    A2 = -1 - A1
+    return 1 + A1 * np.exp(-x / tau1) + A2 * np.exp(-x / tau2)
+
+def exp_dec_3(x, A1, A2, tau1, tau2, tau3):
+    A3 = -1 - A1 - A2
+    return 1 + A1 * np.exp(-x / tau1) + A2 * np.exp(-x / tau2) + A3 * np.exp(-x / tau3)
+
 
 def open_file_gui(prompt="Open File", directory=None, filetypes=''):
     """ File dialog for opening an existing file, isolated to handle tuple/string return value
@@ -98,7 +111,8 @@ class FileSelector(QWidget):
         self.filetypes = filetypes
         self.filename = ''
         self.columns = []
-        self.pixelSize = 108
+        self.pixelSize = 108    #nanometers
+
         
     def buttonclicked(self):
         if g.win == None:
@@ -131,8 +145,8 @@ class FlowerPlotWindow():
 
         self.plt = self.win.addPlot(title='plot')  
         self.plt.showGrid(x=True, y=True)
-        self.plt.setXRange(-5,5)
-        self.plt.setYRange(-5,5)
+        self.plt.setXRange(-10,10)
+        self.plt.setYRange(-10,10)
         self.plt.getViewBox().invertY(True)        
         
         self.plt.setLabel('left', 'y', units ='pixels')
@@ -140,42 +154,6 @@ class FlowerPlotWindow():
         
         self.pathitems = []
 
-    def update(self):  
-        #update position relative to 0 plot  
-        self.clearTracks()
-
-        #setup pen
-        pen = QPen(self.mainGUI.trackDefaultColour_Box.value(), .4)
-        pen.setCosmetic(True)
-        pen.setWidth(1)
-
-        if self.mainGUI.useFilteredData:       
-            #trackIDs = self.mainGUI.filteredTrackIds 
-            #Not working ###
-            #TODO!
-            return
-            ################
-        else:
-            trackIDs = self.mainGUI.trackIDs
-        
-        for track_idx in trackIDs:
-            tracks = self.mainGUI.tracks.get_group(track_idx)
-            pathitem = QGraphicsPathItem(self.plt)
-            
-            if self.mainGUI.trackColour_checkbox.isChecked():
-                #print(tracks['colour'].to_list()[0].rgb())
-                pen.setColor(tracks['colour'].to_list()[0])
-                            
-            pathitem.setPen(pen)
-            self.plt.addItem(pathitem)
-            self.pathitems.append(pathitem)
-            x = tracks['zeroed_X'].to_numpy()
-            y = tracks['zeroed_Y'].to_numpy()  
-            #x = pts[:, 1]+.5; y = pts[:,2]+.5
-            path = QPainterPath(QPointF(x[0],y[0]))
-            for i in np.arange(1, len(x)):
-                path.lineTo(QPointF(x[i],y[i]))
-            pathitem.setPath(path)
        
     def clearTracks(self):
         if self.win is not None and not self.win.closed:
@@ -183,6 +161,311 @@ class FlowerPlotWindow():
                 self.plt.removeItem(pathitem)
         self.pathitems = [] 
 
+    def show(self):
+        self.win.show()
+    
+    def close(self):
+        self.win.close()
+
+    def hide(self):
+        self.win.hide()
+
+
+class DiffusionPlotWindow():
+    def __init__(self, mainGUI):
+        super().__init__()  
+
+        self.mainGUI = mainGUI
+        
+        self.win =QMainWindow()
+        self.area = DockArea()
+        self.win.setCentralWidget(self.area)
+        self.win.resize(1200,500)
+        self.win.setWindowTitle('Diffusion Analysis')
+
+        self.pixelSize = self.mainGUI.pixelSize
+        
+        ## Create docks, place them into the window one at a time.
+        self.d1 = Dock("plot options", size=(400, 100))
+        self.d2 = Dock("distance plot", size=(400,400))
+        self.d3 = Dock("histo options", size=(400,100))
+        self.d4 = Dock("lag histogram", size=(400,400))
+        self.d5 = Dock("CDF options", size=(400,100))        
+        self.d6 = Dock("CDF", size=(400,400))       
+        
+        self.area.addDock(self.d1, 'left') 
+        self.area.addDock(self.d3, 'right', self.d1)       
+        self.area.addDock(self.d2, 'bottom', self.d1)     
+        self.area.addDock(self.d4, 'bottom', self.d3) 
+        
+        self.area.addDock(self.d5, 'right', self.d3)     
+        self.area.addDock(self.d6, 'right', self.d4)   
+    
+        #### DISTANCE SCATTER PLOT
+        self.w1 = pg.LayoutWidget()
+    
+        self.plotTypeSelector = pg.ComboBox()
+        self.plotTypes= {'scatter':'scatter','line (slow with many tracks!)':'line'}
+        self.plotTypeSelector.setItems(self.plotTypes)  
+        self.selectorLabel = QLabel("Plot type")  
+
+        self.pointSize_selector = pg.SpinBox(value=3, int=True)
+        self.pointSize_selector.setSingleStep(1)       
+        self.pointSize_selector.setMinimum(1)
+        self.pointSize_selector.setMaximum(10) 
+        self.pointSize_selector.sigValueChanged.connect(self.updatePlot)
+        self.pointSizeLabel = QLabel("Point size") 
+        
+        self.plot_button = QPushButton('Plot')
+        self.plot_button.pressed.connect(self.updatePlot)
+        
+        self.w1.addWidget(self.plotTypeSelector, row=0,col=1)
+        self.w1.addWidget(self.selectorLabel, row=0,col=0) 
+        self.w1.addWidget(self.pointSizeLabel, row=1, col=0)         
+        self.w1.addWidget(self.pointSize_selector, row=1, col=1)        
+        self.w1.addWidget(self.plot_button, row=2, col=1)         
+        
+        self.d1.addWidget(self.w1)    
+
+        self.w3 = pg.PlotWidget(title="square of distance from origin")
+        self.w3.plot()
+        self.w3.setLabel('left', 'd squared', units ='')
+        self.w3.setLabel('bottom', 'lags', units ='')  
+        self.d2.addWidget(self.w3)  
+
+        
+        #### LAG HISTOGRAM
+        self.w2 = pg.LayoutWidget()             
+        
+        self.histo_button = QPushButton('Plot Histo')
+        self.histo_button.pressed.connect(self.updateHisto)
+
+        self.histoBin_selector = pg.SpinBox(value=100, int=True)
+        self.histoBin_selector.setSingleStep(1)       
+        self.histoBin_selector.setMinimum(1)
+        self.histoBin_selector.setMaximum(100000) 
+        self.histoBin_selector.sigValueChanged.connect(self.updateHisto)
+        
+        self.histoBin_label = QLabel('# of bins')
+        
+        self.w2.addWidget(self.histoBin_selector, row=0, col=1)
+        self.w2.addWidget(self.histoBin_label, row=0, col=0)        
+        self.w2.addWidget(self.histo_button, row=1, col=1)         
+        
+        self.d3.addWidget(self.w2)       
+    
+        self.w4 = pg.PlotWidget(title="Distribution of mean SLDs")
+        self.w4.plot()
+        self.w4.setLabel('left', 'Count', units ='')
+        self.w4.setLabel('bottom', 'mean sld per track', units ='nm')          
+        self.w4.getAxis('bottom').enableAutoSIPrefix(False)         
+        self.d4.addWidget(self.w4)    
+        
+        ### CDF
+        self.w5 = pg.LayoutWidget()             
+        
+        self.cdf_button = QPushButton('Plot CDF')
+        self.cdf_button.pressed.connect(self.updateCDF)
+
+        self.cdfBin_selector = pg.SpinBox(value=100, int=True)
+        self.cdfBin_selector.setSingleStep(1)       
+        self.cdfBin_selector.setMinimum(1)
+        self.cdfBin_selector.setMaximum(100000) 
+        self.cdfBin_selector.sigValueChanged.connect(self.updateCDF)
+        
+        self.cdfBin_label = QLabel('# of bins')
+        
+        self.w5.addWidget(self.cdfBin_selector, row=0, col=1)
+        self.w5.addWidget(self.cdfBin_label, row=0, col=0)        
+        self.w5.addWidget(self.cdf_button, row=1, col=1)         
+        
+        self.d5.addWidget(self.w5)       
+    
+        self.w6 = pg.PlotWidget(title="CDF")
+        self.w6.plot()
+        self.w6.setLabel('left', 'CDF', units ='')
+        self.w6.setLabel('bottom', 'mean sld^2', units ='micron^2')          
+        self.w6.getAxis('bottom').enableAutoSIPrefix(False) 
+        self.d6.addWidget(self.w6)          
+        
+        self.exp_dec_1_curve = None
+        self.exp_dec_2_curve = None
+        self.exp_dec_3_curve = None        
+
+    def updatePlot(self):
+        self.w3.clear()
+                     
+        if self.plotTypeSelector.value() == 'line':
+            
+            if self.mainGUI.useFilteredData == False:            
+                df = self.mainGUI.data
+            else:           
+                df = self.mainGUI.filteredData
+            
+            x = df.groupby('track_number')['lagNumber'].apply(list)
+            y = df.groupby('track_number')['d_squared'].apply(list)        
+
+            trackID_list = np.unique(df['track_number']).astype(np.int)
+
+            
+            for txid in trackID_list:
+                
+                path = pg.arrayToQPath(np.array(x[txid]),np.array(y[txid]))
+                item = pg.QtGui.QGraphicsPathItem(path)
+                item.setPen(pg.mkPen('w'))                
+                self.w3.addItem(item)
+            
+            
+        elif self.plotTypeSelector.value() == 'scatter':
+            
+            if self.mainGUI.useFilteredData == False:
+                x = self.mainGUI.data['lagNumber'].to_numpy()
+                y = self.mainGUI.data['d_squared'].to_numpy() 
+            else:
+                x = self.mainGUI.filteredData['lagNumber'].to_numpy()
+                y = self.mainGUI.filteredData['d_squared'].to_numpy() 
+            
+            self.w3.plot(x, y,
+                         pen = None,
+                         symbol='o',
+                         symbolPen=pg.mkPen(color=(0, 0, 255), width=0),                                      
+                         symbolBrush=pg.mkBrush(0, 0, 255, 255),
+                         symbolSize=self.pointSize_selector.value())    
+            
+            
+        return
+    
+    def updateHisto(self):
+        self.w4.clear()
+             
+        if self.mainGUI.useFilteredData == False:                
+            plotDF = self.mainGUI.data.groupby('track_number').mean()                
+        else:                
+            plotDF = self.mainGUI.filteredData.groupby('track_number').mean() 
+        
+        # in microns
+        meanLag = plotDF['lag'] * self.pixelSize
+
+        start=0
+        end=np.max(meanLag)
+        n=self.histoBin_selector.value()
+
+        y,x = np.histogram(meanLag, bins=np.linspace(start, end, n))     
+        self.w4.plot(x, y, stepMode=True, fillLevel=0, brush=(0,0,255,150), clear=True)     
+        return
+
+
+    def updateCDF(self):
+        self.w6.clear()
+             
+        if self.mainGUI.useFilteredData == False:                
+            plotDF = self.mainGUI.data.groupby('track_number').mean()                
+        else:                
+            plotDF = self.mainGUI.filteredData.groupby('track_number').mean() 
+        
+        # in microns squared   
+        self.squared_SLDs = plotDF['lag_squared'] * np.square(self.pixelSize/1000)
+
+        start=0
+        end=np.max(self.squared_SLDs)
+        n=self.cdfBin_selector.value()
+
+        count,bins_count = np.histogram(self.squared_SLDs, bins=np.linspace(start, end, n)) 
+        
+        pdf = count / sum(count)
+        self.cdf_y = np.cumsum(pdf)        
+        self.cdf_x = bins_count[1:]
+        
+        self.nlags = np.max(self.cdf_y)
+        
+        self.w6.plot(self.cdf_x, self.cdf_y, brush=(0,0,255,150), clear=True)  
+        
+        self.fit_exp_dec_1()
+        #self.fit_exp_dec_2()
+        #self.fit_exp_dec_3()
+        
+        return
+
+
+    def fit_exp_dec_1(self):
+        if self.exp_dec_1_curve is not None:
+            self.w6.removeItem(self.exp_dec_1_curve)
+            #self.legend.removeItem(self.exp_dec_1_curve.name())
+               
+        xfit = self.cdf_x
+        ydata = self.cdf_y 
+        
+        print(xfit)
+        print(ydata)
+
+        popt, pcov = curve_fit(exp_dec, xfit, ydata, bounds=([-1.2, 0], [0, 30]))
+        tau_fit = popt[1]
+        D_fit = self.tau_to_D(tau_fit)
+        print('D = {0:.4g} um^2 s^-1'.format(D_fit))
+        yfit = exp_dec(xfit, *popt)
+        self.exp_dec_1_curve = self.w6.plot(xfit, yfit, pen='g', name=' Fit. D = {0:.4g} um^2 s^-1'.format(D_fit))
+        # residual_plot = pg.plot(title='Single exponential residual')
+        # residual_plot.plot(xfit, np.abs(ydata[x_fit_mask] - yfit))
+
+
+    def fit_exp_dec_2(self):
+        if self.exp_dec_2_curve is not None:
+            self.w6.removeItem(self.exp_dec_2_curve)
+            #self.legend.removeItem(self.exp_dec_2_curve.name())
+
+        xfit = self.cdf_x
+        ydata = self.cdf_y 
+        
+        popt, pcov = curve_fit(exp_dec_2, xfit, ydata, bounds=([-1, 0, 0], [0, 30, 30]))
+        A1 = popt[0]
+        A2 = -1 - A1
+        tau1_fit = popt[1]
+        D1_fit = self.tau_to_D(tau1_fit)
+        tau2_fit = popt[2]
+        D2_fit = self.tau_to_D(tau2_fit)
+        msg = 'D1 = {0:.4g} um2/2, D2 = {1:.4g} um2/2. A1={2:.2g} A2={3:.2g}'.format(D1_fit, D2_fit, A1, A2)
+        print(msg)
+        yfit = exp_dec_2(xfit, *popt)
+        self.exp_dec_2_curve = self.w6.plot(xfit, yfit, pen='r', name=' Fit. '+msg)
+        # residual_plot = pg.plot(title='Single exponential residual')
+        # residual_plot.plot(xfit, np.abs(ydata[x_fit_mask] - yfit))
+
+    def fit_exp_dec_3(self):
+        if self.exp_dec_3_curve is not None:
+            self.w6.removeItem(self.exp_dec_3_curve)
+            #self.legend.removeItem(self.exp_dec_3_curve.name())
+            
+        xfit = self.cdf_x
+        ydata = self.cdf_y 
+        
+        popt, pcov = curve_fit(exp_dec_3, xfit, ydata, bounds=([-1, -1, 0, 0, 0], [0, 0, 30, 30, 30]))
+        A1 = popt[0]
+        A2 = popt[1]
+        A3 = -1 - A1 - A2
+        tau1_fit = popt[2]
+        D1_fit = self.tau_to_D(tau1_fit)
+        tau2_fit = popt[3]
+        D2_fit = self.tau_to_D(tau2_fit)
+        tau3_fit = popt[4]
+        D3_fit = self.tau_to_D(tau3_fit)
+        msg = 'D1 = {0:.4g} um2/2, D2 = {1:.4g} um2/2, D3 = {2:.4g} um2/2. A1={3:.2g} A2={4:.2g}, A3={5:.2g}'.format(D1_fit, D2_fit, D3_fit, A1, A2, A3)
+        print(msg)
+        yfit = exp_dec_3(xfit, *popt)
+        self.exp_dec_3_curve = self.w6.plot(xfit, yfit, pen='y', name=' Fit. '+msg)
+        # residual_plot = pg.plot(title='Single exponential residual')
+        # residual_plot.plot(xfit, np.abs(ydata[x_fit_mask] - yfit))
+
+    def tau_to_D(self, tau):
+        """ 
+        tau = 4Dt
+        tau is decay constant of exponential fit
+        D is diffusion coefficient
+        t is duration of one lag (exposure time) in seconds
+        """
+        t = (self.mainGUI.frameLength_selector.value()/1000) * self.nlags
+        D = tau / (4 * t)
+        return D
+    
     def show(self):
         self.win.show()
     
@@ -461,12 +744,6 @@ class ChartDock():
 class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
     """
     plots loc and track data onto current window
-    performs basic track analysis
-    ------------------
-    
-    input: csv file with x, y positions and track info
-    to add tracks to track plotter: press 't' when hovering cursor over track in active display window 
-    
     """
     def __init__(self):
         if g.settings['locsAndTracksPlotter'] is None or 'set_track_colour' not in g.settings['locsAndTracksPlotter']:
@@ -502,7 +779,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
     def gui(self):      
         self.filename = '' 
         self.filetype = 'flika'   
-        self.pixelSize= 108      
+        self.pixelSize= 108  
         self.plotWindow = None
         self.pathitems = []
         self.useFilteredData = False
@@ -518,13 +795,17 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.chartWindow = None
         self.displayCharts = False
         
+        self.diffusionWindow = None
+        self.displayDiffusionPlot = False        
+        
         #initiate track plot
         self.trackWindow = TrackWindow()
         self.trackWindow.hide()
         
         #initiate flower plot
         self.flowerPlotWindow = FlowerPlotWindow(self)
-        self.flowerPlotWindow.hide()        
+        self.flowerPlotWindow.hide()  
+        
         
         self.gui_reset()        
         s=g.settings['locsAndTracksPlotter']  
@@ -558,7 +839,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.saveData_button.pressed.connect(self.saveData)    
         
         self.showCharts_button = QPushButton('Show Charts')
-        self.showCharts_button.pressed.connect(self.toggleCharts)          
+        self.showCharts_button.pressed.connect(self.toggleCharts)    
+        
+        self.showDiffusion_button = QPushButton('Show Diffusion')
+        self.showDiffusion_button.pressed.connect(self.toggleDiffusionPlot) 
 
                          
         #checkbox
@@ -568,6 +852,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.matplotCM_checkbox = CheckBox() 
         self.matplotCM_checkbox.stateChanged.connect(self.setColourMap)
         self.matplotCM_checkbox.setChecked(False)  
+
+        self.displayFlowPlot_checkbox = CheckBox() 
+        self.displayFlowPlot_checkbox.stateChanged.connect(self.toggleFlowerPlot)
+        self.displayFlowPlot_checkbox.setChecked(True)  
 
         #comboboxes
         self.filetype_Box = pg.ComboBox()
@@ -611,6 +899,12 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.trackDefaultColour_Box = pg.ComboBox()
         self.trackdefaultcolours = {'green': Qt.green, 'red': Qt.red, 'blue': Qt.blue}
         self.trackDefaultColour_Box.setItems(self.trackdefaultcolours)
+
+        #spinbox
+        self.frameLength_selector = pg.SpinBox(value=10, int=True)
+        self.frameLength_selector.setSingleStep(1)       
+        self.frameLength_selector.setMinimum(1)
+        self.frameLength_selector.setMaximum(100000) 
         
         
         #data file selector
@@ -625,7 +919,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         #self.items.append({'name': 'blank1 ', 'string': '-------------   Parameters    ---------------', 'object': None}) 
         self.items.append({'name': 'filepath ', 'string': '', 'object': self.getFile})    
         self.items.append({'name': 'filetype', 'string': 'filetype', 'object': self.filetype_Box})  
-        
+        self.items.append({'name': 'frameLength', 'string': 'milliseconds per frame', 'object': self.frameLength_selector})          
        
         #self.items.append({'name': 'blank ', 'string': '-------------------------------------------', 'object': None})   
         #self.items.append({'name': 'frameCol', 'string': 'Frame col', 'object': self.frameCol_Box})          
@@ -651,11 +945,13 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.items.append({'name': 'trackColour', 'string': 'Set Track Colour', 'object': self.trackColour_checkbox})           
         self.items.append({'name': 'trackColourCol', 'string': 'Colour by', 'object': self.trackColourCol_Box})
         self.items.append({'name': 'trackColourMap', 'string': 'Colour Map', 'object': self.colourMap_Box})   
-        self.items.append({'name': 'matplotClourMap', 'string': 'Use matplot map', 'object': self.matplotCM_checkbox})          
+        self.items.append({'name': 'matplotClourMap', 'string': 'Use matplot map', 'object': self.matplotCM_checkbox}) 
+        self.items.append({'name': 'displayFlowerPlot', 'string': 'Flower Plot', 'object': self.displayFlowPlot_checkbox})         
         self.items.append({'name': 'plotTracks', 'string': '', 'object': self.plotTrackData_button })         
         self.items.append({'name': 'clearTracks', 'string': '', 'object': self.clearTrackData_button })     
         self.items.append({'name': 'saveTracks', 'string': '', 'object': self.saveData_button })  
-        self.items.append({'name': 'showCharts', 'string': '', 'object': self.showCharts_button })          
+        self.items.append({'name': 'showCharts', 'string': '', 'object': self.showCharts_button })
+        self.items.append({'name': 'showDiffusion', 'string': '', 'object': self.showDiffusion_button })          
         
         super().gui()
         ######################################################################
@@ -789,13 +1085,20 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.pathitems = []        
 
     def showTracks(self):
+        '''Updates track paths in main view and Flower Plot'''
         # clear self.pathitems
         self.clearTracks()
+        if self.displayFlowPlot_checkbox.isChecked():
+            self.flowerPlotWindow.clearTracks()
         
-        #setup pen
+        #setup pens
         pen = QPen(self.trackDefaultColour_Box.value(), .4)
         pen.setCosmetic(True)
         pen.setWidth(2)
+        
+        pen_FP = QPen(self.trackDefaultColour_Box.value(), .4)
+        pen_FP.setCosmetic(True)
+        pen_FP.setWidth(1)       
         
         if self.useFilteredTracks:
             trackIDs = self.filteredTrackIds
@@ -803,28 +1106,50 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         else:
             trackIDs = self.trackIDs
 
-
         print('tracks to plot {}'.format(trackIDs))
         
         for track_idx in trackIDs:
             tracks = self.tracks.get_group(track_idx)
             pathitem = QGraphicsPathItem(self.plotWindow.imageview.view)
+            if self.displayFlowPlot_checkbox.isChecked():
+                pathitem_FP = QGraphicsPathItem(self.flowerPlotWindow.plt)            
             
             if self.trackColour_checkbox.isChecked():
                 #print(tracks['colour'].to_list()[0].rgb())
                 pen.setColor(tracks['colour'].to_list()[0])
-                
+                pen_FP.setColor(tracks['colour'].to_list()[0])                
             
             pathitem.setPen(pen)
+            if self.displayFlowPlot_checkbox.isChecked():
+                pathitem_FP.setPen(pen_FP)
+            
             self.plotWindow.imageview.view.addItem(pathitem)
+            if self.displayFlowPlot_checkbox.isChecked():
+                self.flowerPlotWindow.plt.addItem(pathitem_FP)
+            
             self.pathitems.append(pathitem)
+            if self.displayFlowPlot_checkbox.isChecked():
+                self.flowerPlotWindow.pathitems.append(pathitem_FP)
+            
             x = tracks['x'].to_numpy()
-            y = tracks['y'].to_numpy()  
+            y = tracks['y'].to_numpy() 
+
+            if self.displayFlowPlot_checkbox.isChecked():
+                zeroed_X = tracks['zeroed_X'].to_numpy()
+                zeroed_Y = tracks['zeroed_Y'].to_numpy()            
+            
             #x = pts[:, 1]+.5; y = pts[:,2]+.5
             path = QPainterPath(QPointF(x[0],y[0]))
+            if self.displayFlowPlot_checkbox.isChecked():
+                path_FP = QPainterPath(QPointF(zeroed_X[0],zeroed_Y[0]))
             for i in np.arange(1, len(x)):
                 path.lineTo(QPointF(x[i],y[i]))
+                if self.displayFlowPlot_checkbox.isChecked():
+                    path_FP.lineTo(QPointF(zeroed_X[i],zeroed_Y[i]))                
+            
             pathitem.setPath(path)
+            if self.displayFlowPlot_checkbox.isChecked():
+                pathitem_FP.setPath(path_FP)            
 
 
     def plotTrackData(self):
@@ -850,8 +1175,8 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.trackWindow.show()
         
         #display flower plot with all tracks origins set to 0,0
-        self.flowerPlotWindow.update()       
-        self.flowerPlotWindow.show()
+        if self.displayFlowPlot_checkbox.isChecked():
+            self.flowerPlotWindow.show()
         
         g.m.statusBar().showMessage('track data plotted to current window') 
         print('track data plotted to current window')    
@@ -909,14 +1234,11 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             
         
         print(self.filteredData.head())
+        g.m.statusBar().showMessage('filter complete') 
         self.useFilteredData = True
         
         #update point data plot
         self.plotPointData()
-        
-        #update track plots
-        #TODO!
-
         
         return
 
@@ -993,6 +1315,8 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
         self.getDataFromScatterPoints()
         
+        g.m.statusBar().showMessage('ROI filter complete') 
+        
         return
 
     def clearROIFilterData(self):
@@ -1014,9 +1338,15 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             self.useMatplotCM = False
             
 
+    def toggleFlowerPlot(self):
+        if self.displayFlowPlot_checkbox.isChecked():
+            self.flowerPlotWindow.show()
+        else:
+            self.flowerPlotWindow.hide()            
+
     def toggleCharts(self):
         if self.chartWindow == None:
-            #create plot window
+            #create chart plot window
             self.chartWindow = ChartDock(self)
             self.chartWindow.xColSelector.setItems(self.colDict)
             self.chartWindow.yColSelector.setItems(self.colDict)
@@ -1035,6 +1365,20 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             self.chartWindow.hide()
             self.displayCharts = False   
             self.showCharts_button.setText('Show Charts')
+
+    def toggleDiffusionPlot(self):
+        if self.diffusionWindow == None:
+            #create diffusion plot window
+            self.diffusionWindow = DiffusionPlotWindow(self)   
+                        
+        if self.displayDiffusionPlot == False:
+            self.diffusionWindow.show()
+            self.displayDiffusionPlot = True
+            self.showDiffusion_button.setText('Hide Diffusion')
+        else:
+            self.chartWindow.hide()
+            self.displayDiffusionPlot = False   
+            self.showDiffusion_button.setText('Show Diffusion')
 
 
     def createStatsDFs(self):
