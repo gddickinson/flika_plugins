@@ -507,12 +507,14 @@ class DiffusionPlotWindow():
 
 
 class TrackWindow(BaseProcess):
-    def __init__(self):
+    def __init__(self, mainGUI):
         super().__init__()
+        
+        self.mainGUI = mainGUI
         
         #setup window
         self.win = pg.GraphicsWindow()
-        self.win.resize(500, 1500)
+        self.win.resize(400, 1500)
         self.win.setWindowTitle('Track Display - press "t" to add track')
         
         #add widgets
@@ -544,26 +546,76 @@ class TrackWindow(BaseProcess):
         self.plt3.setLabel('left', 'y', units ='pixels')
         self.plt3.setLabel('bottom', 'x', units ='pixels')         
         
-        #self.autoscaleX = True
-        #self.autoscaleY = True
+        self.win.nextRow()
         
+        self.optionsPanel = QGraphicsProxyWidget()                  
+        self.positionIndicator_button = QPushButton('Show position info')
+        self.positionIndicator_button.pressed.connect(self.togglePoistionIndicator)        
+        self.optionsPanel.setWidget(self.positionIndicator_button)
+        
+        self.win.addItem(self.optionsPanel)
+             
+        self.showPositionIndicators = False
+        self.plotsInitiated = False  
+        
+        self.r = None
 
     def update(self, time, intensity, distance, zeroed_X, zeroed_Y, ID):  
         ##Update track ID
-        self.label.setText("<span style='font-size: 12pt'>track ID={}".format(ID))        
+        self.label.setText("<span style='font-size: 16pt'>track ID={}".format(ID))        
         #update intensity plot
         self.plt1.plot(time, intensity, stepMode=False, brush=(0,0,255,150), clear=True) 
         #update distance plot        
         self.plt2.plot(time, distance, stepMode=False, brush=(0,0,255,150), clear=True)
         #update position relative to 0 plot          
         self.plt3.plot(zeroed_X, zeroed_Y, stepMode=False, brush=(0,0,255,150), clear=True) 
-        
+                
         # if self.autoscaleX:
         #     self.plt1.setXRange(np.min(x),np.max(x),padding=0)
             
         # if self.autoscaleY:
         #     self.plt1.setYRange(np.min(y),np.max(y),padding=0)
 
+        if self.showPositionIndicators:
+            self.plt1_line = self.plt1.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False)
+            self.plt2_line = self.plt2.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False)
+            
+            self.mainGUI.plotWindow.sigTimeChanged.connect(self.updatePositionIndicators)   
+        
+        keys = time
+        values = zip(zeroed_X, zeroed_Y)
+        self.data = dict(zip(keys,values))
+        self.r = None
+
+    def togglePoistionIndicator(self):
+        if self.showPositionIndicators == False:
+            self.plt1_line = self.plt1.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False)
+            self.plt2_line = self.plt2.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False)           
+            self.mainGUI.plotWindow.sigTimeChanged.connect(self.updatePositionIndicators)  
+            self.showPositionIndicators = True
+            self.positionIndicator_button.setText("Hide position info")
+            
+        else:
+            self.plt1.removeItem(self.plt1_line)
+            self.plt2.removeItem(self.plt2_line)       
+            self.mainGUI.plotWindow.sigTimeChanged.disconnect(self.updatePositionIndicators)  
+            self.showPositionIndicators = False
+            self.positionIndicator_button.setText("Show position info")            
+        
+
+    def updatePositionIndicators(self, t):
+        #print('x axis range: {}'.format(self.plt1_axis.range))
+        self.plt1_line.setPos(t)
+        self.plt2_line.setPos(t)
+        
+        #update scatter plot position indicator
+        if self.r != None:
+            self.plt3.removeItem(self.r)
+            
+        if t in self.data:    
+            self.r = pg.RectROI((self.data[t][0]-0.25,self.data[t][1]-0.25), size = pg.Point(0.5,0.5), movable=False,rotatable=False,resizable=False, pen=pg.mkPen('r',width=1))
+            self.r.handlePen = None
+            self.plt3.addItem(self.r)
             
                             
     def show(self):
@@ -829,7 +881,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.displayDiffusionPlot = False        
         
         #initiate track plot
-        self.trackWindow = TrackWindow()
+        self.trackWindow = TrackWindow(self)
         self.trackWindow.hide()
         
         #initiate flower plot
@@ -932,7 +984,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
         #spinbox
         self.frameLength_selector = pg.SpinBox(value=10, int=True)
-        self.frameLength_selector.setSingleStep(1)       
+        self.frameLength_selector.setSingleStep(10)       #########TODDO! FIX THIS - AND INDEXING PROBLEM IN CALL  BY ADDING OBJECT NAMES ABOVE
         self.frameLength_selector.setMinimum(1)
         self.frameLength_selector.setMaximum(100000) 
         
@@ -947,7 +999,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         #self.exportFolder = FolderSelector('*.txt')
         #MEPPS
         #self.items.append({'name': 'blank1 ', 'string': '-------------   Parameters    ---------------', 'object': None}) 
-        self.items.append({'name': 'filepath ', 'string': 'LOAD  -----------------------', 'object': self.getFile})    
+        self.items.append({'name': 'filename ', 'string': 'LOAD  -----------------------', 'object': self.getFile})    
         self.items.append({'name': 'filetype', 'string': 'filetype', 'object': self.filetype_Box})  
         self.items.append({'name': 'frameLength', 'string': 'milliseconds per frame', 'object': self.frameLength_selector})          
        
