@@ -275,9 +275,20 @@ class DiffusionPlotWindow():
         
         self.cdfBin_label = QLabel('# of bins')
         
+        self.fit_exp_dec_1_button = QPushButton('Fit 1 component exponential')
+        self.fit_exp_dec_1_button.pressed.connect(self.fit_exp_dec_1)
+        self.fit_exp_dec_2_button = QPushButton('Fit 2 component exponential')
+        self.fit_exp_dec_2_button.pressed.connect(self.fit_exp_dec_2)
+        self.fit_exp_dec_3_button = QPushButton('Fit 3component exponential')
+        self.fit_exp_dec_3_button.pressed.connect(self.fit_exp_dec_3)
+        
         self.w5.addWidget(self.cdfBin_selector, row=0, col=1)
         self.w5.addWidget(self.cdfBin_label, row=0, col=0)        
-        self.w5.addWidget(self.cdf_button, row=1, col=1)         
+        self.w5.addWidget(self.cdf_button, row=1, col=1) 
+
+        self.w5.addWidget(self.fit_exp_dec_1_button , row=2, col=1) 
+        self.w5.addWidget(self.fit_exp_dec_2_button , row=3, col=1) 
+        self.w5.addWidget(self.fit_exp_dec_3_button , row=4, col=1) 
         
         self.d5.addWidget(self.w5)       
     
@@ -286,11 +297,16 @@ class DiffusionPlotWindow():
         self.w6.setLabel('left', 'CDF', units ='')
         self.w6.setLabel('bottom', 'mean sld^2', units ='micron^2')          
         self.w6.getAxis('bottom').enableAutoSIPrefix(False) 
-        self.d6.addWidget(self.w6)          
+        self.d6.addWidget(self.w6)   
+                
+        self.cdf_legend = self.w6.plotItem.addLegend()
         
         self.exp_dec_1_curve = None
         self.exp_dec_2_curve = None
-        self.exp_dec_3_curve = None        
+        self.exp_dec_3_curve = None 
+        
+
+        
 
     def updatePlot(self):
         self.w3.clear()
@@ -378,11 +394,10 @@ class DiffusionPlotWindow():
         
         self.nlags = np.max(self.cdf_y)
         
-        self.w6.plot(self.cdf_x, self.cdf_y, brush=(0,0,255,150), clear=True)  
+        self.w6.plot(self.cdf_x, self.cdf_y, brush=(0,0,255,150), clear=True) 
         
-        self.fit_exp_dec_1()
-        #self.fit_exp_dec_2()
-        #self.fit_exp_dec_3()
+        self.left_bound_line = self.w6.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=True, bounds=(start, end))
+        self.right_bound_line = self.w6.addLine(x=np.max(self.squared_SLDs), pen=pg.mkPen('y', style=Qt.DashLine), movable=True, bounds=(start, end))
         
         return
 
@@ -390,15 +405,18 @@ class DiffusionPlotWindow():
     def fit_exp_dec_1(self):
         if self.exp_dec_1_curve is not None:
             self.w6.removeItem(self.exp_dec_1_curve)
-            #self.legend.removeItem(self.exp_dec_1_curve.name())
-               
-        xfit = self.cdf_x
-        ydata = self.cdf_y 
-        
-        print(xfit)
-        print(ydata)
+            self.cdf_legend.removeItem(self.exp_dec_1_curve.name())
 
-        popt, pcov = curve_fit(exp_dec, xfit, ydata, bounds=([-1.2, 0], [0, 30]))
+        left_bound =  np.min([self.left_bound_line.value(), self.right_bound_line.value()])
+        right_bound = np.max([self.left_bound_line.value(), self.right_bound_line.value()])
+               
+        xdata = self.cdf_x
+        ydata = self.cdf_y 
+
+        x_fit_mask = (left_bound <= xdata) * (xdata <= right_bound)
+        xfit = xdata[x_fit_mask]
+
+        popt, pcov = curve_fit(exp_dec, xfit, ydata[x_fit_mask], bounds=([-1.2, 0], [0, 30]))
         tau_fit = popt[1]
         D_fit = self.tau_to_D(tau_fit)
         print('D = {0:.4g} um^2 s^-1'.format(D_fit))
@@ -411,12 +429,18 @@ class DiffusionPlotWindow():
     def fit_exp_dec_2(self):
         if self.exp_dec_2_curve is not None:
             self.w6.removeItem(self.exp_dec_2_curve)
-            #self.legend.removeItem(self.exp_dec_2_curve.name())
+            self.cdf_legend.removeItem(self.exp_dec_2_curve.name())
 
-        xfit = self.cdf_x
+        left_bound =  np.min([self.left_bound_line.value(), self.right_bound_line.value()])
+        right_bound = np.max([self.left_bound_line.value(), self.right_bound_line.value()])
+
+        xdata = self.cdf_x
         ydata = self.cdf_y 
+
+        x_fit_mask = (left_bound <= xdata) * (xdata <= right_bound)
+        xfit = xdata[x_fit_mask]
         
-        popt, pcov = curve_fit(exp_dec_2, xfit, ydata, bounds=([-1, 0, 0], [0, 30, 30]))
+        popt, pcov = curve_fit(exp_dec_2, xfit, ydata[x_fit_mask], bounds=([-1, 0, 0], [0, 30, 30]))
         A1 = popt[0]
         A2 = -1 - A1
         tau1_fit = popt[1]
@@ -433,12 +457,18 @@ class DiffusionPlotWindow():
     def fit_exp_dec_3(self):
         if self.exp_dec_3_curve is not None:
             self.w6.removeItem(self.exp_dec_3_curve)
-            #self.legend.removeItem(self.exp_dec_3_curve.name())
+            self.cdf_legend.removeItem(self.exp_dec_3_curve.name())
+
+        left_bound =  np.min([self.left_bound_line.value(), self.right_bound_line.value()])
+        right_bound = np.max([self.left_bound_line.value(), self.right_bound_line.value()])
             
-        xfit = self.cdf_x
+        xdata = self.cdf_x
         ydata = self.cdf_y 
         
-        popt, pcov = curve_fit(exp_dec_3, xfit, ydata, bounds=([-1, -1, 0, 0, 0], [0, 0, 30, 30, 30]))
+        x_fit_mask = (left_bound <= xdata) * (xdata <= right_bound)
+        xfit = xdata[x_fit_mask]        
+        
+        popt, pcov = curve_fit(exp_dec_3, xfit, ydata[x_fit_mask], bounds=([-1, -1, 0, 0, 0], [0, 0, 30, 30, 30]))
         A1 = popt[0]
         A2 = popt[1]
         A3 = -1 - A1 - A2
@@ -917,7 +947,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         #self.exportFolder = FolderSelector('*.txt')
         #MEPPS
         #self.items.append({'name': 'blank1 ', 'string': '-------------   Parameters    ---------------', 'object': None}) 
-        self.items.append({'name': 'filepath ', 'string': '', 'object': self.getFile})    
+        self.items.append({'name': 'filepath ', 'string': 'LOAD  -----------------------', 'object': self.getFile})    
         self.items.append({'name': 'filetype', 'string': 'filetype', 'object': self.filetype_Box})  
         self.items.append({'name': 'frameLength', 'string': 'milliseconds per frame', 'object': self.frameLength_selector})          
        
@@ -926,8 +956,8 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         #self.items.append({'name': 'xCol', 'string': 'X col', 'object': self.xCol_Box})          
         #self.items.append({'name': 'yCol', 'string': 'Y col', 'object': self.yCol_Box})   
         #self.items.append({'name': 'trackCol', 'string': 'Track col', 'object': self.trackCol_Box})   
-        self.items.append({'name': 'blank ', 'string': '---- FILTER -----', 'object': None})                  
-        self.items.append({'name': 'filterCol', 'string': 'Filter col', 'object': self.filterCol_Box})
+        #self.items.append({'name': 'blank ', 'string': '---- FILTER -----', 'object': None})                  
+        self.items.append({'name': 'filterCol', 'string': 'FILTER    -------- Filter col', 'object': self.filterCol_Box})
         self.items.append({'name': 'filterOp', 'string': 'Operator', 'object': self.filterOp_Box})  
         self.items.append({'name': 'filterValue', 'string': 'Value', 'object': self.filterValue_Box})         
         self.items.append({'name': 'filterData', 'string': '', 'object': self.filterData_button })         
@@ -938,9 +968,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.items.append({'name': 'clearFilterROI', 'string': '', 'object': self.clearROIFilterData_button})  
         
         
-        self.items.append({'name': 'blank ', 'string': '----  PLOT  -----', 'object': None})           
+        #self.items.append({'name': 'blank ', 'string': '----  PLOT  -----', 'object': None})           
         #self.items.append({'name': 'plotPoints', 'string': '', 'object': self.plotPointData_button }) 
-        self.items.append({'name': 'hidePoints', 'string': '', 'object': self.hidePointData_button })
+        self.items.append({'name': 'hidePoints', 'string': 'PLOT    --------------------', 'object': self.hidePointData_button })
         self.items.append({'name': 'trackDefaultColour', 'string': 'Track Default Colour', 'object': self.trackDefaultColour_Box })        
         self.items.append({'name': 'trackColour', 'string': 'Set Track Colour', 'object': self.trackColour_checkbox})           
         self.items.append({'name': 'trackColourCol', 'string': 'Colour by', 'object': self.trackColourCol_Box})
