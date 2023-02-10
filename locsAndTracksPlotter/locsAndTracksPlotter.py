@@ -1253,6 +1253,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         #use key press to select tracks to display
         self.plotWindow.keyPressSignal.connect(self.selectTrack)
         
+        
         #display track window with plots for individual tracks
         self.trackWindow.show()
         
@@ -1295,6 +1296,38 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
                 #update plots in track display               
                 self.trackWindow.update(frame, intensity, distance, zeroed_X, zeroed_Y,  self.displayTrack)
                 
+
+        if ev.key() == Qt.Key_R:
+                       
+            roiFilterPoints = []
+            roi = self.plotWindow.currentROI
+            
+            currentFrame = self.plotWindow.currentIndex
+            
+            for i in range(0,self.plotWindow.mt):
+                # get ROI shape in coordinate system of the scatter plot
+                self.plotWindow.setIndex(i)
+                roiShape = roi.mapToItem(self.plotWindow.scatterPlot, roi.shape())
+                # Get list of all points inside shape
+                selected = [[i, pt.x(), pt.y()] for pt in self.getScatterPointsAsQPoints() if roiShape.contains(pt)]
+                roiFilterPoints.extend((selected))
+            
+            self.plotWindow.setIndex(currentFrame)
+             
+            trackIDs = []
+            
+            #flat_ptList = [pt for sublist in roiFilterPoints for pt in sublist]
+            
+            for pt in roiFilterPoints:            
+                #print('point x: {} y: {}'.format(pt[0][0],pt[0][1]))    
+                ptFilterDF = self.data[(self.data['x']==pt[1]) & (self.data['y']==pt[2])]                
+                trackIDs.extend(ptFilterDF['track_number'])
+               
+            selectedTracks = np.unique(trackIDs)    
+            self.joinedData = self.data[self.data['track_number'].isin(selectedTracks)]
+            print(selectedTracks)
+            g.m.statusBar().showMessage('Track join complete') 
+            
 
 
     def filterData(self):
