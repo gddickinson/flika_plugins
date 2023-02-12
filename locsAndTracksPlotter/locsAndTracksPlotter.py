@@ -144,6 +144,7 @@ class FlowerPlotWindow():
         self.win.setWindowTitle('Flower Plot')
 
         self.plt = self.win.addPlot(title='plot')  
+        self.plt.setAspectLocked()
         self.plt.showGrid(x=True, y=True)
         self.plt.setXRange(-10,10)
         self.plt.setYRange(-10,10)
@@ -514,7 +515,7 @@ class TrackWindow(BaseProcess):
         
         #setup window
         self.win = pg.GraphicsWindow()
-        self.win.resize(400, 1500)
+        self.win.resize(600, 800)
         self.win.setWindowTitle('Track Display - press "t" to add track')
         
         #add widgets
@@ -524,18 +525,38 @@ class TrackWindow(BaseProcess):
         
         self.plt1 = self.win.addPlot(title='intensity')
         self.plt1.getAxis('left').enableAutoSIPrefix(False)         
-        self.win.nextRow()
         
-        self.plt2 = self.win.addPlot(title='distance from origin')
-        self.plt2.getAxis('left').enableAutoSIPrefix(False)        
-        self.win.nextRow()
-        
+
         self.plt3 = self.win.addPlot(title='track')  
+        self.plt3.setAspectLocked()
         self.plt3.showGrid(x=True, y=True)
         self.plt3.setXRange(-5,5)
         self.plt3.setYRange(-5,5)
         self.plt3.getViewBox().invertY(True)
         
+        self.win.nextRow()
+        
+        self.plt2 = self.win.addPlot(title='distance from origin')
+        self.plt2.getAxis('left').enableAutoSIPrefix(False)        
+
+        self.plt4 = self.win.addPlot(title='polar')  
+        self.plt4.setAspectLocked()
+        self.plt4.setXRange(-5,5)
+        self.plt4.setYRange(-5,5)
+        self.plt4.hideAxis('bottom')
+        self.plt4.hideAxis('left')
+
+        self.win.nextRow()
+ 
+        self.plt5 = self.win.addPlot(title='1st differential dDistance/dTime')
+        self.plt5.getAxis('left').enableAutoSIPrefix(False)
+        
+        self.plt6 = self.win.addPlot(title='direction relative to origin')
+        self.plt6.getAxis('left').enableAutoSIPrefix(False)       
+
+        self.win.nextRow()       
+ 
+       
         #add plot labels
         self.plt1.setLabel('left', 'Intensity', units ='Arbitary')
         self.plt1.setLabel('bottom', 'Time', units ='Frames')        
@@ -544,7 +565,14 @@ class TrackWindow(BaseProcess):
         self.plt2.setLabel('bottom', 'Time', units ='Frames') 
         
         self.plt3.setLabel('left', 'y', units ='pixels')
-        self.plt3.setLabel('bottom', 'x', units ='pixels')         
+        self.plt3.setLabel('bottom', 'x', units ='pixels') 
+        
+        self.plt5.setLabel('left', 'delta Distance / delta Time', units ='pixels/frame')
+        self.plt5.setLabel('bottom', 'Time', units ='Frames')      
+        
+        self.plt6.setLabel('left', 'direction moved', units ='degrees')
+        self.plt6.setLabel('bottom', 'Time', units ='Frames')       
+        
         
         self.win.nextRow()
         
@@ -560,7 +588,7 @@ class TrackWindow(BaseProcess):
         
         self.r = None
 
-    def update(self, time, intensity, distance, zeroed_X, zeroed_Y, ID):  
+    def update(self, time, intensity, distance, zeroed_X, zeroed_Y, dydt, direction, velocity, ID):  
         ##Update track ID
         self.label.setText("<span style='font-size: 16pt'>track ID={}".format(ID))        
         #update intensity plot
@@ -569,6 +597,16 @@ class TrackWindow(BaseProcess):
         self.plt2.plot(time, distance, stepMode=False, brush=(0,0,255,150), clear=True)
         #update position relative to 0 plot          
         self.plt3.plot(zeroed_X, zeroed_Y, stepMode=False, brush=(0,0,255,150), clear=True) 
+        
+        #update polar
+        self.updatePolarPlot(direction,velocity)
+        
+        #update dydt
+        self.plt5.plot(time, dydt, stepMode=False, brush=(0,0,255,150), clear=True)
+        #update drection
+        self.plt6.plot(time, direction, stepMode=False, brush=(0,0,255,150), clear=True)       
+
+        
                 
         # if self.autoscaleX:
         #     self.plt1.setXRange(np.min(x),np.max(x),padding=0)
@@ -579,7 +617,9 @@ class TrackWindow(BaseProcess):
         if self.showPositionIndicators:
             self.plt1_line = self.plt1.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False)
             self.plt2_line = self.plt2.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False)
-            
+            self.plt5_line = self.plt5.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False)
+            self.plt6_line = self.plt6.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False)           
+                        
             self.mainGUI.plotWindow.sigTimeChanged.connect(self.updatePositionIndicators)   
         
         keys = time
@@ -587,17 +627,54 @@ class TrackWindow(BaseProcess):
         self.data = dict(zip(keys,values))
         self.r = None
 
+
+    def updatePolarPlot(self, direction,velocity):
+        self.plt4.clear()
+        
+        # Add polar grid lines
+        self.plt4.addLine(x=0, pen=1)
+        self.plt4.addLine(y=0, pen=1)
+        for r in range(2, 60, 10):
+            r = r/10
+            circle = pg.QtGui.QGraphicsEllipseItem(-r, -r, r * 2, r * 2)
+            circle.setPen(pg.mkPen('w', width=0.5))
+            self.plt4.addItem(circle)
+        
+        theta = np.radians(direction)
+        radius = velocity
+                
+        # Transform to cartesian and self.plt4
+        x = radius * np.cos(theta)
+        y = radius * np.sin(theta)
+                
+        for i in range(len(x)):        
+            path = QPainterPath(QPointF(0,0))
+            path.lineTo(QPointF(x[i],y[i]))            
+            item = pg.QtGui.QGraphicsPathItem(path)
+            item.setPen(pg.mkPen('r', width=5))                
+            self.plt4.addItem(item) 
+
+        return
+
+
     def togglePoistionIndicator(self):
         if self.showPositionIndicators == False:
             self.plt1_line = self.plt1.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False)
-            self.plt2_line = self.plt2.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False)           
+            self.plt2_line = self.plt2.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False)  
+ 
+            self.plt5_line = self.plt5.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False) 
+            self.plt6_line = self.plt6.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False) 
+            
             self.mainGUI.plotWindow.sigTimeChanged.connect(self.updatePositionIndicators)  
             self.showPositionIndicators = True
             self.positionIndicator_button.setText("Hide position info")
             
         else:
             self.plt1.removeItem(self.plt1_line)
-            self.plt2.removeItem(self.plt2_line)       
+            self.plt2.removeItem(self.plt2_line) 
+            self.plt5.removeItem(self.plt5_line)
+            self.plt6.removeItem(self.plt6_line)             
+            
             self.mainGUI.plotWindow.sigTimeChanged.disconnect(self.updatePositionIndicators)  
             self.showPositionIndicators = False
             self.positionIndicator_button.setText("Show position info")            
@@ -607,6 +684,9 @@ class TrackWindow(BaseProcess):
         #print('x axis range: {}'.format(self.plt1_axis.range))
         self.plt1_line.setPos(t)
         self.plt2_line.setPos(t)
+        self.plt5_line.setPos(t)
+        self.plt6_line.setPos(t)        
+        
         
         #update scatter plot position indicator
         if self.r != None:
@@ -722,12 +802,18 @@ class ChartDock():
         
         self.histoBin_label = QLabel('# of bins')
         
+        self.cumulativeTick_label = QLabel('cumulative')  
+        self.cumulativeTick = CheckBox() 
+        self.cumulativeTick.setChecked(False) 
+        
         self.w2.addWidget(self.pointOrTrackData_selector_histo , row=0, col=1)
         self.w2.addWidget(self.colSelector, row=1, col=1)
         self.w2.addWidget(self.collabel, row=1, col=0)  
         self.w2.addWidget(self.histoBin_selector, row=2, col=1)
-        self.w2.addWidget(self.histoBin_label, row=2, col=0)        
-        self.w2.addWidget(self.histo_button, row=3, col=1)         
+        self.w2.addWidget(self.histoBin_label, row=2, col=0)    
+        self.w2.addWidget(self.cumulativeTick_label, row=3, col=0)
+        self.w2.addWidget(self.cumulativeTick, row=3, col=1)         
+        self.w2.addWidget(self.histo_button, row=4, col=1)         
         
         self.d3.addWidget(self.w2)      
     
@@ -805,9 +891,18 @@ class ChartDock():
         start=0
         end=np.max(vals)
         n=self.histoBin_selector.value()
-
-        y,x = np.histogram(vals, bins=np.linspace(start, end, n))     
-        self.w4.plot(x, y, stepMode=True, fillLevel=0, brush=(0,0,255,150), clear=True) 
+        
+        if self.cumulativeTick.isChecked():
+            count,bins_count = np.histogram(vals, bins=np.linspace(start, end, n)) 
+            pdf = count / sum(count)
+            y = np.cumsum(pdf)        
+            x = bins_count[1:]  
+            self.w4.plot(x, y, brush=(0,0,255,150), clear=True) 
+        
+        else:
+            y,x = np.histogram(vals, bins=np.linspace(start, end, n))            
+            self.w4.plot(x, y, stepMode=True, fillLevel=0, brush=(0,0,255,150), clear=True) 
+        
         self.w4.setLabel('bottom', self.colSelector.value(), units = None)     
         return
 
@@ -1291,10 +1386,14 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
                 intensity = trackData['intensity'].to_numpy() 
                 distance = trackData['distanceFromOrigin'].to_numpy() 
                 zeroed_X = trackData['zeroed_X'].to_numpy()
-                zeroed_Y = trackData['zeroed_Y'].to_numpy()                            
+                zeroed_Y = trackData['zeroed_Y'].to_numpy()  
+
+                dydt =  trackData['dy-dt: distance'].to_numpy() 
+                direction = trackData['direction_Relative_To_Origin'].to_numpy()    
+                velocity =  trackData['velocity'].to_numpy()                    
                 
                 #update plots in track display               
-                self.trackWindow.update(frame, intensity, distance, zeroed_X, zeroed_Y,  self.displayTrack)
+                self.trackWindow.update(frame, intensity, distance, zeroed_X, zeroed_Y, dydt, direction, velocity, self.displayTrack)
                 
 
         if ev.key() == Qt.Key_R:
