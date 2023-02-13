@@ -539,16 +539,17 @@ class TrackWindow(BaseProcess):
         self.plt2 = self.win.addPlot(title='distance from origin')
         self.plt2.getAxis('left').enableAutoSIPrefix(False)        
 
-        self.plt4 = self.win.addPlot(title='polar')  
+        self.plt4 = self.win.addPlot(title='polar (direction and velocity)')  
+        self.plt4.getViewBox().invertY(True)
         self.plt4.setAspectLocked()
-        self.plt4.setXRange(-5,5)
-        self.plt4.setYRange(-5,5)
+        self.plt4.setXRange(-4,4)
+        self.plt4.setYRange(-4,4)
         self.plt4.hideAxis('bottom')
         self.plt4.hideAxis('left')
 
         self.win.nextRow()
  
-        self.plt5 = self.win.addPlot(title='1st differential dDistance/dTime')
+        self.plt5 = self.win.addPlot(title='instantaneous velocity')
         self.plt5.getAxis('left').enableAutoSIPrefix(False)
         
         self.plt6 = self.win.addPlot(title='direction relative to origin')
@@ -567,7 +568,7 @@ class TrackWindow(BaseProcess):
         self.plt3.setLabel('left', 'y', units ='pixels')
         self.plt3.setLabel('bottom', 'x', units ='pixels') 
         
-        self.plt5.setLabel('left', 'delta Distance / delta Time', units ='pixels/frame')
+        self.plt5.setLabel('left', 'velocity', units ='pixels/frame')
         self.plt5.setLabel('bottom', 'Time', units ='Frames')      
         
         self.plt6.setLabel('left', 'direction moved', units ='degrees')
@@ -602,7 +603,7 @@ class TrackWindow(BaseProcess):
         self.updatePolarPlot(direction,velocity)
         
         #update dydt
-        self.plt5.plot(time, dydt, stepMode=False, brush=(0,0,255,150), clear=True)
+        self.plt5.plot(time, velocity, stepMode=False, brush=(0,0,255,150), clear=True)
         #update drection
         self.plt6.plot(time, direction, stepMode=False, brush=(0,0,255,150), clear=True)       
 
@@ -634,7 +635,7 @@ class TrackWindow(BaseProcess):
         # Add polar grid lines
         self.plt4.addLine(x=0, pen=1)
         self.plt4.addLine(y=0, pen=1)
-        for r in range(2, 60, 10):
+        for r in range(10, 50, 10):
             r = r/10
             circle = pg.QtGui.QGraphicsEllipseItem(-r, -r, r * 2, r * 2)
             circle.setPen(pg.mkPen('w', width=0.5))
@@ -653,6 +654,22 @@ class TrackWindow(BaseProcess):
             item = pg.QtGui.QGraphicsPathItem(path)
             item.setPen(pg.mkPen('r', width=5))                
             self.plt4.addItem(item) 
+
+        #position label
+        labels = [0,90,180,270]
+        d = 6
+        pos = [ (d,0),(0,d),(-d,0),(0,-d) ]
+        for i,label in enumerate(labels):
+            text = pg.TextItem(str(label), color=(200,200,0))
+            self.plt4.addItem(text)
+            text.setPos(pos[i][0],pos[i][1])
+        
+        # scale
+        for r in range(10, 50, 10):
+            r = r/10
+            text = pg.TextItem(str(r))
+            self.plt4.addItem(text)
+            text.setPos(0,r)
 
         return
 
