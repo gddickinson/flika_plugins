@@ -1038,6 +1038,8 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.showDiffusion_button = QPushButton('Show Diffusion')
         self.showDiffusion_button.pressed.connect(self.toggleDiffusionPlot) 
 
+        self.togglePointMap_button = QPushButton('Plot Point Map')
+        self.togglePointMap_button.pressed.connect(self.togglePointMap) 
                          
         #checkbox
         self.trackColour_checkbox = CheckBox()
@@ -1135,6 +1137,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         #self.items.append({'name': 'blank ', 'string': '----  PLOT  -----', 'object': None})           
         #self.items.append({'name': 'plotPoints', 'string': '', 'object': self.plotPointData_button }) 
         self.items.append({'name': 'hidePoints', 'string': 'PLOT    --------------------', 'object': self.hidePointData_button })
+        
+        self.items.append({'name': 'plotPointMap', 'string': '', 'object': self.togglePointMap_button })        
+        
         self.items.append({'name': 'trackDefaultColour', 'string': 'Track Default Colour', 'object': self.trackDefaultColour_Box })        
         self.items.append({'name': 'trackColour', 'string': 'Set Track Colour', 'object': self.trackColour_checkbox})           
         self.items.append({'name': 'trackColourCol', 'string': 'Colour by', 'object': self.trackColourCol_Box})
@@ -1610,6 +1615,25 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             self.chartWindow.hide()
             self.displayDiffusionPlot = False   
             self.showDiffusion_button.setText('Show Diffusion')
+
+
+    def togglePointMap(self):
+        if self.togglePointMap_button.text() == 'Plot Point Map':
+                        
+            if self.useFilteredData == False:            
+                df = self.data
+            else:           
+                df = self.filteredData
+
+            self.pointMapScatter = pg.ScatterPlotItem(size=2, pen=None, brush=pg.mkBrush(30, 255, 35, 255))
+            self.pointMapScatter.setSize(2, update=False)
+            self.pointMapScatter.setData(df['x'], df['y'])
+            self.plotWindow.imageview.view.addItem(self.pointMapScatter)
+            self.togglePointMap_button.setText('Hide Point Map')
+        else:
+            self.plotWindow.removeItem(self.pointMapScatter)
+            self.togglePointMap_button.setText('Plot Point Map')
+        
 
 
     def createStatsDFs(self):
