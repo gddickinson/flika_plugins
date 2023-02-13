@@ -1631,7 +1631,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             self.plotWindow.imageview.view.addItem(self.pointMapScatter)
             self.togglePointMap_button.setText('Hide Point Map')
         else:
-            self.plotWindow.removeItem(self.pointMapScatter)
+            self.plotWindow.imageview.view.removeItem(self.pointMapScatter)
             self.togglePointMap_button.setText('Plot Point Map')
         
 
