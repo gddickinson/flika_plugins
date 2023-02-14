@@ -41,6 +41,7 @@ from matplotlib import pyplot as plt
 from pyqtgraph.dockarea.Dock import Dock
 from pyqtgraph.dockarea.DockArea import DockArea
 
+from .joinTracks import JoinTracks
 
 def dictFromList(l):
     # Create a zip object from two lists
@@ -1113,7 +1114,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         #self.exportFolder = FolderSelector('*.txt')
         #MEPPS
         #self.items.append({'name': 'blank1 ', 'string': '-------------   Parameters    ---------------', 'object': None}) 
-        self.items.append({'name': 'filename ', 'string': 'LOAD  -----------------------', 'object': self.getFile})    
+        self.items.append({'name': 'filename ', 'string': 'LOAD  - before load select window to plot on -', 'object': self.getFile})    
         self.items.append({'name': 'filetype', 'string': 'filetype', 'object': self.filetype_Box})  
         self.items.append({'name': 'frameLength', 'string': 'milliseconds per frame', 'object': self.frameLength_selector})          
        
@@ -1158,8 +1159,17 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
 
     def loadData(self):
+        self.plotWindow = g.win
         self.filename = self.getFile.value()
         self.data = pd.read_csv(self.filename)
+        
+        #check enough frames in stack to plot points
+        if np.max(self.data['frame']) > g.win.mt:
+            g.alert("Selected window doesn't have enough frames to plot all data points")
+            self.plotWindow = None
+            self.filename = None
+            self.data = None
+            return
         
         print('-------------------------------------')
         print('Data loaded (first 5 rows displayed):')
@@ -1234,7 +1244,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             self.points = self.makePointDataDF(self.data)
         else:
             self.points = self.makePointDataDF(self.filteredData)
-        self.plotWindow = g.win
+
         self.plotPointsOnStack()
         
 
@@ -1353,7 +1363,6 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
     def plotTrackData(self):
         ### plot track data to current window
-        self.plotWindow = g.win
         
         if self.useFilteredData == False:            
             self.trackIDs = np.unique(self.data['track_number']).astype(np.int)
@@ -1445,11 +1454,24 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
                 trackIDs.extend(ptFilterDF['track_number'])
                
             selectedTracks = np.unique(trackIDs)    
-            self.joinedData = self.data[self.data['track_number'].isin(selectedTracks)]
-            print(selectedTracks)
+            #self.joinedData = self.data[self.data['track_number'].isin(selectedTracks)]
+            
+            self.joinROItracks(selectedTracks)
+            
             g.m.statusBar().showMessage('Track join complete') 
             
 
+
+    def joinROItracks(self, selectedTracks):
+
+        joinTracks = JoinTracks()        
+        IDlist = [selectedTracks]
+        g.m.statusBar().showMessage('Tracks to join: {}'.format(IDlist)) 
+        newDF = joinTracks.join(self.data, IDlist)
+        #replace track data with updated df including joined track
+        self.data = newDF
+        print(newDF)
+        g.m.statusBar().showMessage('track join complete') 
 
     def filterData(self):
         
