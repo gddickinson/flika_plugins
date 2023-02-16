@@ -44,6 +44,8 @@ from pyqtgraph.dockarea.DockArea import DockArea
 from .joinTracks import JoinTracks
 
 def dictFromList(l):
+    #ensure strings
+    l = [str(x) for x in l]
     # Create a zip object from two lists
     zipbObj = zip(l, l)
     return dict(zipbObj)
@@ -131,6 +133,115 @@ class FileSelector(QWidget):
         self.filename = str(filename)
         self.label.setText('...' + os.path.split(self.filename)[-1][-20:])    
 
+
+class ColouredLines(pg.GraphicsObject):
+    def __init__(self, points, colours, width):
+        super().__init__()
+        self.points = points
+        self.colours = colours
+        self.width = width
+        self.generatePicture()
+    
+    def generatePicture(self):
+        self.picture = QPicture()
+        painter = QPainter(self.picture)
+        pen = pg.functions.mkPen(width=self.width)
+
+        for idx in range(len(self.points) - 1):
+            pen.setColor(self.colours[idx])
+            painter.setPen(pen)
+            painter.drawLine(self.points[idx], self.points[idx+1])
+
+        painter.end()
+    
+    def paint(self, p, *args):
+        p.drawPicture(0, 0, self.picture)
+    
+    def boundingRect(self):
+        return QRectF(self.picture.boundingRect())
+
+class TrackPlot():
+    def __init__(self, mainGUI):
+        super().__init__()  
+        self.mainGUI = mainGUI
+
+        self.win =QMainWindow()
+        self.area = DockArea()
+        self.win.setCentralWidget(self.area)
+        self.win.resize(500, 550)
+        self.win.setWindowTitle('Track Plot')
+        
+        ## Create docks, place them into the window one at a time.
+        self.d1 = Dock("plot", size=(500, 500))
+        self.d2 = Dock("options", size=(500,50))        
+
+        self.area.addDock(self.d1, 'top') 
+        self.area.addDock(self.d2, 'bottom', self.d1)     
+
+        #plot
+        self.w1 = pg.PlotWidget(title="Track plot")
+        self.w1.plot()
+        self.w1.setAspectLocked()
+        self.w1.showGrid(x=True, y=True)
+        self.w1.setXRange(-10,10)
+        self.w1.setYRange(-10,10)
+        self.w1.getViewBox().invertY(True)                
+        self.w1.setLabel('left', 'y', units ='pixels')
+        self.w1.setLabel('bottom', 'x', units ='pixels')                 
+        self.d1.addWidget(self.w1) 
+
+        #options
+        self.w2 = pg.LayoutWidget()        
+        self.trackSelector = pg.ComboBox()
+        self.tracks= {'None':'None'}
+        self.trackSelector.setItems(self.tracks)
+        self.trackSelector_label = QLabel("Track ID")    
+        
+        self.plot_button = QPushButton('Plot')
+        self.plot_button.pressed.connect(self.plotTracks)
+        
+        self.w2.addWidget(self.trackSelector_label, row=0,col=0)
+        self.w2.addWidget(self.trackSelector, row=0,col=1) 
+        self.w2.addWidget(self.plot_button, row=0,col=2)              
+        self.d2.addWidget(self.w2) 
+        
+        self.pathitem = None
+        self.trackDF = pd.DataFrame()
+
+
+    def updateTrackList(self):
+        self.tracks = dictFromList(self.mainGUI.data['track_number'].to_list())
+        self.trackSelector.setItems(self.tracks) 
+
+        
+    def plotTracks(self):
+        self.w1.clear()
+        self.trackDF = self.mainGUI.data[self.mainGUI.data['track_number'] == int(self.trackSelector.value())]
+        print(self.trackDF)
+        self.setColour()
+                   
+       
+        points = [QPointF(*xy.tolist()) for xy in np.column_stack((self.trackDF['zeroed_X'].to_list(), self.trackDF['zeroed_Y'].to_list()))]
+
+        item = ColouredLines(points, self.colours, 2)
+        self.w1.addItem(item)
+        self.pathitem = item
+
+    def setColour(self):
+        cmap = pg.colormap.get("inferno")
+        #lut = cmap.getLookupTable(nPts=100, mode="qcolor")
+        #self.colours = [lut[idx % len(lut)] for idx in range(len(self.trackDF['zeroed_X'].to_list())-1)]
+        coloursScaled= (self.trackDF['intensity'].to_numpy()) / np.max(self.trackDF['intensity'])
+        self.colours = cmap.mapToQColor(coloursScaled)
+
+    def show(self):
+        self.win.show()
+    
+    def close(self):
+        self.win.close()
+
+    def hide(self):
+        self.win.hide()
 
 
 class FlowerPlotWindow():
@@ -1001,6 +1112,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.flowerPlotWindow = FlowerPlotWindow(self)
         self.flowerPlotWindow.hide()  
         
+        #initiate flower plot
+        self.singleTrackPlot= TrackPlot(self)
+        self.singleTrackPlot.hide() 
         
         self.gui_reset()        
         s=g.settings['locsAndTracksPlotter']  
@@ -1053,6 +1167,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.displayFlowPlot_checkbox = CheckBox() 
         self.displayFlowPlot_checkbox.stateChanged.connect(self.toggleFlowerPlot)
         self.displayFlowPlot_checkbox.setChecked(True)  
+        
+        self.displaySingleTrackPlot_checkbox = CheckBox() 
+        self.displaySingleTrackPlot_checkbox.stateChanged.connect(self.toggleSingleTrackPlot)
+        self.displaySingleTrackPlot_checkbox.setChecked(True)          
 
         #comboboxes
         self.filetype_Box = pg.ComboBox()
@@ -1146,7 +1264,8 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.items.append({'name': 'trackColourCol', 'string': 'Colour by', 'object': self.trackColourCol_Box})
         self.items.append({'name': 'trackColourMap', 'string': 'Colour Map', 'object': self.colourMap_Box})   
         self.items.append({'name': 'matplotClourMap', 'string': 'Use matplot map', 'object': self.matplotCM_checkbox}) 
-        self.items.append({'name': 'displayFlowerPlot', 'string': 'Flower Plot', 'object': self.displayFlowPlot_checkbox})         
+        self.items.append({'name': 'displayFlowerPlot', 'string': 'Flower Plot', 'object': self.displayFlowPlot_checkbox})  
+        self.items.append({'name': 'displaySingleTrackPlot', 'string': 'Track Plot', 'object': self.displaySingleTrackPlot_checkbox})          
         self.items.append({'name': 'plotTracks', 'string': '', 'object': self.plotTrackData_button })         
         self.items.append({'name': 'clearTracks', 'string': '', 'object': self.clearTrackData_button })     
         self.items.append({'name': 'saveTracks', 'string': '', 'object': self.saveData_button })  
@@ -1189,6 +1308,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         
         #format points add to image window
         self.plotPointData()
+        
+        #update track plot track selector
+        self.singleTrackPlot.updateTrackList()
         
 
     def makePointDataDF(self, data):   
@@ -1386,6 +1508,11 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         #display flower plot with all tracks origins set to 0,0
         if self.displayFlowPlot_checkbox.isChecked():
             self.flowerPlotWindow.show()
+            
+        #display flower plot with all tracks origins set to 0,0
+        if self.displaySingleTrackPlot_checkbox.isChecked():
+            self.singleTrackPlot.show()            
+            
         
         g.m.statusBar().showMessage('track data plotted to current window') 
         print('track data plotted to current window')    
@@ -1601,6 +1728,15 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             self.flowerPlotWindow.show()
         else:
             self.flowerPlotWindow.hide()            
+
+
+    def toggleSingleTrackPlot(self):
+        if self.displaySingleTrackPlot_checkbox.isChecked():
+            self.singleTrackPlot.show()
+        else:
+            self.singleTrackPlot.hide()   
+
+
 
     def toggleCharts(self):
         if self.chartWindow == None:
