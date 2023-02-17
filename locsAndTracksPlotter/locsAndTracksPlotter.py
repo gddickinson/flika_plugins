@@ -243,6 +243,20 @@ class TrackPlot():
         
         self.lineCM_button = QPushButton('Line cmap PG')
         self.lineCM_button.pressed.connect(self.setLineColourMap) 
+
+
+        self.pointSize_box = pg.SpinBox(value=0.05, int=False)
+        self.pointSize_box.setSingleStep(0.05)     
+        self.pointSize_box.setMinimum(0.05)
+        self.pointSize_box.setMaximum(1) 
+                
+        self.lineWidth_box = pg.SpinBox(value=2, int=True)
+        self.lineWidth_box.setSingleStep(1)     
+        self.lineWidth_box.setMinimum(1)
+        self.lineWidth_box.setMaximum(100) 
+        
+        self.pointSize_label = QLabel("Point Size")         
+        self.lineWidth_label = QLabel("Line Width")  
         
 
         #row0
@@ -254,12 +268,17 @@ class TrackPlot():
         self.w2.addWidget(self.lineCM_button, row=1,col=0)   
         self.w2.addWidget(self.line_colourMap_Box, row=1,col=1)   
         self.w2.addWidget(self.pointCM_button, row=1,col=2)         
-        self.w2.addWidget(self.point_colourMap_Box, row=1,col=3)          
+        self.w2.addWidget(self.point_colourMap_Box, row=1,col=3)                  
         #row2
-        self.w2.addWidget(self.trackSelector_label, row=2,col=0)
-        self.w2.addWidget(self.selectTrack_checkbox, row=2,col=1)        
-        self.w2.addWidget(self.trackSelector, row=2,col=2)
-        self.w2.addWidget(self.plot_button, row=2,col=3)  
+        self.w2.addWidget(self.lineWidth_label, row=2,col=0)   
+        self.w2.addWidget(self.lineWidth_box, row=2,col=1)   
+        self.w2.addWidget(self.pointSize_label, row=2,col=2)         
+        self.w2.addWidget(self.pointSize_box, row=2,col=3)                 
+        #row3
+        self.w2.addWidget(self.trackSelector_label, row=3,col=0)
+        self.w2.addWidget(self.selectTrack_checkbox, row=3,col=1)        
+        self.w2.addWidget(self.trackSelector, row=3,col=2)
+        self.w2.addWidget(self.plot_button, row=3,col=3)  
         
         self.d2.addWidget(self.w2) 
         
@@ -310,7 +329,7 @@ class TrackPlot():
                           
         points = [QPointF(*xy.tolist()) for xy in np.column_stack((self.trackDF['zeroed_X'].to_list(), self.trackDF['zeroed_Y'].to_list()))]
 
-        item = ColouredLines(points, self.colours_line, self.colours_point)
+        item = ColouredLines(points, self.colours_line, self.colours_point, width_line=self.lineWidth_box.value(), size_symbol=self.pointSize_box.value())
         self.w1.addItem(item)
         self.pathitem = item
 
