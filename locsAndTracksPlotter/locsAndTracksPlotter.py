@@ -135,22 +135,38 @@ class FileSelector(QWidget):
 
 
 class ColouredLines(pg.GraphicsObject):
-    def __init__(self, points, colours, width):
+    def __init__(self, points, colours_line, colours_point, width_line=2, width_point=1, size_symbol=0.05):
         super().__init__()
         self.points = points
-        self.colours = colours
-        self.width = width
+        self.colours_line = colours_line
+        self.width_line = width_line
+        self.colours_point = colours_point
+        self.width_point = width_point        
+        
+        self.size_symbol = size_symbol
+        
         self.generatePicture()
     
     def generatePicture(self):
         self.picture = QPicture()
         painter = QPainter(self.picture)
-        pen = pg.functions.mkPen(width=self.width)
+        pen = pg.functions.mkPen(width=self.width_line)
 
         for idx in range(len(self.points) - 1):
-            pen.setColor(self.colours[idx])
+            pen.setColor(self.colours_line[idx])
             painter.setPen(pen)
             painter.drawLine(self.points[idx], self.points[idx+1])
+          
+
+        pen_points = pg.functions.mkPen(width=self.width_point)
+        brush_points = pg.mkBrush(0, 0, 255, 255)
+
+        for idx in range(len(self.points) - 1):
+            pen_points.setColor(self.colours_point[idx])
+            brush_points.setColor(self.colours_point[idx])
+            painter.setPen(pen_points)
+            painter.setBrush(brush_points)            
+            painter.drawEllipse(self.points[idx], self.size_symbol,self.size_symbol) 
 
         painter.end()
     
@@ -170,6 +186,9 @@ class TrackPlot():
         self.win.setCentralWidget(self.area)
         self.win.resize(500, 550)
         self.win.setWindowTitle('Track Plot')
+
+        self.pointCMtype = 'pg'
+        self.lineCMtype = 'pg'
         
         ## Create docks, place them into the window one at a time.
         self.d1 = Dock("plot", size=(500, 500))
@@ -195,14 +214,53 @@ class TrackPlot():
         self.trackSelector = pg.ComboBox()
         self.tracks= {'None':'None'}
         self.trackSelector.setItems(self.tracks)
-        self.trackSelector_label = QLabel("Track ID")    
-        
+        self.trackSelector_label = QLabel("Select Track ID")    
+        self.selectTrack_checkbox = CheckBox() 
+        self.selectTrack_checkbox.setChecked(False) 
+        self.line_colourMap_Box = pg.ComboBox()
+        self.point_colourMap_Box = pg.ComboBox()        
+        self.colourMaps = dictFromList(pg.colormap.listMaps())
+        self.line_colourMap_Box.setItems(self.colourMaps)
+        self.point_colourMap_Box.setItems(self.colourMaps) 
+               
         self.plot_button = QPushButton('Plot')
         self.plot_button.pressed.connect(self.plotTracks)
+
+
+        self.lineCol_Box = pg.ComboBox()
+        self.lineCols = {'None':'None'}
+        self.lineCol_Box.setItems(self.lineCols) 
         
-        self.w2.addWidget(self.trackSelector_label, row=0,col=0)
-        self.w2.addWidget(self.trackSelector, row=0,col=1) 
-        self.w2.addWidget(self.plot_button, row=0,col=2)              
+        self.pointCol_Box = pg.ComboBox()
+        self.pointCols = {'None':'None'}
+        self.pointCol_Box.setItems(self.pointCols)         
+        self.lineCol_label = QLabel("Line color by")         
+        self.pointCol_label = QLabel("Point color by")  
+        
+        
+        self.pointCM_button = QPushButton('Point cmap PG')
+        self.pointCM_button.pressed.connect(self.setPointColourMap)    
+        
+        self.lineCM_button = QPushButton('Line cmap PG')
+        self.lineCM_button.pressed.connect(self.setLineColourMap) 
+        
+
+        #row0
+        self.w2.addWidget(self.lineCol_label, row=0,col=0)   
+        self.w2.addWidget(self.lineCol_Box, row=0,col=1)   
+        self.w2.addWidget(self.pointCol_label, row=0,col=2)         
+        self.w2.addWidget(self.pointCol_Box, row=0,col=3)        
+        #row1
+        self.w2.addWidget(self.lineCM_button, row=1,col=0)   
+        self.w2.addWidget(self.line_colourMap_Box, row=1,col=1)   
+        self.w2.addWidget(self.pointCM_button, row=1,col=2)         
+        self.w2.addWidget(self.point_colourMap_Box, row=1,col=3)          
+        #row2
+        self.w2.addWidget(self.trackSelector_label, row=2,col=0)
+        self.w2.addWidget(self.selectTrack_checkbox, row=2,col=1)        
+        self.w2.addWidget(self.trackSelector, row=2,col=2)
+        self.w2.addWidget(self.plot_button, row=2,col=3)  
+        
         self.d2.addWidget(self.w2) 
         
         self.pathitem = None
@@ -211,28 +269,72 @@ class TrackPlot():
 
     def updateTrackList(self):
         self.tracks = dictFromList(self.mainGUI.data['track_number'].to_list())
-        self.trackSelector.setItems(self.tracks) 
+        self.trackSelector.setItems(self.tracks)       
+
+    def setPointColourMap(self):
+        if self.pointCMtype == 'pg':
+            self.colourMaps = dictFromList(pg.colormap.listMaps('matplotlib'))
+            self.point_colourMap_Box.setItems(self.colourMaps)  
+            self.pointCM_button.setText('Point cmap ML')
+            self.pointCMtype = 'matplotlib'
+        else:
+            self.colourMaps = dictFromList(pg.colormap.listMaps())
+            self.point_colourMap_Box.setItems(self.colourMaps) 
+            self.pointCM_button.setText('Point cmap PG')
+            self.pointCMtype = 'pg'
+
+    def setLineColourMap(self):
+        if self.lineCMtype == 'pg':
+            self.colourMaps = dictFromList(pg.colormap.listMaps('matplotlib'))
+            self.line_colourMap_Box.setItems(self.colourMaps) 
+            self.lineCM_button.setText('Line cmap ML')            
+            self.lineCMtype = 'matplotlib'
+        else:
+            self.colourMaps = dictFromList(pg.colormap.listMaps())
+            self.line_colourMap_Box.setItems(self.colourMaps) 
+            self.lineCM_button.setText('Line cmap PG')             
+            self.lineCMtype = 'pg'
 
         
     def plotTracks(self):
         self.w1.clear()
-        self.trackDF = self.mainGUI.data[self.mainGUI.data['track_number'] == int(self.trackSelector.value())]
+        
+        if self.selectTrack_checkbox.isChecked():
+            trackToPlot = int(self.trackSelector.value())
+        else:
+            trackToPlot = int(self.mainGUI.displayTrack)
+        
+        self.trackDF = self.mainGUI.data[self.mainGUI.data['track_number'] == trackToPlot]
         print(self.trackDF)
         self.setColour()
-                   
-       
+                          
         points = [QPointF(*xy.tolist()) for xy in np.column_stack((self.trackDF['zeroed_X'].to_list(), self.trackDF['zeroed_Y'].to_list()))]
 
-        item = ColouredLines(points, self.colours, 2)
+        item = ColouredLines(points, self.colours_line, self.colours_point)
         self.w1.addItem(item)
         self.pathitem = item
 
     def setColour(self):
-        cmap = pg.colormap.get("inferno")
-        #lut = cmap.getLookupTable(nPts=100, mode="qcolor")
-        #self.colours = [lut[idx % len(lut)] for idx in range(len(self.trackDF['zeroed_X'].to_list())-1)]
-        coloursScaled= (self.trackDF['intensity'].to_numpy()) / np.max(self.trackDF['intensity'])
-        self.colours = cmap.mapToQColor(coloursScaled)
+        
+        pointCol = self.pointCol_Box.value()
+        lineCol = self.lineCol_Box.value()
+        
+        if self.pointCMtype == 'matplotlib':
+            point_cmap = pg.colormap.getFromMatplotlib(self.point_colourMap_Box.value())
+        else:    
+            point_cmap = pg.colormap.get(self.point_colourMap_Box.value())
+
+
+        point_coloursScaled= (self.trackDF[pointCol].to_numpy()) / np.max(self.trackDF['intensity'])
+        self.colours_point = point_cmap.mapToQColor(point_coloursScaled)
+
+        if self.lineCMtype == 'matplotlib':
+            line_cmap = pg.colormap.getFromMatplotlib(self.line_colourMap_Box.value())
+        else:    
+            line_cmap = pg.colormap.get(self.line_colourMap_Box.value())
+        
+        line_coloursScaled= (self.trackDF[lineCol].to_numpy()) / np.max(self.trackDF['intensity'])
+        self.colours_line = line_cmap.mapToQColor(line_coloursScaled)        
 
     def show(self):
         self.win.show()
@@ -1045,6 +1147,15 @@ class ChartDock():
     def hide(self):
         self.win.hide()
     
+
+
+''''
+#####################################################################################################################################
+######################################   Main LOCSANDTRACKSPLOTTER CLASS   ##########################################################
+#####################################################################################################################################
+'''
+
+
     
 
 class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
@@ -1305,13 +1416,17 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.trackCol_Box.setItems(self.colDict)   
         self.filterCol_Box.setItems(self.colDict)  
         self.trackColourCol_Box.setItems(self.colDict)  
+
+        self.xCol_Box.setItems(self.colDict)
+        self.yCol_Box.setItems(self.colDict)
         
         #format points add to image window
         self.plotPointData()
         
         #update track plot track selector
-        self.singleTrackPlot.updateTrackList()
-        
+        self.singleTrackPlot.updateTrackList()        
+        self.singleTrackPlot.pointCol_Box.setItems(self.colDict)
+        self.singleTrackPlot.lineCol_Box.setItems(self.colDict)        
 
     def makePointDataDF(self, data):   
         if self.filetype_Box.value() == 'thunderstorm':
@@ -1552,6 +1667,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
                 
                 #update plots in track display               
                 self.trackWindow.update(frame, intensity, distance, zeroed_X, zeroed_Y, dydt, direction, velocity, self.displayTrack)
+                
+                #update individual track display
+                self.singleTrackPlot.plotTracks()
                 
 
         if ev.key() == Qt.Key_R:
