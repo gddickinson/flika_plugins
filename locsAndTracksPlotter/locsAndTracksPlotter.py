@@ -245,12 +245,12 @@ class TrackPlot():
         self.lineCM_button.pressed.connect(self.setLineColourMap) 
 
 
-        self.pointSize_box = pg.SpinBox(value=0.05, int=False)
+        self.pointSize_box = pg.SpinBox(value=0.5, int=False)
         self.pointSize_box.setSingleStep(0.05)     
         self.pointSize_box.setMinimum(0.05)
-        self.pointSize_box.setMaximum(1) 
+        self.pointSize_box.setMaximum(5) 
                 
-        self.lineWidth_box = pg.SpinBox(value=2, int=True)
+        self.lineWidth_box = pg.SpinBox(value=10, int=True)
         self.lineWidth_box.setSingleStep(1)     
         self.lineWidth_box.setMinimum(1)
         self.lineWidth_box.setMaximum(100) 
@@ -258,6 +258,8 @@ class TrackPlot():
         self.pointSize_label = QLabel("Point Size")         
         self.lineWidth_label = QLabel("Line Width")  
         
+        self.pointSize_box.valueChanged.connect(self.plotTracks)
+        self.lineWidth_box.valueChanged.connect(self.plotTracks)
 
         #row0
         self.w2.addWidget(self.lineCol_label, row=0,col=0)   
@@ -1167,6 +1169,76 @@ class ChartDock():
         self.win.hide()
     
 
+class FilterOptions():
+    def __init__(self, mainGUI):
+        super().__init__()    
+        
+        self.mainGUI = mainGUI
+        
+        ## Create dock window
+        self.win =QMainWindow()
+        self.area = DockArea()
+        self.win.setCentralWidget(self.area)
+        self.win.resize(500,100)
+        self.win.setWindowTitle('Filter')
+        
+        ## Create docks
+        self.d1 = Dock("Filter Options", size=(500, 100))        
+        self.area.addDock(self.d1) 
+        
+        ## Create layout widget
+        self.w1 = pg.LayoutWidget()
+        
+        ## Create widgets        
+        self.filterCol_Box = pg.ComboBox()
+        self.filtercols = {'None':'None'}
+        self.filterCol_Box.setItems(self.filtercols)          
+        self.filterOp_Box = pg.ComboBox()
+        self.filterOps = {'=':'==', '<':'<', '>':'>', '!=':'!='}
+        self.filterOp_Box.setItems(self.filterOps)         
+        self.filterValue_Box = QLineEdit()        
+
+        #labels
+        self.filterCol_label = QLabel('Filter column')
+        self.filterVal_label = QLabel('Value') 
+        self.filterOp_label = QLabel('Operator')        
+        
+        #buttons
+        self.filterData_button = QPushButton('Filter')
+        self.filterData_button.pressed.connect(self.mainGUI.filterData)                 
+        self.clearFilterData_button = QPushButton('Clear Filter')
+        self.clearFilterData_button.pressed.connect(self.mainGUI.clearFilterData)  
+        self.ROIFilterData_button = QPushButton(' Filter by ROI(s)')
+        self.ROIFilterData_button.pressed.connect(self.mainGUI.ROIFilterData)  
+        self.clearROIFilterData_button = QPushButton('Clear ROI Filter')
+        self.clearROIFilterData_button.pressed.connect(self.mainGUI.clearROIFilterData)  
+        
+        ## Add widgets to layout
+        #row0
+        self.w1.addWidget(self.filterCol_label, row=0,col=0)   
+        self.w1.addWidget(self.filterCol_Box, row=0,col=1)   
+        self.w1.addWidget(self.filterOp_label, row=0,col=2)         
+        self.w1.addWidget(self.filterOp_Box, row=0,col=3) 
+        self.w1.addWidget(self.filterVal_label, row=0,col=4)         
+        self.w1.addWidget(self.filterValue_Box, row=0,col=5)  
+        #row1
+        self.w1.addWidget(self.filterData_button, row=1,col=0)   
+        self.w1.addWidget(self.clearFilterData_button, row=1,col=1)  
+        #row2
+        self.w1.addWidget(self.ROIFilterData_button, row=2,col=0)   
+        self.w1.addWidget(self.clearROIFilterData_button, row=2,col=1)          
+
+        #add layout to dock
+        self.d1.addWidget(self.w1) 
+
+    def show(self):
+        self.win.show()
+    
+    def close(self):
+        self.win.close()
+
+    def hide(self):
+        self.win.hide()
 
 ''''
 #####################################################################################################################################
@@ -1232,7 +1304,11 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.displayCharts = False
         
         self.diffusionWindow = None
-        self.displayDiffusionPlot = False        
+        self.displayDiffusionPlot = False       
+        
+        #initiate filter options window
+        self.filterOptionsWindow = FilterOptions(self)
+        self.filterOptionsWindow.hide()         
         
         #initiate track plot
         self.trackWindow = TrackWindow(self)
@@ -1262,17 +1338,17 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.clearTrackData_button = QPushButton('Clear Tracks')
         self.clearTrackData_button.pressed.connect(self.clearTracks)  
         
-        self.filterData_button = QPushButton('Filter')
-        self.filterData_button.pressed.connect(self.filterData)          
+        # self.filterData_button = QPushButton('Filter')
+        # self.filterData_button.pressed.connect(self.filterData)          
         
-        self.clearFilterData_button = QPushButton('Clear Filter')
-        self.clearFilterData_button.pressed.connect(self.clearFilterData)  
+        # self.clearFilterData_button = QPushButton('Clear Filter')
+        # self.clearFilterData_button.pressed.connect(self.clearFilterData)  
 
-        self.ROIFilterData_button = QPushButton(' Filter by ROI(s)')
-        self.ROIFilterData_button.pressed.connect(self.ROIFilterData)  
+        # self.ROIFilterData_button = QPushButton(' Filter by ROI(s)')
+        # self.ROIFilterData_button.pressed.connect(self.ROIFilterData)  
 
-        self.clearROIFilterData_button = QPushButton('Clear ROI Filter')
-        self.clearROIFilterData_button.pressed.connect(self.clearROIFilterData)  
+        # self.clearROIFilterData_button = QPushButton('Clear ROI Filter')
+        # self.clearROIFilterData_button.pressed.connect(self.clearROIFilterData)  
         
         self.saveData_button = QPushButton('Save Tracks')
         self.saveData_button.pressed.connect(self.saveData)    
@@ -1300,7 +1376,11 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         
         self.displaySingleTrackPlot_checkbox = CheckBox() 
         self.displaySingleTrackPlot_checkbox.stateChanged.connect(self.toggleSingleTrackPlot)
-        self.displaySingleTrackPlot_checkbox.setChecked(True)          
+        self.displaySingleTrackPlot_checkbox.setChecked(True) 
+
+        self.displayFilterOptions_checkbox = CheckBox() 
+        self.displayFilterOptions_checkbox.stateChanged.connect(self.toggleFilterOptions)
+        self.displayFilterOptions_checkbox.setChecked(False)          
 
         #comboboxes
         self.filetype_Box = pg.ComboBox()
@@ -1323,9 +1403,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.trackcols = {'None':'None'}
         self.trackCol_Box.setItems(self.trackcols)   
         
-        self.filterCol_Box = pg.ComboBox()
-        self.filtercols = {'None':'None'}
-        self.filterCol_Box.setItems(self.filtercols)  
+        # self.filterCol_Box = pg.ComboBox()
+        # self.filtercols = {'None':'None'}
+        # self.filterCol_Box.setItems(self.filtercols)  
 
         self.trackColourCol_Box = pg.ComboBox()
         self.trackcolourcols = {'None':'None'}
@@ -1335,11 +1415,11 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.colourMaps = dictFromList(pg.colormap.listMaps())
         self.colourMap_Box.setItems(self.colourMaps)         
 
-        self.filterOp_Box = pg.ComboBox()
-        self.filterOps = {'=':'==', '<':'<', '>':'>'}
-        self.filterOp_Box.setItems(self.filterOps)  
+        # self.filterOp_Box = pg.ComboBox()
+        # self.filterOps = {'=':'==', '<':'<', '>':'>', '!=':'!='}
+        # self.filterOp_Box.setItems(self.filterOps)  
         
-        self.filterValue_Box = QLineEdit()     
+        # self.filterValue_Box = QLineEdit()     
         
         self.trackDefaultColour_Box = pg.ComboBox()
         self.trackdefaultcolours = {'green': Qt.green, 'red': Qt.red, 'blue': Qt.blue}
@@ -1372,15 +1452,15 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         #self.items.append({'name': 'yCol', 'string': 'Y col', 'object': self.yCol_Box})   
         #self.items.append({'name': 'trackCol', 'string': 'Track col', 'object': self.trackCol_Box})   
         #self.items.append({'name': 'blank ', 'string': '---- FILTER -----', 'object': None})                  
-        self.items.append({'name': 'filterCol', 'string': 'FILTER    -------- Filter col', 'object': self.filterCol_Box})
-        self.items.append({'name': 'filterOp', 'string': 'Operator', 'object': self.filterOp_Box})  
-        self.items.append({'name': 'filterValue', 'string': 'Value', 'object': self.filterValue_Box})         
-        self.items.append({'name': 'filterData', 'string': '', 'object': self.filterData_button })         
-        self.items.append({'name': 'clearFilterData', 'string': '', 'object': self.clearFilterData_button })  
+        #self.items.append({'name': 'filterCol', 'string': 'FILTER    -------- Filter col', 'object': self.filterCol_Box})
+        #self.items.append({'name': 'filterOp', 'string': 'Operator', 'object': self.filterOp_Box})  
+        #self.items.append({'name': 'filterValue', 'string': 'Value', 'object': self.filterValue_Box})         
+        #self.items.append({'name': 'filterData', 'string': '', 'object': self.filterData_button })         
+        #self.items.append({'name': 'clearFilterData', 'string': '', 'object': self.clearFilterData_button })  
 
         #self.items.append({'name': 'blank ', 'string': '--- ROI FILTER ----', 'object': None})                  
-        self.items.append({'name': 'filterROI', 'string': '', 'object': self.ROIFilterData_button})
-        self.items.append({'name': 'clearFilterROI', 'string': '', 'object': self.clearROIFilterData_button})  
+        #self.items.append({'name': 'filterROI', 'string': '', 'object': self.ROIFilterData_button})
+        #self.items.append({'name': 'clearFilterROI', 'string': '', 'object': self.clearROIFilterData_button})  
         
         
         #self.items.append({'name': 'blank ', 'string': '----  PLOT  -----', 'object': None})           
@@ -1395,7 +1475,11 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.items.append({'name': 'trackColourMap', 'string': 'Colour Map', 'object': self.colourMap_Box})   
         self.items.append({'name': 'matplotClourMap', 'string': 'Use matplot map', 'object': self.matplotCM_checkbox}) 
         self.items.append({'name': 'displayFlowerPlot', 'string': 'Flower Plot', 'object': self.displayFlowPlot_checkbox})  
-        self.items.append({'name': 'displaySingleTrackPlot', 'string': 'Track Plot', 'object': self.displaySingleTrackPlot_checkbox})          
+        self.items.append({'name': 'displaySingleTrackPlot', 'string': 'Track Plot', 'object': self.displaySingleTrackPlot_checkbox})  
+
+        self.items.append({'name': 'displayFilterOptions', 'string': 'Filter Window', 'object': self.displayFilterOptions_checkbox})  
+
+        
         self.items.append({'name': 'plotTracks', 'string': '', 'object': self.plotTrackData_button })         
         self.items.append({'name': 'clearTracks', 'string': '', 'object': self.clearTrackData_button })     
         self.items.append({'name': 'saveTracks', 'string': '', 'object': self.saveData_button })  
@@ -1433,7 +1517,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.yCol_Box.setItems(self.colDict)
         self.frameCol_Box.setItems(self.colDict)        
         self.trackCol_Box.setItems(self.colDict)   
-        self.filterCol_Box.setItems(self.colDict)  
+        self.filterOptionsWindow.filterCol_Box.setItems(self.colDict)  
         self.trackColourCol_Box.setItems(self.colDict)  
 
         self.xCol_Box.setItems(self.colDict)
@@ -1738,13 +1822,13 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         g.m.statusBar().showMessage('track join complete') 
 
     def filterData(self):
-        
-        op = self.filterOp_Box.value()
-        filterCol = self.filterCol_Box.value()
+        #get filter options from filterWindow
+        op = self.filterOptionsWindow.filterOp_Box.value()
+        filterCol = self.filterOptionsWindow.filterCol_Box.value()
         dtype = self.data[filterCol].dtype 
-        value = float(self.filterValue_Box.text())
+        value = float(self.filterOptionsWindow.filterValue_Box.text())
         
-        
+        #apply filter
         if op == '==':
             self.filteredData = self.data[self.data[filterCol] == value]
  
@@ -1753,6 +1837,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         
         elif op == '>':
              self.filteredData = self.data[self.data[filterCol] > value]           
+            
+        elif op == '!=':
+             self.filteredData = self.data[self.data[filterCol] != value]              
             
         
         print(self.filteredData.head())
@@ -1873,6 +1960,11 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         else:
             self.singleTrackPlot.hide()   
 
+    def toggleFilterOptions(self):
+        if self.displayFilterOptions_checkbox.isChecked():
+            self.filterOptionsWindow.show()
+        else:
+            self.filterOptionsWindow.hide()   
 
 
     def toggleCharts(self):
