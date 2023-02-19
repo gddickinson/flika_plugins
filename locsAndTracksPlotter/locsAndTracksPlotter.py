@@ -187,7 +187,7 @@ class TrackPlot():
         self.win =QMainWindow()
         self.area = DockArea()
         self.win.setCentralWidget(self.area)
-        self.win.resize(1000, 550)
+        self.win.resize(1400, 550)
         self.win.setWindowTitle('Track Plot')
 
         self.pointCMtype = 'pg'
@@ -196,13 +196,14 @@ class TrackPlot():
         ## Create docks, place them into the window one at a time.
         self.d1 = Dock("plot", size=(500, 500))
         self.d2 = Dock("options", size=(500,50))  
-        self.d3 = Dock('signal', size=(500,500))
-        self.d4 = Dock('trace', size =(500, 50))
+        self.d3 = Dock('signal', size=(500,250))
+        self.d4 = Dock('trace', size =(500, 250))
 
-        self.area.addDock(self.d1, 'top') 
+        self.area.addDock(self.d1, 'left') 
+        self.area.addDock(self.d3, 'right')         
+        
         self.area.addDock(self.d2, 'bottom', self.d1)  
-        self.area.addDock(self.d3, 'right', self.d1) 
-        self.area.addDock(self.d4, 'right', self.d2)         
+        self.area.addDock(self.d4, 'bottom', self.d3)         
 
         #plot
         self.w1 = pg.PlotWidget(title="Track plot")
@@ -305,12 +306,27 @@ class TrackPlot():
         #Trace plot
         self.tracePlot = pg.PlotWidget(title="Signal plot")
         self.tracePlot.plot()
+        self.tracePlot.setLimits(xMin=0)
         self.d4.addWidget(self.tracePlot)
         
         self.roi.sigRegionChanged.connect(self.updateROI)         
         self.pathitem = None
         self.trackDF = pd.DataFrame()
-      
+
+        #trace time line 
+        self.line = self.tracePlot.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=True, bounds=[0,None])
+        self.signalIMG.sigTimeChanged.connect(self.updatePositionIndicator) 
+        
+        self.line.sigPositionChanged.connect(self.updateTimeSlider)
+
+
+    def updatePositionIndicator(self, t):
+        self.line.setPos(t)
+
+    def updateTimeSlider(self):
+        t = int(self.line.getXPos())
+        self.signalIMG.setCurrentIndex(t)
+        
 
     def updateTrackList(self):
         self.tracks = dictFromList(self.mainGUI.data['track_number'].to_list())
@@ -406,8 +422,9 @@ class TrackPlot():
     def updateROI(self):
         img = self.roi.getArrayRegion(self.A_crop, self.signalIMG.getImageItem(), axes=(1,2))
         trace = np.mean(img, axis=(1,2))
-        self.tracePlot.plot(trace, clear=True)  
-
+        self.tracePlot.plot(trace, clear=True) 
+        self.line = self.tracePlot.addLine(x=self.signalIMG.currentIndex, pen=pg.mkPen('y', style=Qt.DashLine), movable=True, bounds=[0,None])
+        self.line.sigPositionChanged.connect(self.updateTimeSlider)
 
     def setPadArray(self, A):
         self.A_pad = np.pad(A,((0,0),(self.d,self.d),(self.d,self.d)),'constant', constant_values=0)
@@ -1235,11 +1252,11 @@ class FilterOptions():
         self.win =QMainWindow()
         self.area = DockArea()
         self.win.setCentralWidget(self.area)
-        self.win.resize(500,100)
+        self.win.resize(550,100)
         self.win.setWindowTitle('Filter')
         
         ## Create docks
-        self.d1 = Dock("Filter Options", size=(500, 100))        
+        self.d1 = Dock("Filter Options", size=(550, 100))        
         self.area.addDock(self.d1) 
         
         ## Create layout widget
@@ -1428,11 +1445,11 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
         self.displayFlowPlot_checkbox = CheckBox() 
         self.displayFlowPlot_checkbox.stateChanged.connect(self.toggleFlowerPlot)
-        self.displayFlowPlot_checkbox.setChecked(True)  
+        self.displayFlowPlot_checkbox.setChecked(False)  
         
         self.displaySingleTrackPlot_checkbox = CheckBox() 
         self.displaySingleTrackPlot_checkbox.stateChanged.connect(self.toggleSingleTrackPlot)
-        self.displaySingleTrackPlot_checkbox.setChecked(True) 
+        self.displaySingleTrackPlot_checkbox.setChecked(False) 
 
         self.displayFilterOptions_checkbox = CheckBox() 
         self.displayFilterOptions_checkbox.stateChanged.connect(self.toggleFilterOptions)
