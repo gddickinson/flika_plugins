@@ -180,11 +180,14 @@ class TrackPlot():
     def __init__(self, mainGUI):
         super().__init__()  
         self.mainGUI = mainGUI
+        self.d = int(14)
+        self.A_pad = None
+        self.A_crop = None
 
         self.win =QMainWindow()
         self.area = DockArea()
         self.win.setCentralWidget(self.area)
-        self.win.resize(500, 550)
+        self.win.resize(1000, 550)
         self.win.setWindowTitle('Track Plot')
 
         self.pointCMtype = 'pg'
@@ -192,10 +195,14 @@ class TrackPlot():
         
         ## Create docks, place them into the window one at a time.
         self.d1 = Dock("plot", size=(500, 500))
-        self.d2 = Dock("options", size=(500,50))        
+        self.d2 = Dock("options", size=(500,50))  
+        self.d3 = Dock('signal', size=(500,500))
+        self.d4 = Dock('trace', size =(500, 50))
 
         self.area.addDock(self.d1, 'top') 
-        self.area.addDock(self.d2, 'bottom', self.d1)     
+        self.area.addDock(self.d2, 'bottom', self.d1)  
+        self.area.addDock(self.d3, 'right', self.d1) 
+        self.area.addDock(self.d4, 'right', self.d2)         
 
         #plot
         self.w1 = pg.PlotWidget(title="Track plot")
@@ -245,12 +252,12 @@ class TrackPlot():
         self.lineCM_button.pressed.connect(self.setLineColourMap) 
 
 
-        self.pointSize_box = pg.SpinBox(value=0.5, int=False)
+        self.pointSize_box = pg.SpinBox(value=0.2, int=False)
         self.pointSize_box.setSingleStep(0.05)     
         self.pointSize_box.setMinimum(0.05)
         self.pointSize_box.setMaximum(5) 
                 
-        self.lineWidth_box = pg.SpinBox(value=10, int=True)
+        self.lineWidth_box = pg.SpinBox(value=3, int=True)
         self.lineWidth_box.setSingleStep(1)     
         self.lineWidth_box.setMinimum(1)
         self.lineWidth_box.setMaximum(100) 
@@ -283,10 +290,27 @@ class TrackPlot():
         self.w2.addWidget(self.plot_button, row=3,col=3)  
         
         self.d2.addWidget(self.w2) 
+ 
+        #signal image view
+        self.signalIMG = pg.ImageView()
+        self.d3.addWidget(self.signalIMG)
+ 
+        # Add ROI for selecting an image region
+        self.roi = pg.ROI([0, 0], [5, 5])
+        self.roi.addScaleHandle([0.5, 1], [0.5, 0.5])
+        self.roi.addScaleHandle([0, 0.5], [0.5, 0.5])
+        self.signalIMG.addItem(self.roi)
+        #self.roi.setZValue(10)  # make sure ROI is drawn above image
         
+        #Trace plot
+        self.tracePlot = pg.PlotWidget(title="Signal plot")
+        self.tracePlot.plot()
+        self.d4.addWidget(self.tracePlot)
+        
+        self.roi.sigRegionChanged.connect(self.updateROI)         
         self.pathitem = None
         self.trackDF = pd.DataFrame()
-
+      
 
     def updateTrackList(self):
         self.tracks = dictFromList(self.mainGUI.data['track_number'].to_list())
@@ -335,6 +359,8 @@ class TrackPlot():
         self.w1.addItem(item)
         self.pathitem = item
 
+        self.cropImageStackToPoints()
+
     def setColour(self):
         
         pointCol = self.pointCol_Box.value()
@@ -356,6 +382,36 @@ class TrackPlot():
         
         line_coloursScaled= (self.trackDF[lineCol].to_numpy()) / np.max(self.trackDF['intensity'])
         self.colours_line = line_cmap.mapToQColor(line_coloursScaled)        
+
+
+    def cropImageStackToPoints(self):
+        points = np.column_stack((self.trackDF['frame'].to_list(), self.trackDF['x'].to_list(), self.trackDF['y'].to_list()))        
+        d = self.d
+        
+        self.frames = int(self.A_pad.shape[0])
+        self.A_crop = np.zeros((self.frames,d,d))
+        x_limit = int(d/2) 
+        y_limit = int(d/2)
+        
+        for point in points:
+            minX = int(point[1]) - x_limit + d
+            maxX = int(point[1]) + x_limit + d
+            minY = int(point[2]) - y_limit + d
+            maxY = int(point[2]) + y_limit + d
+            crop = self.A_pad[int(point[0]),minX:maxX,minY:maxY]
+            self.A_crop[int(point[0])] = crop
+        
+        self.signalIMG.setImage(self.A_crop) 
+
+    def updateROI(self):
+        img = self.roi.getArrayRegion(self.A_crop, self.signalIMG.getImageItem(), axes=(1,2))
+        trace = np.mean(img, axis=(1,2))
+        self.tracePlot.plot(trace, clear=True)  
+
+
+    def setPadArray(self, A):
+        self.A_pad = np.pad(A,((0,0),(self.d,self.d),(self.d,self.d)),'constant', constant_values=0)
+        #self.updateROI()
 
     def show(self):
         self.win.show()
@@ -1529,7 +1585,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         #update track plot track selector
         self.singleTrackPlot.updateTrackList()        
         self.singleTrackPlot.pointCol_Box.setItems(self.colDict)
-        self.singleTrackPlot.lineCol_Box.setItems(self.colDict)        
+        self.singleTrackPlot.lineCol_Box.setItems(self.colDict)  
+
+        self.singleTrackPlot.setPadArray(self.plotWindow.imageArray())
 
     def makePointDataDF(self, data):   
         if self.filetype_Box.value() == 'thunderstorm':
@@ -2030,7 +2088,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
     def createStatsDFs_filtered(self):
             self.meanDF_filtered = self.filteredData.groupby('track_number', as_index=False).mean()
             self.stdDF_filtered = self.filteredData.groupby('track_number', as_index=False).std() 
-
+        
 
     def clearPlots(self):
         try:
