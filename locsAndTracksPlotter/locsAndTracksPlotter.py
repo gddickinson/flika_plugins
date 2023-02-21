@@ -1271,10 +1271,15 @@ class FilterOptions():
         self.filterOp_Box.setItems(self.filterOps)         
         self.filterValue_Box = QLineEdit()        
 
+        self.sequentialFlter_checkbox = CheckBox() 
+        self.sequentialFlter_checkbox.setChecked(False)  
+        self.sequentialFlter_checkbox.stateChanged.connect(self.setSequentialFilter)
+
         #labels
         self.filterCol_label = QLabel('Filter column')
         self.filterVal_label = QLabel('Value') 
-        self.filterOp_label = QLabel('Operator')        
+        self.filterOp_label = QLabel('Operator')
+        self.sequentialFilter_label = QLabel('Allow sequential filtering')        
         
         #buttons
         self.filterData_button = QPushButton('Filter')
@@ -1294,15 +1299,23 @@ class FilterOptions():
         self.w1.addWidget(self.filterOp_Box, row=0,col=3) 
         self.w1.addWidget(self.filterVal_label, row=0,col=4)         
         self.w1.addWidget(self.filterValue_Box, row=0,col=5)  
-        #row1
+        #row1      
         self.w1.addWidget(self.filterData_button, row=1,col=0)   
-        self.w1.addWidget(self.clearFilterData_button, row=1,col=1)  
-        #row2
-        self.w1.addWidget(self.ROIFilterData_button, row=2,col=0)   
-        self.w1.addWidget(self.clearROIFilterData_button, row=2,col=1)          
+        self.w1.addWidget(self.clearFilterData_button, row=1,col=1)
+        self.w1.addWidget(self.sequentialFilter_label, row=1,col=2)   
+        self.w1.addWidget(self.sequentialFlter_checkbox, row=1,col=3)                  
+        #row3
+        self.w1.addWidget(self.ROIFilterData_button, row=3,col=0)   
+        self.w1.addWidget(self.clearROIFilterData_button, row=3,col=1)          
 
         #add layout to dock
         self.d1.addWidget(self.w1) 
+
+    def setSequentialFilter(self):
+        if self.sequentialFlter_checkbox.isChecked():
+            self.mainGUI.sequentialFiltering = True
+        else:
+            self.mainGUI.sequentialFiltering = False            
 
     def show(self):
         self.win.show()
@@ -1365,6 +1378,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.pathitems = []
         self.useFilteredData = False
         self.useFilteredTracks = False
+        self.filteredData = None
         
         #self.filteredTrackIds = None
         
@@ -1381,7 +1395,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         
         #initiate filter options window
         self.filterOptionsWindow = FilterOptions(self)
-        self.filterOptionsWindow.hide()         
+        self.filterOptionsWindow.hide()     
+        
+        self.sequentialFiltering = False
         
         #initiate track plot
         self.trackWindow = TrackWindow(self)
@@ -1903,21 +1919,27 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         dtype = self.data[filterCol].dtype 
         value = float(self.filterOptionsWindow.filterValue_Box.text())
         
+        if self.sequentialFiltering and self.useFilteredData:            
+            data = self.filteredData
+
+        else:
+            data = self.data
+        
         #apply filter
         if op == '==':
-            self.filteredData = self.data[self.data[filterCol] == value]
+            self.filteredData = data[data[filterCol] == value]
  
         elif op == '<':
-            self.filteredData = self.data[self.data[filterCol] < value]
+            self.filteredData = data[data[filterCol] < value]
         
         elif op == '>':
-             self.filteredData = self.data[self.data[filterCol] > value]           
+             self.filteredData = data[data[filterCol] > value]           
             
         elif op == '!=':
-             self.filteredData = self.data[self.data[filterCol] != value]              
+             self.filteredData = data[data[filterCol] != value]              
             
         
-        print(self.filteredData.head())
+        #print(self.filteredData.head())
         g.m.statusBar().showMessage('filter complete') 
         self.useFilteredData = True
         
@@ -1929,6 +1951,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
     def clearFilterData(self):
         self.useFilteredData = False
+        self.filteredData = None
         
         self.plotPointData()
         return
