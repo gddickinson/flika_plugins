@@ -101,8 +101,11 @@ class FileSelector(QWidget):
     This widget is a button with a label.  Once you click the button, the widget waits for you to select a file to save.  Once you do, it sets self.filename and it sets the label.
     """
     valueChanged=Signal()
-    def __init__(self,filetypes='*.*'):
+    def __init__(self,filetypes='*.*', mainGUI=None):
         QWidget.__init__(self)
+        
+        self.mainGUI = mainGUI
+        
         self.button=QPushButton('Load Data')
         self.label=QLabel('None')
         self.window=None
@@ -114,7 +117,7 @@ class FileSelector(QWidget):
         self.filetypes = filetypes
         self.filename = ''
         self.columns = []
-        self.pixelSize = 108    #nanometers
+        self.pixelSize = self.mainGUI.pixelSize_selector.value()    #nanometers
 
         
     def buttonclicked(self):
@@ -254,13 +257,13 @@ class TrackPlot():
 
 
         self.pointSize_box = pg.SpinBox(value=0.2, int=False)
-        self.pointSize_box.setSingleStep(0.05)     
-        self.pointSize_box.setMinimum(0.05)
+        self.pointSize_box.setSingleStep(0.01)     
+        self.pointSize_box.setMinimum(0.00)
         self.pointSize_box.setMaximum(5) 
                 
-        self.lineWidth_box = pg.SpinBox(value=3, int=True)
+        self.lineWidth_box = pg.SpinBox(value=2, int=True)
         self.lineWidth_box.setSingleStep(1)     
-        self.lineWidth_box.setMinimum(1)
+        self.lineWidth_box.setMinimum(0)
         self.lineWidth_box.setMaximum(100) 
         
         self.pointSize_label = QLabel("Point Size")         
@@ -491,8 +494,6 @@ class DiffusionPlotWindow():
         self.win.setCentralWidget(self.area)
         self.win.resize(1200,500)
         self.win.setWindowTitle('Diffusion Analysis')
-
-        self.pixelSize = self.mainGUI.pixelSize
         
         ## Create docks, place them into the window one at a time.
         self.d1 = Dock("plot options", size=(400, 100))
@@ -669,7 +670,7 @@ class DiffusionPlotWindow():
             plotDF = self.mainGUI.filteredData.groupby('track_number').mean() 
         
         # in microns
-        meanLag = plotDF['lag'] * self.pixelSize
+        meanLag = plotDF['lag'] * self.mainGUI.pixelSize_selector.value()
 
         start=0
         end=np.max(meanLag)
@@ -689,7 +690,7 @@ class DiffusionPlotWindow():
             plotDF = self.mainGUI.filteredData.groupby('track_number').mean() 
         
         # in microns squared   
-        self.squared_SLDs = plotDF['lag_squared'] * np.square(self.pixelSize/1000)
+        self.squared_SLDs = plotDF['lag_squared'] * np.square(self.mainGUI.pixelSize_selector.value()/1000)
 
         start=0
         end=np.max(self.squared_SLDs)
@@ -1373,7 +1374,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
     def gui(self):      
         self.filename = '' 
         self.filetype = 'flika'   
-        self.pixelSize= 108  
+        self.pixelSize= None  
         self.plotWindow = None
         self.pathitems = []
         self.useFilteredData = False
@@ -1427,17 +1428,6 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.clearTrackData_button = QPushButton('Clear Tracks')
         self.clearTrackData_button.pressed.connect(self.clearTracks)  
         
-        # self.filterData_button = QPushButton('Filter')
-        # self.filterData_button.pressed.connect(self.filterData)          
-        
-        # self.clearFilterData_button = QPushButton('Clear Filter')
-        # self.clearFilterData_button.pressed.connect(self.clearFilterData)  
-
-        # self.ROIFilterData_button = QPushButton(' Filter by ROI(s)')
-        # self.ROIFilterData_button.pressed.connect(self.ROIFilterData)  
-
-        # self.clearROIFilterData_button = QPushButton('Clear ROI Filter')
-        # self.clearROIFilterData_button.pressed.connect(self.clearROIFilterData)  
         
         self.saveData_button = QPushButton('Save Tracks')
         self.saveData_button.pressed.connect(self.saveData)    
@@ -1492,9 +1482,6 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.trackcols = {'None':'None'}
         self.trackCol_Box.setItems(self.trackcols)   
         
-        # self.filterCol_Box = pg.ComboBox()
-        # self.filtercols = {'None':'None'}
-        # self.filterCol_Box.setItems(self.filtercols)  
 
         self.trackColourCol_Box = pg.ComboBox()
         self.trackcolourcols = {'None':'None'}
@@ -1503,12 +1490,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.colourMap_Box = pg.ComboBox()
         self.colourMaps = dictFromList(pg.colormap.listMaps())
         self.colourMap_Box.setItems(self.colourMaps)         
-
-        # self.filterOp_Box = pg.ComboBox()
-        # self.filterOps = {'=':'==', '<':'<', '>':'>', '!=':'!='}
-        # self.filterOp_Box.setItems(self.filterOps)  
-        
-        # self.filterValue_Box = QLineEdit()     
+    
         
         self.trackDefaultColour_Box = pg.ComboBox()
         self.trackdefaultcolours = {'green': Qt.green, 'red': Qt.red, 'blue': Qt.blue}
@@ -1520,9 +1502,14 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.frameLength_selector.setMinimum(1)
         self.frameLength_selector.setMaximum(100000) 
         
+        self.pixelSize_selector = pg.SpinBox(value=108, int=True)
+        self.pixelSize_selector.setSingleStep(1)       
+        self.pixelSize_selector.setMinimum(1)
+        self.pixelSize_selector.setMaximum(10000) 
+
         
         #data file selector
-        self.getFile = FileSelector(filetypes='*.csv')
+        self.getFile = FileSelector(filetypes='*.csv', mainGUI=self)
         
         #connections
         self.getFile.valueChanged.connect(self.loadData)
@@ -1531,29 +1518,12 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         #self.exportFolder = FolderSelector('*.txt')
         #MEPPS
         #self.items.append({'name': 'blank1 ', 'string': '-------------   Parameters    ---------------', 'object': None}) 
-        self.items.append({'name': 'filename ', 'string': 'LOAD  - before load select window to plot on -', 'object': self.getFile})    
+        self.items.append({'name': 'filename ', 'string': 'before load, select data window', 'object': self.getFile})    
         self.items.append({'name': 'filetype', 'string': 'filetype', 'object': self.filetype_Box})  
+        self.items.append({'name': 'pixelSize', 'string': 'nanometers per pixel', 'object': self.pixelSize_selector})          
+        
         self.items.append({'name': 'frameLength', 'string': 'milliseconds per frame', 'object': self.frameLength_selector})          
        
-        #self.items.append({'name': 'blank ', 'string': '-------------------------------------------', 'object': None})   
-        #self.items.append({'name': 'frameCol', 'string': 'Frame col', 'object': self.frameCol_Box})          
-        #self.items.append({'name': 'xCol', 'string': 'X col', 'object': self.xCol_Box})          
-        #self.items.append({'name': 'yCol', 'string': 'Y col', 'object': self.yCol_Box})   
-        #self.items.append({'name': 'trackCol', 'string': 'Track col', 'object': self.trackCol_Box})   
-        #self.items.append({'name': 'blank ', 'string': '---- FILTER -----', 'object': None})                  
-        #self.items.append({'name': 'filterCol', 'string': 'FILTER    -------- Filter col', 'object': self.filterCol_Box})
-        #self.items.append({'name': 'filterOp', 'string': 'Operator', 'object': self.filterOp_Box})  
-        #self.items.append({'name': 'filterValue', 'string': 'Value', 'object': self.filterValue_Box})         
-        #self.items.append({'name': 'filterData', 'string': '', 'object': self.filterData_button })         
-        #self.items.append({'name': 'clearFilterData', 'string': '', 'object': self.clearFilterData_button })  
-
-        #self.items.append({'name': 'blank ', 'string': '--- ROI FILTER ----', 'object': None})                  
-        #self.items.append({'name': 'filterROI', 'string': '', 'object': self.ROIFilterData_button})
-        #self.items.append({'name': 'clearFilterROI', 'string': '', 'object': self.clearROIFilterData_button})  
-        
-        
-        #self.items.append({'name': 'blank ', 'string': '----  PLOT  -----', 'object': None})           
-        #self.items.append({'name': 'plotPoints', 'string': '', 'object': self.plotPointData_button }) 
         self.items.append({'name': 'hidePoints', 'string': 'PLOT    --------------------', 'object': self.hidePointData_button })
         
         self.items.append({'name': 'plotPointMap', 'string': '', 'object': self.togglePointMap_button })        
@@ -1627,8 +1597,8 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             ######### load FLIKA pyinsight data into DF ############
             df = pd.DataFrame()
             df['frame'] = data['frame'].astype(int)-1
-            df['x'] = data['x [nm]']/self.pixelSize
-            df['y'] = data['y [nm]']/self.pixelSize   
+            df['x'] = data['x [nm]']/self.pixelSize_selector.value()
+            df['y'] = data['y [nm]']/self.pixelSize_selector.value() 
 
         elif self.filetype_Box.value() == 'flika':
             ######### load FLIKA pyinsight data into DF ############
@@ -1690,8 +1660,8 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             ######### load FLIKA pyinsight data into DF ############
             df = pd.DataFrame()
             df['frame'] = data['frame'].astype(int)-1
-            df['x'] = data['x [nm]']/self.pixelSize
-            df['y'] = data['y [nm]']/self.pixelSize  
+            df['x'] = data['x [nm]']/self.pixelSize_selector.value()
+            df['y'] = data['y [nm]']/self.pixelSize_selector.value()  
             df['track_number'] = data['track_number']
 
         elif self.filetype_Box.value() == 'flika':
