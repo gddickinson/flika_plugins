@@ -1301,6 +1301,8 @@ class TrackWindow(BaseProcess):
 
 
     def updatePositionIndicators(self, t):
+        #match frames to flika window numbering
+        t = t+1
         # Set the position of the position indicators in all four plots to the current time t
         self.plt1_line.setPos(t)
         self.plt2_line.setPos(t)
