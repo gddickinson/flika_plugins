@@ -397,7 +397,7 @@ class TrackPlot():
             point_cmap = pg.colormap.get(self.point_colourMap_Box.value())
 
 
-        point_coloursScaled= (self.trackDF[pointCol].to_numpy()) / np.max(self.trackDF['intensity'])
+        point_coloursScaled= (self.trackDF[pointCol].to_numpy()) / np.max(self.trackDF[pointCol])
         self.colours_point = point_cmap.mapToQColor(point_coloursScaled)
 
         if self.lineCMtype == 'matplotlib':
@@ -405,7 +405,7 @@ class TrackPlot():
         else:    
             line_cmap = pg.colormap.get(self.line_colourMap_Box.value())
         
-        line_coloursScaled= (self.trackDF[lineCol].to_numpy()) / np.max(self.trackDF['intensity'])
+        line_coloursScaled= (self.trackDF[lineCol].to_numpy()) / np.max(self.trackDF[lineCol])
         self.colours_line = line_cmap.mapToQColor(line_coloursScaled)        
 
 

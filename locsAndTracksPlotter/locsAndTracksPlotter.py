@@ -475,28 +475,23 @@ class TrackPlot():
             point_cmap = pg.colormap.get(self.point_colourMap_Box.value())
     
         # Scale the values in the column to use for point colour to be between 0 and 1
-        point_coloursScaled= (self.trackDF[pointCol].to_numpy()) / np.max(self.trackDF['intensity'])
+        point_coloursScaled= (self.trackDF[pointCol].to_numpy()) / np.max(self.trackDF[pointCol])
         # Map the scaled values to QColor objects using the chosen colormap
         self.colours_point = point_cmap.mapToQColor(point_coloursScaled)
     
         # Check the current type of line colour map
         if self.lineCMtype == 'matplotlib':
             # Get matplotlib colormap and map the colour values for the column to use for line colour
-            point_cmap = pg.colormap.getFromMatplotlib(self.point_colourMap_Box.value())
+            line_cmap = pg.colormap.getFromMatplotlib(self.line_colourMap_Box.value())
         else:    
-            point_cmap = pg.colormap.get(self.point_colourMap_Box.value())
+            line_cmap = pg.colormap.get(self.line_colourMap_Box.value())
     
+        # Scale the values in the column to use for line colour to be between 0 and 1  
+        line_coloursScaled= (self.trackDF[lineCol].to_numpy()) / np.max(self.trackDF[lineCol])
+        # Map the scaled values to QColor objects using the chosen colormap        
+        self.colours_line = line_cmap.mapToQColor(line_coloursScaled)
     
-            point_coloursScaled= (self.trackDF[pointCol].to_numpy()) / np.max(self.trackDF['intensity'])
-            self.colours_point = point_cmap.mapToQColor(point_coloursScaled)
-    
-            if self.lineCMtype == 'matplotlib':
-                line_cmap = pg.colormap.getFromMatplotlib(self.line_colourMap_Box.value())
-            else:    
-                line_cmap = pg.colormap.get(self.line_colourMap_Box.value())
-            
-            line_coloursScaled= (self.trackDF[lineCol].to_numpy()) / np.max(self.trackDF['intensity'])
-            self.colours_line = line_cmap.mapToQColor(line_coloursScaled)   
+
             
     def cropImageStackToPoints(self):
         # Extract x,y,frame data for each point
@@ -1083,14 +1078,20 @@ class TrackWindow(BaseProcess):
         self.plt2 = self.win.addPlot(title='distance from origin')  # Create a PyqtGraph PlotItem object
         self.plt2.getAxis('left').enableAutoSIPrefix(False)  # Disable auto scientific notation for the y-axis
 
-        # Create a plot for displaying the polar coordinates of the track (direction and velocity)
-        self.plt4 = self.win.addPlot(title='polar (direction and velocity)')  # Create a PyqtGraph PlotItem object
-        self.plt4.getViewBox().invertY(True)  # Invert the y-axis of the plot
-        self.plt4.setAspectLocked()  # Keep the aspect ratio of the plot fixed
-        self.plt4.setXRange(-4,4)  # Set the x-axis limits of the plot
-        self.plt4.setYRange(-4,4)  # Set the y-axis limits of the plot
-        self.plt4.hideAxis('bottom')  # Hide the x-axis of the plot
-        self.plt4.hideAxis('left')  # Hide the y-axis of the plot
+# =============================================================================
+#         # Create a plot for displaying the polar coordinates of the track (direction and velocity)
+#         self.plt4 = self.win.addPlot(title='polar (direction and velocity)')  # Create a PyqtGraph PlotItem object
+#         self.plt4.getViewBox().invertY(True)  # Invert the y-axis of the plot
+#         self.plt4.setAspectLocked()  # Keep the aspect ratio of the plot fixed
+#         self.plt4.setXRange(-4,4)  # Set the x-axis limits of the plot
+#         self.plt4.setYRange(-4,4)  # Set the y-axis limits of the plot
+#         self.plt4.hideAxis('bottom')  # Hide the x-axis of the plot
+#         self.plt4.hideAxis('left')  # Hide the y-axis of the plot
+# =============================================================================
+
+        # Create a plot for displaying the nearest neighbour counts
+        self.plt4 = self.win.addPlot(title='nearest neighbobur count')  # Create a PyqtGraph PlotItem object
+        self.plt4.getAxis('left').enableAutoSIPrefix(False)  # Disable auto scientific notation for the y-axis
 
         self.win.nextRow()  # Move to the next row of the window for adding more widgets
 
@@ -1114,6 +1115,9 @@ class TrackWindow(BaseProcess):
         self.plt3.setLabel('left', 'y', units ='pixels')
         self.plt3.setLabel('bottom', 'x', units ='pixels') 
         
+        self.plt4.setLabel('left', '# of neighbours', units ='count')
+        self.plt4.setLabel('bottom', 'Time', units ='Frames')         
+        
         self.plt5.setLabel('left', 'velocity', units ='pixels/frame')
         self.plt5.setLabel('bottom', 'Time', units ='Frames')      
         
@@ -1126,16 +1130,29 @@ class TrackWindow(BaseProcess):
         self.optionsPanel = QGraphicsProxyWidget()                  
         self.positionIndicator_button = QPushButton('Show position info')
         self.positionIndicator_button.pressed.connect(self.togglePoistionIndicator)        
-        self.optionsPanel.setWidget(self.positionIndicator_button)
+        self.optionsPanel.setWidget(self.positionIndicator_button)     
         
+        # Create a ComboBox for selecting the nearest neighbour count.
+        self.optionsPanel2 = QGraphicsProxyWidget()      
+        self.plotCountSelector = pg.ComboBox()
+        self.countTypes= {'NN radius: 3':'3','NN radius: 5':'5','NN radius: 10':'10','NN radius: 20':'20','NN radius: 30':'30'}
+        self.plotCountSelector.setItems(self.countTypes)  
+        self.countLabel = QLabel("NN count radius") 
+        self.optionsPanel2.setWidget(self.plotCountSelector)       
+        
+        #add options panel to win
         self.win.addItem(self.optionsPanel)
-             
+        self.win.addItem(self.optionsPanel2)        
+       
+       
+        #status flags     
         self.showPositionIndicators = False
-        self.plotsInitiated = False  
+        self.plotsInitiated = False   
+        
         
         self.r = None
 
-    def update(self, time, intensity, distance, zeroed_X, zeroed_Y, dydt, direction, velocity, ID):  
+    def update(self, time, intensity, distance, zeroed_X, zeroed_Y, dydt, direction, velocity, ID, count_3, count_5, count_10, count_20, count_30):  
         
         ##Update track ID
         self.label.setText("<span style='font-size: 16pt'>track ID={}".format(ID))        
@@ -1149,8 +1166,25 @@ class TrackWindow(BaseProcess):
         #update position relative to 0 plot          
         self.plt3.plot(zeroed_X, zeroed_Y, stepMode=False, brush=(0,0,255,150), clear=True) 
         
-        #update polar
-        self.updatePolarPlot(direction,velocity)
+# =============================================================================
+#         #update polar
+#         self.updatePolarPlot(direction,velocity)
+# =============================================================================
+        #update nearest neighbour count
+        
+        if self.plotCountSelector.value() == '3':
+            countRadius = count_3
+        elif self.plotCountSelector.value() == '5':
+            countRadius = count_5
+        elif self.plotCountSelector.value() == '10':
+            countRadius = count_10            
+        elif self.plotCountSelector.value() == '20':
+            countRadius = count_20            
+        elif self.plotCountSelector.value() == '30':
+            countRadius = count_30            
+            
+                   
+        self.plt4.plot(time, countRadius, stepMode=False, brush=(0,0,255,150), clear=True)         
         
         #update dydt
         self.plt5.plot(time, velocity, stepMode=False, brush=(0,0,255,150), clear=True)
@@ -1168,6 +1202,7 @@ class TrackWindow(BaseProcess):
             # Add vertical lines to each plot that indicate the current time
             self.plt1_line = self.plt1.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False)
             self.plt2_line = self.plt2.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False)
+            self.plt4_line = self.plt4.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False)           
             self.plt5_line = self.plt5.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False)
             self.plt6_line = self.plt6.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False)           
                             
@@ -1183,57 +1218,60 @@ class TrackWindow(BaseProcess):
         # Reset the zoom of the polar plot
         self.r = None
 
-    def updatePolarPlot(self, direction,velocity):
-        # Clear the polar plot
-        self.plt4.clear()
-    
-        # Add polar grid lines
-        self.plt4.addLine(x=0, pen=1)
-        self.plt4.addLine(y=0, pen=1)
-        for r in range(10, 50, 10):
-            r = r/10
-            circle = pg.QtGui.QGraphicsEllipseItem(-r, -r, r * 2, r * 2)
-            circle.setPen(pg.mkPen('w', width=0.5))
-            self.plt4.addItem(circle)
-    
-        # Convert direction and velocity to cartesian coordinates
-        theta = np.radians(direction)
-        radius = velocity
-        x = radius * np.cos(theta)
-        y = radius * np.sin(theta)
-    
-        # Plot lines in the polar plot for each direction and velocity point
-        for i in range(len(x)):        
-            path = QPainterPath(QPointF(0,0))
-            path.lineTo(QPointF(x[i],y[i]))
-            item = pg.QtGui.QGraphicsPathItem(path)
-            item.setPen(pg.mkPen('r', width=5))
-            self.plt4.addItem(item)
-    
-        # Add position labels to the polar plot
-        labels = [0,90,180,270]
-        d = 6
-        pos = [ (d,0),(0,d),(-d,0),(0,-d) ]
-        for i,label in enumerate(labels):
-            text = pg.TextItem(str(label), color=(200,200,0))
-            self.plt4.addItem(text)
-            text.setPos(pos[i][0],pos[i][1])
-    
-        # Add scale to the polar plot
-        for r in range(10, 50, 10):
-            r = r/10
-            text = pg.TextItem(str(r))
-            self.plt4.addItem(text)
-            text.setPos(0,r)
-    
-        return
+# =============================================================================
+#     def updatePolarPlot(self, direction,velocity):
+#         # Clear the polar plot
+#         self.plt4.clear()
+#     
+#         # Add polar grid lines
+#         self.plt4.addLine(x=0, pen=1)
+#         self.plt4.addLine(y=0, pen=1)
+#         for r in range(10, 50, 10):
+#             r = r/10
+#             circle = pg.QtGui.QGraphicsEllipseItem(-r, -r, r * 2, r * 2)
+#             circle.setPen(pg.mkPen('w', width=0.5))
+#             self.plt4.addItem(circle)
+#     
+#         # Convert direction and velocity to cartesian coordinates
+#         theta = np.radians(direction)
+#         radius = velocity
+#         x = radius * np.cos(theta)
+#         y = radius * np.sin(theta)
+#     
+#         # Plot lines in the polar plot for each direction and velocity point
+#         for i in range(len(x)):        
+#             path = QPainterPath(QPointF(0,0))
+#             path.lineTo(QPointF(x[i],y[i]))
+#             item = pg.QtGui.QGraphicsPathItem(path)
+#             item.setPen(pg.mkPen('r', width=5))
+#             self.plt4.addItem(item)
+#     
+#         # Add position labels to the polar plot
+#         labels = [0,90,180,270]
+#         d = 6
+#         pos = [ (d,0),(0,d),(-d,0),(0,-d) ]
+#         for i,label in enumerate(labels):
+#             text = pg.TextItem(str(label), color=(200,200,0))
+#             self.plt4.addItem(text)
+#             text.setPos(pos[i][0],pos[i][1])
+#     
+#         # Add scale to the polar plot
+#         for r in range(10, 50, 10):
+#             r = r/10
+#             text = pg.TextItem(str(r))
+#             self.plt4.addItem(text)
+#             text.setPos(0,r)
+#     
+#         return
+# =============================================================================
 
     def togglePoistionIndicator(self):
         # If position indicators are not shown, add them to the plots
         if self.showPositionIndicators == False:
             # Add dashed lines to the plots
             self.plt1_line = self.plt1.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False)
-            self.plt2_line = self.plt2.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False)  
+            self.plt2_line = self.plt2.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False) 
+            self.plt4_line = self.plt4.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False)             
             self.plt5_line = self.plt5.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False) 
             self.plt6_line = self.plt6.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=False) 
                 
@@ -1248,7 +1286,8 @@ class TrackWindow(BaseProcess):
         else:
             # Remove the dashed lines from the plots
             self.plt1.removeItem(self.plt1_line)
-            self.plt2.removeItem(self.plt2_line) 
+            self.plt2.removeItem(self.plt2_line)
+            self.plt4.removeItem(self.plt4_line)            
             self.plt5.removeItem(self.plt5_line)
             self.plt6.removeItem(self.plt6_line)             
                 
@@ -1265,6 +1304,7 @@ class TrackWindow(BaseProcess):
         # Set the position of the position indicators in all four plots to the current time t
         self.plt1_line.setPos(t)
         self.plt2_line.setPos(t)
+        self.plt4_line.setPos(t)        
         self.plt5_line.setPos(t)
         self.plt6_line.setPos(t)        
     
@@ -1293,6 +1333,32 @@ class TrackWindow(BaseProcess):
         
         
 class ChartDock():
+    """
+    A class for creating a dockable window for displaying analysis charts.
+
+    Attributes:
+    -----------
+    mainGUI : QtGui.QMainWindow
+        The main window of the GUI containing this chart window.
+
+    win : QtGui.QMainWindow
+        The QMainWindow instance for the chart window.
+
+    area : DockArea
+        The DockArea instance for the chart window, which contains the individual docks.
+
+    d1 : Dock
+        The dock for plot options.
+
+    d2 : Dock
+        The dock for the main plot.
+
+    d3 : Dock
+        The dock for histogram options.
+
+    d4 : Dock
+        The dock for the histogram plot.
+    """
     def __init__(self, mainGUI):
         super().__init__()    
         
@@ -1462,6 +1528,12 @@ class ChartDock():
         # add the layout widget to the histogram dock
         self.d3.addWidget(self.w2)
         
+        self.w3 = pg.PlotWidget(title="plot")
+        self.w3.plot()
+        self.w3.setLabel('left', 'y-axis', units ='')
+        self.w3.setLabel('bottom', 'x-axis', units ='')  
+        self.d2.addWidget(self.w3)  
+        
         # create a plot widget for the histogram
         self.w4 = pg.PlotWidget(title="histogram")
         self.w4.plot()
@@ -1470,32 +1542,7 @@ class ChartDock():
         
         # add the plot widget to the histogram dock
         self.d4.addWidget(self.w4)
-    """
-    A class for creating a dockable window for displaying analysis charts.
 
-    Attributes:
-    -----------
-    mainGUI : QtGui.QMainWindow
-        The main window of the GUI containing this chart window.
-
-    win : QtGui.QMainWindow
-        The QMainWindow instance for the chart window.
-
-    area : DockArea
-        The DockArea instance for the chart window, which contains the individual docks.
-
-    d1 : Dock
-        The dock for plot options.
-
-    d2 : Dock
-        The dock for the main plot.
-
-    d3 : Dock
-        The dock for histogram options.
-
-    d4 : Dock
-        The dock for the histogram plot.
-    """
         
     def updatePlot(self):
         # Clear the current plot
@@ -2230,8 +2277,18 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
                 direction = trackData['direction_Relative_To_Origin'].to_numpy()    
                 velocity =  trackData['velocity'].to_numpy()  
                 
+                count_3 = trackData['nnCountInFrame_within_3_pixels'].to_numpy() 
+                count_5 = trackData['nnCountInFrame_within_5_pixels'].to_numpy()                
+                count_10 = trackData['nnCountInFrame_within_10_pixels'].to_numpy()                 
+                count_20 = trackData['nnCountInFrame_within_20_pixels'].to_numpy() 
+                count_30 = trackData['nnCountInFrame_within_30_pixels'].to_numpy()                
+                
+                
                 # Update plots in the track display window
-                self.trackWindow.update(frame, intensity, distance, zeroed_X, zeroed_Y, dydt, direction, velocity, self.displayTrack)
+                self.trackWindow.update(frame, intensity, distance,
+                                        zeroed_X, zeroed_Y, dydt,
+                                        direction, velocity, self.displayTrack,
+                                        count_3, count_5, count_10, count_20, count_30 )
                 
                 # Update the individual track display
                 self.singleTrackPlot.plotTracks()
