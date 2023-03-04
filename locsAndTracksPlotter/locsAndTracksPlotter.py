@@ -1822,7 +1822,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.chartWindow = None
         self.displayCharts = False
         self.diffusionWindow = None
-        self.displayDiffusionPlot = False       
+        self.displayDiffusionPlot = False      
+        self.unlinkedPoints = None
+        self.displayUnlinkedPoints = False  
             
         # Initialize filter options window and hide it
         self.filterOptionsWindow = FilterOptions(self)
@@ -1852,7 +1854,11 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.plotPointData_button.pressed.connect(self.plotPointData)  
         
         self.hidePointData_button = QPushButton('Toggle Points')
-        self.hidePointData_button.pressed.connect(self.hidePointData)         
+        self.hidePointData_button.pressed.connect(self.hidePointData)  
+        
+        self.toggleUnlinkedPointData_button = QPushButton('Show Unlinked')
+        self.toggleUnlinkedPointData_button.pressed.connect(self.toggleUnlinkedPointData)  
+      
             
         self.plotTrackData_button = QPushButton('Plot Tracks')
         self.plotTrackData_button.pressed.connect(self.plotTrackData)  
@@ -1956,7 +1962,8 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.items.append({'name': 'pixelSize', 'string': 'nanometers per pixel', 'object': self.pixelSize_selector})                  
         self.items.append({'name': 'frameLength', 'string': 'milliseconds per frame', 'object': self.frameLength_selector})                 
         self.items.append({'name': 'hidePoints', 'string': 'PLOT    --------------------', 'object': self.hidePointData_button })        
-        self.items.append({'name': 'plotPointMap', 'string': '', 'object': self.togglePointMap_button })               
+        self.items.append({'name': 'plotPointMap', 'string': '', 'object': self.togglePointMap_button })
+        self.items.append({'name': 'plotUnlinkedPoints', 'string': '', 'object': self.toggleUnlinkedPointData_button })               
         self.items.append({'name': 'trackDefaultColour', 'string': 'Track Default Colour', 'object': self.trackDefaultColour_Box })        
         self.items.append({'name': 'trackColour', 'string': 'Set Track Colour', 'object': self.trackColour_checkbox})           
         self.items.append({'name': 'trackColourCol', 'string': 'Colour by', 'object': self.trackColourCol_Box})
@@ -1985,6 +1992,11 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         
         # Load the data from the selected file using Pandas
         self.data = pd.read_csv(self.filename)
+        
+        # filter any points that dont have track_numbers to seperate df
+        self.data_unlinked = self.data[self.data['track_number'].isna()]
+        self.data  = self.data[~self.data['track_number'].isna()]
+        
         
         # Check that there are enough frames in the stack to plot all data points
         if np.max(self.data['frame']) > g.win.mt:
@@ -2052,22 +2064,48 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         # Return the completed pandas dataframe
         return df
             
-    def plotPointsOnStack(self):                
-            points_byFrame = self.points[['frame','x','y']]        
+    def plotPointsOnStack(self, points, pointColor, unlinkedPoints=None, unlinkedColour=QColor(Qt.blue)):                
+            points_byFrame = points[['frame','x','y']]   
+            #align frames with display
+            points_byFrame['frame'] =  points_byFrame['frame']+1
             # Convert the points DataFrame into a numpy array
             pointArray = points_byFrame.to_numpy()
             # Create an empty list for each frame in the stack
-            self.plotWindow.scatterPoints = [[] for _ in np.arange(self.plotWindow.mt)]            
+
+            self.plotWindow.scatterPoints = [[] for _ in np.arange(self.plotWindow.mt)] 
+           
+                
             # Iterate through each point in the point array and add it to the appropriate frame's list
             for pt in pointArray:
                 t = int(pt[0])
                 if self.plotWindow.mt == 1:
                     t = 0
                 pointSize = g.m.settings['point_size']
-                pointColor = QColor(g.m.settings['point_color'])
                 #position = [pt[1]+(.5* (1/pixelSize)), pt[2]+(.5* (1/pixelSize)), pointColor, pointSize]
-                position = [pt[1], pt[2], pointColor, pointSize]    
+                position = [pt[1], pt[2], pointColor, pointSize] 
+             
                 self.plotWindow.scatterPoints[t].append(position)
+ 
+                
+            if self.displayUnlinkedPoints:
+                unlinkedPoints_byFrame = unlinkedPoints[['frame','x','y']] 
+                unlinkedPoints_byFrame['frame'] =  unlinkedPoints_byFrame['frame']+1
+                # Convert the points DataFrame into a numpy array
+                unlinkedPointArray = unlinkedPoints_byFrame.to_numpy()
+               
+                    
+                # Iterate through each point in the point array and add it to the appropriate frame's list
+                for pt in unlinkedPointArray:
+                    t = int(pt[0])
+                    if self.plotWindow.mt == 1:
+                        t = 0
+                    pointSize = g.m.settings['point_size']
+                    #position = [pt[1]+(.5* (1/pixelSize)), pt[2]+(.5* (1/pixelSize)), pointColor, pointSize]
+                    position = [pt[1], pt[2], unlinkedColour, pointSize] 
+                 
+                    self.plotWindow.scatterPoints[t].append(position)                
+    
+ 
             
             # Update the index of the image stack to include the new points
             self.plotWindow.updateindex()
@@ -2080,6 +2118,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         else:
             # Otherwise, add it back to the graphics view
             self.plotWindow.imageview.addItem(self.plotWindow.scatterPlot)
+
     
     def plotPointData(self):
         ### plot point data to current window
@@ -2088,15 +2127,39 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             self.points = self.makePointDataDF(self.data)
         else:
             self.points = self.makePointDataDF(self.filteredData)
-    
+            
+        if self.displayUnlinkedPoints:
+            # Create a pandas DataFrame containing the point data
+            self.unlinkedPoints = self.makePointDataDF(self.data_unlinked)
+        else:
+            self.unlinkedPoints = None
+                
         # Plot the points on the image stack using the plotPointsOnStack() method
-        self.plotPointsOnStack()
+        self.plotPointsOnStack(self.points, QColor(g.m.settings['point_color']), unlinkedPoints=self.unlinkedPoints)
     
         # Display a message in the status bar indicating that the point data has been plotted
         g.m.statusBar().showMessage('point data plotted to current window') 
         print('point data plotted to current window')    
     
         return
+
+
+    def toggleUnlinkedPointData(self):
+        if self.displayUnlinkedPoints == False:    
+            ### plot unlinked point data to current window 
+            self.displayUnlinkedPoints = True  
+            self.plotPointData() 
+            self.toggleUnlinkedPointData_button.setText('Hide Unlinked')
+            # Display a message in the status bar indicating that the point data has been plotted
+            g.m.statusBar().showMessage('unlinked point data plotted to current window') 
+            print('unlinked point data plotted to current window') 
+             
+        else:
+            self.displayUnlinkedPoints = False    
+            self.plotPointData()             
+            self.toggleUnlinkedPointData_button.setText('Show Unlinked')
+        return
+
         
     def makeTrackDF(self, data):
         if self.filetype_Box.value() == 'thunderstorm':
@@ -2421,6 +2484,11 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
 
     def ROIFilterData(self):
+        # Not implemented yet for unlinked points
+        if self.displayUnlinkedPoints:
+           g.m.statusBar().showMessage('ROI filter not implemented for unliked points - hide them first') 
+           print('ROI filter not implemented for unliked points - hide them first')    
+           return
         # initialize variables
         self.roiFilterPoints = []
         self.rois = self.plotWindow.rois
@@ -2558,7 +2626,11 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
                 df = self.data
             else:           
                 df = self.filteredData
-    
+            
+            #add in unlinked points if displayed
+            if self.displayUnlinkedPoints:
+                df = df.append(self.data_unlinked)
+                    
             # Create a ScatterPlotItem and add it to the ImageView
             self.pointMapScatter = pg.ScatterPlotItem(size=2, pen=None, brush=pg.mkBrush(30, 255, 35, 255))
             self.pointMapScatter.setSize(2, update=False)
