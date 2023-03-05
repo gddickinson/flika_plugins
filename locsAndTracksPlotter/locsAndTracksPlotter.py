@@ -253,7 +253,9 @@ class TrackPlot():
         self.area.addDock(self.d3, 'right')                 
         self.area.addDock(self.d2, 'bottom', self.d1)  
         self.area.addDock(self.d4, 'bottom', self.d3)           
-        self.area.addDock(self.d5, 'below', self.d3)           
+        self.area.addDock(self.d5, 'below', self.d3) 
+        
+        self.area.moveDock(self.d3, 'above', self.d5)
 
         # Set up plot widget
         self.w1 = pg.PlotWidget(title="Track plot")
@@ -476,6 +478,9 @@ class TrackPlot():
     
         # Crop the image stack to the points in the track
         self.cropImageStackToPoints()
+        
+        #update signal roi
+        self.updateROI()
     
         
     def setColour(self):
