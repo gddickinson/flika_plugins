@@ -318,6 +318,16 @@ class TrackPlot():
         
         self.pointSize_box.valueChanged.connect(self.plotTracks)
         self.lineWidth_box.valueChanged.connect(self.plotTracks)
+        
+        self.interpolate_checkbox = CheckBox()
+        self.interpolate_checkbox.setChecked(True)
+        self.interpolate_label = QLabel("Inerpolate 'between' frames") 
+        
+        self.allFrames_checkbox = CheckBox()
+        self.allFrames_checkbox.setChecked(False)
+        self.allFrames_label = QLabel("Extend frames")        
+        
+        
 
         #row0
         self.w2.addWidget(self.lineCol_label, row=0,col=0)   
@@ -333,12 +343,19 @@ class TrackPlot():
         self.w2.addWidget(self.lineWidth_label, row=2,col=0)   
         self.w2.addWidget(self.lineWidth_box, row=2,col=1)   
         self.w2.addWidget(self.pointSize_label, row=2,col=2)         
-        self.w2.addWidget(self.pointSize_box, row=2,col=3)                 
+        self.w2.addWidget(self.pointSize_box, row=2,col=3) 
+
         #row3
-        self.w2.addWidget(self.trackSelector_label, row=3,col=0)
-        self.w2.addWidget(self.selectTrack_checkbox, row=3,col=1)        
-        self.w2.addWidget(self.trackSelector, row=3,col=2)
-        self.w2.addWidget(self.plot_button, row=3,col=3)  
+        self.w2.addWidget(self.interpolate_label, row=3,col=0)
+        self.w2.addWidget(self.interpolate_checkbox, row=3,col=1) 
+        self.w2.addWidget(self.allFrames_label, row=3,col=2)
+        self.w2.addWidget(self.allFrames_checkbox, row=3,col=3)         
+                        
+        #row4
+        self.w2.addWidget(self.trackSelector_label, row=4,col=0)
+        self.w2.addWidget(self.selectTrack_checkbox, row=4,col=1)        
+        self.w2.addWidget(self.trackSelector, row=4,col=2)
+        self.w2.addWidget(self.plot_button, row=4,col=3)  
         
         self.d2.addWidget(self.w2) 
  
@@ -491,16 +508,35 @@ class TrackPlot():
         # Map the scaled values to QColor objects using the chosen colormap        
         self.colours_line = line_cmap.mapToQColor(line_coloursScaled)
     
-
             
     def cropImageStackToPoints(self):
-        # Extract x,y,frame data for each point
-        points = np.column_stack((self.trackDF['frame'].to_list(), self.trackDF['x'].to_list(), self.trackDF['y'].to_list()))        
+        # Initialize an empty array to store the cropped images
         d = self.d # Desired size of cropped image
         self.frames = int(self.A_pad.shape[0])
-        self.A_crop = np.zeros((self.frames,d,d)) # Initialize an empty array to store the cropped images
+        self.A_crop = np.zeros((self.frames,d,d)) 
         x_limit = int(d/2) 
         y_limit = int(d/2)
+
+        # Extract x,y,frame data for each point
+        points = np.column_stack((self.trackDF['frame'].to_list(), self.trackDF['x'].to_list(), self.trackDF['y'].to_list()))    
+        
+        if self.interpolate_checkbox.isChecked():
+            #interpolate points for missing frames
+            allFrames = range(int(min(points[:,0])), int(max(points[:,0]))+1)
+            xinterp = np.interp(allFrames, points[:,0], points[:,1])
+            yinterp = np.interp(allFrames, points[:,0], points[:,2])            
+ 
+
+        if self.allFrames_checkbox.isChecked():
+            #pad edges with last known position
+            xinterp = np.pad(xinterp, (int(min(points[:,0])), self.frames-1 - int(max(points[:,0]))), mode='edge')
+            yinterp = np.pad(yinterp, (int(min(points[:,0])), self.frames-1 - int(max(points[:,0]))), mode='edge')
+            
+            allFrames = range(0, self.frames)
+
+
+        points = np.column_stack((allFrames, xinterp, yinterp)) 
+
         
         # Loop through each point and extract a cropped image
         for point in points:
@@ -1302,7 +1338,7 @@ class TrackWindow(BaseProcess):
 
     def updatePositionIndicators(self, t):
         #match frames to flika window numbering
-        t = t+1
+        #t = t+1
         # Set the position of the position indicators in all four plots to the current time t
         self.plt1_line.setPos(t)
         self.plt2_line.setPos(t)
