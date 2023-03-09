@@ -214,7 +214,230 @@ class ColouredLines(pg.GraphicsObject):
         Returns the bounding rectangle of the picture.
         """
         return QRectF(self.picture.boundingRect())
-   
+
+    
+
+class AllTracksPlot():
+    """
+    A class representing a GUI for visualizing all tracked data for intracellular Piezo1 protein using a fluorescent tag.
+    
+    Attributes:
+    - mainGUI (object): the main GUI object that contains the tracked data
+
+    """
+    def __init__(self, mainGUI):
+        super().__init__()  
+        self.mainGUI = mainGUI
+        self.d = int(6) #size of cropped image
+        self.A_pad = None
+        self.A_crop_stack = None
+        self.traceList = None
+
+        # Set up main window
+        self.win = QMainWindow()
+        self.area = DockArea()
+        self.win.setCentralWidget(self.area)
+        self.win.resize(1400, 550)
+        self.win.setWindowTitle('All Tracks intensity')
+
+        
+        ## Create docks, place them into the window one at a time.
+        self.d2 = Dock("options", size=(500,50))  
+        self.d3 = Dock('mean intensity', size=(500,250))
+        self.d4 = Dock('trace', size =(500, 250))        
+        self.d5 = Dock('max intensity', size=(500,250))
+
+        self.area.addDock(self.d2, 'left')  
+        self.area.addDock(self.d3, 'right')                 
+        self.area.addDock(self.d4, 'bottom', self.d3)           
+        self.area.addDock(self.d5, 'below', self.d3) 
+        
+        self.area.moveDock(self.d3, 'above', self.d5)
+
+
+        # Set up options widget
+        self.w2 = pg.LayoutWidget()        
+        self.trackSelector = pg.ComboBox()
+        self.tracks= {'None':'None'}
+        self.trackSelector.setItems(self.tracks)
+        self.trackSelector_label = QLabel("Select Track ID")    
+        self.selectTrack_checkbox = CheckBox() 
+        self.selectTrack_checkbox.setChecked(False) 
+        
+        self.interpolate_checkbox = CheckBox()
+        self.interpolate_checkbox.setChecked(True)
+        self.interpolate_label = QLabel("Interpolate 'between' frames") 
+        
+        self.allFrames_checkbox = CheckBox()
+        self.allFrames_checkbox.setChecked(False)
+        self.allFrames_label = QLabel("Extend frames")  
+
+
+        self.plot_button = QPushButton('Refresh Plot')
+        self.plot_button.pressed.connect(self.plotTracks)
+               
+        self.export_button = QPushButton('Export traces')
+        self.export_button.pressed.connect(self.exportTraces)
+                
+
+        #row0               
+        self.w2.addWidget(self.trackSelector_label, row=0,col=0)
+        self.w2.addWidget(self.selectTrack_checkbox, row=0,col=1)        
+        self.w2.addWidget(self.trackSelector, row=0,col=2)
+        
+        #row1
+        self.w2.addWidget(self.interpolate_label, row=1,col=0)
+        self.w2.addWidget(self.interpolate_checkbox, row=1,col=1) 
+        self.w2.addWidget(self.allFrames_label, row=1, col=2)
+        self.w2.addWidget(self.allFrames_checkbox, row=1,col=3) 
+        
+        #row2
+        self.w2.addWidget(self.plot_button, row=2,col=2)         
+        self.w2.addWidget(self.export_button, row=2,col=3)  
+        
+        self.d2.addWidget(self.w2) 
+ 
+        #signal image view
+        self.meanIntensity = pg.ImageView()
+        self.d3.addWidget(self.meanIntensity)
+        
+        #max intensity image view
+        self.maxIntensity = pg.ImageView()
+        self.d5.addWidget(self.maxIntensity)                
+
+        
+        #Trace plot
+        self.tracePlot = pg.PlotWidget(title="Signal plot")
+        self.tracePlot.plot()
+        self.tracePlot.setLimits(xMin=0)
+        self.d4.addWidget(self.tracePlot)
+        
+        self.trackDF = pd.DataFrame()
+
+        #trace time line 
+        #self.line = self.tracePlot.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=True, bounds=[0,None])
+        #self.signalIMG.sigTimeChanged.connect(self.updatePositionIndicator) 
+        
+        #self.line.sigPositionChanged.connect(self.updateTimeSlider)
+
+    def updateTrackList(self):
+        """
+        Update the track list displayed in the GUI based on the data loaded into the application.
+        """
+        if self.mainGUI.useFilteredData == False:  
+            self.tracks = dictFromList(self.mainGUI.data['track_number'].to_list())  # Convert a column of track numbers into a dictionary
+        else:
+            self.tracks = dictFromList(self.mainGUI.filteredData['track_number'].to_list())  # Convert a column of track numbers into a dictionary
+           
+            
+        self.trackSelector.setItems(self.tracks)  # Set the track list in the GUI
+
+    def cropImageStackToPoints(self):        
+        self.trackList = [self.trackSelector.itemText(i) for i in range(self.trackSelector.count())]
+        self.traceList = []
+        
+        # Initialize an empty array to store the cropped images
+        d = self.d # Desired size of cropped image
+        self.frames = int(self.A_pad.shape[0])
+        self.A_crop_stack = np.zeros((len(self.trackList),self.frames,d,d)) 
+        x_limit = int(d/2) 
+        y_limit = int(d/2)
+        
+        for i, track_number in enumerate(self.trackList):
+            #get rack data
+            trackDF = self.mainGUI.data[self.mainGUI.data['track_number'] == int(track_number)]
+             
+            # Extract x,y,frame data for each point
+            points = np.column_stack((trackDF['frame'].to_list(), trackDF['x'].to_list(), trackDF['y'].to_list()))    
+            
+            if self.interpolate_checkbox.isChecked():
+                #interpolate points for missing frames
+                allFrames = range(int(min(points[:,0])), int(max(points[:,0]))+1)
+                xinterp = np.interp(allFrames, points[:,0], points[:,1])
+                yinterp = np.interp(allFrames, points[:,0], points[:,2])            
+     
+    
+            if self.allFrames_checkbox.isChecked():
+                #pad edges with last known position
+                xinterp = np.pad(xinterp, (int(min(points[:,0])), self.frames-1 - int(max(points[:,0]))), mode='edge')
+                yinterp = np.pad(yinterp, (int(min(points[:,0])), self.frames-1 - int(max(points[:,0]))), mode='edge')
+                
+                allFrames = range(0, self.frames)
+        
+            points = np.column_stack((allFrames, xinterp, yinterp)) 
+               
+            # Loop through each point and extract a cropped image
+            for point in points:
+                minX = int(point[1]) - x_limit + d # Determine the limits of the crop
+                maxX = int(point[1]) + x_limit + d
+                minY = int(point[2]) - y_limit + d
+                maxY = int(point[2]) + y_limit + d
+                crop = self.A_pad[int(point[0]),minX:maxX,minY:maxY] # Extract the crop
+                self.A_crop_stack[i,int(point[0])] = crop # Store the crop in the array of cropped images
+                
+            trace = np.mean(crop, axis=0)
+            self.traceList.append(trace)
+        
+            
+        # Display mean and intensity projections 
+        self.maxIntensity_IMG = np.max(self.A_crop_stack, axis=0)
+        self.maxIntensity.setImage(self.maxIntensity_IMG) 
+        
+        self.meanIntensity_IMG = np.mean(self.A_crop_stack, axis=0)
+        self.meanIntensity.setImage(self.meanIntensity_IMG)        
+        
+        
+    def setPadArray(self, A):
+        """
+        Pads the array A with zeros to avoid cropping during image registration and ROI selection.
+        
+        Args:
+        - A (numpy array): the original image stack, with dimensions (frames, height, width).
+        """
+        self.A_pad = np.pad(A,((0,0),(self.d,self.d),(self.d,self.d)),'constant', constant_values=0)
+        #self.updateROI()
+
+
+    def plotTracks(self):
+        # Clear the plot widget
+        self.tracePlot.clear()
+                  
+        # Crop the image stack to the points in the track
+        self.cropImageStackToPoints()
+        
+        #add signal traces for all tracks to plot
+        for trace in self.traceList:
+            curve = pg.PlotCurveItem(trace)
+            self.tracePlot.addItem(curve)
+
+        return
+
+
+    def exportTraces(self):
+        #export traces to file
+        pass
+        return
+
+
+    def show(self):
+        """
+        Shows the main window.
+        """
+        self.win.show()
+    
+    def close(self):
+        """
+        Closes the main window.
+        """
+        self.win.close()
+
+    def hide(self):
+        """
+        Hides the main window.
+        """
+        self.win.hide()
+
+        
     
 class TrackPlot():
     """
@@ -248,12 +471,14 @@ class TrackPlot():
         self.d3 = Dock('signal', size=(500,250))
         self.d4 = Dock('trace', size =(500, 250))        
         self.d5 = Dock('max intensity', size=(500,250))
+        self.d6 = Dock('mean intensity', size=(500,250))        
 
         self.area.addDock(self.d1, 'left') 
         self.area.addDock(self.d3, 'right')                 
         self.area.addDock(self.d2, 'bottom', self.d1)  
         self.area.addDock(self.d4, 'bottom', self.d3)           
         self.area.addDock(self.d5, 'below', self.d3) 
+        self.area.addDock(self.d6, 'below', self.d5)         
         
         self.area.moveDock(self.d3, 'above', self.d5)
 
@@ -323,7 +548,7 @@ class TrackPlot():
         
         self.interpolate_checkbox = CheckBox()
         self.interpolate_checkbox.setChecked(True)
-        self.interpolate_label = QLabel("Inerpolate 'between' frames") 
+        self.interpolate_label = QLabel("Interpolate 'between' frames") 
         
         self.allFrames_checkbox = CheckBox()
         self.allFrames_checkbox.setChecked(False)
@@ -367,7 +592,11 @@ class TrackPlot():
         
         #max intensity image view
         self.maxIntensity = pg.ImageView()
-        self.d5.addWidget(self.maxIntensity)                
+        self.d5.addWidget(self.maxIntensity)   
+
+        #mean intensity image view
+        self.meanIntensity = pg.ImageView()
+        self.d6.addWidget(self.meanIntensity)               
  
         # Add ROI for selecting an image region
         self.roi = pg.ROI([0, 0], [5, 5])
@@ -554,11 +783,14 @@ class TrackPlot():
             
         # Display the array of cropped images in the signal image widget
         self.signalIMG.setImage(self.A_crop)         
-        # Display a mx intensity projection in the max intensity image widget
+        # Display max and mean intensity projections
         self.maxIntensity_IMG = np.max(self.A_crop,axis=0)
         self.maxIntensity.setImage(self.maxIntensity_IMG) 
-
-    
+        
+        self.meanIntensity_IMG = np.mean(self.A_crop,axis=0)
+        self.meanIntensity.setImage(self.meanIntensity_IMG)       
+        
+           
     def updateROI(self):
         # Get the ROI selection as an array of pixel values
         img = self.roi.getArrayRegion(self.A_crop, self.signalIMG.getImageItem(), axes=(1,2))
@@ -1884,6 +2116,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         # Initialize single track plot window and hide it
         self.singleTrackPlot= TrackPlot(self)
         self.singleTrackPlot.hide() 
+        
+        # Initialize all-tracks plot window and hide it
+        self.allTracksPlot = AllTracksPlot(self)
+        self.allTracksPlot.hide()         
             
         # Call gui_reset function
         self.gui_reset()        
@@ -1935,6 +2171,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.displaySingleTrackPlot_checkbox = CheckBox() 
         self.displaySingleTrackPlot_checkbox.stateChanged.connect(self.toggleSingleTrackPlot)
         self.displaySingleTrackPlot_checkbox.setChecked(False) 
+        
+        self.displayAllTracksPlot_checkbox = CheckBox() 
+        self.displayAllTracksPlot_checkbox.stateChanged.connect(self.toggleAllTracksPlot)
+        self.displayAllTracksPlot_checkbox.setChecked(False)         
 
         self.displayFilterOptions_checkbox = CheckBox() 
         self.displayFilterOptions_checkbox.stateChanged.connect(self.toggleFilterOptions)
@@ -2011,7 +2251,8 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.items.append({'name': 'trackColourMap', 'string': 'Colour Map', 'object': self.colourMap_Box})   
         self.items.append({'name': 'matplotClourMap', 'string': 'Use matplot map', 'object': self.matplotCM_checkbox}) 
         self.items.append({'name': 'displayFlowerPlot', 'string': 'Flower Plot', 'object': self.displayFlowPlot_checkbox})  
-        self.items.append({'name': 'displaySingleTrackPlot', 'string': 'Track Plot', 'object': self.displaySingleTrackPlot_checkbox})  
+        self.items.append({'name': 'displaySingleTrackPlot', 'string': 'Track Plot', 'object': self.displaySingleTrackPlot_checkbox}) 
+        self.items.append({'name': 'displayAllTracksPlot', 'string': 'All Tracks Plot', 'object': self.displayAllTracksPlot_checkbox})         
         self.items.append({'name': 'displayFilterOptions', 'string': 'Filter Window', 'object': self.displayFilterOptions_checkbox})  
         self.items.append({'name': 'plotTracks', 'string': '', 'object': self.plotTrackData_button })         
         self.items.append({'name': 'clearTracks', 'string': '', 'object': self.clearTrackData_button })     
@@ -2033,11 +2274,20 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         
         # Load the data from the selected file using Pandas
         self.data = pd.read_csv(self.filename)
+
+        ### TODO! #Check if analysed columns are in df - if missing add and display error message
+        #g.m.statusBar().showMessage('{} columns missing - blanks aded'.format()) 
+        #print('{} columns missing - blanks aded'.format()) 
         
-        # filter any points that dont have track_numbers to seperate df
-        self.data_unlinked = self.data[self.data['track_number'].isna()]
-        self.data  = self.data[~self.data['track_number'].isna()]
+        #make sure track number and frame are int
+        self.data['frame'] = self.data['frame'].astype(int)        
         
+        if 'track_number' in self.data.columns:            
+            # filter any points that dont have track_numbers to seperate df
+            self.data_unlinked = self.data[self.data['track_number'].isna()]
+            self.data  = self.data[~self.data['track_number'].isna()]
+            
+            self.data['track_number'] = self.data['track_number'].astype(int)
         
         # Check that there are enough frames in the stack to plot all data points
         if np.max(self.data['frame']) > g.win.mt:
@@ -2079,6 +2329,11 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
         # Set the padding array for the single track plot based on the image array
         self.singleTrackPlot.setPadArray(self.plotWindow.imageArray())
+        self.allTracksPlot.setPadArray(self.plotWindow.imageArray())        
+        
+        # Update the all-tracks plot track selector 
+        self.allTracksPlot.updateTrackList()         
+        
 
     def makePointDataDF(self, data):
         # Check the filetype selected in the GUI
@@ -2101,6 +2356,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             df['x'] = data['x']
             # Use y data as-is (FLIKA data is already in pixel units)
             df['y'] = data['y']
+
     
         # Return the completed pandas dataframe
         return df
@@ -2480,6 +2736,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             
         # update the point data plot with the filtered data
         self.plotPointData()
+        
+        #update allTracks track list
+        self.allTracksPlot.updateTrackList()  
             
         return
 
@@ -2490,6 +2749,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         
         # Update point data plot
         self.plotPointData()
+        
+        #update allTracks track list
+        self.allTracksPlot.updateTrackList()  
         return
 
     def getScatterPointsAsQPoints(self):
@@ -2566,6 +2828,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         
         # update status bar and return
         g.m.statusBar().showMessage('ROI filter complete') 
+        
+        #update allTracks track list
+        self.allTracksPlot.updateTrackList()  
         return
 
     def clearROIFilterData(self):
@@ -2576,6 +2841,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         # Set useFilteredData and useFilteredTracks to False
         self.useFilteredData = False
         self.useFilteredTracks = False
+        
+        #update allTracks track list
+        self.allTracksPlot.updateTrackList()  
         
         return
     
@@ -2611,6 +2879,14 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         else:
             # hide the single track plot if checkbox is unchecked
             self.singleTrackPlot.hide()   
+            
+    def toggleAllTracksPlot(self):
+        if self.displayAllTracksPlot_checkbox.isChecked():
+            # show the single track plot if checkbox is checked
+            self.allTracksPlot.show()
+        else:
+            # hide the single track plot if checkbox is unchecked
+            self.allTracksPlot.hide()              
 
     def toggleFilterOptions(self):
         if self.displayFilterOptions_checkbox.isChecked():
