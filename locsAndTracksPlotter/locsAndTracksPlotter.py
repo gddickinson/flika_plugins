@@ -238,21 +238,22 @@ class AllTracksPlot():
         self.area = DockArea()
         self.win.setCentralWidget(self.area)
         self.win.resize(1400, 550)
-        self.win.setWindowTitle('All Tracks intensity')
+        self.win.setWindowTitle('All Tracks intensity (background subtracted)')
 
         
         ## Create docks, place them into the window one at a time.
         self.d2 = Dock("options", size=(500,50))  
-        self.d3 = Dock('mean intensity', size=(500,250))
-        self.d4 = Dock('trace', size =(500, 250))        
-        self.d5 = Dock('max intensity', size=(500,250))
+        self.d3 = Dock('mean intensity -bg', size=(250,250))
+        self.d4 = Dock('trace', size =(750, 250))        
+        self.d5 = Dock('max intensity -bg', size=(250,250))
 
-        self.area.addDock(self.d2, 'left')  
-        self.area.addDock(self.d3, 'right')                 
-        self.area.addDock(self.d4, 'bottom', self.d3)           
-        self.area.addDock(self.d5, 'below', self.d3) 
+        self.area.addDock(self.d4, 'top') 
+        self.area.addDock(self.d2, 'bottom')  
+        self.area.addDock(self.d3, 'right', self.d4)                 
+          
+        self.area.addDock(self.d5, 'bottom', self.d3) 
         
-        self.area.moveDock(self.d3, 'above', self.d5)
+        #self.area.moveDock(self.d3, 'above', self.d5)
 
 
         # Set up options widget
@@ -273,7 +274,7 @@ class AllTracksPlot():
         self.allFrames_label = QLabel("Extend frames")  
 
 
-        self.plot_button = QPushButton('Refresh Plot')
+        self.plot_button = QPushButton('Plot')
         self.plot_button.pressed.connect(self.plotTracks)
                
         self.export_button = QPushButton('Export traces')
@@ -332,19 +333,29 @@ class AllTracksPlot():
             
         self.trackSelector.setItems(self.tracks)  # Set the track list in the GUI
 
-    def cropImageStackToPoints(self):        
-        self.trackList = [self.trackSelector.itemText(i) for i in range(self.trackSelector.count())]
+    def cropImageStackToPoints(self):
+        # Check if user wants to plot a specific track or use the display track
+        if self.selectTrack_checkbox.isChecked():
+            self.trackList  = [int(self.trackSelector.value())]
+        else:
+      
+            self.trackList = [self.trackSelector.itemText(i) for i in range(self.trackSelector.count())]
+        
+                
         self.traceList = []
+        self.timeList = []
         
         # Initialize an empty array to store the cropped images
         d = self.d # Desired size of cropped image
         self.frames = int(self.A_pad.shape[0])
+        A_crop = np.zeros((self.frames,self.d,self.d)) 
         self.A_crop_stack = np.zeros((len(self.trackList),self.frames,d,d)) 
         x_limit = int(d/2) 
         y_limit = int(d/2)
+
         
         for i, track_number in enumerate(self.trackList):
-            #get rack data
+            #get track data
             trackDF = self.mainGUI.data[self.mainGUI.data['track_number'] == int(track_number)]
              
             # Extract x,y,frame data for each point
@@ -372,20 +383,25 @@ class AllTracksPlot():
                 maxX = int(point[1]) + x_limit + d
                 minY = int(point[2]) - y_limit + d
                 maxY = int(point[2]) + y_limit + d
-                crop = self.A_pad[int(point[0]),minX:maxX,minY:maxY] # Extract the crop
-                self.A_crop_stack[i,int(point[0])] = crop # Store the crop in the array of cropped images
-                
-            trace = np.mean(crop, axis=0)
-            self.traceList.append(trace)
-        
+                crop = self.A_pad[int(point[0]),minX:maxX,minY:maxY] - np.min(self.mainGUI.plotWindow.imageArray()[int(point[0])])# Extract the crop
+                A_crop[int(point[0])] = crop
             
-        # Display mean and intensity projections 
-        self.maxIntensity_IMG = np.max(self.A_crop_stack, axis=0)
+            self.A_crop_stack[i] = A_crop # Store the crop in the array of cropped images
+                
+            trace = np.mean(A_crop, axis=(1,2))
+            self.traceList.append(trace)
+            self.timeList.append(trackDF['frame'].to_list())
+            
+        # Display max and mean intensity projections - ignoring zero values
+        #convert zero to nan
+        self.A_crop_stack[self.A_crop_stack== 0] = np.nan
+        #max - using nanmax to ignore nan
+        self.maxIntensity_IMG = np.nanmax(self.A_crop_stack,axis=(0,1))
         self.maxIntensity.setImage(self.maxIntensity_IMG) 
-        
-        self.meanIntensity_IMG = np.mean(self.A_crop_stack, axis=0)
-        self.meanIntensity.setImage(self.meanIntensity_IMG)        
-        
+        #mean - using nanmean to ignore nan
+        self.meanIntensity_IMG = np.nanmean(self.A_crop_stack,axis=(0,1))
+        self.meanIntensity.setImage(self.meanIntensity_IMG) 
+
         
     def setPadArray(self, A):
         """
@@ -399,6 +415,12 @@ class AllTracksPlot():
 
 
     def plotTracks(self):
+        #check number of tracks to plot
+        if self.trackSelector.count() > 2000:
+            warningBox = g.messageBox('Warning!','More than 2000 tracks to plot. Continue?',buttons=QMessageBox.Yes|QMessageBox.No)
+            if warningBox == 65536:
+                return
+            
         # Clear the plot widget
         self.tracePlot.clear()
                   
@@ -414,8 +436,17 @@ class AllTracksPlot():
 
 
     def exportTraces(self):
+        #get save path
+        fileName = QFileDialog.getSaveFileName(None, 'Save File', os.path.dirname(self.mainGUI.filename),'*.csv')[0]
+        print(fileName)
+        #make df to save
+        d = {'track_number': self.trackList, 'frame':self.timeList,'intensity':self.traceList}
+        exportDF = pd.DataFrame(data=d)
         #export traces to file
-        pass
+        exportDF.to_csv(fileName)
+        # display save message
+        g.m.statusBar().showMessage('trace exported to {}'.format(fileName)) 
+        print('trace exported to {}'.format(fileName)) 
         return
 
 
