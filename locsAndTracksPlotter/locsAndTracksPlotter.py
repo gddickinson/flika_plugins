@@ -279,7 +279,13 @@ class AllTracksPlot():
                
         self.export_button = QPushButton('Export traces')
         self.export_button.pressed.connect(self.exportTraces)
-                
+
+        self.dSize_box = pg.SpinBox(value=6, int=True)
+        self.dSize_box.setSingleStep(2)     
+        self.dSize_box.setMinimum(2)
+        self.dSize_box.setMaximum(20)  
+        self.dSize_label = QLabel("roi width (px)")   
+        self.dSize_box.valueChanged.connect(self.setPadArray)           
 
         #row0               
         self.w2.addWidget(self.trackSelector_label, row=0,col=0)
@@ -293,8 +299,11 @@ class AllTracksPlot():
         self.w2.addWidget(self.allFrames_checkbox, row=1,col=3) 
         
         #row2
-        self.w2.addWidget(self.plot_button, row=2,col=2)         
-        self.w2.addWidget(self.export_button, row=2,col=3)  
+        self.w2.addWidget(self.dSize_label, row=2,col=0)         
+        self.w2.addWidget(self.dSize_box, row=2,col=1)          
+        #row3
+        self.w2.addWidget(self.plot_button, row=3,col=2)         
+        self.w2.addWidget(self.export_button, row=3,col=3)  
         
         self.d2.addWidget(self.w2) 
  
@@ -346,12 +355,12 @@ class AllTracksPlot():
         self.timeList = []
         
         # Initialize an empty array to store the cropped images
-        d = self.d # Desired size of cropped image
+        self.d = self.dSize_box.value() # Desired size of cropped image
         self.frames = int(self.A_pad.shape[0])
         A_crop = np.zeros((self.frames,self.d,self.d)) 
-        self.A_crop_stack = np.zeros((len(self.trackList),self.frames,d,d)) 
-        x_limit = int(d/2) 
-        y_limit = int(d/2)
+        self.A_crop_stack = np.zeros((len(self.trackList),self.frames,self.d,self.d)) 
+        x_limit = int(self.d/2) 
+        y_limit = int(self.d/2)
 
         
         for i, track_number in enumerate(self.trackList):
@@ -379,11 +388,11 @@ class AllTracksPlot():
                
             # Loop through each point and extract a cropped image
             for point in points:
-                minX = int(point[1]) - x_limit + d # Determine the limits of the crop
-                maxX = int(point[1]) + x_limit + d
-                minY = int(point[2]) - y_limit + d
-                maxY = int(point[2]) + y_limit + d
-                crop = self.A_pad[int(point[0]),minX:maxX,minY:maxY] - np.min(self.mainGUI.plotWindow.imageArray()[int(point[0])])# Extract the crop
+                minX = int(point[1]) - x_limit + self.d # Determine the limits of the crop
+                maxX = int(point[1]) + x_limit + self.d
+                minY = int(point[2]) - y_limit + self.d
+                maxY = int(point[2]) + y_limit + self.d
+                crop = self.A_pad[int(point[0]),minX:maxX,minY:maxY] - np.min(self.A[int(point[0])])# Extract the crop
                 A_crop[int(point[0])] = crop
             
             self.A_crop_stack[i] = A_crop # Store the crop in the array of cropped images
@@ -403,14 +412,15 @@ class AllTracksPlot():
         self.meanIntensity.setImage(self.meanIntensity_IMG) 
 
         
-    def setPadArray(self, A):
+    def setPadArray(self):
         """
         Pads the array A with zeros to avoid cropping during image registration and ROI selection.
         
         Args:
         - A (numpy array): the original image stack, with dimensions (frames, height, width).
         """
-        self.A_pad = np.pad(A,((0,0),(self.d,self.d),(self.d,self.d)),'constant', constant_values=0)
+        self.A = self.mainGUI.plotWindow.imageArray()
+        self.A_pad = np.pad(self.A,((0,0),(self.d,self.d),(self.d,self.d)),'constant', constant_values=0)
         #self.updateROI()
 
 
@@ -2360,7 +2370,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
         # Set the padding array for the single track plot based on the image array
         self.singleTrackPlot.setPadArray(self.plotWindow.imageArray())
-        self.allTracksPlot.setPadArray(self.plotWindow.imageArray())        
+        self.allTracksPlot.setPadArray()        
         
         # Update the all-tracks plot track selector 
         self.allTracksPlot.updateTrackList()         
