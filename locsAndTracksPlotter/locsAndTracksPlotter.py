@@ -357,13 +357,15 @@ class AllTracksPlot():
         # Initialize an empty array to store the cropped images
         self.d = self.dSize_box.value() # Desired size of cropped image
         self.frames = int(self.A_pad.shape[0])
-        A_crop = np.zeros((self.frames,self.d,self.d)) 
+
         self.A_crop_stack = np.zeros((len(self.trackList),self.frames,self.d,self.d)) 
         x_limit = int(self.d/2) 
         y_limit = int(self.d/2)
 
         
         for i, track_number in enumerate(self.trackList):
+            #temp array for crop
+            A_crop = np.zeros((self.frames,self.d,self.d)) 
             #get track data
             trackDF = self.mainGUI.data[self.mainGUI.data['track_number'] == int(track_number)]
              
@@ -374,7 +376,9 @@ class AllTracksPlot():
                 #interpolate points for missing frames
                 allFrames = range(int(min(points[:,0])), int(max(points[:,0]))+1)
                 xinterp = np.interp(allFrames, points[:,0], points[:,1])
-                yinterp = np.interp(allFrames, points[:,0], points[:,2])            
+                yinterp = np.interp(allFrames, points[:,0], points[:,2])    
+                
+                points = np.column_stack((allFrames, xinterp, yinterp)) 
      
     
             if self.allFrames_checkbox.isChecked():
@@ -384,7 +388,7 @@ class AllTracksPlot():
                 
                 allFrames = range(0, self.frames)
         
-            points = np.column_stack((allFrames, xinterp, yinterp)) 
+                points = np.column_stack((allFrames, xinterp, yinterp)) 
                
             # Loop through each point and extract a cropped image
             for point in points:
@@ -396,10 +400,18 @@ class AllTracksPlot():
                 A_crop[int(point[0])] = crop
             
             self.A_crop_stack[i] = A_crop # Store the crop in the array of cropped images
-                
+            
+            A_crop[A_crop==0] = np.nan
             trace = np.mean(A_crop, axis=(1,2))
             self.traceList.append(trace)
-            self.timeList.append(trackDF['frame'].to_list())
+            
+            #extend time series to cover entire recording                
+            timeSeries = range(0,self.frames)
+            times = trackDF['frame'].to_list()
+            missingTimes = [x if x in times else np.nan for x in timeSeries]
+            
+            
+            self.timeList.append(missingTimes)
             
         # Display max and mean intensity projections - ignoring zero values
         #convert zero to nan
@@ -438,8 +450,9 @@ class AllTracksPlot():
         self.cropImageStackToPoints()
         
         #add signal traces for all tracks to plot
-        for trace in self.traceList:
-            curve = pg.PlotCurveItem(trace)
+        for i, trace in enumerate(self.traceList):
+            curve = pg.PlotCurveItem()
+            curve.setData(x=self.timeList[i],y=trace)
             self.tracePlot.addItem(curve)
 
         return
@@ -449,11 +462,30 @@ class AllTracksPlot():
         #get save path
         fileName = QFileDialog.getSaveFileName(None, 'Save File', os.path.dirname(self.mainGUI.filename),'*.csv')[0]
         print(fileName)
-        #make df to save
-        d = {'track_number': self.trackList, 'frame':self.timeList,'intensity':self.traceList}
-        exportDF = pd.DataFrame(data=d)
+
+        exportTraceList = []
+
+        #add nan to traces for missing frames
+        for i,trace in enumerate(self.traceList):
+            startPad =  min(self.timeList[i])
+            endPad = self.frames - max(self.timeList[i])
+         
+            #paddedTrace = np.pad(trace, (startPad,endPad),mode='constant',constant_values=(np.nan))
+            paddedTrace = trace
+            exportTraceList.append(paddedTrace)
+        
+        exportDF = pd.DataFrame(exportTraceList).T
+        exportDF.columns = self.trackList
+
+        
+        # #test
+        # #make df to save
+        # d = {'track_number': self.trackList, 'frame':self.timeList,'intensity':self.traceList}        
+        # exportDF = pd.DataFrame(data=d)
+        
         #export traces to file
         exportDF.to_csv(fileName)
+        
         # display save message
         g.m.statusBar().showMessage('trace exported to {}'.format(fileName)) 
         print('trace exported to {}'.format(fileName)) 
@@ -799,8 +831,9 @@ class TrackPlot():
             #interpolate points for missing frames
             allFrames = range(int(min(points[:,0])), int(max(points[:,0]))+1)
             xinterp = np.interp(allFrames, points[:,0], points[:,1])
-            yinterp = np.interp(allFrames, points[:,0], points[:,2])            
- 
+            yinterp = np.interp(allFrames, points[:,0], points[:,2])     
+
+            points = np.column_stack((allFrames, xinterp, yinterp)) 
 
         if self.allFrames_checkbox.isChecked():
             #pad edges with last known position
@@ -810,7 +843,7 @@ class TrackPlot():
             allFrames = range(0, self.frames)
 
 
-        points = np.column_stack((allFrames, xinterp, yinterp)) 
+            points = np.column_stack((allFrames, xinterp, yinterp)) 
 
         
         # Loop through each point and extract a cropped image
