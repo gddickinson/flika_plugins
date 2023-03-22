@@ -228,7 +228,7 @@ class AllTracksPlot():
     def __init__(self, mainGUI):
         super().__init__()  
         self.mainGUI = mainGUI
-        self.d = int(6) #size of cropped image
+        self.d = int(5) #size of cropped image
         self.A_pad = None
         self.A_crop_stack = None
         self.traceList = None
@@ -280,12 +280,12 @@ class AllTracksPlot():
         self.export_button = QPushButton('Export traces')
         self.export_button.pressed.connect(self.exportTraces)
 
-        self.dSize_box = pg.SpinBox(value=6, int=True)
+        self.dSize_box = pg.SpinBox(value=5, int=True)
         self.dSize_box.setSingleStep(2)     
-        self.dSize_box.setMinimum(2)
-        self.dSize_box.setMaximum(20)  
+        self.dSize_box.setMinimum(1)
+        self.dSize_box.setMaximum(21)  
         self.dSize_label = QLabel("roi width (px)")   
-        self.dSize_box.valueChanged.connect(self.setPadArray)           
+         
 
         #row0               
         self.w2.addWidget(self.trackSelector_label, row=0,col=0)
@@ -355,12 +355,18 @@ class AllTracksPlot():
         self.timeList = []
         
         # Initialize an empty array to store the cropped images
-        self.d = self.dSize_box.value() # Desired size of cropped image
+        self.d = int(self.dSize_box.value()) # Desired size of cropped image
+        
+        #pad array image
+        self.setPadArray()
+        
         self.frames = int(self.A_pad.shape[0])
 
         self.A_crop_stack = np.zeros((len(self.trackList),self.frames,self.d,self.d)) 
         x_limit = int(self.d/2) 
         y_limit = int(self.d/2)
+        
+
 
         
         for i, track_number in enumerate(self.trackList):
@@ -392,11 +398,16 @@ class AllTracksPlot():
                
             # Loop through each point and extract a cropped image
             for point in points:
-                minX = int(point[1]) - x_limit + self.d # Determine the limits of the crop
-                maxX = int(point[1]) + x_limit + self.d
-                minY = int(point[2]) - y_limit + self.d
-                maxY = int(point[2]) + y_limit + self.d
-                crop = self.A_pad[int(point[0]),minX:maxX,minY:maxY] - np.min(self.A[int(point[0])])# Extract the crop
+                minX = round(point[1]) - x_limit + self.d # Determine the limits of the crop including padding
+                maxX = round(point[1]) + x_limit + self.d
+                minY = round(point[2]) - y_limit + self.d
+                maxY = round(point[2]) + y_limit + self.d
+                
+                if (self.d % 2) == 0:
+                    crop = self.A_pad[int(point[0]),minX:maxX,minY:maxY] - np.min(self.A[int(point[0])])# Extract the crop
+                else:
+                    crop = self.A_pad[int(point[0]),minX-1:maxX,minY-1:maxY] - np.min(self.A[int(point[0])])# Extract the crop
+                    
                 A_crop[int(point[0])] = crop
             
             self.A_crop_stack[i] = A_crop # Store the crop in the array of cropped images
@@ -433,7 +444,7 @@ class AllTracksPlot():
         """
         self.A = self.mainGUI.plotWindow.imageArray()
         self.A_pad = np.pad(self.A,((0,0),(self.d,self.d),(self.d,self.d)),'constant', constant_values=0)
-        #self.updateROI()
+
 
 
     def plotTracks(self):
@@ -2402,8 +2413,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.singleTrackPlot.lineCol_Box.setItems(self.colDict)  
 
         # Set the padding array for the single track plot based on the image array
-        self.singleTrackPlot.setPadArray(self.plotWindow.imageArray())
-        self.allTracksPlot.setPadArray()        
+        self.singleTrackPlot.setPadArray(self.plotWindow.imageArray())     
         
         # Update the all-tracks plot track selector 
         self.allTracksPlot.updateTrackList()         
