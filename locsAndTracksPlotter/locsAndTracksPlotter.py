@@ -246,12 +246,19 @@ class AllTracksPlot():
         self.d3 = Dock('mean intensity -bg', size=(250,250))
         self.d4 = Dock('trace', size =(750, 250))        
         self.d5 = Dock('max intensity -bg', size=(250,250))
+        
+        self.d6 = Dock('mean line transect', size = (250,250))
+        self.d7 = Dock('max line transect', size = (250,250))
 
         self.area.addDock(self.d4, 'top') 
         self.area.addDock(self.d2, 'bottom')  
         self.area.addDock(self.d3, 'right', self.d4)                 
           
         self.area.addDock(self.d5, 'bottom', self.d3) 
+        
+        self.area.addDock(self.d6, 'right', self.d3)    
+        self.area.addDock(self.d7, 'right', self.d5)           
+        
         
         #self.area.moveDock(self.d3, 'above', self.d5)
 
@@ -281,9 +288,9 @@ class AllTracksPlot():
         self.export_button.pressed.connect(self.exportTraces)
 
         self.dSize_box = pg.SpinBox(value=5, int=True)
-        self.dSize_box.setSingleStep(2)     
+        self.dSize_box.setSingleStep(1)     
         self.dSize_box.setMinimum(1)
-        self.dSize_box.setMaximum(21)  
+        self.dSize_box.setMaximum(30)  
         self.dSize_label = QLabel("roi width (px)")   
          
 
@@ -323,12 +330,22 @@ class AllTracksPlot():
         self.d4.addWidget(self.tracePlot)
         
         self.trackDF = pd.DataFrame()
-
-        #trace time line 
-        #self.line = self.tracePlot.addLine(x=0, pen=pg.mkPen('y', style=Qt.DashLine), movable=True, bounds=[0,None])
-        #self.signalIMG.sigTimeChanged.connect(self.updatePositionIndicator) 
         
-        #self.line.sigPositionChanged.connect(self.updateTimeSlider)
+        #line transect plot mean
+        self.meanTransect = pg.PlotWidget(title="Mean - Line transect")
+        self.d6.addWidget(self.meanTransect)
+ 
+        #line transect plot max
+        self.maxTransect = pg.PlotWidget(title="Max - Line transect")
+        self.d7.addWidget(self.maxTransect)
+
+        #transexts
+        self.ROI_mean = self.addROI(self.meanIntensity)
+        self.ROI_mean.sigRegionChanged.connect(self.updateMeanTransect)
+        
+        #transexts
+        self.ROI_max = self.addROI(self.maxIntensity)
+        self.ROI_max.sigRegionChanged.connect(self.updateMaxTransect)       
 
     def updateTrackList(self):
         """
@@ -434,7 +451,10 @@ class AllTracksPlot():
         self.meanIntensity_IMG = np.nanmean(self.A_crop_stack,axis=(0,1))
         self.meanIntensity.setImage(self.meanIntensity_IMG) 
 
-        
+        #update transects
+        self.updateMeanTransect
+        self.updateMaxTransect
+
     def setPadArray(self):
         """
         Pads the array A with zeros to avoid cropping during image registration and ROI selection.
@@ -502,6 +522,23 @@ class AllTracksPlot():
         print('trace exported to {}'.format(fileName)) 
         return
 
+    def addROI(self, win):
+        # Custom ROI for selecting an image region
+        roi = pg.ROI([0, 0], [self.d, self.d])
+        roi.addScaleHandle([0.5, 1], [0.5, 0.5])
+        roi.addScaleHandle([0, 0.5], [0.5, 0.5])
+        roi.addRotateFreeHandle([1, 1], [0.5, 0.5])
+        win.addItem(roi)
+        #roi.setZValue(10)  # make sure ROI is drawn above image
+        return roi
+
+    def updateMeanTransect(self):
+        selected = self.ROI_mean.getArrayRegion(self.meanIntensity_IMG, self.meanIntensity.imageItem)
+        self.meanTransect.plot(selected.mean(axis=1), clear=True)
+
+    def updateMaxTransect(self):
+        selected = self.ROI_max.getArrayRegion(self.maxIntensity_IMG, self.maxIntensity.imageItem)
+        self.maxTransect.plot(selected.mean(axis=1), clear=True)        
 
     def show(self):
         """
