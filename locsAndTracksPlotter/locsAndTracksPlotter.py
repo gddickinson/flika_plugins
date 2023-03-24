@@ -276,9 +276,9 @@ class AllTracksPlot():
         self.interpolate_checkbox.setChecked(True)
         self.interpolate_label = QLabel("Interpolate 'between' frames") 
         
-        self.allFrames_checkbox = CheckBox()
-        self.allFrames_checkbox.setChecked(False)
-        self.allFrames_label = QLabel("Extend frames")  
+        # self.allFrames_checkbox = CheckBox()
+        # self.allFrames_checkbox.setChecked(False)
+        # self.allFrames_label = QLabel("Extend frames")  
 
 
         self.plot_button = QPushButton('Plot')
@@ -302,8 +302,8 @@ class AllTracksPlot():
         #row1
         self.w2.addWidget(self.interpolate_label, row=1,col=0)
         self.w2.addWidget(self.interpolate_checkbox, row=1,col=1) 
-        self.w2.addWidget(self.allFrames_label, row=1, col=2)
-        self.w2.addWidget(self.allFrames_checkbox, row=1,col=3) 
+        #self.w2.addWidget(self.allFrames_label, row=1, col=2)
+        #self.w2.addWidget(self.allFrames_checkbox, row=1,col=3) 
         
         #row2
         self.w2.addWidget(self.dSize_label, row=2,col=0)         
@@ -403,15 +403,6 @@ class AllTracksPlot():
                 
                 points = np.column_stack((allFrames, xinterp, yinterp)) 
      
-    
-            if self.allFrames_checkbox.isChecked():
-                #pad edges with last known position
-                xinterp = np.pad(xinterp, (int(min(points[:,0])), self.frames-1 - int(max(points[:,0]))), mode='edge')
-                yinterp = np.pad(yinterp, (int(min(points[:,0])), self.frames-1 - int(max(points[:,0]))), mode='edge')
-                
-                allFrames = range(0, self.frames)
-        
-                points = np.column_stack((allFrames, xinterp, yinterp)) 
                
             # Loop through each point and extract a cropped image
             for point in points:
@@ -429,16 +420,30 @@ class AllTracksPlot():
             
             self.A_crop_stack[i] = A_crop # Store the crop in the array of cropped images
             
-            A_crop[A_crop==0] = np.nan
+            #A_crop[A_crop==0] = np.nan
             trace = np.mean(A_crop, axis=(1,2))
-            self.traceList.append(trace)
             
             #extend time series to cover entire recording                
             timeSeries = range(0,self.frames)
             times = trackDF['frame'].to_list()
-            missingTimes = [x if x in times else np.nan for x in timeSeries]
             
+            #if not interpolating points add zeros to to missing time points in traces
+            if self.interpolate_checkbox.isChecked() == False:   
+                trace = trace.tolist()
+                missingTrace = []
+                for i in timeSeries:
+                    if i not in times:
+                        missingTrace.append(0)
+                    else:
+                        missingTrace.append(trace[0])
+                        trace.pop(0)
+                trace = np.array(missingTrace)
             
+            #add trace to tracelist for plotting and export
+            self.traceList.append(trace)
+            #ensure all time points accounted for
+            missingTimes = [x if x in times else np.nan for x in timeSeries]                    
+            #add time to time list for plotting and export        
             self.timeList.append(missingTimes)
             
         # Display max and mean intensity projections - ignoring zero values
