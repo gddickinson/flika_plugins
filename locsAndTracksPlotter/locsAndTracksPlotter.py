@@ -420,7 +420,7 @@ class AllTracksPlot():
             
             self.A_crop_stack[i] = A_crop # Store the crop in the array of cropped images
             
-            #A_crop[A_crop==0] = np.nan
+            A_crop[A_crop==0] = np.nan
             trace = np.mean(A_crop, axis=(1,2))
             
             #extend time series to cover entire recording                
