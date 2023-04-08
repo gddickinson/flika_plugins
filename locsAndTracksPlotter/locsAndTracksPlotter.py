@@ -2236,26 +2236,40 @@ class Overlay():
         self.w2 = pg.LayoutWidget()
 
         #load tiff button
-        #self.loadTiff_button = QPushButton('Load image')
-        #self.loadTiff_button.pressed.connect(self.loadTiff)
-
         self.loadTiff_button = FileSelector_overlay(filetypes='*.tif')
         self.loadTiff_button.valueChanged.connect(self.loadTiff)
 
         #overlay button
-        self.overlay_button = QPushButton('Overlay')
-        self.overlay_button.pressed.connect(self.overlay)
+        self.showData_button = QPushButton('Show Data')
+        self.showData_button.pressed.connect(self.toggleData)
+
+
+        #Opacity slider
+        self.opacity = SliderLabel(1)
+        self.opacity.setRange(0.0,1.0)
+        self.opacity.setValue(0.5)
+        self.opacity.valueChanged.connect(self.updateOpacity)
+        self.opacity_label = QLabel('Opacity')
+
         #Gamma correct slider
         self.gammaCorrect = CheckBox()
         self.gamma = SliderLabel(1)
         self.gamma.setRange(0.0,20.0)
         self.gamma.setValue(0.0)
         self.gamma.valueChanged.connect(self.updateGamma)
+        self.gamma_label = QLabel('Gamma')
+        self.gammaCorrect.stateChanged.connect(self.resetGamma)
 
         #add buttons etc to layout widget
         self.w2.addWidget(self.loadTiff_button, row=1,col=0)
-        self.w2.addWidget(self.gamma, row=2,col=0)
-        self.w2.addWidget(self.overlay_button, row=3,col=0)
+
+        self.w2.addWidget(self.opacity_label, row=2,col=0)
+        self.w2.addWidget(self.opacity, row=2,col=1)
+
+        self.w2.addWidget(self.gamma_label, row=3,col=0)
+        self.w2.addWidget(self.gammaCorrect, row=3,col=1)
+        self.w2.addWidget(self.gamma, row=4,col=0)
+        self.w2.addWidget(self.showData_button, row=5,col=0)
 
         #add layout widget to dock
         self.d2.addWidget(self.w2)
@@ -2264,36 +2278,17 @@ class Overlay():
 
         green = self.overlayIMG
 
-
-        self.OverlayLUT = 'inferno'
+        #self.OverlayLUT = 'inferno'
         self.OverlayMODE = QPainter.CompositionMode_SourceOver
-        self.OverlayOPACITY = 0.5
-        # # self.useOverlayLUT = False
-
-        # # self.gradientPreset = 'grey' #  'thermal','flame','yellowy','bipolar','spectrum','cyclic','greyclip','grey'
-        # # self.usePreset = False
-        # # self.gradientState = None
-        # # self.useSharedState = False
-        # # self.sharedState = None
-        # # self.sharedLevels = None
-
-        # # #init overlay levels
-        # # levels = self.getValue('green_window').imageview.getHistogramWidget().getLevels()
-
-
-        # # self.overlayFlag = False
-        # # self.overlayArrayLoaded = False
 
         self.bgItem = pg.ImageItem()
         if self.gammaCorrect.isChecked():
             green = gammaCorrect(green, self.gamma.value())
-        self.bgItem.setImage(green, autoRange=False, autoLevels=False, opacity=self.OverlayOPACITY)
+        self.bgItem.setImage(green, autoRange=False, autoLevels=False, opacity=self.opacity.value())
         self.bgItem.setCompositionMode(self.OverlayMODE)
         self.overlayWindow.view.addItem(self.bgItem)
 
         self.bgItem.hist_luttt = HistogramLUTWidget(fillHistogram = False)
-
-
         self.bgItem.hist_luttt.setMinimumWidth(110)
         self.bgItem.hist_luttt.setImageItem(self.bgItem)
 
@@ -2301,13 +2296,26 @@ class Overlay():
         self.overlayWindow.ui.gridLayout.addWidget(self.bgItem.hist_luttt, 0, 4, 1, 4)
 
 
-    def updateGamma(self, value):
-        if self.gammaWindow is not None and not self.gammaWindow.closed:
-            levels = self.gammaWindow.imageview.getHistogramWidget().getLevels()
-            gammaCorrrectedImg = gammaCorrect(self.gammaImg, value)
-            self.gammaWindow.imageview.setImage(gammaCorrrectedImg, autoLevels=False, levels=levels)
+    def updateGamma(self):
+        if self.gammaCorrect.isChecked():
+            levels = self.bgItem.hist_luttt.getLevels()
+            gammaCorrrectedImg = gammaCorrect(self.overlayIMG, self.gamma.value())
+            self.bgItem.setImage(gammaCorrrectedImg, autoLevels=False, levels=levels, opacity=self.opacity.value())
 
+    def resetGamma(self):
+        if self.gammaCorrect.isChecked():
+            self.updateGamma()
+        else:
+            levels = self.bgItem.hist_luttt.getLevels()
+            self.bgItem.setImage(self.overlayIMG, autoLevels=False, levels=levels, opacity=self.opacity.value())
 
+    def updateOpacity(self):
+        green = self.overlayIMG
+        levels = self.bgItem.hist_luttt.getLevels()
+        if self.gammaCorrect.isChecked():
+            green = gammaCorrect(green, self.gamma.value())
+
+        self.bgItem.setImage(green, autoLevels=False, levels=levels, opacity=self.opacity.value())
 
     def loadTiff(self):
         """
@@ -2328,9 +2336,15 @@ class Overlay():
         if len(self.overlayIMG) > 1:
             self.overlayIMG = self.overlayIMG[0] #just 1st image of stack
 
+        #orient image
+        self.overlayIMG = np.rot90(self.overlayIMG)
+        self.overlayIMG = np.flipud(self.overlayIMG)
+
         #overlay images
         self.overlay()
 
+    def toggleData(self):
+        ...
 
     def loadData(self):
         self.dataIMG = self.mainGUI.plotWindow.image
