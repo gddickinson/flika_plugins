@@ -2206,13 +2206,7 @@ class Overlay():
         self.overlayIMG = None
         self.overlayFileName = None
 
-        self.current_red = None
-        self.current_green = None
-        self.greenIntensity =0
-        self.redIntensity =0
-        self.greenMinValue=0
-        self.redMinValue=0
-        self.gammaWindow = None
+        self.pathitems = []
 
         # Set up main window
         self.win = QMainWindow()
@@ -2248,6 +2242,7 @@ class Overlay():
         self.opacity = SliderLabel(1)
         self.opacity.setRange(0.0,1.0)
         self.opacity.setValue(0.5)
+        self.opacity.setSingleStep(0.1)
         self.opacity.valueChanged.connect(self.updateOpacity)
         self.opacity_label = QLabel('Opacity')
 
@@ -2264,12 +2259,12 @@ class Overlay():
         self.w2.addWidget(self.loadTiff_button, row=1,col=0)
 
         self.w2.addWidget(self.opacity_label, row=2,col=0)
-        self.w2.addWidget(self.opacity, row=2,col=1)
+        self.w2.addWidget(self.opacity, row=3,col=0)
 
-        self.w2.addWidget(self.gamma_label, row=3,col=0)
-        self.w2.addWidget(self.gammaCorrect, row=3,col=1)
-        self.w2.addWidget(self.gamma, row=4,col=0)
-        self.w2.addWidget(self.showData_button, row=5,col=0)
+        self.w2.addWidget(self.gamma_label, row=4,col=0)
+        self.w2.addWidget(self.gammaCorrect, row=4,col=1)
+        self.w2.addWidget(self.gamma, row=5,col=0)
+        self.w2.addWidget(self.showData_button, row=6,col=0)
 
         #add layout widget to dock
         self.d2.addWidget(self.w2)
@@ -2368,7 +2363,12 @@ class Overlay():
         """
         self.win.hide()
 
-
+    def clearTracks(self):
+        # Remove all plot items representing tracks
+        if self.overlayWindow is not None:
+            for pathitem in self.pathitems:
+                self.overlayWindow.view.removeItem(pathitem)
+        self.pathitems = []
 
 
 
@@ -2871,9 +2871,12 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             # Remove each path item from the plot window
             for pathitem in self.pathitems:
                 self.plotWindow.imageview.view.removeItem(pathitem)
+
+            for pathitem in self.overlayWindow.pathitems:
+                self.overlayWindow.overlayWindow.view.removeItem(pathitem)
         # Reset the path items list to an empty list
         self.pathitems = []
-
+        self.overlayWindow.pathitems=[]
 
 
     def showTracks(self):
@@ -2881,6 +2884,8 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
         # clear self.pathitems
         self.clearTracks()
+
+        self.overlayWindow.clearTracks()
 
         # clear track paths in Flower Plot window if displayFlowPlot_checkbox is checked
         if self.displayFlowPlot_checkbox.isChecked():
@@ -2895,6 +2900,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         pen_FP.setCosmetic(True)
         pen_FP.setWidth(1)
 
+        pen_overlay = QPen(self.trackDefaultColour_Box.value(), .4)
+        pen_overlay.setCosmetic(True)
+        pen_overlay.setWidth(1)
+
         # determine which track IDs to plot based on whether filtered tracks are being used
         if self.useFilteredTracks:
             trackIDs = self.filteredTrackIds
@@ -2906,26 +2915,39 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         for track_idx in trackIDs:
             tracks = self.tracks.get_group(track_idx)
             pathitem = QGraphicsPathItem(self.plotWindow.imageview.view)
+
+            pathitem_overlay = QGraphicsPathItem(self.overlayWindow.overlayWindow.view)
+
             if self.displayFlowPlot_checkbox.isChecked():
                 pathitem_FP = QGraphicsPathItem(self.flowerPlotWindow.plt)
 
             # set the color of the pen based on the track color
             if self.trackColour_checkbox.isChecked():
                 pen.setColor(tracks['colour'].to_list()[0])
+                pen_overlay.setColor(tracks['colour'].to_list()[0])
                 pen_FP.setColor(tracks['colour'].to_list()[0])
 
             # set the pen for the path items
             pathitem.setPen(pen)
+
+            pathitem_overlay.setPen(pen_overlay)
+
             if self.displayFlowPlot_checkbox.isChecked():
                 pathitem_FP.setPen(pen_FP)
 
             # add the path items to the view(s)
             self.plotWindow.imageview.view.addItem(pathitem)
+
+            self.overlayWindow.overlayWindow.view.addItem(pathitem_overlay)
+
             if self.displayFlowPlot_checkbox.isChecked():
                 self.flowerPlotWindow.plt.addItem(pathitem_FP)
 
             # keep track of the path items
             self.pathitems.append(pathitem)
+
+            self.overlayWindow.pathitems.append(pathitem_overlay)
+
             if self.displayFlowPlot_checkbox.isChecked():
                 self.flowerPlotWindow.pathitems.append(pathitem_FP)
 
@@ -2940,16 +2962,26 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
             # create a QPainterPath for the track and set the path for the path item
             path = QPainterPath(QPointF(x[0],y[0]))
+
+            path_overlay = QPainterPath(QPointF(x[0],y[0]))
+
             if self.displayFlowPlot_checkbox.isChecked():
                 path_FP = QPainterPath(QPointF(zeroed_X[0],zeroed_Y[0]))
             for i in np.arange(1, len(x)):
                 path.lineTo(QPointF(x[i],y[i]))
+
+                path_overlay.lineTo(QPointF(x[i],y[i]))
+
                 if self.displayFlowPlot_checkbox.isChecked():
                     path_FP.lineTo(QPointF(zeroed_X[i],zeroed_Y[i]))
 
             pathitem.setPath(path)
+
+            pathitem_overlay.setPath(path_overlay)
+
             if self.displayFlowPlot_checkbox.isChecked():
                 pathitem_FP.setPath(path_FP)
+
 
     def plotTrackData(self):
         ### plot track data to current window
