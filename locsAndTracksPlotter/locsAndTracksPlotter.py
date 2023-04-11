@@ -2190,6 +2190,95 @@ def gammaCorrect(img, gamma):
     maxIntensity = np.max(img)
     return np.array(maxIntensity*(img / maxIntensity) ** gammaCorrection)
 
+
+
+
+
+class TrackPlotOptions():
+    '''
+    Choose colours etc for track plots
+    '''
+    def __init__(self, mainGUI):
+        super().__init__()
+        self.mainGUI = mainGUI
+
+        # Set up main window
+        self.win = QMainWindow()
+        self.area = DockArea()
+        self.win.setCentralWidget(self.area)
+        #self.win.resize(250, 200)
+        self.win.setWindowTitle('Track Plot Options')
+
+        ## Create docks
+        self.d1 = Dock("Options panel")
+        self.area.addDock(self.d1)
+
+        #options widget
+        self.w1 = pg.LayoutWidget()
+
+        #combo boxes
+        self.trackColourCol_Box = pg.ComboBox()
+        self.trackcolourcols = {'None':'None'}
+        self.trackColourCol_Box.setItems(self.trackcolourcols)
+        self.trackColourCol_Box_label = QLabel('Colour By')
+
+        self.colourMap_Box = pg.ComboBox()
+        self.colourMaps = dictFromList(pg.colormap.listMaps())
+        self.colourMap_Box.setItems(self.colourMaps)
+        self.colourMap_Box_label = QLabel('Colour Map')
+
+        self.trackDefaultColour_Box = pg.ComboBox()
+        self.trackdefaultcolours = {'green': Qt.green, 'red': Qt.red, 'blue': Qt.blue}
+        self.trackDefaultColour_Box.setItems(self.trackdefaultcolours)
+        self.trackDefaultColour_Box_label = QLabel('Track Default Colour')
+
+        #check boxes
+        self.trackColour_checkbox = CheckBox()
+        self.trackColour_checkbox.setChecked(False)
+        self.trackColour_checkbox_label = QLabel('Set Track Colour')
+
+        self.matplotCM_checkbox = CheckBox()
+        self.matplotCM_checkbox.stateChanged.connect(self.mainGUI.setColourMap)
+        self.matplotCM_checkbox.setChecked(False)
+        self.matplotCM_checkbox_label = QLabel('Use Matplot Colour Map')
+
+        #layout
+        self.w1.addWidget(self.trackColour_checkbox_label , row=1,col=0)
+        self.w1.addWidget(self.trackColour_checkbox, row=1,col=1)
+
+        self.w1.addWidget(self.trackColourCol_Box_label , row=2,col=0)
+        self.w1.addWidget(self.trackColourCol_Box , row=2,col=1)
+
+        self.w1.addWidget(self.colourMap_Box_label , row=3,col=0)
+        self.w1.addWidget(self.colourMap_Box , row=3,col=1)
+
+        self.w1.addWidget(self.matplotCM_checkbox_label , row=4,col=0)
+        self.w1.addWidget(self.matplotCM_checkbox , row=4,col=1)
+
+        self.w1.addWidget(self.trackDefaultColour_Box_label , row=5,col=0)
+        self.w1.addWidget(self.trackDefaultColour_Box , row=5,col=1)
+
+        #add layout widget to dock
+        self.d1.addWidget(self.w1)
+
+    def show(self):
+        """
+        Shows the main window.
+        """
+        self.win.show()
+
+    def close(self):
+        """
+        Closes the main window.
+        """
+        self.win.close()
+
+    def hide(self):
+        """
+        Hides the main window.
+        """
+        self.win.hide()
+
 class Overlay():
     """
     Overlay two image stacks.
@@ -2460,16 +2549,19 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.unlinkedPoints = None
         self.displayUnlinkedPoints = False
 
+        #initialize track plot options window and hide it
+        self.trackPlotOptions = TrackPlotOptions(self)
+        self.trackPlotOptions.hide()
+        self.displayTrackPlotOptions = False
+
         # Initialize overlay window and hide it
         self.overlayWindow = Overlay(self)
         self.overlayWindow.hide()
-
         self.displayOverlay = False
 
         # Initialize filter options window and hide it
         self.filterOptionsWindow = FilterOptions(self)
         self.filterOptionsWindow.hide()
-
         self.sequentialFiltering = False
 
         # Initialize track plot window and hide it
@@ -2527,13 +2619,6 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.overlayOption_button.pressed.connect(self.displayOverlayOptions)
 
         #checkbox
-        self.trackColour_checkbox = CheckBox()
-        self.trackColour_checkbox.setChecked(s['set_track_colour'])
-
-        self.matplotCM_checkbox = CheckBox()
-        self.matplotCM_checkbox.stateChanged.connect(self.setColourMap)
-        self.matplotCM_checkbox.setChecked(False)
-
         self.displayFlowPlot_checkbox = CheckBox()
         self.displayFlowPlot_checkbox.stateChanged.connect(self.toggleFlowerPlot)
         self.displayFlowPlot_checkbox.setChecked(False)
@@ -2549,6 +2634,11 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.displayFilterOptions_checkbox = CheckBox()
         self.displayFilterOptions_checkbox.stateChanged.connect(self.toggleFilterOptions)
         self.displayFilterOptions_checkbox.setChecked(False)
+
+        self.displayTrackPlotOptions_checkbox = CheckBox()
+        self.displayTrackPlotOptions_checkbox.stateChanged.connect(self.toggleTrackPlotOptions)
+        self.displayTrackPlotOptions_checkbox.setChecked(False)
+
 
         #comboboxes
         self.filetype_Box = pg.ComboBox()
@@ -2571,19 +2661,6 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.trackcols = {'None':'None'}
         self.trackCol_Box.setItems(self.trackcols)
 
-
-        self.trackColourCol_Box = pg.ComboBox()
-        self.trackcolourcols = {'None':'None'}
-        self.trackColourCol_Box.setItems(self.trackcolourcols)
-
-        self.colourMap_Box = pg.ComboBox()
-        self.colourMaps = dictFromList(pg.colormap.listMaps())
-        self.colourMap_Box.setItems(self.colourMaps)
-
-
-        self.trackDefaultColour_Box = pg.ComboBox()
-        self.trackdefaultcolours = {'green': Qt.green, 'red': Qt.red, 'blue': Qt.blue}
-        self.trackDefaultColour_Box.setItems(self.trackdefaultcolours)
 
         #spinbox
         self.frameLength_selector = pg.SpinBox(value=10, int=True)
@@ -2615,11 +2692,13 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.items.append({'name': 'hidePoints', 'string': 'PLOT    --------------------', 'object': self.hidePointData_button })
         self.items.append({'name': 'plotPointMap', 'string': '', 'object': self.togglePointMap_button })
         self.items.append({'name': 'plotUnlinkedPoints', 'string': '', 'object': self.toggleUnlinkedPointData_button })
-        self.items.append({'name': 'trackDefaultColour', 'string': 'Track Default Colour', 'object': self.trackDefaultColour_Box })
-        self.items.append({'name': 'trackColour', 'string': 'Set Track Colour', 'object': self.trackColour_checkbox})
-        self.items.append({'name': 'trackColourCol', 'string': 'Colour by', 'object': self.trackColourCol_Box})
-        self.items.append({'name': 'trackColourMap', 'string': 'Colour Map', 'object': self.colourMap_Box})
-        self.items.append({'name': 'matplotClourMap', 'string': 'Use matplot map', 'object': self.matplotCM_checkbox})
+        self.items.append({'name': 'trackPlotOptions', 'string': 'Track Plot Options', 'object': self.displayTrackPlotOptions_checkbox })
+
+        # self.items.append({'name': 'trackDefaultColour', 'string': 'Track Default Colour', 'object': self.trackDefaultColour_Box })
+        # self.items.append({'name': 'trackColour', 'string': 'Set Track Colour', 'object': self.trackColour_checkbox})
+        # self.items.append({'name': 'trackColourCol', 'string': 'Colour by', 'object': self.trackColourCol_Box})
+        # self.items.append({'name': 'trackColourMap', 'string': 'Colour Map', 'object': self.colourMap_Box})
+        # self.items.append({'name': 'matplotClourMap', 'string': 'Use matplot map', 'object': self.matplotCM_checkbox})
         self.items.append({'name': 'displayFlowerPlot', 'string': 'Flower Plot', 'object': self.displayFlowPlot_checkbox})
         self.items.append({'name': 'displaySingleTrackPlot', 'string': 'Track Plot', 'object': self.displaySingleTrackPlot_checkbox})
         self.items.append({'name': 'displayAllTracksPlot', 'string': 'All Tracks Plot', 'object': self.displayAllTracksPlot_checkbox})
@@ -2685,7 +2764,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.frameCol_Box.setItems(self.colDict)
         self.trackCol_Box.setItems(self.colDict)
         self.filterOptionsWindow.filterCol_Box.setItems(self.colDict)
-        self.trackColourCol_Box.setItems(self.colDict)
+        self.trackPlotOptions.trackColourCol_Box.setItems(self.colDict)
 
         self.xCol_Box.setItems(self.colDict)
         self.yCol_Box.setItems(self.colDict)
@@ -2852,14 +2931,14 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             df['zeroed_Y'] = data['zeroed_Y']
 
             # Add a color column to the DataFrame based on the selected color map and column
-            if self.trackColour_checkbox.isChecked():
+            if self.trackPlotOptions.trackColour_checkbox.isChecked():
                 if self.useMatplotCM:
-                    cm = pg.colormap.getFromMatplotlib(self.colourMap_Box.value()) # Get the colormap from Matplotlib and convert it to a PyqtGraph colormap
+                    cm = pg.colormap.getFromMatplotlib(self.trackPlotOptions.colourMap_Box.value()) # Get the colormap from Matplotlib and convert it to a PyqtGraph colormap
                 else:
-                    cm = pg.colormap.get(self.colourMap_Box.value()) # Get the PyqtGraph colormap
+                    cm = pg.colormap.get(self.trackPlotOptions.colourMap_Box.value()) # Get the PyqtGraph colormap
 
                 # Map the values from the selected color column to a QColor using the selected colormap
-                df['colour'] = cm.mapToQColor(data[self.trackColourCol_Box.value()].to_numpy()/max(data[self.trackColourCol_Box.value()]))
+                df['colour'] = cm.mapToQColor(data[self.trackPlotOptions.trackColourCol_Box.value()].to_numpy()/max(data[self.trackPlotOptions.trackColourCol_Box.value()]))
 
         # Group the data by track number
         return df.groupby(['track_number'])
@@ -2892,15 +2971,15 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             self.flowerPlotWindow.clearTracks()
 
         # setup pens
-        pen = QPen(self.trackDefaultColour_Box.value(), .4)
+        pen = QPen(self.trackPlotOptions.trackDefaultColour_Box.value(), .4)
         pen.setCosmetic(True)
         pen.setWidth(2)
 
-        pen_FP = QPen(self.trackDefaultColour_Box.value(), .4)
+        pen_FP = QPen(self.trackPlotOptions.trackDefaultColour_Box.value(), .4)
         pen_FP.setCosmetic(True)
         pen_FP.setWidth(1)
 
-        pen_overlay = QPen(self.trackDefaultColour_Box.value(), .4)
+        pen_overlay = QPen(self.trackPlotOptions.trackDefaultColour_Box.value(), .4)
         pen_overlay.setCosmetic(True)
         pen_overlay.setWidth(1)
 
@@ -2922,7 +3001,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
                 pathitem_FP = QGraphicsPathItem(self.flowerPlotWindow.plt)
 
             # set the color of the pen based on the track color
-            if self.trackColour_checkbox.isChecked():
+            if self.trackPlotOptions.trackColour_checkbox.isChecked():
                 pen.setColor(tracks['colour'].to_list()[0])
                 pen_overlay.setColor(tracks['colour'].to_list()[0])
                 pen_FP.setColor(tracks['colour'].to_list()[0])
@@ -3254,18 +3333,18 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
     def setColourMap(self):
         # If the matplotCM_checkbox is checked, use matplotlib color maps
-        if self.matplotCM_checkbox.isChecked():
+        if self.trackPlotOptions.matplotCM_checkbox.isChecked():
             # Create a dictionary of matplotlib color maps
             self.colourMaps = dictFromList(pg.colormap.listMaps('matplotlib'))
             # Set the color map options in the dropdown box to the matplotlib color maps
-            self.colourMap_Box.setItems(self.colourMaps)
+            self.trackPlotOptions.colourMap_Box.setItems(self.colourMaps)
             self.useMatplotCM = True
         else:
             # If the matplotCM_checkbox is unchecked, use pyqtgraph color maps
             # Create a dictionary of pyqtgraph color maps
             self.colourMaps = dictFromList(pg.colormap.listMaps())
             # Set the color map options in the dropdown box to the pyqtgraph color maps
-            self.colourMap_Box.setItems(self.colourMaps)
+            self.trackPlotOptions.colourMap_Box.setItems(self.colourMaps)
             self.useMatplotCM = False
 
     def toggleFlowerPlot(self):
@@ -3339,6 +3418,25 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             self.diffusionWindow.hide()
             self.displayDiffusionPlot = False
             self.showDiffusion_button.setText('Show Diffusion')
+
+
+
+    def toggleTrackPlotOptions(self):
+        if self.trackPlotOptions == None:
+            # Create a new instance of the DiffusionPlotWindow class
+            self.trackPlotOptions = TrackPlotOptions(self)
+
+        if self.displayTrackPlotOptions == False:
+            # Show the window if it is not already displayed
+            self.trackPlotOptions.show()
+            self.displayTrackPlotOptions = True
+
+        else:
+            # Hide the window if it is already displayed
+            self.trackPlotOptions.hide()
+            self.displayTrackPlotOptions = False
+
+
 
 
     def togglePointMap(self):
