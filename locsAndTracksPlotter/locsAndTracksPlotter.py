@@ -134,7 +134,7 @@ class FileSelector(QWidget):
         self.filetypes = filetypes
         self.filename = ''
         self.columns = []
-        self.pixelSize = self.mainGUI.pixelSize_selector.value()    #nanometers
+        self.pixelSize = self.mainGUI.trackPlotOptions.pixelSize_selector.value()    #nanometers
 
 
     def buttonclicked(self):
@@ -1293,7 +1293,7 @@ class DiffusionPlotWindow():
             plotDF = self.mainGUI.filteredData.groupby('track_number').mean()
 
         # Calculate the mean lag in microns
-        meanLag = plotDF['lag'] * self.mainGUI.pixelSize_selector.value()
+        meanLag = plotDF['lag'] * self.mainGUI.trackPlotOptions.pixelSize_selector.value()
 
         # Set the start and end of the histogram bins and the number of bins to use
         start = 0
@@ -1322,7 +1322,7 @@ class DiffusionPlotWindow():
             plotDF = self.mainGUI.filteredData.groupby('track_number').mean()
 
         # Calculate the squared lag distances in microns
-        self.squared_SLDs = plotDF['lag_squared'] * np.square(self.mainGUI.pixelSize_selector.value()/1000)
+        self.squared_SLDs = plotDF['lag_squared'] * np.square(self.mainGUI.trackPlotOptions.pixelSize_selector.value()/1000)
 
         # Set the start and end points of the histogram, and the number of bins
         start=0
@@ -1474,7 +1474,7 @@ class DiffusionPlotWindow():
         D is diffusion coefficient
         t is duration of one lag (exposure time) in seconds
         """
-        t = (self.mainGUI.frameLength_selector.value()/1000) * self.nlags
+        t = (self.mainGUI.trackPlotOptions.frameLength_selector.value()/1000) * self.nlags
         D = tau / (4 * t)
         return D
 
@@ -2207,13 +2207,15 @@ class TrackPlotOptions():
         self.area = DockArea()
         self.win.setCentralWidget(self.area)
         #self.win.resize(250, 200)
-        self.win.setWindowTitle('Track Plot Options')
+        self.win.setWindowTitle('Display Options')
 
         ## Create docks
-        self.d1 = Dock("Options panel")
+        self.d1 = Dock("Track Options")
+        self.d2 = Dock("Recording Parameters")
         self.area.addDock(self.d1)
+        self.area.addDock(self.d2)
 
-        #options widget
+        #track options widget
         self.w1 = pg.LayoutWidget()
 
         #combo boxes
@@ -2260,6 +2262,34 @@ class TrackPlotOptions():
 
         #add layout widget to dock
         self.d1.addWidget(self.w1)
+
+        #recording options widget
+        self.w2 = pg.LayoutWidget()
+
+        #spinbox
+        self.frameLength_selector = pg.SpinBox(value=10, int=True)
+        self.frameLength_selector.setSingleStep(10)       #########TODDO! FIX THIS - AND INDEXING PROBLEM IN CALL  BY ADDING OBJECT NAMES ABOVE
+        self.frameLength_selector.setMinimum(1)
+        self.frameLength_selector.setMaximum(100000)
+        self.frameLength_selector_label = QLabel('milliseconds per frame')
+
+        self.pixelSize_selector = pg.SpinBox(value=108, int=True)
+        self.pixelSize_selector.setSingleStep(1)
+        self.pixelSize_selector.setMinimum(1)
+        self.pixelSize_selector.setMaximum(10000)
+        self.pixelSize_selector_label = QLabel('nanometers per pixel')
+
+        #layout
+        self.w2.addWidget(self.frameLength_selector_label , row=1,col=0)
+        self.w2.addWidget(self.frameLength_selector, row=1,col=1)
+
+        self.w2.addWidget(self.pixelSize_selector_label, row=2,col=0)
+        self.w2.addWidget(self.pixelSize_selector, row=2,col=1)
+
+
+        #add layout widget to dock
+        self.d2.addWidget(self.w2)
+
 
     def show(self):
         """
@@ -2661,19 +2691,6 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.trackcols = {'None':'None'}
         self.trackCol_Box.setItems(self.trackcols)
 
-
-        #spinbox
-        self.frameLength_selector = pg.SpinBox(value=10, int=True)
-        self.frameLength_selector.setSingleStep(10)       #########TODDO! FIX THIS - AND INDEXING PROBLEM IN CALL  BY ADDING OBJECT NAMES ABOVE
-        self.frameLength_selector.setMinimum(1)
-        self.frameLength_selector.setMaximum(100000)
-
-        self.pixelSize_selector = pg.SpinBox(value=108, int=True)
-        self.pixelSize_selector.setSingleStep(1)
-        self.pixelSize_selector.setMinimum(1)
-        self.pixelSize_selector.setMaximum(10000)
-
-
         #data file selector
         self.getFile = FileSelector(filetypes='*.csv', mainGUI=self)
 
@@ -2687,12 +2704,12 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
         self.items.append({'name': 'filename ', 'string': 'before load, select data window', 'object': self.getFile})
         self.items.append({'name': 'filetype', 'string': 'filetype', 'object': self.filetype_Box})
-        self.items.append({'name': 'pixelSize', 'string': 'nanometers per pixel', 'object': self.pixelSize_selector})
-        self.items.append({'name': 'frameLength', 'string': 'milliseconds per frame', 'object': self.frameLength_selector})
+        #self.items.append({'name': 'pixelSize', 'string': 'nanometers per pixel', 'object': self.pixelSize_selector})
+        #self.items.append({'name': 'frameLength', 'string': 'milliseconds per frame', 'object': self.frameLength_selector})
         self.items.append({'name': 'hidePoints', 'string': 'PLOT    --------------------', 'object': self.hidePointData_button })
         self.items.append({'name': 'plotPointMap', 'string': '', 'object': self.togglePointMap_button })
         self.items.append({'name': 'plotUnlinkedPoints', 'string': '', 'object': self.toggleUnlinkedPointData_button })
-        self.items.append({'name': 'trackPlotOptions', 'string': 'Track Plot Options', 'object': self.displayTrackPlotOptions_checkbox })
+        self.items.append({'name': 'trackPlotOptions', 'string': 'Display Options', 'object': self.displayTrackPlotOptions_checkbox })
 
         # self.items.append({'name': 'trackDefaultColour', 'string': 'Track Default Colour', 'object': self.trackDefaultColour_Box })
         # self.items.append({'name': 'trackColour', 'string': 'Set Track Colour', 'object': self.trackColour_checkbox})
@@ -2795,9 +2812,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             # Convert frame data from float to int and adjust by -1 (since ThunderSTORM starts counting from 1)
             df['frame'] = data['frame'].astype(int)-1
             # Convert x data from nanometers to pixels
-            df['x'] = data['x [nm]'] / self.pixelSize_selector.value()
+            df['x'] = data['x [nm]'] / self.trackPlotOptions.pixelSize_selector.value()
             # Convert y data from nanometers to pixels
-            df['y'] = data['y [nm]'] / self.pixelSize_selector.value()
+            df['y'] = data['y [nm]'] / self.trackPlotOptions.pixelSize_selector.value()
 
         elif self.filetype_Box.value() == 'flika':
             # Load FLIKA pyinsight data into a pandas dataframe
@@ -2915,8 +2932,8 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             ######### load FLIKA pyinsight data into DF ############
             df = pd.DataFrame()
             df['frame'] = data['frame'].astype(int)-1
-            df['x'] = data['x [nm]']/self.pixelSize_selector.value()
-            df['y'] = data['y [nm]']/self.pixelSize_selector.value()
+            df['x'] = data['x [nm]']/self.trackPlotOptions.pixelSize_selector.value()
+            df['y'] = data['y [nm]']/self.trackPlotOptions.pixelSize_selector.value()
             df['track_number'] = data['track_number']
 
         elif self.filetype_Box.value() == 'flika':
