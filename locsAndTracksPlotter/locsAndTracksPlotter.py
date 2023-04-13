@@ -2212,8 +2212,10 @@ class TrackPlotOptions():
         ## Create docks
         self.d1 = Dock("Track Options")
         self.d2 = Dock("Recording Parameters")
+        self.d3 = Dock("Background subtraction")
         self.area.addDock(self.d1)
         self.area.addDock(self.d2)
+        self.area.addDock(self.d3)
 
         #track options widget
         self.w1 = pg.LayoutWidget()
@@ -2286,10 +2288,36 @@ class TrackPlotOptions():
         self.w2.addWidget(self.pixelSize_selector_label, row=2,col=0)
         self.w2.addWidget(self.pixelSize_selector, row=2,col=1)
 
-
         #add layout widget to dock
         self.d2.addWidget(self.w2)
 
+        #background options widget
+        self.w3 = pg.LayoutWidget()
+
+        self.backgroundSubtract_checkbox = CheckBox()
+        self.backgroundSubtract_checkbox.setChecked(False)
+        self.backgroundSubtract_label = QLabel('Subtract Background')
+
+        self.background_selector = pg.SpinBox(value=0, int=True)
+        self.background_selector.setSingleStep(1)
+        self.background_selector.setMinimum(0)
+        self.background_selector.setMaximum(10000)
+        self.background_selector_label = QLabel('background intensity')
+
+        self.estimatedCameraBlack = QLabel('')
+        self.estimatedCameraBlack_label = QLabel('estimated camera black')
+
+        self.w3.addWidget(self.backgroundSubtract_checkbox, row=0,col=1)
+        self.w3.addWidget(self.backgroundSubtract_label, row=0,col=0)
+
+        self.w3.addWidget(self.background_selector, row=1,col=1)
+        self.w3.addWidget(self.background_selector_label, row=1,col=0)
+
+        self.w3.addWidget(self.estimatedCameraBlack, row=2,col=1)
+        self.w3.addWidget(self.estimatedCameraBlack_label, row=2,col=0)
+
+        #add layout widget to dock
+        self.d3.addWidget(self.w3)
 
     def show(self):
         """
@@ -2578,6 +2606,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.displayDiffusionPlot = False
         self.unlinkedPoints = None
         self.displayUnlinkedPoints = False
+        self.estimatedCameraBlackLevel = None
 
         #initialize track plot options window and hide it
         self.trackPlotOptions = TrackPlotOptions(self)
@@ -2704,18 +2733,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
         self.items.append({'name': 'filename ', 'string': 'before load, select data window', 'object': self.getFile})
         self.items.append({'name': 'filetype', 'string': 'filetype', 'object': self.filetype_Box})
-        #self.items.append({'name': 'pixelSize', 'string': 'nanometers per pixel', 'object': self.pixelSize_selector})
-        #self.items.append({'name': 'frameLength', 'string': 'milliseconds per frame', 'object': self.frameLength_selector})
         self.items.append({'name': 'hidePoints', 'string': 'PLOT    --------------------', 'object': self.hidePointData_button })
         self.items.append({'name': 'plotPointMap', 'string': '', 'object': self.togglePointMap_button })
         self.items.append({'name': 'plotUnlinkedPoints', 'string': '', 'object': self.toggleUnlinkedPointData_button })
         self.items.append({'name': 'trackPlotOptions', 'string': 'Display Options', 'object': self.displayTrackPlotOptions_checkbox })
-
-        # self.items.append({'name': 'trackDefaultColour', 'string': 'Track Default Colour', 'object': self.trackDefaultColour_Box })
-        # self.items.append({'name': 'trackColour', 'string': 'Set Track Colour', 'object': self.trackColour_checkbox})
-        # self.items.append({'name': 'trackColourCol', 'string': 'Colour by', 'object': self.trackColourCol_Box})
-        # self.items.append({'name': 'trackColourMap', 'string': 'Colour Map', 'object': self.colourMap_Box})
-        # self.items.append({'name': 'matplotClourMap', 'string': 'Use matplot map', 'object': self.matplotCM_checkbox})
         self.items.append({'name': 'displayFlowerPlot', 'string': 'Flower Plot', 'object': self.displayFlowPlot_checkbox})
         self.items.append({'name': 'displaySingleTrackPlot', 'string': 'Track Plot', 'object': self.displaySingleTrackPlot_checkbox})
         self.items.append({'name': 'displayAllTracksPlot', 'string': 'All Tracks Plot', 'object': self.displayAllTracksPlot_checkbox})
@@ -2802,6 +2823,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
         # add image data to overlay
         self.overlayWindow.loadData()
+
+        # set estimated camera black level
+        self.estimatedCameraBlackLevel = np.min(self.plotWindow.image)
+        self.trackPlotOptions.estimatedCameraBlack.setText(str(self.estimatedCameraBlackLevel))
 
 
     def makePointDataDF(self, data):
