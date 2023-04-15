@@ -35,6 +35,7 @@ import sys
 from scipy.optimize import curve_fit
 import time
 import skimage.io as skio
+from tqdm import tqdm
 
 from skimage.filters import threshold_otsu
 from skimage import data, color
@@ -68,6 +69,7 @@ pg.setConfigOption('useNumba', True)
 # import pandas and matplotlib for generating graphs
 import pandas as pd
 from matplotlib import pyplot as plt
+from matplotlib.patches import Ellipse, Arrow
 
 # import pyqtgraph modules for dockable windows
 from pyqtgraph.dockarea.Dock import Dock
@@ -2340,7 +2342,9 @@ class TrackPlotOptions():
         self.background_selector.valueChanged.connect(self.backgroundSubtract)
 
     def backgroundSubtract(self):
-        #subtract background from intensity column (estimated camera value already subtracted from intensity column values, so subtract from background)
+        '''subtract background from intensity column
+        (estimated camera value already subtracted from intensity column values, so subtract from background)
+        '''
         self.mainGUI.data['intensity - background'] = self.mainGUI.data['intensity'] - self.background_selector.value() + self.mainGUI.estimatedCameraBlackLevel
 
     def show(self):
@@ -2363,10 +2367,8 @@ class TrackPlotOptions():
 
 class Overlay():
     """
-    Overlay two image stacks.
+    Overlay single tiff and recording image stack.
 
-    If Scale Images is ticked the dimmer image is rescaled to
-    match the range of the brighter image.
     """
     def __init__(self, mainGUI):
         super().__init__()
@@ -2412,6 +2414,10 @@ class Overlay():
         self.getFilaments_button = QPushButton('Detect Filaments')
         self.getFilaments_button.pressed.connect(self.detectFilaments)
 
+        #detect track axis
+        self.getTrackAxis_button = QPushButton('Detect Track axis')
+        self.getTrackAxis_button.pressed.connect(self.detectTrackAxis)
+
         #Opacity slider
         self.opacity = SliderLabel(1)
         self.opacity.setRange(0.0,1.0)
@@ -2440,12 +2446,13 @@ class Overlay():
         self.w2.addWidget(self.gamma, row=5,col=0)
         self.w2.addWidget(self.showData_button, row=6,col=0)
         self.w2.addWidget(self.getFilaments_button, row=7,col=0)
+        self.w2.addWidget(self.getTrackAxis_button, row=8,col=0)
 
         #add layout widget to dock
         self.d2.addWidget(self.w2)
 
     def overlay(self):
-
+        '''overlay single tiff file and recording'''
         green = self.overlayIMG
 
         #self.OverlayLUT = 'inferno'
@@ -2466,12 +2473,14 @@ class Overlay():
 
 
     def updateGamma(self):
+        '''aply gamma correction using value from slider'''
         if self.gammaCorrect.isChecked():
             levels = self.bgItem.hist_luttt.getLevels()
             gammaCorrrectedImg = gammaCorrect(self.overlayIMG, self.gamma.value())
             self.bgItem.setImage(gammaCorrrectedImg, autoLevels=False, levels=levels, opacity=self.opacity.value())
 
     def resetGamma(self):
+        '''reset the gamma value used to overlay images'''
         if self.gammaCorrect.isChecked():
             self.updateGamma()
         else:
@@ -2479,6 +2488,7 @@ class Overlay():
             self.bgItem.setImage(self.overlayIMG, autoLevels=False, levels=levels, opacity=self.opacity.value())
 
     def updateOpacity(self):
+        '''set opacity of overlaid images'''
         green = self.overlayIMG
         levels = self.bgItem.hist_luttt.getLevels()
         if self.gammaCorrect.isChecked():
@@ -2487,14 +2497,7 @@ class Overlay():
         self.bgItem.setImage(green, autoLevels=False, levels=levels, opacity=self.opacity.value())
 
     def loadTiff(self):
-        """
-        imports the tiff file to overlay
-
-        Returns
-        -------
-        None.
-
-        """
+        """ imports the tiff file to overlay """
         #get filename
         self.overlayFileName = self.loadTiff_button.value()
 
@@ -2519,7 +2522,88 @@ class Overlay():
         self.dataIMG = self.mainGUI.plotWindow.image
         self.overlayWindow.setImage(self.dataIMG)
 
+
+    def confidence_ellipse(self, x, y, ax, nstd=2.0, facecolor='none', **kwargs):
+        """
+        Return a matplotlib Ellipse patch representing the covariance matrix
+        cov centred at centre and scaled by the factor nstd.
+
+        """
+        if x.size != y.size:
+            raise ValueError("x and y must be the same size")
+
+        cov = np.cov(x, y)
+        centre = (np.mean(x), np.mean(y))
+
+        # Find and sort eigenvalues and eigenvectors into descending order
+        eigvals, eigvecs = np.linalg.eigh(cov)
+        order = eigvals.argsort()[::-1]
+        eigvals, eigvecs = eigvals[order], eigvecs[:, order]
+
+        # The anti-clockwise angle to rotate our ellipse by
+        vx, vy = eigvecs[:,0][0], eigvecs[:,0][1]
+        theta = np.arctan2(vy, vx)
+
+        # Width and height of ellipse to draw
+        width, height = 2 * nstd * np.sqrt(eigvals)
+
+        ellipse = Ellipse(xy=centre, width=width, height=height,
+                       angle=np.degrees(theta), facecolor=facecolor, **kwargs)
+
+        if width > height:
+            r = width
+        else:
+            r = height
+
+        arrow = Arrow(np.mean(x), np.mean(y), r*cos(theta), r*sin(theta), width=1)
+
+        ax.add_patch(ellipse)
+        ax.add_patch(arrow)
+        majorAxis_deg  = degrees(theta)
+        #majorAxis_deg = (majorAxis_deg + 360) % 360 # +360 for implementations where mod returns negative numbers
+
+        #print(majorAxis_deg)
+        #print(ellipse.properties()['angle'])
+
+        return ax, majorAxis_deg
+
+    def detectTrackAxis(self):
+        '''determine track direction'''
+
+        if self.mainGUI.useFilteredData:
+            track_data = self.mainGUI.filteredData
+        else:
+            track_data = self.mainGUI.data
+
+        trackList= track_data['track_number'].unique().tolist()
+
+        fig3, axs3 = plt.subplots(1, 1, figsize=(5, 5))
+        axs3.set_aspect('equal', adjustable='box')
+        axs3.scatter(track_data['zeroed_X'],track_data['zeroed_Y'])
+        axs3.axvline(c='grey', lw=1)
+        axs3.axhline(c='grey', lw=1)
+
+        degreeList = []
+
+        for n in tqdm(trackList):
+            track = track_data[track_data['track_number'] == n]
+            _, degree = self.confidence_ellipse(track['zeroed_X'], track['zeroed_Y'], axs3, edgecolor='red')
+            degreeList.append(degree)
+
+
+        correctedDegList = []
+        for deg in degreeList:
+            if deg < 0:
+                deg = deg + 180
+            correctedDegList.append(deg)
+
+        fig3.show()
+
+        #fig5, axs5 = plt.subplots(1, 1, figsize=(5, 5))
+        #axs5.hist(correctedDegList,10)
+
     def detectFilaments(self):
+        '''determine direction of thresholded filaments'''
         actin_img = self.overlayIMG
         thresh = threshold_otsu(actin_img)
         #binary = actin_img > thresh
