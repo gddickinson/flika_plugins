@@ -36,6 +36,22 @@ from scipy.optimize import curve_fit
 import time
 import skimage.io as skio
 
+from skimage.filters import threshold_otsu
+from skimage import data, color
+from skimage.transform import hough_circle, hough_circle_peaks, hough_ellipse
+from skimage.feature import canny
+from skimage.draw import circle_perimeter, ellipse_perimeter
+from skimage.util import img_as_ubyte
+from skimage.segmentation import clear_border
+from skimage.measure import label, regionprops
+from skimage.morphology import closing, square
+from skimage.color import label2rgb
+import matplotlib.patches as mpatches
+from skimage.draw import ellipse
+from skimage.measure import label, regionprops, regionprops_table
+from skimage.transform import rotate
+from math import cos, sin, degrees
+
 # determine which version of flika to use
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
@@ -2270,7 +2286,7 @@ class TrackPlotOptions():
 
         #spinbox
         self.frameLength_selector = pg.SpinBox(value=10, int=True)
-        self.frameLength_selector.setSingleStep(10)       #########TODDO! FIX THIS - AND INDEXING PROBLEM IN CALL  BY ADDING OBJECT NAMES ABOVE
+        self.frameLength_selector.setSingleStep(10)
         self.frameLength_selector.setMinimum(1)
         self.frameLength_selector.setMaximum(100000)
         self.frameLength_selector_label = QLabel('milliseconds per frame')
@@ -2318,6 +2334,14 @@ class TrackPlotOptions():
 
         #add layout widget to dock
         self.d3.addWidget(self.w3)
+
+        #add connections
+        self.backgroundSubtract_checkbox.stateChanged.connect(self.backgroundSubtract)
+        self.background_selector.valueChanged.connect(self.backgroundSubtract)
+
+    def backgroundSubtract(self):
+        #subtract background from intensity column (estimated camera value already subtracted from intensity column values, so subtract from background)
+        self.mainGUI.data['intensity - background'] = self.mainGUI.data['intensity'] - self.background_selector.value() + self.mainGUI.estimatedCameraBlackLevel
 
     def show(self):
         """
@@ -2384,6 +2408,9 @@ class Overlay():
         self.showData_button = QPushButton('Show Data')
         self.showData_button.pressed.connect(self.toggleData)
 
+        #detect filaments button
+        self.getFilaments_button = QPushButton('Detect Filaments')
+        self.getFilaments_button.pressed.connect(self.detectFilaments)
 
         #Opacity slider
         self.opacity = SliderLabel(1)
@@ -2412,6 +2439,7 @@ class Overlay():
         self.w2.addWidget(self.gammaCorrect, row=4,col=1)
         self.w2.addWidget(self.gamma, row=5,col=0)
         self.w2.addWidget(self.showData_button, row=6,col=0)
+        self.w2.addWidget(self.getFilaments_button, row=7,col=0)
 
         #add layout widget to dock
         self.d2.addWidget(self.w2)
@@ -2433,7 +2461,6 @@ class Overlay():
         self.bgItem.hist_luttt = HistogramLUTWidget(fillHistogram = False)
         self.bgItem.hist_luttt.setMinimumWidth(110)
         self.bgItem.hist_luttt.setImageItem(self.bgItem)
-
 
         self.overlayWindow.ui.gridLayout.addWidget(self.bgItem.hist_luttt, 0, 4, 1, 4)
 
@@ -2491,6 +2518,60 @@ class Overlay():
     def loadData(self):
         self.dataIMG = self.mainGUI.plotWindow.image
         self.overlayWindow.setImage(self.dataIMG)
+
+    def detectFilaments(self):
+        actin_img = self.overlayIMG
+        thresh = threshold_otsu(actin_img)
+        #binary = actin_img > thresh
+        #edges = canny(binary, sigma=3)
+
+        bw = closing(actin_img > thresh, square(5))
+        # remove artifacts connected to image border
+        cleared = clear_border(bw)
+
+        # label image regions
+        label_image = label(cleared)
+        # to make the background transparent, pass the value of `bg_label`,
+        # and leave `bg_color` as `None` and `kind` as `overlay`
+        image_label_overlay = label2rgb(label_image, image=actin_img, bg_label=0)
+
+        fig6, [axs6,axs7,axs8] = plt.subplots(1, 3, figsize=(15, 5))
+        axs6.imshow(actin_img, origin='lower')
+        #axs6.scatter(longTracks['x'],longTracks['y'])
+
+        axs7.imshow(cleared, origin='lower')
+        axs8.imshow(image_label_overlay, origin='lower')
+
+
+        orientationList = []
+
+        for props in regionprops(label_image):
+            # take regions with large enough areas
+            if props.area >= 50:
+                y0, x0 = props.centroid
+                orientation = props.orientation
+                orientationList.append(degrees(orientation))
+                x1 = x0 + math.cos(orientation) * 0.5 * props.minor_axis_length
+                y1 = y0 - math.sin(orientation) * 0.5 * props.minor_axis_length
+                x2 = x0 - math.sin(orientation) * 0.5 * props.major_axis_length
+                y2 = y0 - math.cos(orientation) * 0.5 * props.major_axis_length
+
+                axs8.plot((x0, x1), (y0, y1), '-r', linewidth=2.5)
+                axs8.plot((x0, x2), (y0, y2), '-r', linewidth=2.5)
+                axs8.plot(x0, y0, '.g', markersize=15)
+
+
+
+        correctedDegList_actin = []
+        for deg in orientationList:
+            if deg < 0:
+                deg = deg + 180
+            correctedDegList_actin.append(deg)
+
+        fig6.show()
+
+        # fig7, axs9 = plt.subplots(1, 1, figsize=(5, 5))
+        # axs9.hist(correctedDegList_actin,10)
 
     def show(self):
         """
@@ -2606,7 +2687,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.displayDiffusionPlot = False
         self.unlinkedPoints = None
         self.displayUnlinkedPoints = False
-        self.estimatedCameraBlackLevel = None
+        self.estimatedCameraBlackLevel = 0
 
         #initialize track plot options window and hide it
         self.trackPlotOptions = TrackPlotOptions(self)
@@ -2791,6 +2872,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         print('Data loaded (first 5 rows displayed):')
         print(self.data.head())
         print('-------------------------------------')
+
+        #add background subtracted intensity column
+        self.data['intensity - background'] = self.data['intensity']
 
         # Create a dictionary from the column names of the data
         self.columns = self.data.columns
@@ -3157,7 +3241,13 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
                 # Extract track data for the selected track
                 trackData = self.data[self.data['track_number'] == int(self.displayTrack)]
                 frame = trackData['frame'].to_numpy()
-                intensity = trackData['intensity'].to_numpy()
+
+                #use background subtracted intensity if option selected
+                if self.trackPlotOptions.backgroundSubtract_checkbox.isChecked():
+                    intensity = trackData['intensity - background'].to_numpy()
+                else:
+                    intensity = trackData['intensity'].to_numpy()
+
                 distance = trackData['distanceFromOrigin'].to_numpy()
                 zeroed_X = trackData['zeroed_X'].to_numpy()
                 zeroed_Y = trackData['zeroed_Y'].to_numpy()
@@ -3462,7 +3552,6 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             self.showDiffusion_button.setText('Show Diffusion')
 
 
-
     def toggleTrackPlotOptions(self):
         if self.trackPlotOptions == None:
             # Create a new instance of the DiffusionPlotWindow class
@@ -3477,8 +3566,6 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             # Hide the window if it is already displayed
             self.trackPlotOptions.hide()
             self.displayTrackPlotOptions = False
-
-
 
 
     def togglePointMap(self):
