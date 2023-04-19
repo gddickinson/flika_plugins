@@ -2312,6 +2312,11 @@ class TrackPlotOptions():
         #background options widget
         self.w3 = pg.LayoutWidget()
 
+        self.intensityChoice_Box = pg.ComboBox()
+        self.intensityChoice = {'intensity':'intensity', 'intensity - mean roi1':'intensity - mean roi1'}
+        self.intensityChoice_Box.setItems(self.intensityChoice)
+        self.intensityChoice_Box_label = QLabel('Intensity plot data')
+
         self.backgroundSubtract_checkbox = CheckBox()
         self.backgroundSubtract_checkbox.setChecked(False)
         self.backgroundSubtract_label = QLabel('Subtract Background')
@@ -2320,32 +2325,26 @@ class TrackPlotOptions():
         self.background_selector.setSingleStep(1)
         self.background_selector.setMinimum(0)
         self.background_selector.setMaximum(10000)
-        self.background_selector_label = QLabel('background intensity')
+        self.background_selector_label = QLabel('background value')
 
         self.estimatedCameraBlack = QLabel('')
         self.estimatedCameraBlack_label = QLabel('estimated camera black')
 
-        self.w3.addWidget(self.backgroundSubtract_checkbox, row=0,col=1)
-        self.w3.addWidget(self.backgroundSubtract_label, row=0,col=0)
+        self.w3.addWidget(self.intensityChoice_Box, row=0,col=1)
+        self.w3.addWidget(self.intensityChoice_Box_label, row=0,col=0)
 
-        self.w3.addWidget(self.background_selector, row=1,col=1)
-        self.w3.addWidget(self.background_selector_label, row=1,col=0)
+        self.w3.addWidget(self.backgroundSubtract_checkbox, row=1,col=1)
+        self.w3.addWidget(self.backgroundSubtract_label, row=1,col=0)
 
-        self.w3.addWidget(self.estimatedCameraBlack, row=2,col=1)
-        self.w3.addWidget(self.estimatedCameraBlack_label, row=2,col=0)
+        self.w3.addWidget(self.background_selector, row=2,col=1)
+        self.w3.addWidget(self.background_selector_label, row=2,col=0)
+
+        self.w3.addWidget(self.estimatedCameraBlack, row=3,col=1)
+        self.w3.addWidget(self.estimatedCameraBlack_label, row=3,col=0)
 
         #add layout widget to dock
         self.d3.addWidget(self.w3)
 
-        #add connections
-        self.backgroundSubtract_checkbox.stateChanged.connect(self.backgroundSubtract)
-        self.background_selector.valueChanged.connect(self.backgroundSubtract)
-
-    def backgroundSubtract(self):
-        '''subtract background from intensity column
-        (estimated camera value already subtracted from intensity column values, so subtract from background)
-        '''
-        self.mainGUI.data['intensity - background'] = self.mainGUI.data['intensity'] - self.background_selector.value() + self.mainGUI.estimatedCameraBlackLevel
 
     def show(self):
         """
@@ -3326,11 +3325,11 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
                 trackData = self.data[self.data['track_number'] == int(self.displayTrack)]
                 frame = trackData['frame'].to_numpy()
 
+                #intensity trace choice from trackPlot options
+                intensity = trackData[self.trackPlotOptions.intensityChoice_Box.value()].to_numpy()
                 #use background subtracted intensity if option selected
                 if self.trackPlotOptions.backgroundSubtract_checkbox.isChecked():
-                    intensity = trackData['intensity - background'].to_numpy()
-                else:
-                    intensity = trackData['intensity'].to_numpy()
+                    intensity = intensity - self.trackPlotOptions.background_selector.value()
 
                 distance = trackData['distanceFromOrigin'].to_numpy()
                 zeroed_X = trackData['zeroed_X'].to_numpy()
