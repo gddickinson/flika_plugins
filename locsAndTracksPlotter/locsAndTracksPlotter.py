@@ -1508,7 +1508,7 @@ class DiffusionPlotWindow():
 
 
 
-#rolling varience function
+#rolling window function
 def rollingFunc(arr, window_size=6, func_type='mean'):
     # Convert array of integers to pandas series
     numbers_series = pd.Series(arr)
@@ -1523,6 +1523,8 @@ def rollingFunc(arr, window_size=6, func_type='mean'):
         moving_averages = windows.mean()
     if func_type == 'std':
         moving_averages = windows.std()
+    if func_type == 'variance':
+        moving_averages = np.square(windows.std())
 
     # Convert pandas series back to list
     moving_averages_list = moving_averages.tolist()
@@ -1683,8 +1685,8 @@ class TrackWindow(BaseProcess):
 
         #update roling intensity varience
         rollingTime = rollingFunc(time, func_type='mean')
-        rollingVarience = rollingFunc(intensity, func_type='std')
-        self.plt6.plot(rollingTime, rollingVarience, stepMode=False, brush=(0,0,255,150), clear=True)
+        rollingVariance = rollingFunc(intensity, func_type='variance')
+        self.plt6.plot(rollingTime, rollingVariance, stepMode=False, brush=(0,0,255,150), clear=True)
 
         # if self.autoscaleX:
         #     self.plt1.setXRange(np.min(x),np.max(x),padding=0)
