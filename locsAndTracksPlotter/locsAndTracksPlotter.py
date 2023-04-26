@@ -1506,6 +1506,33 @@ class DiffusionPlotWindow():
     def hide(self):
         self.win.hide()
 
+
+
+#rolling varience function
+def rollingFunc(arr, window_size=6, func_type='mean'):
+    # Convert array of integers to pandas series
+    numbers_series = pd.Series(arr)
+
+    # Get the window of series
+    # of observations of specified window size
+    windows = numbers_series.rolling(window_size)
+
+    # Create a series of moving
+    # averages of each window
+    if func_type == 'mean':
+        moving_averages = windows.mean()
+    if func_type == 'std':
+        moving_averages = windows.std()
+
+    # Convert pandas series back to list
+    moving_averages_list = moving_averages.tolist()
+
+    # Remove null entries from the list
+    final_list = moving_averages_list[window_size - 1:]
+
+    return final_list
+
+
 class TrackWindow(BaseProcess):
     def __init__(self, mainGUI):
         super().__init__()
@@ -1557,13 +1584,13 @@ class TrackWindow(BaseProcess):
 
         self.win.nextRow()  # Move to the next row of the window for adding more widgets
 
+        # Create a plot for displaying the direction relative to the origin of the
+        self.plt6 = self.win.addPlot(title='intensity varience')
+        self.plt6.getAxis('left').enableAutoSIPrefix(False)
+
         # Create a plot for displaying the instantaneous velocity of the track
         self.plt5 = self.win.addPlot(title='instantaneous velocity')  # Create a PyqtGraph PlotItem object
         self.plt5.getAxis('left').enableAutoSIPrefix(False)  # Disable auto scientific notation for the y-axis
-
-        # Create a plot for displaying the direction relative to the origin of the
-        self.plt6 = self.win.addPlot(title='direction relative to origin')
-        self.plt6.getAxis('left').enableAutoSIPrefix(False)
 
         self.win.nextRow()
 
@@ -1583,7 +1610,7 @@ class TrackWindow(BaseProcess):
         self.plt5.setLabel('left', 'velocity', units ='pixels/frame')
         self.plt5.setLabel('bottom', 'Time', units ='Frames')
 
-        self.plt6.setLabel('left', 'direction moved', units ='degrees')
+        self.plt6.setLabel('left', 'rolling average varience', units ='intensity')
         self.plt6.setLabel('bottom', 'Time', units ='Frames')
 
         self.win.nextRow()
@@ -1652,7 +1679,12 @@ class TrackWindow(BaseProcess):
         self.plt5.plot(time, velocity, stepMode=False, brush=(0,0,255,150), clear=True)
 
         #update direction
-        self.plt6.plot(time, direction, stepMode=False, brush=(0,0,255,150), clear=True)
+        #self.plt6.plot(time, direction, stepMode=False, brush=(0,0,255,150), clear=True)
+
+        #update roling intensity varience
+        rollingTime = rollingFunc(time, func_type='mean')
+        rollingVarience = rollingFunc(intensity, func_type='std')
+        self.plt6.plot(rollingTime, rollingVarience, stepMode=False, brush=(0,0,255,150), clear=True)
 
         # if self.autoscaleX:
         #     self.plt1.setXRange(np.min(x),np.max(x),padding=0)
@@ -2209,9 +2241,6 @@ def gammaCorrect(img, gamma):
     return np.array(maxIntensity*(img / maxIntensity) ** gammaCorrection)
 
 
-
-
-
 class TrackPlotOptions():
     '''
     Choose colours etc for track plots
@@ -2228,12 +2257,47 @@ class TrackPlotOptions():
         self.win.setWindowTitle('Display Options')
 
         ## Create docks
+        self.d0 = Dock("Point Options")
         self.d1 = Dock("Track Options")
         self.d2 = Dock("Recording Parameters")
         self.d3 = Dock("Background subtraction")
+        self.area.addDock(self.d0)
         self.area.addDock(self.d1)
         self.area.addDock(self.d2)
         self.area.addDock(self.d3)
+
+        #point options widget
+        self.w0 = pg.LayoutWidget()
+
+        self.pointColour_Box = pg.ComboBox()
+        self.pointColours = {'green': QColor(Qt.green), 'red': QColor(Qt.red), 'blue': QColor(Qt.blue)}
+        self.pointColour_Box.setItems(self.pointColours)
+        self.pointColour_Box_label = QLabel('Point Colour')
+
+        self.pointSize_selector = pg.SpinBox(value=5, int=True)
+        self.pointSize_selector.setSingleStep(1)
+        self.pointSize_selector.setMinimum(0)
+        self.pointSize_selector.setMaximum(100)
+        self.pointSize_selector_label = QLabel('Point Size')
+
+        self.unlinkedpointColour_Box = pg.ComboBox()
+        self.unlinkedpointColours = {'blue': QColor(Qt.blue), 'green': QColor(Qt.green), 'red': QColor(Qt.red)}
+        self.unlinkedpointColour_Box.setItems(self.unlinkedpointColours)
+        self.unlinkedpointColour_Box_label = QLabel('Unlinked Point Colour')
+
+
+        #layout
+        self.w0.addWidget(self.unlinkedpointColour_Box_label , row=0,col=0)
+        self.w0.addWidget(self.unlinkedpointColour_Box, row=0,col=1)
+
+        self.w0.addWidget(self.pointColour_Box_label , row=1,col=0)
+        self.w0.addWidget(self.pointColour_Box, row=1,col=1)
+
+        self.w0.addWidget(self.pointSize_selector_label , row=2,col=0)
+        self.w0.addWidget(self.pointSize_selector , row=2,col=1)
+
+        #add layout widget to dock
+        self.d0.addWidget(self.w0)
 
         #track options widget
         self.w1 = pg.LayoutWidget()
@@ -3023,50 +3087,51 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         return df
 
     def plotPointsOnStack(self, points, pointColor, unlinkedPoints=None, unlinkedColour=QColor(Qt.blue)):
-            points_byFrame = points[['frame','x','y']]
-            #align frames with display
-            points_byFrame['frame'] =  points_byFrame['frame']+1
-            # Convert the points DataFrame into a numpy array
-            pointArray = points_byFrame.to_numpy()
-            # Create an empty list for each frame in the stack
+        points_byFrame = points[['frame','x','y']]
+        #align frames with display
+        points_byFrame['frame'] =  points_byFrame['frame']+1
+        # Convert the points DataFrame into a numpy array
+        pointArray = points_byFrame.to_numpy()
+        # Create an empty list for each frame in the stack
+        self.plotWindow.scatterPoints = [[] for _ in np.arange(self.plotWindow.mt)]
+        #set pointsize
+        pointSize = self.trackPlotOptions.pointSize_selector.value()
 
-            self.plotWindow.scatterPoints = [[] for _ in np.arange(self.plotWindow.mt)]
+
+        # Iterate through each point in the point array and add it to the appropriate frame's list
+        for pt in pointArray:
+            t = int(pt[0])
+            if self.plotWindow.mt == 1:
+                t = 0
+            #pointSize = g.m.settings['point_size']
+            #position = [pt[1]+(.5* (1/pixelSize)), pt[2]+(.5* (1/pixelSize)), pointColor, pointSize]
+            position = [pt[1], pt[2], pointColor, pointSize]
+
+            self.plotWindow.scatterPoints[t].append(position)
+
+
+        if self.displayUnlinkedPoints:
+            unlinkedPoints_byFrame = unlinkedPoints[['frame','x','y']]
+            unlinkedPoints_byFrame['frame'] =  unlinkedPoints_byFrame['frame']+1
+            # Convert the points DataFrame into a numpy array
+            unlinkedPointArray = unlinkedPoints_byFrame.to_numpy()
 
 
             # Iterate through each point in the point array and add it to the appropriate frame's list
-            for pt in pointArray:
+            for pt in unlinkedPointArray:
                 t = int(pt[0])
                 if self.plotWindow.mt == 1:
                     t = 0
-                pointSize = g.m.settings['point_size']
+                #pointSize = g.m.settings['point_size']
                 #position = [pt[1]+(.5* (1/pixelSize)), pt[2]+(.5* (1/pixelSize)), pointColor, pointSize]
-                position = [pt[1], pt[2], pointColor, pointSize]
+                position = [pt[1], pt[2], unlinkedColour, pointSize]
 
                 self.plotWindow.scatterPoints[t].append(position)
 
 
-            if self.displayUnlinkedPoints:
-                unlinkedPoints_byFrame = unlinkedPoints[['frame','x','y']]
-                unlinkedPoints_byFrame['frame'] =  unlinkedPoints_byFrame['frame']+1
-                # Convert the points DataFrame into a numpy array
-                unlinkedPointArray = unlinkedPoints_byFrame.to_numpy()
 
-
-                # Iterate through each point in the point array and add it to the appropriate frame's list
-                for pt in unlinkedPointArray:
-                    t = int(pt[0])
-                    if self.plotWindow.mt == 1:
-                        t = 0
-                    pointSize = g.m.settings['point_size']
-                    #position = [pt[1]+(.5* (1/pixelSize)), pt[2]+(.5* (1/pixelSize)), pointColor, pointSize]
-                    position = [pt[1], pt[2], unlinkedColour, pointSize]
-
-                    self.plotWindow.scatterPoints[t].append(position)
-
-
-
-            # Update the index of the image stack to include the new points
-            self.plotWindow.updateindex()
+        # Update the index of the image stack to include the new points
+        self.plotWindow.updateindex()
 
 
     def hidePointData(self):
@@ -3093,7 +3158,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             self.unlinkedPoints = None
 
         # Plot the points on the image stack using the plotPointsOnStack() method
-        self.plotPointsOnStack(self.points, QColor(g.m.settings['point_color']), unlinkedPoints=self.unlinkedPoints)
+        self.plotPointsOnStack(self.points, self.trackPlotOptions.pointColour_Box.value(), unlinkedPoints=self.unlinkedPoints, unlinkedColour=self.trackPlotOptions.unlinkedpointColour_Box.value())
 
         # Display a message in the status bar indicating that the point data has been plotted
         g.m.statusBar().showMessage('point data plotted to current window')
