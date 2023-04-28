@@ -38,7 +38,7 @@ import skimage.io as skio
 from tqdm import tqdm
 
 from skimage.filters import threshold_otsu
-from skimage import data, color
+from skimage import data, color, measure
 from skimage.transform import hough_circle, hough_circle_peaks, hough_ellipse
 from skimage.feature import canny
 from skimage.draw import circle_perimeter, ellipse_perimeter
@@ -2497,8 +2497,17 @@ class Overlay():
         self.gamma.setRange(0.0,20.0)
         self.gamma.setValue(0.0)
         self.gamma.valueChanged.connect(self.updateGamma)
-        self.gamma_label = QLabel('Gamma')
+        self.gamma_label = QLabel('Gamma Correct')
         self.gammaCorrect.stateChanged.connect(self.resetGamma)
+
+        #Threshold slider
+        self.manualThreshold = CheckBox()
+        self.threshold_slider = SliderLabel(1)
+        self.threshold_slider.setRange(0.0,20.0)
+        self.threshold_slider.setValue(0.0)
+        self.threshold_slider.valueChanged.connect(self.detectFilaments)
+        self.threshold_label = QLabel('Manual Threshold For Filament Detection')
+        self.manualThreshold.stateChanged.connect(self.detectFilaments)
 
         #add buttons etc to layout widget
         self.w2.addWidget(self.loadTiff_button, row=1,col=0)
@@ -2509,9 +2518,14 @@ class Overlay():
         self.w2.addWidget(self.gamma_label, row=4,col=0)
         self.w2.addWidget(self.gammaCorrect, row=4,col=1)
         self.w2.addWidget(self.gamma, row=5,col=0)
-        self.w2.addWidget(self.showData_button, row=6,col=0)
-        self.w2.addWidget(self.getFilaments_button, row=7,col=0)
-        self.w2.addWidget(self.getTrackAxis_button, row=8,col=0)
+
+        self.w2.addWidget(self.threshold_label, row=6,col=0)
+        self.w2.addWidget(self.manualThreshold, row=6,col=1)
+        self.w2.addWidget(self.threshold_slider, row=7,col=0)
+
+        self.w2.addWidget(self.showData_button, row=8,col=0)
+        self.w2.addWidget(self.getFilaments_button, row=9,col=0)
+        self.w2.addWidget(self.getTrackAxis_button, row=10,col=0)
 
         #add layout widget to dock
         self.d2.addWidget(self.w2)
@@ -2561,6 +2575,7 @@ class Overlay():
 
         self.bgItem.setImage(green, autoLevels=False, levels=levels, opacity=self.opacity.value())
 
+
     def loadTiff(self):
         """ imports the tiff file to overlay """
         #get filename
@@ -2579,6 +2594,10 @@ class Overlay():
 
         #overlay images
         self.overlay()
+
+        #set manual threshold slider range
+        self.threshold_slider.setRange(np.min(self.overLayIMG),np.max(self.overlayIMG))
+
 
     def toggleData(self):
         ...
@@ -2670,7 +2689,11 @@ class Overlay():
     def detectFilaments(self):
         '''determine direction of thresholded filaments'''
         actin_img = self.overlayIMG
-        thresh = threshold_otsu(actin_img)
+        if self.manualThreshold.isChecked():
+            thresh = actin_img > self.threshold_slider.value()
+
+        else:
+            thresh = threshold_otsu(actin_img)
         #binary = actin_img > thresh
         #edges = canny(binary, sigma=3)
 
@@ -2709,8 +2732,6 @@ class Overlay():
                 axs8.plot((x0, x2), (y0, y2), '-r', linewidth=2.5)
                 axs8.plot(x0, y0, '.g', markersize=15)
 
-
-
         correctedDegList_actin = []
         for deg in orientationList:
             if deg < 0:
@@ -2721,6 +2742,42 @@ class Overlay():
 
         # fig7, axs9 = plt.subplots(1, 1, figsize=(5, 5))
         # axs9.hist(correctedDegList_actin,10)
+
+        labels = measure.label(cleared)
+        props = measure.regionprops(labels, actin_img)
+
+        #add label objects to overlay window
+        for index in range(1, labels.max()):
+            label_i = props[index].label
+            contour = measure.find_contours(labels == label_i, 0.5)[0]
+            y, x = contour.T
+
+            pathitem = QGraphicsPathItem(self.overlayWindow.view)
+
+            pen = pg.functions.mkPen(width=1)
+
+            # set the color of the pen based on the track color
+            pen.setColor(QColor(Qt.red))
+
+            # set the pen for the path items
+            pathitem.setPen(pen)
+
+            # add the path items to the view(s)
+            self.overlayWindow.view.addItem(pathitem)
+
+            # keep track of the path items
+            self.pathitems.append(pathitem)
+
+            # create a QPainterPath for the track and set the path for the path item
+            path = QPainterPath(QPointF(x[0],y[0]))
+
+            path_overlay = QPainterPath(QPointF(x[0],y[0]))
+
+            for i in np.arange(1, len(x)):
+                path.lineTo(QPointF(x[i],y[i]))
+
+            pathitem.setPath(path)
+
 
     def show(self):
         """
