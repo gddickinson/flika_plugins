@@ -2445,6 +2445,15 @@ class Overlay():
         self.overlayFileName = None
 
         self.pathitems = []
+        self.pathitemsActin = []
+
+        self.actinLabels = []
+        self.pointsInFilaments= []
+        self.pointsNotInFilaments = []
+
+        self.pointsPlotted = False
+
+        self.pointMapScatter = None
 
         # Set up main window
         self.win = QMainWindow()
@@ -2509,6 +2518,29 @@ class Overlay():
         self.threshold_label = QLabel('Manual Threshold For Filament Detection')
         self.manualThreshold.stateChanged.connect(self.detectFilaments)
 
+        #Size limit slider
+        self.maxSize_slider = SliderLabel(1)
+        self.maxSize_slider.setRange(0,10000)
+        self.maxSize_slider.setValue(1000)
+        self.maxSize_slider.valueChanged.connect(self.detectFilaments)
+        self.maxSize_label = QLabel('Max size For Filament Detection')
+
+        self.minSize_slider = SliderLabel(1)
+        self.minSize_slider.setRange(0,10000)
+        self.minSize_slider.setValue(50)
+        self.minSize_slider.valueChanged.connect(self.detectFilaments)
+        self.minSize_label = QLabel('Min size For Filament Detection')
+
+
+        #Point Plot Threshold slider
+        self.pointThreshold = CheckBox()
+        self.pointThreshold_slider = SliderLabel(1)
+        self.pointThreshold_slider.setRange(0.0,1000.0)
+        self.pointThreshold_slider.setValue(0.0)
+        self.pointThreshold_slider.valueChanged.connect(self.plotPoints)
+        self.pointThreshold_label = QLabel('Filter Points By Actin Intensity')
+        self.pointThreshold.stateChanged.connect(self.plotPoints)
+
         #add buttons etc to layout widget
         self.w2.addWidget(self.loadTiff_button, row=1,col=0)
 
@@ -2523,24 +2555,34 @@ class Overlay():
         self.w2.addWidget(self.manualThreshold, row=6,col=1)
         self.w2.addWidget(self.threshold_slider, row=7,col=0)
 
-        self.w2.addWidget(self.showData_button, row=8,col=0)
-        self.w2.addWidget(self.getFilaments_button, row=9,col=0)
-        self.w2.addWidget(self.getTrackAxis_button, row=10,col=0)
+        self.w2.addWidget(self.minSize_label, row=8,col=0)
+        self.w2.addWidget(self.minSize_slider, row=9,col=0)
+
+        self.w2.addWidget(self.maxSize_label, row=10,col=0)
+        self.w2.addWidget(self.maxSize_slider, row=11,col=0)
+
+        self.w2.addWidget(self.pointThreshold_label, row=12,col=0)
+        self.w2.addWidget(self.pointThreshold, row=12,col=1)
+        self.w2.addWidget(self.pointThreshold_slider, row=13,col=0)
+
+        self.w2.addWidget(self.showData_button, row=14,col=0)
+        self.w2.addWidget(self.getFilaments_button, row=15,col=0)
+        self.w2.addWidget(self.getTrackAxis_button, row=16,col=0)
 
         #add layout widget to dock
         self.d2.addWidget(self.w2)
 
     def overlay(self):
         '''overlay single tiff file and recording'''
-        green = self.overlayIMG
+        self.overlayedIMG = self.overlayIMG
 
         #self.OverlayLUT = 'inferno'
         self.OverlayMODE = QPainter.CompositionMode_SourceOver
 
         self.bgItem = pg.ImageItem()
         if self.gammaCorrect.isChecked():
-            green = gammaCorrect(green, self.gamma.value())
-        self.bgItem.setImage(green, autoRange=False, autoLevels=False, opacity=self.opacity.value())
+            self.overlayedIMG = gammaCorrect(self.overlayedIMG, self.gamma.value())
+        self.bgItem.setImage(self.overlayedIMG, autoRange=False, autoLevels=False, opacity=self.opacity.value())
         self.bgItem.setCompositionMode(self.OverlayMODE)
         self.overlayWindow.view.addItem(self.bgItem)
 
@@ -2596,11 +2638,18 @@ class Overlay():
         self.overlay()
 
         #set manual threshold slider range
-        self.threshold_slider.setRange(np.min(self.overLayIMG),np.max(self.overlayIMG))
+        self.threshold_slider.setRange(np.min(self.overlayIMG),np.max(self.overlayIMG))
+        self.pointThreshold_slider.setRange(np.min(self.overlayIMG),np.max(self.overlayIMG))
+
+        #add actin image pixel intensity to data df
+        self.addActinIntensity()
 
 
     def toggleData(self):
-        ...
+        if self.pointsPlotted:
+            self.hidePoints()
+        else:
+            self.plotPoints()
 
     def loadData(self):
         self.dataIMG = self.mainGUI.plotWindow.image
@@ -2688,9 +2737,19 @@ class Overlay():
 
     def detectFilaments(self):
         '''determine direction of thresholded filaments'''
-        actin_img = self.overlayIMG
+        actin_img = self.overlayedIMG
+
+        #flip image to match pyqtgraph layout
+        actin_img = np.rot90(actin_img)
+        actin_img = np.flipud(actin_img)
+
+
+        #clear plotted outlines and actin label list
+        self.clearActinOutlines()
+        self.actinLabels = []
+
         if self.manualThreshold.isChecked():
-            thresh = actin_img > self.threshold_slider.value()
+            thresh = self.threshold_slider.value()
 
         else:
             thresh = threshold_otsu(actin_img)
@@ -2717,20 +2776,87 @@ class Overlay():
 
         orientationList = []
 
-        for props in regionprops(label_image):
-            # take regions with large enough areas
-            if props.area >= 50:
-                y0, x0 = props.centroid
-                orientation = props.orientation
-                orientationList.append(degrees(orientation))
-                x1 = x0 + math.cos(orientation) * 0.5 * props.minor_axis_length
-                y1 = y0 - math.sin(orientation) * 0.5 * props.minor_axis_length
-                x2 = x0 - math.sin(orientation) * 0.5 * props.major_axis_length
-                y2 = y0 - math.cos(orientation) * 0.5 * props.major_axis_length
+        # for props in regionprops(label_image):
+        #     # take regions with large enough areas
+        #     if props.area >= self.minSize_slider.value() and props.area < self.maxSize_slider.value():
+        #         y0, x0 = props.centroid
+        #         orientation = props.orientation
+        #         orientationList.append(degrees(orientation))
+        #         x1 = x0 + math.cos(orientation) * 0.5 * props.minor_axis_length
+        #         y1 = y0 - math.sin(orientation) * 0.5 * props.minor_axis_length
+        #         x2 = x0 - math.sin(orientation) * 0.5 * props.major_axis_length
+        #         y2 = y0 - math.cos(orientation) * 0.5 * props.major_axis_length
 
-                axs8.plot((x0, x1), (y0, y1), '-r', linewidth=2.5)
-                axs8.plot((x0, x2), (y0, y2), '-r', linewidth=2.5)
-                axs8.plot(x0, y0, '.g', markersize=15)
+        #         axs8.plot((x0, x1), (y0, y1), '-r', linewidth=2.5)
+        #         axs8.plot((x0, x2), (y0, y2), '-r', linewidth=2.5)
+        #         axs8.plot(x0, y0, '.g', markersize=15)
+
+        # correctedDegList_actin = []
+        # for deg in orientationList:
+        #     if deg < 0:
+        #         deg = deg + 180
+        #     correctedDegList_actin.append(deg)
+
+        # axs6.invert_yaxis()
+        # axs7.invert_yaxis()
+        # axs8.invert_yaxis()
+        # #fig6.show()
+
+        # # fig7, axs9 = plt.subplots(1, 1, figsize=(5, 5))
+        # # axs9.hist(correctedDegList_actin,10)
+
+        labels = measure.label(cleared)
+        props = measure.regionprops(labels, actin_img)
+
+        #table = measure.regionprops_table(actin_img,properties=['label','area'])
+        #print(table)
+
+        #add label objects to overlay window
+        for index in range(1, labels.max()):
+
+            label_i = props[index].label
+            area = props[index].area
+
+            if area >= self.minSize_slider.value() and area < self.maxSize_slider.value():
+                self.actinLabels.append(labels == label_i)
+                contour = measure.find_contours(labels == label_i, 0.5)[0]
+                y, x = contour.T
+
+                pathitem = QGraphicsPathItem(self.overlayWindow.view)
+
+                pen = pg.functions.mkPen(width=1)
+
+                # set the color of the pen based on the track color
+                pen.setColor(QColor(Qt.red))
+
+                # set the pen for the path items
+                pathitem.setPen(pen)
+
+                # add the path items to the view(s)
+                self.overlayWindow.view.addItem(pathitem)
+
+                # keep track of the path items
+                self.pathitemsActin.append(pathitem)
+
+                # create a QPainterPath for the track and set the path for the path item
+                path = QPainterPath(QPointF(x[0],y[0]))
+
+                path_overlay = QPainterPath(QPointF(x[0],y[0]))
+
+                for i in np.arange(1, len(x)):
+                    path.lineTo(QPointF(x[i],y[i]))
+
+                pathitem.setPath(path)
+
+                #get centroids and orientation
+                y0, x0 = props[index].centroid
+                orientation = props[index].orientation
+                orientationList.append(degrees(orientation))
+                x1 = x0 + math.cos(orientation) * 0.5 * props[index].minor_axis_length
+                y1 = y0 - math.sin(orientation) * 0.5 * props[index].minor_axis_length
+                x2 = x0 - math.sin(orientation) * 0.5 * props[index].major_axis_length
+                y2 = y0 - math.cos(orientation) * 0.5 * props[index].major_axis_length
+
 
         correctedDegList_actin = []
         for deg in orientationList:
@@ -2738,45 +2864,60 @@ class Overlay():
                 deg = deg + 180
             correctedDegList_actin.append(deg)
 
-        fig6.show()
 
-        # fig7, axs9 = plt.subplots(1, 1, figsize=(5, 5))
-        # axs9.hist(correctedDegList_actin,10)
+    def getIntensities(self, img, x_positions, y_positions):
+        y_max, x_max = img.shape
+        #intensities retrieved from image stack using point data (converted from floats to ints)
+        y_positions = y_positions.astype(int)
+        x_positions = x_positions.astype(int)
+        #edge cases
+        y_positions[y_positions == y_max] = y_max
+        x_positions[x_positions == x_max] = x_max
+        intensities = img[x_positions, y_positions]
+        return intensities
 
-        labels = measure.label(cleared)
-        props = measure.regionprops(labels, actin_img)
+    def addActinIntensity(self):
+        #add column with actin intensitys to data df
+        self.mainGUI.data['actin_intensity'] = self.getIntensities(self.overlayedIMG, self.mainGUI.data['x'], self.mainGUI.data['y'])
+        if self.mainGUI.useFilteredData:
+            self.mainGUI.filteredData['actin_intensity'] = self.getIntensities(self.overlayedIMG, self.mainGUI.filteredData['x'], self.mainGUI.filteredData['y'])
+        self.mainGUI.data_unlinked['actin_intensity'] = self.getIntensities(self.overlayedIMG, self.mainGUI.data_unlinked['x'], self.mainGUI.data_unlinked['y'])
 
-        #add label objects to overlay window
-        for index in range(1, labels.max()):
-            label_i = props[index].label
-            contour = measure.find_contours(labels == label_i, 0.5)[0]
-            y, x = contour.T
+    def plotPoints(self):
+        #clear scatterplot
+        if self.pointMapScatter is not None:
+            self.pointMapScatter.clear()
 
-            pathitem = QGraphicsPathItem(self.overlayWindow.view)
+        # Check if filtered data is being used, if not use the original data
+        if self.mainGUI.useFilteredData == False:
+            df = self.mainGUI.data
+        else:
+            df = self.mainGUI.filteredData
 
-            pen = pg.functions.mkPen(width=1)
+        #add unlinked points if displayed
+        if self.mainGUI.displayUnlinkedPoints:
+            df = df.append(self.mainGUI.data_unlinked)
 
-            # set the color of the pen based on the track color
-            pen.setColor(QColor(Qt.red))
+        #filter df based on actin_intensity column
+        if self.pointThreshold.isChecked():
+            df = df[df['actin_intensity'] > self.pointThreshold_slider.value()]
 
-            # set the pen for the path items
-            pathitem.setPen(pen)
+        # Create a ScatterPlotItem and add it to the ImageView
+        self.pointMapScatter = pg.ScatterPlotItem(size=2, pen=None, brush=pg.mkBrush(30, 255, 35, 255))
+        self.pointMapScatter.setSize(2, update=False)
+        self.pointMapScatter.setData(df['x'], df['y'])
+        self.overlayWindow.view.addItem(self.pointMapScatter)
+        #update flag
+        self.pointsPlotted = True
 
-            # add the path items to the view(s)
-            self.overlayWindow.view.addItem(pathitem)
+    def hidePoints(self):
+        # Remove the ScatterPlotItem from the ImageView
+        self.overlayWindow.view.removeItem(self.pointMapScatter)
+        #update flag
+        self.pointsPlotted = False
 
-            # keep track of the path items
-            self.pathitems.append(pathitem)
 
-            # create a QPainterPath for the track and set the path for the path item
-            path = QPainterPath(QPointF(x[0],y[0]))
 
-            path_overlay = QPainterPath(QPointF(x[0],y[0]))
-
-            for i in np.arange(1, len(x)):
-                path.lineTo(QPointF(x[i],y[i]))
-
-            pathitem.setPath(path)
 
 
     def show(self):
@@ -2796,6 +2937,14 @@ class Overlay():
         Hides the main window.
         """
         self.win.hide()
+
+
+    def clearActinOutlines(self):
+        # Remove all plot items representing tracks
+        if self.overlayWindow is not None:
+            for pathitem in self.pathitemsActin:
+                self.overlayWindow.view.removeItem(pathitem)
+        self.pathitemsActin = []
 
     def clearTracks(self):
         # Remove all plot items representing tracks
