@@ -393,11 +393,11 @@ class AllTracksPlot():
         self.maxTransect = pg.PlotWidget(title="Max - Line transect")
         self.d7.addWidget(self.maxTransect)
 
-        #transexts
+        #transects
         self.ROI_mean = self.addROI(self.meanIntensity)
         self.ROI_mean.sigRegionChanged.connect(self.updateMeanTransect)
 
-        #transexts
+        #transects
         self.ROI_max = self.addROI(self.maxIntensity)
         self.ROI_max.sigRegionChanged.connect(self.updateMaxTransect)
 
@@ -2917,9 +2917,6 @@ class Overlay():
         self.pointsPlotted = False
 
 
-
-
-
     def show(self):
         """
         Shows the main window.
@@ -2954,8 +2951,142 @@ class Overlay():
         self.pathitems = []
 
 
+class ROIPLOT():
+    """
+    A class for displaying ROI image with scrolling update of locs positions and intensity trace.
+    """
+    def __init__(self, mainGUI):
+        super().__init__()
+
+        # Initialize the main GUI instance
+        self.mainGUI = mainGUI
+        self.tracksInView = []
+        self.selectedPoints = []
+
+        # Create a dock window and add a dock
+        self.win = QMainWindow()
+        self.area = DockArea()
+        self.win.setCentralWidget(self.area)
+        self.win.resize(1100,300)
+        self.win.setWindowTitle('ROI Plot')
+        self.d1 = Dock("ROI Zoom Window", size=(400, 300))
+        self.d2 = Dock("Intensity Trace", size=(500, 300))
+        self.d3 = Dock("Options Panel", size=(200, 300))
+        self.area.addDock(self.d1)
+        self.area.addDock(self.d2, 'right', self.d1)
+        self.area.addDock(self.d3, 'right', self.d2)
+
+        # Create layout widgets
+        self.w1 = pg.ImageView()
+        self.w2 = pg.PlotWidget(title="Intensity")
+        self.w2.plot()
+        self.w2.setLabel('left', 'intensity', units ='')
+        self.w2.setLabel('bottom', 'time', units ='frames')
+
+        #options panel
+        self.w3 = pg.LayoutWidget()
+
+        self.trackSelector = pg.ComboBox()
+        self.tracks= {'None':'None'}
+        self.trackSelector.setItems(self.tracks)
+        self.trackSelector_label = QLabel("Select Track ID")
+        self.selectTrack_checkbox = CheckBox()
+        self.selectTrack_checkbox.setChecked(False)
+
+        self.showData_button = QPushButton('Load ROI Data')
+        self.showData_button.pressed.connect(self.startPlot)
+
+        #row0
+        self.w3.addWidget(self.trackSelector_label, row=0,col=0)
+        self.w3.addWidget(self.selectTrack_checkbox, row=0,col=1)
+        self.w3.addWidget(self.trackSelector, row=0,col=2)
+
+        #row1
+        self.w3.addWidget(self.showData_button, row=1,col=0)
+
+        #add layouts to dock
+        self.d1.addWidget(self.w1)
+        self.d2.addWidget(self.w2)
+        self.d3.addWidget(self.w3)
 
 
+    def update(self):
+        frame = self.dataWindow.currentIndex
+        self.zoomIMG.setImage(self.dataWindow.currentROI.getArrayRegion(self.array[frame], self.dataWindow.imageview.imageItem))
+        #self.w1.autoRange()
+        roiShape = self.currentROI.mapToItem(self.dataWindow.scatterPlot, self.currentROI.shape())
+        # Get list of all points inside shape
+        self.selectedPoints = [[frame, pt.x(), pt.y()] for pt in self.mainGUI.getScatterPointsAsQPoints() if roiShape.contains(pt)]
+        print(self.selectedPoints)
+        self.getDataFromScatterPoints()
+        print(self.tracksInView)
+
+    def startPlot(self):
+        self.dataWindow = self.mainGUI.plotWindow
+        self.array = self.dataWindow.imageArray()
+
+        self.zoomIMG = pg.ImageItem()
+        self.w1.addItem(self.zoomIMG)
+
+        self.currentROI = self.dataWindow.currentROI
+        self.currentROI.sigRegionChanged.connect(self.update)
+
+        self.dataWindow.sigTimeChanged.connect(self.update)
+
+        self.update()
+
+        # Check if user wants to plot a specific track or use the display track
+        if self.selectTrack_checkbox.isChecked():
+            self.trackList  = [int(self.trackSelector.value())]
+        else:
+            self.trackList = [self.trackSelector.itemText(i) for i in range(self.trackSelector.count())]
+
+    def updateTrackList(self):
+        """
+        Update the track list displayed in the GUI based on the data loaded into the application.
+        """
+        if self.mainGUI.useFilteredData == False:
+            self.tracks = dictFromList(self.mainGUI.data['track_number'].to_list())  # Convert a column of track numbers into a dictionary
+        else:
+            self.tracks = dictFromList(self.mainGUI.filteredData['track_number'].to_list())  # Convert a column of track numbers into a dictionary
+
+
+        self.trackSelector.setItems(self.tracks)  # Set the track list in the GUI
+
+    def getDataFromScatterPoints(self):
+        # Get track IDs for all points in scatter plot
+        self.tracksInView  = []
+
+        # Flatten scatter plot data into a single list of points
+        #flat_ptList = [pt for sublist in self.selectedPoints for pt in sublist]
+        flat_ptList = self.selectedPoints
+
+        # Loop through each point and get track IDs for corresponding data points in DataFrame
+        for pt in flat_ptList:
+            #print('point x: {} y: {}'.format(pt[0][0],pt[0][1]))
+
+            ptFilterDF = self.mainGUI.data[(self.mainGUI.data['x']==pt[1]) & (self.mainGUI.data['y']==pt[2])]
+
+            self.tracksInView.extend(ptFilterDF['track_number'])
+
+
+    def show(self):
+        """
+        Shows the main window.
+        """
+        self.win.show()
+
+    def close(self):
+        """
+        Closes the main window.
+        """
+        self.win.close()
+
+    def hide(self):
+        """
+        Hides the main window.
+        """
+        self.win.hide()
 
 '''
 #####################################################################################################################################
@@ -3043,6 +3174,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.unlinkedPoints = None
         self.displayUnlinkedPoints = False
         self.estimatedCameraBlackLevel = 0
+        self.displayROIplot = False
 
         #initialize track plot options window and hide it
         self.trackPlotOptions = TrackPlotOptions(self)
@@ -3074,6 +3206,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         # Initialize all-tracks plot window and hide it
         self.allTracksPlot = AllTracksPlot(self)
         self.allTracksPlot.hide()
+
+        # Initialize all-tracks plot window and hide it
+        self.ROIplot = ROIPLOT(self)
+        self.ROIplot.hide()
 
         # Call gui_reset function
         self.gui_reset()
@@ -3134,6 +3270,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.displayTrackPlotOptions_checkbox.stateChanged.connect(self.toggleTrackPlotOptions)
         self.displayTrackPlotOptions_checkbox.setChecked(False)
 
+        self.displayROIplot_checkbox = CheckBox()
+        self.displayROIplot_checkbox.stateChanged.connect(self.toggleROIplot)
+        self.displayROIplot_checkbox.setChecked(False)
+
 
         #comboboxes
         self.filetype_Box = pg.ComboBox()
@@ -3176,6 +3316,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.items.append({'name': 'displayFlowerPlot', 'string': 'Flower Plot', 'object': self.displayFlowPlot_checkbox})
         self.items.append({'name': 'displaySingleTrackPlot', 'string': 'Track Plot', 'object': self.displaySingleTrackPlot_checkbox})
         self.items.append({'name': 'displayAllTracksPlot', 'string': 'All Tracks Plot', 'object': self.displayAllTracksPlot_checkbox})
+        self.items.append({'name': 'displayROIplot', 'string': 'ROI Plot', 'object': self.displayROIplot_checkbox})
         self.items.append({'name': 'displayFilterOptions', 'string': 'Filter Window', 'object': self.displayFilterOptions_checkbox})
         self.items.append({'name': 'plotTracks', 'string': '', 'object': self.plotTrackData_button })
         self.items.append({'name': 'clearTracks', 'string': '', 'object': self.clearTrackData_button })
@@ -3259,6 +3400,8 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
         # Update the all-tracks plot track selector
         self.allTracksPlot.updateTrackList()
+        self.ROIplot.updateTrackList()
+
 
         # add image data to overlay
         self.overlayWindow.loadData()
@@ -3803,6 +3946,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
         #update allTracks track list
         self.allTracksPlot.updateTrackList()
+        self.ROIplot.updateTrackList()
         return
 
     def clearROIFilterData(self):
@@ -3922,6 +4066,23 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             # Hide the window if it is already displayed
             self.trackPlotOptions.hide()
             self.displayTrackPlotOptions = False
+
+    def toggleROIplot(self):
+        if self.ROIplot == None:
+            # Create a new instance of the DiffusionPlotWindow class
+            self.ROIplot = ROIPLOT(self)
+
+        if self.displayROIplot == False:
+            # Show the window if it is not already displayed
+            self.ROIplot.show()
+            self.displayROIplot= True
+
+        else:
+            # Hide the window if it is already displayed
+            self.ROIplot.hide()
+            self.displayROIplot= False
+
+
 
 
     def togglePointMap(self):
