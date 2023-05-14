@@ -2951,6 +2951,9 @@ class Overlay():
         self.pathitems = []
 
 
+def extractListElement(l, pos):
+    return list(list(zip(*l))[pos])
+
 class ROIPLOT():
     """
     A class for displaying ROI image with scrolling update of locs positions and intensity trace.
@@ -2962,6 +2965,7 @@ class ROIPLOT():
         self.mainGUI = mainGUI
         self.tracksInView = []
         self.selectedPoints = []
+        self.trackToDisplay = None
 
         # Create a dock window and add a dock
         self.win = QMainWindow()
@@ -2982,6 +2986,9 @@ class ROIPLOT():
         self.w2.plot()
         self.w2.setLabel('left', 'intensity', units ='')
         self.w2.setLabel('bottom', 'time', units ='frames')
+
+        self.scatter = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 120))
+        self.w1.addItem(self.scatter)
 
         #options panel
         self.w3 = pg.LayoutWidget()
@@ -3011,22 +3018,28 @@ class ROIPLOT():
 
 
     def update(self):
+        self.scatter.setData([],[])
         frame = self.dataWindow.currentIndex
-        self.zoomIMG.setImage(self.dataWindow.currentROI.getArrayRegion(self.array[frame], self.dataWindow.imageview.imageItem))
+        #self.zoomIMG.setImage(self.dataWindow.currentROI.getArrayRegion(self.array[frame], self.dataWindow.imageview.imageItem))
+        self.w1.setImage(self.dataWindow.currentROI.getArrayRegion(self.array[frame], self.dataWindow.imageview.imageItem))
+
         #self.w1.autoRange()
         roiShape = self.currentROI.mapToItem(self.dataWindow.scatterPlot, self.currentROI.shape())
         # Get list of all points inside shape
         self.selectedPoints = [[frame, pt.x(), pt.y()] for pt in self.mainGUI.getScatterPointsAsQPoints() if roiShape.contains(pt)]
-        print(self.selectedPoints)
         self.getDataFromScatterPoints()
-        print(self.tracksInView)
+        print(self.dataInView)
+        if len(self.dataInView) != 0:
+            x_list = extractListElement(self.dataInView, 1)
+            y_list = extractListElement(self.dataInView, 2)
+            self.scatter.addPoints(x=x_list, y=y_list)
 
     def startPlot(self):
         self.dataWindow = self.mainGUI.plotWindow
         self.array = self.dataWindow.imageArray()
 
-        self.zoomIMG = pg.ImageItem()
-        self.w1.addItem(self.zoomIMG)
+        #self.zoomIMG = pg.ImageItem()
+        #self.w1.addItem(self.zoomIMG)
 
         self.currentROI = self.dataWindow.currentROI
         self.currentROI.sigRegionChanged.connect(self.update)
@@ -3056,6 +3069,7 @@ class ROIPLOT():
     def getDataFromScatterPoints(self):
         # Get track IDs for all points in scatter plot
         self.tracksInView  = []
+        self.dataInView = []
 
         # Flatten scatter plot data into a single list of points
         #flat_ptList = [pt for sublist in self.selectedPoints for pt in sublist]
@@ -3067,7 +3081,12 @@ class ROIPLOT():
 
             ptFilterDF = self.mainGUI.data[(self.mainGUI.data['x']==pt[1]) & (self.mainGUI.data['y']==pt[2])]
 
-            self.tracksInView.extend(ptFilterDF['track_number'])
+            self.tracksInView.extend([ptFilterDF['track_number'].values[0]])
+            self.dataInView.append([ptFilterDF['track_number'].values[0],ptFilterDF['x'].values[0],ptFilterDF['y'].values[0]])
+
+        self.trackSelector.setItems(dictFromList(self.tracksInView))
+
+
 
 
     def show(self):
