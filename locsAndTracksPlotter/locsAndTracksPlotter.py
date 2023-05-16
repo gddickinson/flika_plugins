@@ -2966,6 +2966,7 @@ class ROIPLOT():
         self.tracksInView = []
         self.selectedPoints = []
         self.trackToDisplay = None
+        #self.cm = pg.colormap.get('pg') # Get the PyqtGraph colormap
 
         # Create a dock window and add a dock
         self.win = QMainWindow()
@@ -3018,7 +3019,11 @@ class ROIPLOT():
 
 
     def update(self):
+        #clear scatter plot data
         self.scatter.setData([],[])
+        #clear intensity plot
+        self.w2.clear()
+        #get current frame number
         frame = self.dataWindow.currentIndex
         #self.zoomIMG.setImage(self.dataWindow.currentROI.getArrayRegion(self.array[frame], self.dataWindow.imageview.imageItem))
         self.w1.setImage(self.dataWindow.currentROI.getArrayRegion(self.array[frame], self.dataWindow.imageview.imageItem))
@@ -3028,11 +3033,40 @@ class ROIPLOT():
         # Get list of all points inside shape
         self.selectedPoints = [[frame, pt.x(), pt.y()] for pt in self.mainGUI.getScatterPointsAsQPoints() if roiShape.contains(pt)]
         self.getDataFromScatterPoints()
+
         print(self.dataInView)
+
+        #get ROI pos to offset scatter plot on zoomed image
+        pos = self.currentROI.pos()
+
+        #plot points in ROI on zoomed ROI image
         if len(self.dataInView) != 0:
-            x_list = extractListElement(self.dataInView, 1)
-            y_list = extractListElement(self.dataInView, 2)
+            x_list = np.array(extractListElement(self.dataInView, 1)) - pos[0]
+            y_list = np.array(extractListElement(self.dataInView, 2)) - pos[1]
             self.scatter.addPoints(x=x_list, y=y_list)
+
+
+        for trackID in self.tracksInView:
+            # Get data for the selected track
+            trackDF = self.mainGUI.data[self.mainGUI.data['track_number'] == trackID]
+
+            #intensity trace choice from trackPlot options
+            intensity = trackDF[self.mainGUI.trackPlotOptions.intensityChoice_Box.value()].to_numpy()
+            #use background subtracted intensity if option selected
+            if self.mainGUI.trackPlotOptions.backgroundSubtract_checkbox.isChecked():
+                intensity = intensity - self.mainGUI.trackPlotOptions.background_selector.value()
+
+            item = pg.PlotDataItem(x=trackDF['frame'].to_numpy(),y=intensity)
+            # Map the trackID to a colour
+            trackColour = pg.intColor(trackID)
+            print(trackColour)
+            #pen.setColor(trackColour)
+            # set the pen for the path items
+            # setup pens
+            pen = pg.mkPen(trackColour, width=2)
+            item.setPen(pen)
+            self.w2.addItem(item)
+
 
     def startPlot(self):
         self.dataWindow = self.mainGUI.plotWindow
@@ -3082,7 +3116,14 @@ class ROIPLOT():
             ptFilterDF = self.mainGUI.data[(self.mainGUI.data['x']==pt[1]) & (self.mainGUI.data['y']==pt[2])]
 
             self.tracksInView.extend([ptFilterDF['track_number'].values[0]])
-            self.dataInView.append([ptFilterDF['track_number'].values[0],ptFilterDF['x'].values[0],ptFilterDF['y'].values[0]])
+
+            #intensity trace choice from trackPlot options
+            intensity = ptFilterDF[self.mainGUI.trackPlotOptions.intensityChoice_Box.value()].to_numpy()
+            #use background subtracted intensity if option selected
+            if self.mainGUI.trackPlotOptions.backgroundSubtract_checkbox.isChecked():
+                intensity = intensity - self.mainGUI.trackPlotOptions.background_selector.value()
+
+            self.dataInView.append([ptFilterDF['track_number'].values[0],ptFilterDF['x'].values[0],ptFilterDF['y'].values[0], intensity[0]])
 
         self.trackSelector.setItems(dictFromList(self.tracksInView))
 
