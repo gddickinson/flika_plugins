@@ -2954,6 +2954,175 @@ class Overlay():
 def extractListElement(l, pos):
     return list(list(zip(*l))[pos])
 
+class CheckableComboBox(QComboBox):
+
+    # Subclass Delegate to increase item height
+    class Delegate(QStyledItemDelegate):
+        def sizeHint(self, option, index):
+            size = super().sizeHint(option, index)
+            size.setHeight(20)
+            return size
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Make the combo editable to set a custom text, but readonly
+        self.setEditable(True)
+        self.lineEdit().setReadOnly(True)
+        # Make the lineedit the same color as QPushButton
+        palette = qApp.palette()
+        palette.setBrush(QPalette.Base, palette.button())
+        self.lineEdit().setPalette(palette)
+
+        # Use custom delegate
+        self.setItemDelegate(CheckableComboBox.Delegate())
+
+        # Update the text when an item is toggled
+        self.model().dataChanged.connect(self.updateText)
+
+        # Hide and show popup when clicking the line edit
+        self.lineEdit().installEventFilter(self)
+        self.closeOnLineEditClick = False
+
+        # Prevent popup from closing when clicking on an item
+        self.view().viewport().installEventFilter(self)
+
+    def resizeEvent(self, event):
+        # Recompute text to elide as needed
+        self.updateText()
+        super().resizeEvent(event)
+
+    def eventFilter(self, object, event):
+
+        if object == self.lineEdit():
+            if event.type() == QEvent.MouseButtonRelease:
+                if self.closeOnLineEditClick:
+                    self.hidePopup()
+                else:
+                    self.showPopup()
+                return True
+            return False
+
+        if object == self.view().viewport():
+            if event.type() == QEvent.MouseButtonRelease:
+                index = self.view().indexAt(event.pos())
+                item = self.model().item(index.row())
+
+                if item.checkState() == Qt.Checked:
+                    item.setCheckState(Qt.Unchecked)
+                else:
+                    item.setCheckState(Qt.Checked)
+                return True
+        return False
+
+    def showPopup(self):
+        super().showPopup()
+        # When the popup is displayed, a click on the lineedit should close it
+        self.closeOnLineEditClick = True
+
+    def hidePopup(self):
+        super().hidePopup()
+        # Used to prevent immediate reopening when clicking on the lineEdit
+        self.startTimer(100)
+        # Refresh the display text when closing
+        self.updateText()
+
+    def timerEvent(self, event):
+        # After timeout, kill timer, and reenable click on line edit
+        self.killTimer(event.timerId())
+        self.closeOnLineEditClick = False
+
+    def updateText(self):
+        texts = []
+        for i in range(self.model().rowCount()):
+            if self.model().item(i).checkState() == Qt.Checked:
+                texts.append(self.model().item(i).text())
+        text = ", ".join(texts)
+
+        # Compute elided text (with "...")
+        metrics = QFontMetrics(self.lineEdit().font())
+        elidedText = metrics.elidedText(text, Qt.ElideRight, self.lineEdit().width())
+        self.lineEdit().setText(elidedText)
+
+
+    def addItemDirect(self,text):
+        item = QStandardItem()
+        item.setText(text)
+
+        item.setData(text)
+
+        item.setData(Qt.Checked, Qt.CheckStateRole)
+        self.model().appendRow(item)
+
+    def addItem(self, text, data=None, unchecked=True):
+        item = QStandardItem()
+        item.setText(text)
+        if data is None:
+            item.setData(text)
+        else:
+            item.setData(data)
+        item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
+        if unchecked:
+            item.setData(Qt.Unchecked, Qt.CheckStateRole)
+        else:
+            item.setData(Qt.Checked, Qt.CheckStateRole)
+        self.model().appendRow(item)
+
+    def addItems(self, texts, datalist=None):
+        for i, text in enumerate(texts):
+            try:
+                data = datalist[i]
+            except (TypeError, IndexError):
+                data = None
+            self.addItem(text, data)
+
+    def currentData(self):
+        # Return the list of selected items data
+        res = []
+        for i in range(self.model().rowCount()):
+            if self.model().item(i).checkState() == Qt.Checked:
+                res.append(self.model().item(i).data())
+        return res
+
+    def currentItems(self):
+        # Return the list of selected items
+        res = []
+        for i in range(self.model().rowCount()):
+            if self.model().item(i).checkState() == Qt.Checked:
+                res.append(self.model().item(i).data())
+        return res
+
+    def setItems(self, items):
+        """
+        *items* may be a list, a tuple, or a dict.
+        If a dict is given, then the keys are used to populate the combo box
+        and the values will be used for both value() and setValue().
+        """
+        currentItems = self.currentItems()
+        self.clear()
+        for item in currentItems:
+            self.addItemDirect(item)
+
+        for item in items:
+            if item not in self.currentData():
+                self.addItem(item)
+
+
+    def items(self):
+        return self.items.copy()
+
+    def value(self):
+        """
+        If items were given as a list of strings, then return the currently
+        selected text. If items were given as a dict, then return the value
+        corresponding to the currently selected key. If the combo list is empty,
+        return None.
+        """
+        if self.count() == 0:
+            return None
+
+        return self.currentData()
+
 class ROIPLOT():
     """
     A class for displaying ROI image with scrolling update of locs positions and intensity trace.
@@ -2966,7 +3135,7 @@ class ROIPLOT():
         self.tracksInView = []
         self.selectedPoints = []
         self.trackToDisplay = None
-        #self.cm = pg.colormap.get('pg') # Get the PyqtGraph colormap
+        self.ROIplotInitiated = False
 
         # Create a dock window and add a dock
         self.win = QMainWindow()
@@ -2983,7 +3152,7 @@ class ROIPLOT():
 
         # Create layout widgets
         self.w1 = pg.ImageView()
-        self.w2 = pg.PlotWidget(title="Intensity")
+        self.w2 = pg.PlotWidget()
         self.w2.plot()
         self.w2.setLabel('left', 'intensity', units ='')
         self.w2.setLabel('bottom', 'time', units ='frames')
@@ -2994,23 +3163,84 @@ class ROIPLOT():
         #options panel
         self.w3 = pg.LayoutWidget()
 
-        self.trackSelector = pg.ComboBox()
+        self.trackSelector = CheckableComboBox()
         self.tracks= {'None':'None'}
         self.trackSelector.setItems(self.tracks)
         self.trackSelector_label = QLabel("Select Track ID")
         self.selectTrack_checkbox = CheckBox()
         self.selectTrack_checkbox.setChecked(False)
 
+        self.selectTrack_checkbox.stateChanged.connect(self.update)
+
+        self.displayHist_checkbox = CheckBox()
+        self.displayHist_checkbox.setChecked(True)
+        self.displayHist_checkbox.stateChanged.connect(self.displayHist)
+        self.displayHist_label = QLabel("Show Histogram")
+
+        self.displayAxes_checkbox = CheckBox()
+        self.displayAxes_checkbox.setChecked(True)
+        self.displayAxes_checkbox.stateChanged.connect(self.displayAxes)
+        self.displayAxes_label = QLabel("Show Axes")
+
         self.showData_button = QPushButton('Load ROI Data')
         self.showData_button.pressed.connect(self.startPlot)
 
+        self.record_button = QPushButton('Record')
+        self.record_button.pressed.connect(self.startRecording)
+
+        self.lineCol_Box = pg.ComboBox()
+        self.colours = {'random':'random', 'green': QColor(Qt.green), 'red': QColor(Qt.red), 'blue': QColor(Qt.blue)}
+        self.lineCol_Box.setItems(self.colours)
+
+        self.pointCol_Box = pg.ComboBox()
+        self.pointCol_Box.setItems(self.colours)
+        self.lineCol_label = QLabel("Line color")
+        self.pointCol_label = QLabel("Point color")
+
+
+        self.pointSize_box = pg.SpinBox(value=0.2, int=False)
+        self.pointSize_box.setSingleStep(0.01)
+        self.pointSize_box.setMinimum(0.00)
+        self.pointSize_box.setMaximum(5)
+
+        self.lineWidth_box = pg.SpinBox(value=2, int=True)
+        self.lineWidth_box.setSingleStep(1)
+        self.lineWidth_box.setMinimum(0)
+        self.lineWidth_box.setMaximum(100)
+
+        self.pointSize_label = QLabel("Point Size")
+        self.lineWidth_label = QLabel("Line Width")
+
+        self.pointSize_box.valueChanged.connect(self.update)
+        self.lineWidth_box.valueChanged.connect(self.update)
+
+
         #row0
-        self.w3.addWidget(self.trackSelector_label, row=0,col=0)
-        self.w3.addWidget(self.selectTrack_checkbox, row=0,col=1)
-        self.w3.addWidget(self.trackSelector, row=0,col=2)
+        self.w3.addWidget(self.lineCol_label, row=0,col=0)
+        self.w3.addWidget(self.lineCol_Box, row=0,col=1)
+        self.w3.addWidget(self.pointCol_label, row=1,col=0)
+        self.w3.addWidget(self.pointCol_Box, row=1,col=1)
 
         #row1
-        self.w3.addWidget(self.showData_button, row=1,col=0)
+        self.w3.addWidget(self.displayHist_label, row=2,col=0)
+        self.w3.addWidget(self.displayHist_checkbox, row=2,col=1)
+        self.w3.addWidget(self.displayAxes_label, row=3,col=0)
+        self.w3.addWidget(self.displayAxes_checkbox, row=3,col=1)
+        #row2
+        self.w3.addWidget(self.lineWidth_label, row=4,col=0)
+        self.w3.addWidget(self.lineWidth_box, row=4,col=1)
+        self.w3.addWidget(self.pointSize_label, row=5,col=0)
+        self.w3.addWidget(self.pointSize_box, row=5,col=1)
+
+        #row3
+        self.w3.addWidget(self.trackSelector_label, row=6,col=0)
+        self.w3.addWidget(self.selectTrack_checkbox, row=6,col=1)
+        self.w3.addWidget(self.trackSelector, row=6,col=2)
+
+        #row4
+        self.w3.addWidget(self.showData_button, row=7,col=0)
+        #row5
+        self.w3.addWidget(self.record_button, row=7,col=1)
 
         #add layouts to dock
         self.d1.addWidget(self.w1)
@@ -3025,14 +3255,27 @@ class ROIPLOT():
         self.w2.clear()
         #get current frame number
         frame = self.dataWindow.currentIndex
-        #self.zoomIMG.setImage(self.dataWindow.currentROI.getArrayRegion(self.array[frame], self.dataWindow.imageview.imageItem))
-        self.w1.setImage(self.dataWindow.currentROI.getArrayRegion(self.array[frame], self.dataWindow.imageview.imageItem))
+
+        #get old histogram levels
+        if self.ROIplotInitiated == False:
+            #get mainwindow level for 1st plot
+            hist_levels = self.dataWindow.imageview.getHistogramWidget().getLevels()
+        else:
+            hist_levels = self.w1.getLevels()
+
+        #set ROI zoom image
+        self.w1.setImage(self.dataWindow.currentROI.getArrayRegion(self.array[frame], self.dataWindow.imageview.imageItem, autoLevels=False))
+        #uodate hist
+        self.w1.setLevels(min=hist_levels[0],max=hist_levels[1])
 
         #self.w1.autoRange()
         roiShape = self.currentROI.mapToItem(self.dataWindow.scatterPlot, self.currentROI.shape())
         # Get list of all points inside shape
         self.selectedPoints = [[frame, pt.x(), pt.y()] for pt in self.mainGUI.getScatterPointsAsQPoints() if roiShape.contains(pt)]
         self.getDataFromScatterPoints()
+
+        if self.ROIplotInitiated == False:
+            self.ROIplotInitiated = True
 
         print(self.dataInView)
 
@@ -3045,10 +3288,19 @@ class ROIPLOT():
             y_list = np.array(extractListElement(self.dataInView, 2)) - pos[1]
             self.scatter.addPoints(x=x_list, y=y_list)
 
+        print(self.trackSelector.value())
 
-        for trackID in self.tracksInView:
+        if self.selectTrack_checkbox.isChecked():
+            tracksToDisplay = np.array(self.trackSelector.value(), dtype=int)
+        else:
+            tracksToDisplay = self.tracksInView
+
+        for trackID in tracksToDisplay:
             # Get data for the selected track
             trackDF = self.mainGUI.data[self.mainGUI.data['track_number'] == trackID]
+
+            #filter to current frame
+            trackDF = trackDF[trackDF['frame'] <= frame]
 
             #intensity trace choice from trackPlot options
             intensity = trackDF[self.mainGUI.trackPlotOptions.intensityChoice_Box.value()].to_numpy()
@@ -3059,10 +3311,7 @@ class ROIPLOT():
             item = pg.PlotDataItem(x=trackDF['frame'].to_numpy(),y=intensity)
             # Map the trackID to a colour
             trackColour = pg.intColor(trackID)
-            print(trackColour)
-            #pen.setColor(trackColour)
-            # set the pen for the path items
-            # setup pens
+            # setup pen
             pen = pg.mkPen(trackColour, width=2)
             item.setPen(pen)
             self.w2.addItem(item)
@@ -3070,6 +3319,11 @@ class ROIPLOT():
 
     def startPlot(self):
         self.dataWindow = self.mainGUI.plotWindow
+
+        if self.dataWindow.currentROI == None:
+            g.messageBox('Warning','First draw ROI on Main Display')
+            return
+
         self.array = self.dataWindow.imageArray()
 
         #self.zoomIMG = pg.ImageItem()
@@ -3079,6 +3333,10 @@ class ROIPLOT():
         self.currentROI.sigRegionChanged.connect(self.update)
 
         self.dataWindow.sigTimeChanged.connect(self.update)
+
+        #set axis limits to span all frames
+        self.w2.setXRange(0, self.dataWindow.mt)
+        self.w2.setLimits(xMin=0, xMax=self.dataWindow.mt)
 
         self.update()
 
@@ -3128,7 +3386,28 @@ class ROIPLOT():
         self.trackSelector.setItems(dictFromList(self.tracksInView))
 
 
+    def startRecording(self):
+        ...
 
+    def displayHist(self):
+        if self.displayHist_checkbox.isChecked():
+            self.w1.ui.histogram.show()
+            self.w1.ui.roiBtn.show()
+            self.w1.ui.menuBtn.show()
+        else:
+            self.w1.ui.histogram.hide()
+            self.w1.ui.roiBtn.hide()
+            self.w1.ui.menuBtn.hide()
+
+
+    def displayAxes(self):
+        if self.displayAxes_checkbox.isChecked():
+            self.w2.getPlotItem().showAxis('bottom')
+            self.w2.getPlotItem().showAxis('left')
+        else:
+            self.w2.getPlotItem().hideAxis('bottom')
+            self.w2.getPlotItem().hideAxis('left')
+        #self.w2.show()
 
     def show(self):
         """
