@@ -131,6 +131,151 @@ def open_file_gui(prompt="Open File", directory=None, filetypes=''):
     else:
         return str(filename)
 
+class Scale_Bar_ROIzoom(BaseProcess):
+    ''' scale_bar(width_microns, width_pixels, font_size, color, background, location, show=True)
+
+    Parameters:
+        width_microns (float): width in microns
+        width_pixels (float): width in pixels
+        font_size (int): size of the font
+        color (string): ['Black', White']
+        background (string): ['Black','White', 'None']
+        location (string): ['Lower Right','Lower Left','Top Right','Top Left']
+        show (bool): controls whether the Scale_bar is displayed or not
+    '''
+
+    def __init__(self, roiGUI):
+        super().__init__()
+        self.roiGUI = roiGUI
+
+    def gui(self):
+        self.gui_reset()
+
+        self.w = self.roiGUI.w1
+        width_microns=QDoubleSpinBox()
+
+        width_pixels=QSpinBox()
+        width_pixels.setRange(.001,1000000)
+        #width_pixels.setRange(1,self.roiGUI.mx)
+
+        font_size=QSpinBox()
+
+        color=ComboBox()
+        color.addItem("White")
+        color.addItem("Black")
+        background=ComboBox()
+        background.addItem('None')
+        background.addItem('Black')
+        background.addItem('White')
+        location=ComboBox()
+        location.addItem('Lower Right')
+        location.addItem('Lower Left')
+        location.addItem('Top Right')
+        location.addItem('Top Left')
+        show=CheckBox()
+
+        font_size.setValue(12)
+        #width_pixels.setValue(int(self.roiGUI.mx/8))
+        width_microns.setValue(1)
+
+        show.setChecked(True)
+        self.items.append({'name':'width_microns','string':'Width of bar in microns','object':width_microns})
+        self.items.append({'name':'width_pixels','string':'Width of bar in pixels','object':width_pixels})
+        self.items.append({'name':'font_size','string':'Font size','object':font_size})
+        self.items.append({'name':'color','string':'Color','object':color})
+        self.items.append({'name':'background','string':'Background','object':background})
+        self.items.append({'name':'location','string':'Location','object':location})
+        self.items.append({'name':'show','string':'Show','object':show})
+
+        super().gui()
+        self.preview()
+    def __call__(self,width_microns, width_pixels, font_size, color, background,location,show=True,keepSourceWindow=None):
+
+        if show:
+            if hasattr(self.roiGUI,'scaleBarLabel') and self.roiGUI.scaleBarLabel is not None:
+                self.w.view.removeItem(self.roiGUI.scaleBarLabel.bar)
+                self.w.view.removeItem(self.roiGUI.scaleBarLabel)
+                self.w.view.sigResized.disconnect(self.updateBar)
+            if location=='Top Left':
+                anchor=(0,0)
+                pos=[0,0]
+            elif location=='Top Right':
+                anchor=(0,0)
+                pos=[self.roiGUI.mx,0]
+            elif location=='Lower Right':
+                anchor=(0,0)
+                pos=[self.roiGUI.mx,self.roiGUI.my]
+            elif location=='Lower Left':
+                anchor=(0,0)
+                pos=[0,self.roiGUI.my]
+            self.roiGUI.scaleBarLabel= pg.TextItem(anchor=anchor, html="<span style='font-size: {}pt;color:{};background-color:{};'>{} μm</span>".format(font_size, color, background,width_microns))
+            self.roiGUI.scaleBarLabel.setPos(pos[0],pos[1])
+            self.roiGUI.scaleBarLabel.flika_properties={item['name']:item['value'] for item in self.items}
+            self.w.view.addItem(self.roiGUI.scaleBarLabel)
+            if color=='White':
+                color255=[255,255,255,255]
+            elif color=='Black':
+                color255=[0,0,0,255]
+            textRect=self.roiGUI.scaleBarLabel.boundingRect()
+
+            if location=='Top Left':
+                barPoint=QPoint(0, textRect.height())
+            elif location=='Top Right':
+                barPoint=QPoint(-width_pixels, textRect.height())
+            elif location=='Lower Right':
+                barPoint=QPoint(-width_pixels, -textRect.height())
+            elif location=='Lower Left':
+                barPoint=QPoint(0, -textRect.height())
+
+            bar = QGraphicsRectItem(QRectF(barPoint,QSizeF(width_pixels,int(font_size/3))))
+            bar.setPen(pg.mkPen(color255)); bar.setBrush(pg.mkBrush(color255))
+            self.w.view.addItem(bar)
+            #bar.setParentItem(self.roiGUI.scaleBarLabel)
+            self.roiGUI.scaleBarLabel.bar=bar
+            self.w.view.sigResized.connect(self.updateBar)
+            self.updateBar()
+
+        else:
+            if hasattr(self.roiGUI,'scaleBarLabel') and self.roiGUI.scaleBarLabel is not None:
+                self.w.view.removeItem(self.roiGUI.scaleBarLabel.bar)
+                self.w.view.removeItem(self.roiGUI.scaleBarLabel)
+                self.roiGUI.scaleBarLabel=None
+                self.w.view.sigResized.disconnect(self.updateBar)
+        return None
+
+    def updateBar(self):
+        width_pixels=self.getValue('width_pixels')
+        location=self.getValue('location')
+        view = self.w.view
+        textRect=self.roiGUI.scaleBarLabel.boundingRect()
+        textWidth=textRect.width()*view.viewPixelSize()[0]
+        textHeight=textRect.height()*view.viewPixelSize()[1]
+
+        if location=='Top Left':
+            barPoint=QPoint(0, 1.3*textHeight)
+            self.roiGUI.scaleBarLabel.setPos(QPointF(width_pixels/2-textWidth/2,0))
+        elif location=='Top Right':
+            barPoint=QPoint(self.roiGUI.mx-width_pixels, 1.3*textHeight)
+            self.roiGUI.scaleBarLabel.setPos(QPointF(self.roiGUI.mx-width_pixels/2-textWidth/2,0))
+        elif location=='Lower Right':
+            barPoint=QPoint(self.roiGUI.mx-width_pixels, self.roiGUI.my-1.3*textHeight)
+            self.roiGUI.scaleBarLabel.setPos(QPointF(self.roiGUI.mx-width_pixels/2-textWidth/2,self.roiGUI.my-textHeight))
+        elif location=='Lower Left':
+            barPoint=QPoint(0, self.roiGUI.my-1.3*textHeight)
+            self.roiGUI.scaleBarLabel.setPos(QPointF(QPointF(width_pixels/2-textWidth/2,self.roiGUI.my-textHeight)))
+        self.roiGUI.scaleBarLabel.bar.setRect(QRectF(barPoint, QSizeF(width_pixels,textHeight/4)))
+
+    def preview(self):
+        width_microns=self.getValue('width_microns')
+        width_pixels=self.getValue('width_pixels')
+        font_size=self.getValue('font_size')
+        color=self.getValue('color')
+        background=self.getValue('background')
+        location=self.getValue('location')
+        show=self.getValue('show')
+        self.__call__(width_microns, width_pixels, font_size, color, background, location, show)
+
+
 class FileSelector(QWidget):
     """
     This widget is a button with a label.  Once you click the button, the widget waits for you to select a file to save.  Once you do, it sets self.filename and it sets the label.
@@ -3136,16 +3281,21 @@ class ROIPLOT():
         self.selectedPoints = []
         self.trackToDisplay = None
         self.ROIplotInitiated = False
+        self.mx = None
+        self.my = None
+        self.scaleBarLabel = None
+
+        self.scale_bar = Scale_Bar_ROIzoom(self)
 
         # Create a dock window and add a dock
         self.win = QMainWindow()
         self.area = DockArea()
         self.win.setCentralWidget(self.area)
-        self.win.resize(1100,300)
+        self.win.resize(1400,350)
         self.win.setWindowTitle('ROI Plot')
-        self.d1 = Dock("ROI Zoom Window", size=(400, 300))
-        self.d2 = Dock("Intensity Trace", size=(500, 300))
-        self.d3 = Dock("Options Panel", size=(200, 300))
+        self.d1 = Dock("ROI Zoom Window", size=(400, 350))
+        self.d2 = Dock("Intensity Trace", size=(500, 350))
+        self.d3 = Dock("Options Panel", size=(200, 350))
         self.area.addDock(self.d1)
         self.area.addDock(self.d2, 'right', self.d1)
         self.area.addDock(self.d3, 'right', self.d2)
@@ -3181,6 +3331,19 @@ class ROIPLOT():
         self.displayAxes_checkbox.setChecked(True)
         self.displayAxes_checkbox.stateChanged.connect(self.displayAxes)
         self.displayAxes_label = QLabel("Show Axes")
+
+        self.interpolate_checkbox = CheckBox()
+        self.interpolate_checkbox.setChecked(False)
+        self.interpolate_checkbox.stateChanged.connect(self.update)
+        self.interpolate_label = QLabel("Interpolate Missing Localizations")
+
+        self.showWholeTrace_checkbox = CheckBox()
+        self.showWholeTrace_checkbox.setChecked(False)
+        self.showWholeTrace_checkbox.stateChanged.connect(self.update)
+        self.showWholeTrace_label = QLabel("Show Entire Trace")
+
+        self.showScaleBar_button = QPushButton('Add Scale Bar')
+        self.showScaleBar_button.pressed.connect(self.addScaleBar)
 
         self.showData_button = QPushButton('Load ROI Data')
         self.showData_button.pressed.connect(self.startPlot)
@@ -3237,10 +3400,19 @@ class ROIPLOT():
         self.w3.addWidget(self.selectTrack_checkbox, row=6,col=1)
         self.w3.addWidget(self.trackSelector, row=6,col=2)
 
+        #row3
+        self.w3.addWidget(self.interpolate_label , row=7,col=0)
+        self.w3.addWidget(self.interpolate_checkbox, row=7,col=1)
+
+        self.w3.addWidget(self.showWholeTrace_label , row=8,col=0)
+        self.w3.addWidget(self.showWholeTrace_checkbox, row=8,col=1)
+
+        self.w3.addWidget(self.showScaleBar_button, row=9,col=0)
+
         #row4
-        self.w3.addWidget(self.showData_button, row=7,col=0)
+        self.w3.addWidget(self.showData_button, row=10,col=0)
         #row5
-        self.w3.addWidget(self.record_button, row=7,col=1)
+        self.w3.addWidget(self.record_button, row=10,col=1)
 
         #add layouts to dock
         self.d1.addWidget(self.w1)
@@ -3265,7 +3437,12 @@ class ROIPLOT():
 
         #set ROI zoom image
         self.w1.setImage(self.dataWindow.currentROI.getArrayRegion(self.array[frame], self.dataWindow.imageview.imageItem, autoLevels=False))
-        #uodate hist
+
+        #set mx and my
+        self.mx, self.my = self.dataWindow.currentROI.size()
+
+
+        #update hist
         self.w1.setLevels(min=hist_levels[0],max=hist_levels[1])
 
         #self.w1.autoRange()
@@ -3386,8 +3563,43 @@ class ROIPLOT():
         self.trackSelector.setItems(dictFromList(self.tracksInView))
 
 
+    def getInterpolatedPoints(self):
+        # Extract x,y,frame data for each point
+        points = np.column_stack((trackDF['frame'].to_list(), trackDF['x'].to_list(), trackDF['y'].to_list()))
+
+        if self.interpolate_checkbox.isChecked():
+            #interpolate points for missing frames
+            allFrames = range(int(min(points[:,0])), int(max(points[:,0]))+1)
+            xinterp = np.interp(allFrames, points[:,0], points[:,1])
+            yinterp = np.interp(allFrames, points[:,0], points[:,2])
+
+            points = np.column_stack((allFrames, xinterp, yinterp))
+
+
+        # Loop through each point and extract a cropped image
+        for point in points:
+            minX = round(point[1]) - x_limit + self.d # Determine the limits of the crop including padding
+            maxX = round(point[1]) + x_limit + self.d
+            minY = round(point[2]) - y_limit + self.d
+            maxY = round(point[2]) + y_limit + self.d
+
+            if (self.d % 2) == 0:
+                crop = self.A_pad[int(point[0]),minX:maxX,minY:maxY] - np.min(self.A[int(point[0])])# Extract the crop
+            else:
+                crop = self.A_pad[int(point[0]),minX-1:maxX,minY-1:maxY] - np.min(self.A[int(point[0])])# Extract the crop
+
+            A_crop[int(point[0])] = crop
+
+        self.A_crop_stack[i] = A_crop # Store the crop in the array of cropped images
+
+        A_crop[A_crop==0] = np.nan
+        trace = np.mean(A_crop, axis=(1,2))
+
     def startRecording(self):
         ...
+
+    def addScaleBar(self):
+        self.scale_bar.gui()
 
     def displayHist(self):
         if self.displayHist_checkbox.isChecked():
