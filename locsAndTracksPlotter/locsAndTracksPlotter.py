@@ -3275,6 +3275,21 @@ class CheckableComboBox(QComboBox):
 
         return self.currentData()
 
+def custom_symbol(symbol: str, font: QFont = QFont("San Serif")):
+    """Create custom symbol with font"""
+    # We just want one character here, comment out otherwise
+    #assert len(symbol) == 1
+    pg_symbol = QPainterPath()
+    font.setBold(True)
+    pg_symbol.addText(0, 0, font, symbol)
+    # Scale symbol
+    br = pg_symbol.boundingRect()
+    scale = min(1. / br.width(), 1. / br.height())
+    tr = QTransform()
+    tr.scale(scale, scale)
+    tr.translate(-br.x() - br.width() / 2., -br.y() - br.height() / 2.)
+    return tr.map(pg_symbol)
+
 class ROIPLOT():
     """
     A class for displaying ROI image with scrolling update of locs positions and intensity trace.
@@ -3335,6 +3350,16 @@ class ROIPLOT():
         self.displayHist_checkbox.stateChanged.connect(self.displayHist)
         self.displayHist_label = QLabel("Show Histogram")
 
+        self.displayID_checkbox = CheckBox()
+        self.displayID_checkbox.setChecked(False)
+        self.displayID_checkbox.stateChanged.connect(self.update)
+        self.displayID_label = QLabel("Display Track ID")
+
+        self.displayLegend_checkbox = CheckBox()
+        self.displayLegend_checkbox.setChecked(False)
+        self.displayLegend_checkbox.stateChanged.connect(self.toggleLegend)
+        self.displayLegend_label = QLabel("Display Legend")
+
         self.displayAxes_checkbox = CheckBox()
         self.displayAxes_checkbox.setChecked(True)
         self.displayAxes_checkbox.stateChanged.connect(self.displayAxes)
@@ -3355,6 +3380,9 @@ class ROIPLOT():
 
         self.showData_button = QPushButton('Load ROI Data')
         self.showData_button.pressed.connect(self.startPlot)
+
+        self.play_button = QPushButton('Play')
+        self.play_button.pressed.connect(self.play)
 
         self.record_button = QPushButton('Record')
         self.record_button.pressed.connect(self.startRecording)
@@ -3381,6 +3409,12 @@ class ROIPLOT():
         self.pointSize_label = QLabel("Point Size")
         self.lineWidth_label = QLabel("Line Width")
 
+        self.frameRate_box = pg.SpinBox(value=1, int=True)
+        self.frameRate_box.setSingleStep(1)
+        self.frameRate_box.setMinimum(0)
+        self.frameRate_box.setMaximum(1000)
+        self.frameRate_label = QLabel("Frames per sec")
+
         self.pointSize_box.valueChanged.connect(self.update)
         self.lineWidth_box.valueChanged.connect(self.update)
         self.lineCol_Box.currentIndexChanged.connect(self.update)
@@ -3406,18 +3440,29 @@ class ROIPLOT():
         self.w3.addWidget(self.trackSelector_label, row=6,col=0)
         self.w3.addWidget(self.selectTrack_checkbox, row=6,col=1)
         self.w3.addWidget(self.trackSelector, row=6,col=2)
+        #display track ID
+        self.w3.addWidget(self.displayID_label, row=7,col=0)
+        self.w3.addWidget(self.displayID_checkbox, row=7,col=1)
+        #display Legend
+        self.w3.addWidget(self.displayLegend_label, row=8,col=0)
+        self.w3.addWidget(self.displayLegend_checkbox, row=8,col=1)
+
         #interpolate
-        self.w3.addWidget(self.interpolate_label , row=7,col=0)
-        self.w3.addWidget(self.interpolate_checkbox, row=7,col=1)
+        self.w3.addWidget(self.interpolate_label , row=9,col=0)
+        self.w3.addWidget(self.interpolate_checkbox, row=9,col=1)
         #show whole trace
-        self.w3.addWidget(self.showWholeTrace_label , row=8,col=0)
-        self.w3.addWidget(self.showWholeTrace_checkbox, row=8,col=1)
+        self.w3.addWidget(self.showWholeTrace_label , row=10,col=0)
+        self.w3.addWidget(self.showWholeTrace_checkbox, row=10,col=1)
         #show scale bar
-        self.w3.addWidget(self.showScaleBar_button, row=9,col=0)
+        self.w3.addWidget(self.showScaleBar_button, row=11,col=0)
+        #play
+        self.w3.addWidget(self.frameRate_label, row=12,col=0)
+        self.w3.addWidget(self.frameRate_box, row=12,col=1)
+        self.w3.addWidget(self.play_button, row=12,col=2)
         #showData
-        self.w3.addWidget(self.showData_button, row=10,col=0)
+        self.w3.addWidget(self.showData_button, row=13,col=0)
         #record
-        self.w3.addWidget(self.record_button, row=10,col=1)
+        self.w3.addWidget(self.record_button, row=13,col=1)
 
         #add layouts to dock
         self.d1.addWidget(self.w1)
@@ -3469,9 +3514,24 @@ class ROIPLOT():
 
         #plot points in ROI on zoomed ROI image
         if len(self.dataInView) != 0:
+            trackID_list = np.array(extractListElement(self.dataInView, 0))
             x_list = np.array(extractListElement(self.dataInView, 1)) - pos[0]
             y_list = np.array(extractListElement(self.dataInView, 2)) - pos[1]
-            self.scatter.addPoints(x=x_list, y=y_list, size=self.pointSize_box.value())
+
+            if self.pointCol_Box.value() == 'random':
+                trackColour_list = [pg.intColor(i) for i in trackID_list]
+            else:
+                trackColour_list = [self.pointCol_Box.value() for i in trackID_list]
+
+
+            brush_list = [pg.mkBrush(i) for i in trackColour_list]
+
+            self.scatter.addPoints(x=x_list, y=y_list, size=self.pointSize_box.value(), brush=brush_list, name=trackID_list, hoverable=False)
+
+            if self.displayID_checkbox.isChecked():
+                label_list = [custom_symbol(str(i)) for i in trackID_list]
+                offset = 0.8
+                self.scatter.addPoints(x=x_list+offset, y=y_list+offset, size=self.pointSize_box.value(), symbol = label_list, brush=brush_list, name=trackID_list, hoverable=False)
 
         #print(self.trackSelector.value())
 
@@ -3493,7 +3553,7 @@ class ROIPLOT():
             if self.mainGUI.trackPlotOptions.backgroundSubtract_checkbox.isChecked():
                 intensity = intensity - self.mainGUI.trackPlotOptions.background_selector.value()
 
-            item = pg.PlotDataItem(x=trackDF['frame'].to_numpy(),y=intensity)
+            item = pg.PlotDataItem(x=trackDF['frame'].to_numpy(),y=intensity, name=str(trackID))
             # Map the trackID to a colour
             if self.lineCol_Box.value() == 'random':
                 trackColour = pg.intColor(trackID)
@@ -3533,6 +3593,14 @@ class ROIPLOT():
             self.trackList  = [int(self.trackSelector.value())]
         else:
             self.trackList = [self.trackSelector.itemText(i) for i in range(self.trackSelector.count())]
+
+
+    def toggleLegend(self):
+        if self.displayLegend_checkbox.isChecked():
+            self.traceLegend = self.w2.addLegend()
+        else:
+            self.w2.removeItem(self.traceLegend)
+
 
     def updateTrackList(self):
         """
@@ -3605,6 +3673,10 @@ class ROIPLOT():
 
         A_crop[A_crop==0] = np.nan
         trace = np.mean(A_crop, axis=(1,2))
+
+
+    def play(self):
+        ...
 
     def startRecording(self):
         ...
