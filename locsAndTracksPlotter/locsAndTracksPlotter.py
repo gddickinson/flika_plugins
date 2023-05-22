@@ -132,10 +132,10 @@ def open_file_gui(prompt="Open File", directory=None, filetypes=''):
         return str(filename)
 
 class Scale_Bar_ROIzoom(BaseProcess):
-    ''' scale_bar(width_microns, width_pixels, font_size, color, background, location, show=True)
+    ''' scale_bar(width_NoUnits, width_pixels, font_size, color, background, location, show=True)
 
     Parameters:
-        width_microns (float): width in microns
+        width_NoUnits (float): width
         width_pixels (float): width in pixels
         font_size (int): size of the font
         color (string): ['Black', White']
@@ -152,13 +152,18 @@ class Scale_Bar_ROIzoom(BaseProcess):
         self.gui_reset()
 
         self.w = self.roiGUI.w1
-        width_microns=QDoubleSpinBox()
+        width_NoUnits=QSpinBox()
+        width_NoUnits.setRange(1,10000)
 
-        width_pixels=QSpinBox()
+        width_pixels=QDoubleSpinBox()
         width_pixels.setRange(.001,1000000)
         #width_pixels.setRange(1,self.roiGUI.mx)
 
         font_size=QSpinBox()
+
+        units=ComboBox()
+        units.addItem("nm")
+        units.addItem("µm")
 
         color=ComboBox()
         color.addItem("White")
@@ -175,11 +180,12 @@ class Scale_Bar_ROIzoom(BaseProcess):
         show=CheckBox()
 
         font_size.setValue(12)
-        #width_pixels.setValue(int(self.roiGUI.mx/8))
-        width_microns.setValue(1)
+        width_pixels.setValue(1.00)
+        width_NoUnits.setValue(108)
 
         show.setChecked(True)
-        self.items.append({'name':'width_microns','string':'Width of bar in microns','object':width_microns})
+        self.items.append({'name':'width_NoUnits','string':'Width of bar','object':width_NoUnits})
+        self.items.append({'name':'width_unit','string':'Width of bar units','object':units})
         self.items.append({'name':'width_pixels','string':'Width of bar in pixels','object':width_pixels})
         self.items.append({'name':'font_size','string':'Font size','object':font_size})
         self.items.append({'name':'color','string':'Color','object':color})
@@ -189,7 +195,8 @@ class Scale_Bar_ROIzoom(BaseProcess):
 
         super().gui()
         self.preview()
-    def __call__(self,width_microns, width_pixels, font_size, color, background,location,show=True,keepSourceWindow=None):
+
+    def __call__(self,width_NoUnits, width_pixels, font_size, color, background,location,show=True,keepSourceWindow=None):
 
         if show:
             if hasattr(self.roiGUI,'scaleBarLabel') and self.roiGUI.scaleBarLabel is not None:
@@ -208,7 +215,7 @@ class Scale_Bar_ROIzoom(BaseProcess):
             elif location=='Lower Left':
                 anchor=(0,0)
                 pos=[0,self.roiGUI.my]
-            self.roiGUI.scaleBarLabel= pg.TextItem(anchor=anchor, html="<span style='font-size: {}pt;color:{};background-color:{};'>{} μm</span>".format(font_size, color, background,width_microns))
+            self.roiGUI.scaleBarLabel= pg.TextItem(anchor=anchor, html="<span style='font-size: {}pt;color:{};background-color:{};'>{} {}</span>".format(font_size, color, background,width_NoUnits,self.getValue('width_unit')))
             self.roiGUI.scaleBarLabel.setPos(pos[0],pos[1])
             self.roiGUI.scaleBarLabel.flika_properties={item['name']:item['value'] for item in self.items}
             self.w.view.addItem(self.roiGUI.scaleBarLabel)
@@ -266,14 +273,14 @@ class Scale_Bar_ROIzoom(BaseProcess):
         self.roiGUI.scaleBarLabel.bar.setRect(QRectF(barPoint, QSizeF(width_pixels,textHeight/4)))
 
     def preview(self):
-        width_microns=self.getValue('width_microns')
+        width_NoUnits=self.getValue('width_NoUnits')
         width_pixels=self.getValue('width_pixels')
         font_size=self.getValue('font_size')
         color=self.getValue('color')
         background=self.getValue('background')
         location=self.getValue('location')
         show=self.getValue('show')
-        self.__call__(width_microns, width_pixels, font_size, color, background, location, show)
+        self.__call__(width_NoUnits, width_pixels, font_size, color, background, location, show)
 
 
 class FileSelector(QWidget):
@@ -3277,6 +3284,7 @@ class ROIPLOT():
 
         # Initialize the main GUI instance
         self.mainGUI = mainGUI
+        self.dataWindow = None
         self.tracksInView = []
         self.selectedPoints = []
         self.trackToDisplay = None
@@ -3316,7 +3324,7 @@ class ROIPLOT():
         self.trackSelector = CheckableComboBox()
         self.tracks= {'None':'None'}
         self.trackSelector.setItems(self.tracks)
-        self.trackSelector_label = QLabel("Select Track ID")
+        self.trackSelector_label = QLabel("Select Track ID(s)")
         self.selectTrack_checkbox = CheckBox()
         self.selectTrack_checkbox.setChecked(False)
 
@@ -3352,7 +3360,7 @@ class ROIPLOT():
         self.record_button.pressed.connect(self.startRecording)
 
         self.lineCol_Box = pg.ComboBox()
-        self.colours = {'random':'random', 'green': QColor(Qt.green), 'red': QColor(Qt.red), 'blue': QColor(Qt.blue)}
+        self.colours = {'random':'random', 'green': QColor(Qt.green), 'red': QColor(Qt.red), 'blue': QColor(Qt.blue), 'yellow': QColor(Qt.yellow), 'white': QColor(Qt.white)}
         self.lineCol_Box.setItems(self.colours)
 
         self.pointCol_Box = pg.ComboBox()
@@ -3360,11 +3368,10 @@ class ROIPLOT():
         self.lineCol_label = QLabel("Line color")
         self.pointCol_label = QLabel("Point color")
 
-
-        self.pointSize_box = pg.SpinBox(value=0.2, int=False)
-        self.pointSize_box.setSingleStep(0.01)
-        self.pointSize_box.setMinimum(0.00)
-        self.pointSize_box.setMaximum(5)
+        self.pointSize_box = pg.SpinBox(value=10, int=True)
+        self.pointSize_box.setSingleStep(1)
+        self.pointSize_box.setMinimum(0)
+        self.pointSize_box.setMaximum(100)
 
         self.lineWidth_box = pg.SpinBox(value=2, int=True)
         self.lineWidth_box.setSingleStep(1)
@@ -3376,42 +3383,40 @@ class ROIPLOT():
 
         self.pointSize_box.valueChanged.connect(self.update)
         self.lineWidth_box.valueChanged.connect(self.update)
+        self.lineCol_Box.currentIndexChanged.connect(self.update)
+        self.pointCol_Box.currentIndexChanged.connect(self.update)
 
-
-        #row0
+        # add widgets to layout
+        #line + point colour
         self.w3.addWidget(self.lineCol_label, row=0,col=0)
         self.w3.addWidget(self.lineCol_Box, row=0,col=1)
         self.w3.addWidget(self.pointCol_label, row=1,col=0)
         self.w3.addWidget(self.pointCol_Box, row=1,col=1)
-
-        #row1
+        #display/hide hist and labels
         self.w3.addWidget(self.displayHist_label, row=2,col=0)
         self.w3.addWidget(self.displayHist_checkbox, row=2,col=1)
         self.w3.addWidget(self.displayAxes_label, row=3,col=0)
         self.w3.addWidget(self.displayAxes_checkbox, row=3,col=1)
-        #row2
+        #line + point size
         self.w3.addWidget(self.lineWidth_label, row=4,col=0)
         self.w3.addWidget(self.lineWidth_box, row=4,col=1)
         self.w3.addWidget(self.pointSize_label, row=5,col=0)
         self.w3.addWidget(self.pointSize_box, row=5,col=1)
-
-        #row3
+        #select track
         self.w3.addWidget(self.trackSelector_label, row=6,col=0)
         self.w3.addWidget(self.selectTrack_checkbox, row=6,col=1)
         self.w3.addWidget(self.trackSelector, row=6,col=2)
-
-        #row3
+        #interpolate
         self.w3.addWidget(self.interpolate_label , row=7,col=0)
         self.w3.addWidget(self.interpolate_checkbox, row=7,col=1)
-
+        #show whole trace
         self.w3.addWidget(self.showWholeTrace_label , row=8,col=0)
         self.w3.addWidget(self.showWholeTrace_checkbox, row=8,col=1)
-
+        #show scale bar
         self.w3.addWidget(self.showScaleBar_button, row=9,col=0)
-
-        #row4
+        #showData
         self.w3.addWidget(self.showData_button, row=10,col=0)
-        #row5
+        #record
         self.w3.addWidget(self.record_button, row=10,col=1)
 
         #add layouts to dock
@@ -3421,6 +3426,9 @@ class ROIPLOT():
 
 
     def update(self):
+        #test if roiZoom plot intiated
+        if self.dataWindow == None:
+            return
         #clear scatter plot data
         self.scatter.setData([],[])
         #clear intensity plot
@@ -3454,7 +3462,7 @@ class ROIPLOT():
         if self.ROIplotInitiated == False:
             self.ROIplotInitiated = True
 
-        print(self.dataInView)
+        #print(self.dataInView)
 
         #get ROI pos to offset scatter plot on zoomed image
         pos = self.currentROI.pos()
@@ -3463,9 +3471,9 @@ class ROIPLOT():
         if len(self.dataInView) != 0:
             x_list = np.array(extractListElement(self.dataInView, 1)) - pos[0]
             y_list = np.array(extractListElement(self.dataInView, 2)) - pos[1]
-            self.scatter.addPoints(x=x_list, y=y_list)
+            self.scatter.addPoints(x=x_list, y=y_list, size=self.pointSize_box.value())
 
-        print(self.trackSelector.value())
+        #print(self.trackSelector.value())
 
         if self.selectTrack_checkbox.isChecked():
             tracksToDisplay = np.array(self.trackSelector.value(), dtype=int)
@@ -3487,9 +3495,12 @@ class ROIPLOT():
 
             item = pg.PlotDataItem(x=trackDF['frame'].to_numpy(),y=intensity)
             # Map the trackID to a colour
-            trackColour = pg.intColor(trackID)
+            if self.lineCol_Box.value() == 'random':
+                trackColour = pg.intColor(trackID)
+            else:
+                trackColour = self.lineCol_Box.value()
             # setup pen
-            pen = pg.mkPen(trackColour, width=2)
+            pen = pg.mkPen(trackColour, width=self.lineWidth_box.value())
             item.setPen(pen)
             self.w2.addItem(item)
 
@@ -4632,8 +4643,6 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             # Hide the window if it is already displayed
             self.ROIplot.hide()
             self.displayROIplot= False
-
-
 
 
     def togglePointMap(self):
