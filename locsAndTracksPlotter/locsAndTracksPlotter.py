@@ -3339,7 +3339,7 @@ class ROIPLOT():
         self.trackSelector = CheckableComboBox()
         self.tracks= {'None':'None'}
         self.trackSelector.setItems(self.tracks)
-        self.trackSelector_label = QLabel("Select Track ID(s)")
+        self.trackSelector_label = QLabel("Select Point/Track ID(s) to Display")
         self.selectTrack_checkbox = CheckBox()
         self.selectTrack_checkbox.setChecked(False)
 
@@ -3368,27 +3368,27 @@ class ROIPLOT():
         self.interpolate_checkbox = CheckBox()
         self.interpolate_checkbox.setChecked(False)
         self.interpolate_checkbox.stateChanged.connect(self.update)
-        self.interpolate_label = QLabel("Interpolate Missing Localizations")
+        self.interpolate_label = QLabel("Interpolate Missing Intensity")
 
         self.showWholeTrace_checkbox = CheckBox()
         self.showWholeTrace_checkbox.setChecked(False)
         self.showWholeTrace_checkbox.stateChanged.connect(self.update)
         self.showWholeTrace_label = QLabel("Show Entire Trace")
 
-        self.showScaleBar_button = QPushButton('Add Scale Bar')
+        self.showScaleBar_button = QPushButton('Scale Bar')
         self.showScaleBar_button.pressed.connect(self.addScaleBar)
 
         self.showData_button = QPushButton('Load ROI Data')
         self.showData_button.pressed.connect(self.startPlot)
 
-        self.play_button = QPushButton('Play')
+        self.play_button = QPushButton('Play/Pause')
         self.play_button.pressed.connect(self.play)
 
         self.record_button = QPushButton('Record')
         self.record_button.pressed.connect(self.startRecording)
 
         self.lineCol_Box = pg.ComboBox()
-        self.colours = {'random':'random', 'green': QColor(Qt.green), 'red': QColor(Qt.red), 'blue': QColor(Qt.blue), 'yellow': QColor(Qt.yellow), 'white': QColor(Qt.white)}
+        self.colours = {'trackID':'random', 'green': QColor(Qt.green), 'red': QColor(Qt.red), 'blue': QColor(Qt.blue), 'yellow': QColor(Qt.yellow), 'white': QColor(Qt.white)}
         self.lineCol_Box.setItems(self.colours)
 
         self.pointCol_Box = pg.ComboBox()
@@ -3469,6 +3469,9 @@ class ROIPLOT():
         self.d2.addWidget(self.w2)
         self.d3.addWidget(self.w3)
 
+        #hide imageview buttons
+        self.w1.ui.roiBtn.hide()
+        self.w1.ui.menuBtn.hide()
 
     def update(self):
         #test if roiZoom plot intiated
@@ -3494,7 +3497,6 @@ class ROIPLOT():
         #set mx and my
         self.mx, self.my = self.dataWindow.currentROI.size()
 
-
         #update hist
         self.w1.setLevels(min=hist_levels[0],max=hist_levels[1])
 
@@ -3507,16 +3509,24 @@ class ROIPLOT():
         if self.ROIplotInitiated == False:
             self.ROIplotInitiated = True
 
+        #determine which tracks to display
+        if self.selectTrack_checkbox.isChecked():
+            tracksToDisplay = np.array(self.trackSelector.value(), dtype=int)
+            self.pointsToDisplay = [x for x in self.dataInView if x[0] in tracksToDisplay]
+        else:
+            tracksToDisplay = self.tracksInView
+            self.pointsToDisplay = self.dataInView
+
         #print(self.dataInView)
 
         #get ROI pos to offset scatter plot on zoomed image
         pos = self.currentROI.pos()
 
         #plot points in ROI on zoomed ROI image
-        if len(self.dataInView) != 0:
-            trackID_list = np.array(extractListElement(self.dataInView, 0))
-            x_list = np.array(extractListElement(self.dataInView, 1)) - pos[0]
-            y_list = np.array(extractListElement(self.dataInView, 2)) - pos[1]
+        if len(self.pointsToDisplay) != 0:
+            trackID_list = np.array(extractListElement(self.pointsToDisplay, 0))
+            x_list = np.array(extractListElement(self.pointsToDisplay, 1)) - pos[0]
+            y_list = np.array(extractListElement(self.pointsToDisplay, 2)) - pos[1]
 
             if self.pointCol_Box.value() == 'random':
                 trackColour_list = [pg.intColor(i) for i in trackID_list]
@@ -3530,16 +3540,12 @@ class ROIPLOT():
 
             if self.displayID_checkbox.isChecked():
                 label_list = [custom_symbol(str(i)) for i in trackID_list]
-                offset = 0.8
+                offset = self.pointSize_box.value()/10
                 self.scatter.addPoints(x=x_list+offset, y=y_list+offset, size=self.pointSize_box.value(), symbol = label_list, brush=brush_list, name=trackID_list, hoverable=False)
 
         #print(self.trackSelector.value())
 
-        if self.selectTrack_checkbox.isChecked():
-            tracksToDisplay = np.array(self.trackSelector.value(), dtype=int)
-        else:
-            tracksToDisplay = self.tracksInView
-
+        #plot intensity trace(s)
         for trackID in tracksToDisplay:
             # Get data for the selected track
             trackDF = self.mainGUI.data[self.mainGUI.data['track_number'] == trackID]
@@ -3676,7 +3682,12 @@ class ROIPLOT():
 
 
     def play(self):
-        ...
+        if self.dataWindow.imageview.playTimer.isActive():
+            self.dataWindow.imageview.play(0)
+        else:
+            self.dataWindow.imageview.play(int(self.frameRate_box.value()))
+
+
 
     def startRecording(self):
         ...
@@ -3687,12 +3698,12 @@ class ROIPLOT():
     def displayHist(self):
         if self.displayHist_checkbox.isChecked():
             self.w1.ui.histogram.show()
-            self.w1.ui.roiBtn.show()
-            self.w1.ui.menuBtn.show()
+            #self.w1.ui.roiBtn.show()
+            #self.w1.ui.menuBtn.show()
         else:
             self.w1.ui.histogram.hide()
-            self.w1.ui.roiBtn.hide()
-            self.w1.ui.menuBtn.hide()
+            #self.w1.ui.roiBtn.hide()
+            #self.w1.ui.menuBtn.hide()
 
 
     def displayAxes(self):
@@ -3941,7 +3952,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         # Define the items that will appear in the GUI, and associate them with the appropriate functions.
         #self.exportFolder = FolderSelector('*.txt')
 
-        self.items.append({'name': 'filename ', 'string': 'before load, select data window', 'object': self.getFile})
+        self.items.append({'name': 'filename ', 'string': '', 'object': self.getFile})
         self.items.append({'name': 'filetype', 'string': 'filetype', 'object': self.filetype_Box})
         self.items.append({'name': 'hidePoints', 'string': 'PLOT    --------------------', 'object': self.hidePointData_button })
         self.items.append({'name': 'plotPointMap', 'string': '', 'object': self.togglePointMap_button })
