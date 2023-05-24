@@ -52,13 +52,14 @@ from skimage.draw import ellipse
 from skimage.measure import label, regionprops, regionprops_table
 from skimage.transform import rotate
 from math import cos, sin, degrees
+import shutil, subprocess
 
 # determine which version of flika to use
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
-    from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector
+    from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, save_file_gui
 else:
-    from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector
+    from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, save_file_gui
 
 from pyqtgraph import HistogramLUTWidget
 
@@ -3290,6 +3291,19 @@ def custom_symbol(symbol: str, font: QFont = QFont("San Serif")):
     tr.translate(-br.x() - br.width() / 2., -br.y() - br.height() / 2.)
     return tr.map(pg_symbol)
 
+def QImageToCvMat(incomingImage):
+    '''  Converts a QImage into an opencv MAT format  '''
+    incomingImage = incomingImage.convertToFormat(QImage.Format.Format_RGBA8888)
+
+    width = incomingImage.width()
+    height = incomingImage.height()
+
+    ptr = incomingImage.bits()
+    ptr.setsize(height * width * 4)
+    arr = np.frombuffer(ptr, np.uint8).reshape((height, width, 4))
+    return arr
+
+
 class ROIPLOT():
     """
     A class for displaying ROI image with scrolling update of locs positions and intensity trace.
@@ -3306,6 +3320,7 @@ class ROIPLOT():
         self.ROIplotInitiated = False
         self.mx = None
         self.my = None
+        self.nFrames = None
         self.scaleBarLabel = None
 
         self.scale_bar = Scale_Bar_ROIzoom(self)
@@ -3375,11 +3390,30 @@ class ROIPLOT():
         self.showWholeTrace_checkbox.stateChanged.connect(self.update)
         self.showWholeTrace_label = QLabel("Show Entire Trace")
 
+        self.showTrackPath_checkbox = CheckBox()
+        self.showTrackPath_checkbox.setChecked(False)
+        self.showTrackPath_checkbox.stateChanged.connect(self.update)
+        self.showTrackPath_label = QLabel("Plot Lags")
+
         self.showScaleBar_button = QPushButton('Scale Bar')
         self.showScaleBar_button.pressed.connect(self.addScaleBar)
 
         self.showData_button = QPushButton('Load ROI Data')
         self.showData_button.pressed.connect(self.startPlot)
+
+        self.start_box = pg.SpinBox(value=0, int=True)
+        self.start_box.setSingleStep(1)
+        self.start_box.setMinimum(0)
+        self.start_box.setMaximum(100)
+
+        self.end_box = pg.SpinBox(value=0, int=True)
+        self.end_box.setSingleStep(1)
+        self.end_box.setMinimum(0)
+        self.end_box.setMaximum(100)
+
+        self.loop_checkbox = CheckBox()
+        self.loop_checkbox.setChecked(False)
+        self.loop_label = QLabel("Loop")
 
         self.play_button = QPushButton('Play/Pause')
         self.play_button.pressed.connect(self.play)
@@ -3579,6 +3613,7 @@ class ROIPLOT():
             return
 
         self.array = self.dataWindow.imageArray()
+        self.nFrames = self.dataWindow.mt
 
         #self.zoomIMG = pg.ImageItem()
         #self.w1.addItem(self.zoomIMG)
@@ -3688,9 +3723,70 @@ class ROIPLOT():
             self.dataWindow.imageview.play(int(self.frameRate_box.value()))
 
 
-
     def startRecording(self):
-        ...
+        ## Check if ffmpeg is installed
+        if os.name == 'nt':  # If we are running windows
+            try:
+                subprocess.call(["ffmpeg"])
+            except FileNotFoundError as e:
+                if e.errno == os.errno.ENOENT:
+                    # handle file not found error.
+                    # I used http://ffmpeg.org/releases/ffmpeg-2.8.4.tar.bz2 originally
+                    g.alert("The program FFmpeg is required to export movies. \
+                    \n\nFor instructions on how to install, go here: http://www.wikihow.com/Install-FFmpeg-on-Windows")
+                    return None
+                else:
+                    # Something else went wrong while trying to run `wget`
+                    raise
+
+        filetypes = "Movies (*.mp4)"
+        prompt = "Save movie to .mp4 file"
+        filename = save_file_gui(prompt, filetypes=filetypes)
+        if filename is None:
+            return None
+
+        exporter0 = pg.exporters.ImageExporter(self.dataWindow.imageview.view)
+        exporter1 = pg.exporters.ImageExporter(self.w1.view)
+        exporter2 = pg.exporters.ImageExporter(self.w2.plotItem)
+
+        tmpdir = os.path.join(os.path.dirname(g.settings.settings_file), 'tmp')
+        if os.path.isdir(tmpdir):
+            shutil.rmtree(tmpdir)
+        os.mkdir(tmpdir)
+
+        subDir_list = [['main',os.path.join(tmpdir, 'main')],
+                       ['zoom',os.path.join(tmpdir, 'zoom')],
+                       ['trace',os.path.join(tmpdir, 'trace')]]
+
+        for d in subDir_list:
+            os.makedirs(d[1])
+
+
+        for i in range(0,self.nFrames):
+            self.dataWindow.setIndex(i)
+            exporter0.export(os.path.join(os.path.join(tmpdir, 'main'), '{:03}.jpg'.format(i)))
+            exporter1.export(os.path.join(os.path.join(tmpdir, 'zoom'), '{:03}.jpg'.format(i)))
+            exporter2.export(os.path.join(os.path.join(tmpdir, 'trace'), '{:03}.jpg'.format(i)))
+            qApp.processEvents()
+
+        print('temp movie files saved to {}'.format(tmpdir))
+
+        rate = int(self.frameRate_box.value())
+
+        olddir = os.getcwd()
+
+        for d in subDir_list:
+
+            os.chdir(d[1])
+            subprocess.call(
+                ['ffmpeg', '-r', '%d' % rate, '-i', '%03d.jpg', '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', 'output.mp4'])
+            split = os.path.splitext(filename)
+            movieName = split[0] + '_' + d[0] + split[1]
+            os.rename('output.mp4', movieName)
+            os.chdir(olddir)
+            print('Successfully saved movie as {}.'.format(os.path.basename(movieName)))
+            g.m.statusBar().showMessage('Successfully saved movie as {}.'.format(os.path.basename(movieName)))
+
 
     def addScaleBar(self):
         self.scale_bar.gui()
