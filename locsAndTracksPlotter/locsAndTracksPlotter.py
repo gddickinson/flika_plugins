@@ -3197,7 +3197,6 @@ class CheckableComboBox(QComboBox):
         elidedText = metrics.elidedText(text, Qt.ElideRight, self.lineEdit().width())
         self.lineEdit().setText(elidedText)
 
-
     def addItemDirect(self,text):
         item = QStandardItem()
         item.setText(text)
@@ -3291,17 +3290,17 @@ def custom_symbol(symbol: str, font: QFont = QFont("San Serif")):
     tr.translate(-br.x() - br.width() / 2., -br.y() - br.height() / 2.)
     return tr.map(pg_symbol)
 
-def QImageToCvMat(incomingImage):
-    '''  Converts a QImage into an opencv MAT format  '''
-    incomingImage = incomingImage.convertToFormat(QImage.Format.Format_RGBA8888)
+# def QImageToCvMat(incomingImage):
+#     '''  Converts a QImage into an opencv MAT format  '''
+#     incomingImage = incomingImage.convertToFormat(QImage.Format.Format_RGBA8888)
 
-    width = incomingImage.width()
-    height = incomingImage.height()
+#     width = incomingImage.width()
+#     height = incomingImage.height()
 
-    ptr = incomingImage.bits()
-    ptr.setsize(height * width * 4)
-    arr = np.frombuffer(ptr, np.uint8).reshape((height, width, 4))
-    return arr
+#     ptr = incomingImage.bits()
+#     ptr.setsize(height * width * 4)
+#     arr = np.frombuffer(ptr, np.uint8).reshape((height, width, 4))
+#     return arr
 
 
 class ROIPLOT():
@@ -3322,6 +3321,7 @@ class ROIPLOT():
         self.my = None
         self.nFrames = None
         self.scaleBarLabel = None
+        self.traceLegend = None
 
         self.scale_bar = Scale_Bar_ROIzoom(self)
 
@@ -3345,6 +3345,10 @@ class ROIPLOT():
         self.w2.setLabel('left', 'intensity', units ='')
         self.w2.setLabel('bottom', 'time', units ='frames')
 
+        self.timeStamp_zoom = pg.TextItem(text='')
+        self.w1.addItem(self.timeStamp_zoom)
+        self.timeStamp_zoom.setPos(0,0)
+
         self.scatter = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 120))
         self.w1.addItem(self.scatter)
 
@@ -3354,7 +3358,7 @@ class ROIPLOT():
         self.trackSelector = CheckableComboBox()
         self.tracks= {'None':'None'}
         self.trackSelector.setItems(self.tracks)
-        self.trackSelector_label = QLabel("Select Point/Track ID(s) to Display")
+        self.trackSelector_label = QLabel("Filter by ID")
         self.selectTrack_checkbox = CheckBox()
         self.selectTrack_checkbox.setChecked(False)
 
@@ -3380,15 +3384,15 @@ class ROIPLOT():
         self.displayAxes_checkbox.stateChanged.connect(self.displayAxes)
         self.displayAxes_label = QLabel("Show Axes")
 
-        self.interpolate_checkbox = CheckBox()
-        self.interpolate_checkbox.setChecked(False)
-        self.interpolate_checkbox.stateChanged.connect(self.update)
-        self.interpolate_label = QLabel("Interpolate Missing Intensity")
+        # self.interpolate_checkbox = CheckBox()
+        # self.interpolate_checkbox.setChecked(False)
+        # self.interpolate_checkbox.stateChanged.connect(self.update)
+        # self.interpolate_label = QLabel("Interpolate Missing Intensity")
 
-        self.showWholeTrace_checkbox = CheckBox()
-        self.showWholeTrace_checkbox.setChecked(False)
-        self.showWholeTrace_checkbox.stateChanged.connect(self.update)
-        self.showWholeTrace_label = QLabel("Show Entire Trace")
+        self.showTimeStamp_checkbox = CheckBox()
+        self.showTimeStamp_checkbox.setChecked(False)
+        self.showTimeStamp_checkbox.stateChanged.connect(self.update)
+        self.showTimeStamp_label = QLabel("Show Time Stamp")
 
         self.showTrackPath_checkbox = CheckBox()
         self.showTrackPath_checkbox.setChecked(False)
@@ -3404,12 +3408,14 @@ class ROIPLOT():
         self.start_box = pg.SpinBox(value=0, int=True)
         self.start_box.setSingleStep(1)
         self.start_box.setMinimum(0)
-        self.start_box.setMaximum(100)
+        self.start_box.setMaximum(10000)
+        self.start_label = QLabel("Start Frame")
 
         self.end_box = pg.SpinBox(value=0, int=True)
         self.end_box.setSingleStep(1)
         self.end_box.setMinimum(0)
-        self.end_box.setMaximum(100)
+        self.end_box.setMaximum(10000)
+        self.end_label = QLabel("End Frame")
 
         self.loop_checkbox = CheckBox()
         self.loop_checkbox.setChecked(False)
@@ -3418,7 +3424,7 @@ class ROIPLOT():
         self.play_button = QPushButton('Play/Pause')
         self.play_button.pressed.connect(self.play)
 
-        self.record_button = QPushButton('Record')
+        self.record_button = QPushButton('Export')
         self.record_button.pressed.connect(self.startRecording)
 
         self.lineCol_Box = pg.ComboBox()
@@ -3453,6 +3459,7 @@ class ROIPLOT():
         self.lineWidth_box.valueChanged.connect(self.update)
         self.lineCol_Box.currentIndexChanged.connect(self.update)
         self.pointCol_Box.currentIndexChanged.connect(self.update)
+        self.frameRate_box.valueChanged.connect(self.update)
 
         # add widgets to layout
         #line + point colour
@@ -3482,21 +3489,27 @@ class ROIPLOT():
         self.w3.addWidget(self.displayLegend_checkbox, row=8,col=1)
 
         #interpolate
-        self.w3.addWidget(self.interpolate_label , row=9,col=0)
-        self.w3.addWidget(self.interpolate_checkbox, row=9,col=1)
+        # self.w3.addWidget(self.interpolate_label , row=9,col=0)
+        # self.w3.addWidget(self.interpolate_checkbox, row=9,col=1)
         #show whole trace
-        self.w3.addWidget(self.showWholeTrace_label , row=10,col=0)
-        self.w3.addWidget(self.showWholeTrace_checkbox, row=10,col=1)
+        self.w3.addWidget(self.showTimeStamp_label , row=10,col=0)
+        self.w3.addWidget(self.showTimeStamp_checkbox, row=10,col=1)
+
         #show scale bar
         self.w3.addWidget(self.showScaleBar_button, row=11,col=0)
         #play
-        self.w3.addWidget(self.frameRate_label, row=12,col=0)
-        self.w3.addWidget(self.frameRate_box, row=12,col=1)
-        self.w3.addWidget(self.play_button, row=12,col=2)
+        self.w3.addWidget(self.start_label, row=12,col=0)
+        self.w3.addWidget(self.start_box, row=12,col=1)
+        self.w3.addWidget(self.end_label, row=12,col=2)
+        self.w3.addWidget(self.end_box, row=12,col=3)
+
+        self.w3.addWidget(self.frameRate_label, row=13,col=0)
+        self.w3.addWidget(self.frameRate_box, row=13,col=1)
+        self.w3.addWidget(self.play_button, row=13,col=2)
         #showData
-        self.w3.addWidget(self.showData_button, row=13,col=0)
+        self.w3.addWidget(self.showData_button, row=14,col=0)
         #record
-        self.w3.addWidget(self.record_button, row=13,col=1)
+        self.w3.addWidget(self.record_button, row=14,col=1)
 
         #add layouts to dock
         self.d1.addWidget(self.w1)
@@ -3577,6 +3590,18 @@ class ROIPLOT():
                 offset = self.pointSize_box.value()/10
                 self.scatter.addPoints(x=x_list+offset, y=y_list+offset, size=self.pointSize_box.value(), symbol = label_list, brush=brush_list, name=trackID_list, hoverable=False)
 
+
+        #add timestamp
+        if self.showTimeStamp_checkbox.isChecked():
+            time_text = str(frame)
+            font_size = str(15)
+            font_style = 'bold'
+            html="<span style='font-size: {}; font-style: {};'>{}</span>".format(font_size, font_style, time_text)
+            self.timeStamp_zoom.setHtml(html)
+        else:
+            self.timeStamp_zoom.setText('')
+
+
         #print(self.trackSelector.value())
 
         #plot intensity trace(s)
@@ -3627,6 +3652,13 @@ class ROIPLOT():
         self.w2.setXRange(0, self.dataWindow.mt)
         self.w2.setLimits(xMin=0, xMax=self.dataWindow.mt)
 
+        self.start_box.setMinimum(0)
+        self.start_box.setMaximum(self.dataWindow.mt)
+
+        self.end_box.setMinimum(0)
+        self.end_box.setMaximum(self.dataWindow.mt)
+        self.end_box.setValue(self.dataWindow.mt)
+
         self.update()
 
         # Check if user wants to plot a specific track or use the display track
@@ -3638,9 +3670,12 @@ class ROIPLOT():
 
     def toggleLegend(self):
         if self.displayLegend_checkbox.isChecked():
-            self.traceLegend = self.w2.addLegend()
+            if self.traceLegend != None:
+                self.traceLegend = self.w2.addLegend()
         else:
             self.w2.removeItem(self.traceLegend)
+
+        self.update()
 
 
     def updateTrackList(self):
@@ -3717,10 +3752,25 @@ class ROIPLOT():
 
 
     def play(self):
+        if self.dataWindow.currentIndex >= self.end_box.value()-1:
+            self.dataWindow.setIndex(0)
+
+        if self.end_box.value() < self.dataWindow.mt:
+            self.dataWindow.sigTimeChanged.connect(self.timeLineChange)
+
         if self.dataWindow.imageview.playTimer.isActive():
             self.dataWindow.imageview.play(0)
         else:
+            if self.dataWindow.currentIndex < self.start_box.value():
+                self.dataWindow.setIndex(self.start_box.value())
             self.dataWindow.imageview.play(int(self.frameRate_box.value()))
+
+    def timeLineChange(self):
+        #print(self.dataWindow.currentIndex)
+        if self.dataWindow.currentIndex+1 > self.end_box.value():
+            if self.dataWindow.imageview.playTimer.isActive():
+                self.dataWindow.imageview.play(0)
+                self.dataWindow.sigTimeChanged.disconnect(self.timeLineChange)
 
 
     def startRecording(self):
@@ -3762,7 +3812,7 @@ class ROIPLOT():
             os.makedirs(d[1])
 
 
-        for i in range(0,self.nFrames):
+        for i in range(self.start_box.value(),self.end_box.value()):
             self.dataWindow.setIndex(i)
             exporter0.export(os.path.join(os.path.join(tmpdir, 'main'), '{:03}.jpg'.format(i)))
             exporter1.export(os.path.join(os.path.join(tmpdir, 'zoom'), '{:03}.jpg'.format(i)))
