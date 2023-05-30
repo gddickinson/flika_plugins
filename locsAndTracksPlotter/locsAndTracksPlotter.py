@@ -3389,6 +3389,12 @@ class ROIPLOT():
         # self.interpolate_checkbox.stateChanged.connect(self.update)
         # self.interpolate_label = QLabel("Interpolate Missing Intensity")
 
+        self.timeStampSize_box = pg.SpinBox(value=50, int=True)
+        self.timeStampSize_box.setSingleStep(1)
+        self.timeStampSize_box.setMinimum(0)
+        self.timeStampSize_box.setMaximum(500)
+        self.timeStampSize_label = QLabel("Time Stamp Size")
+
         self.showTimeStamp_checkbox = CheckBox()
         self.showTimeStamp_checkbox.setChecked(False)
         self.showTimeStamp_checkbox.stateChanged.connect(self.update)
@@ -3455,11 +3461,13 @@ class ROIPLOT():
         self.frameRate_box.setMaximum(1000)
         self.frameRate_label = QLabel("Frames per sec")
 
+        #connect widgets to update
         self.pointSize_box.valueChanged.connect(self.update)
         self.lineWidth_box.valueChanged.connect(self.update)
         self.lineCol_Box.currentIndexChanged.connect(self.update)
         self.pointCol_Box.currentIndexChanged.connect(self.update)
         self.frameRate_box.valueChanged.connect(self.update)
+        self.timeStampSize_box.valueChanged.connect(self.update)
 
         # add widgets to layout
         #line + point colour
@@ -3488,10 +3496,9 @@ class ROIPLOT():
         self.w3.addWidget(self.displayLegend_label, row=8,col=0)
         self.w3.addWidget(self.displayLegend_checkbox, row=8,col=1)
 
-        #interpolate
-        # self.w3.addWidget(self.interpolate_label , row=9,col=0)
-        # self.w3.addWidget(self.interpolate_checkbox, row=9,col=1)
-        #show whole trace
+        #show time stamp
+        self.w3.addWidget(self.timeStampSize_label , row=9,col=0)
+        self.w3.addWidget(self.timeStampSize_box, row=9,col=1)
         self.w3.addWidget(self.showTimeStamp_label , row=10,col=0)
         self.w3.addWidget(self.showTimeStamp_checkbox, row=10,col=1)
 
@@ -3594,9 +3601,9 @@ class ROIPLOT():
         #add timestamp
         if self.showTimeStamp_checkbox.isChecked():
             time_text = str(frame)
-            font_size = str(15)
+            font_size = str(self.timeStampSize_box.value())
             font_style = 'bold'
-            html="<span style='font-size: {}; font-style: {};'>{}</span>".format(font_size, font_style, time_text)
+            html="<span style='font-size: {}pt; font-style: {};'>{}</span>".format(font_size, font_style, time_text)
             self.timeStamp_zoom.setHtml(html)
         else:
             self.timeStamp_zoom.setText('')
@@ -4161,7 +4168,8 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         print('-------------------------------------')
 
         #add background subtracted intensity column
-        self.data['intensity - background'] = self.data['intensity']
+        if 'intensity - background' in self.data.columns:
+            self.data['intensity - background'] = self.data['intensity']
 
         # Create a dictionary from the column names of the data
         self.columns = self.data.columns
@@ -4200,6 +4208,25 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         # set estimated camera black level
         self.estimatedCameraBlackLevel = np.min(self.plotWindow.image)
         self.trackPlotOptions.estimatedCameraBlack.setText(str(self.estimatedCameraBlackLevel))
+
+        #add blank columns for missing analysis steps to prevent crashes
+        expectedColumns = ['frame', 'track_number', 'x', 'y', 'intensity', 'zeroed_X', 'zeroed_Y',
+       'lagNumber', 'distanceFromOrigin', 'dy-dt: distance', 'radius_gyration',
+       'asymmetry', 'skewness', 'kurtosis', 'fracDimension', 'netDispl',
+       'Straight', 'Experiment', 'SVM', 'nnDist_inFrame', 'n_segments', 'lag',
+       'meanLag', 'track_length', 'radius_gyration_scaled',
+       'radius_gyration_scaled_nSegments',
+       'radius_gyration_scaled_trackLength', 'roi_1', 'camera black estimate',
+       'd_squared', 'lag_squared', 'dt', 'velocity',
+       'direction_Relative_To_Origin', 'meanVelocity', 'intensity - mean roi1',
+       'intensity - mean roi1 and black', 'nnCountInFrame_within_3_pixels',
+       'nnCountInFrame_within_5_pixels', 'nnCountInFrame_within_10_pixels',
+       'nnCountInFrame_within_20_pixels', 'nnCountInFrame_within_30_pixels']
+
+        for col in expectedColumns:
+            if col not in self.columns:
+                self.data[col] = np.nan
+                self.data_unlinked[col] = np.nan
 
 
     def makePointDataDF(self, data):
