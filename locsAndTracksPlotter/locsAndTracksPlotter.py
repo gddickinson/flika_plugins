@@ -3322,6 +3322,7 @@ class ROIPLOT():
         self.nFrames = None
         self.scaleBarLabel = None
         self.traceLegend = None
+        self.pathitems = []
 
         self.scale_bar = Scale_Bar_ROIzoom(self)
 
@@ -3369,6 +3370,17 @@ class ROIPLOT():
         self.displayHist_checkbox.stateChanged.connect(self.displayHist)
         self.displayHist_label = QLabel("Show Histogram")
 
+        self.displayTrackPath_checkbox = CheckBox()
+        self.displayTrackPath_checkbox.setChecked(True)
+        self.displayTrackPath_checkbox.stateChanged.connect(self.update)
+        self.displayTrackPath_label = QLabel("Show Track")
+
+        self.trackPathSelector = pg.ComboBox()
+        self.pathOptions= {'By Frame':'frame', 'All':'all'}
+        self.trackPathSelector.setItems(self.pathOptions)
+        self.trackPathSelector.currentIndexChanged.connect(self.update)
+
+
         self.displayID_checkbox = CheckBox()
         self.displayID_checkbox.setChecked(False)
         self.displayID_checkbox.stateChanged.connect(self.update)
@@ -3399,11 +3411,6 @@ class ROIPLOT():
         self.showTimeStamp_checkbox.setChecked(False)
         self.showTimeStamp_checkbox.stateChanged.connect(self.update)
         self.showTimeStamp_label = QLabel("Show Time Stamp")
-
-        self.showTrackPath_checkbox = CheckBox()
-        self.showTrackPath_checkbox.setChecked(False)
-        self.showTrackPath_checkbox.stateChanged.connect(self.update)
-        self.showTrackPath_label = QLabel("Plot Lags")
 
         self.showScaleBar_button = QPushButton('Scale Bar')
         self.showScaleBar_button.pressed.connect(self.addScaleBar)
@@ -3489,34 +3496,40 @@ class ROIPLOT():
         self.w3.addWidget(self.trackSelector_label, row=6,col=0)
         self.w3.addWidget(self.selectTrack_checkbox, row=6,col=1)
         self.w3.addWidget(self.trackSelector, row=6,col=2)
+        #show track path
+
+        self.w3.addWidget(self.displayTrackPath_label, row=7,col=0)
+        self.w3.addWidget(self.displayTrackPath_checkbox, row=7,col=1)
+        self.w3.addWidget(self.trackPathSelector, row=7,col=2)
+
         #display track ID
-        self.w3.addWidget(self.displayID_label, row=7,col=0)
-        self.w3.addWidget(self.displayID_checkbox, row=7,col=1)
+        self.w3.addWidget(self.displayID_label, row=8,col=0)
+        self.w3.addWidget(self.displayID_checkbox, row=8,col=1)
         #display Legend
-        self.w3.addWidget(self.displayLegend_label, row=8,col=0)
-        self.w3.addWidget(self.displayLegend_checkbox, row=8,col=1)
+        self.w3.addWidget(self.displayLegend_label, row=9,col=0)
+        self.w3.addWidget(self.displayLegend_checkbox, row=9,col=1)
 
         #show time stamp
-        self.w3.addWidget(self.timeStampSize_label , row=9,col=0)
-        self.w3.addWidget(self.timeStampSize_box, row=9,col=1)
-        self.w3.addWidget(self.showTimeStamp_label , row=10,col=0)
-        self.w3.addWidget(self.showTimeStamp_checkbox, row=10,col=1)
+        self.w3.addWidget(self.timeStampSize_label , row=10,col=0)
+        self.w3.addWidget(self.timeStampSize_box, row=10,col=1)
+        self.w3.addWidget(self.showTimeStamp_label , row=11,col=0)
+        self.w3.addWidget(self.showTimeStamp_checkbox, row=11,col=1)
 
         #show scale bar
-        self.w3.addWidget(self.showScaleBar_button, row=11,col=0)
+        self.w3.addWidget(self.showScaleBar_button, row=12,col=0)
         #play
-        self.w3.addWidget(self.start_label, row=12,col=0)
-        self.w3.addWidget(self.start_box, row=12,col=1)
-        self.w3.addWidget(self.end_label, row=12,col=2)
-        self.w3.addWidget(self.end_box, row=12,col=3)
+        self.w3.addWidget(self.start_label, row=13,col=0)
+        self.w3.addWidget(self.start_box, row=13,col=1)
+        self.w3.addWidget(self.end_label, row=13,col=2)
+        self.w3.addWidget(self.end_box, row=13,col=3)
 
-        self.w3.addWidget(self.frameRate_label, row=13,col=0)
-        self.w3.addWidget(self.frameRate_box, row=13,col=1)
-        self.w3.addWidget(self.play_button, row=13,col=2)
+        self.w3.addWidget(self.frameRate_label, row=14,col=0)
+        self.w3.addWidget(self.frameRate_box, row=14,col=1)
+        self.w3.addWidget(self.play_button, row=14,col=2)
         #showData
-        self.w3.addWidget(self.showData_button, row=14,col=0)
+        self.w3.addWidget(self.showData_button, row=15,col=0)
         #record
-        self.w3.addWidget(self.record_button, row=14,col=1)
+        self.w3.addWidget(self.record_button, row=15,col=1)
 
         #add layouts to dock
         self.d1.addWidget(self.w1)
@@ -3636,6 +3649,12 @@ class ROIPLOT():
             item.setPen(pen)
             self.w2.addItem(item)
 
+        #plot track on zoom display
+        if self.displayTrackPath_checkbox.isChecked():
+            self.plotTracks(tracksToDisplay)
+        else:
+            self.clearTracks()
+
 
     def startPlot(self):
         self.dataWindow = self.mainGUI.plotWindow
@@ -3725,37 +3744,97 @@ class ROIPLOT():
         self.trackSelector.setItems(dictFromList(self.tracksInView))
 
 
-    def getInterpolatedPoints(self):
-        # Extract x,y,frame data for each point
-        points = np.column_stack((trackDF['frame'].to_list(), trackDF['x'].to_list(), trackDF['y'].to_list()))
+    # def getInterpolatedPoints(self):
+    #     # Extract x,y,frame data for each point
+    #     points = np.column_stack((trackDF['frame'].to_list(), trackDF['x'].to_list(), trackDF['y'].to_list()))
 
-        if self.interpolate_checkbox.isChecked():
-            #interpolate points for missing frames
-            allFrames = range(int(min(points[:,0])), int(max(points[:,0]))+1)
-            xinterp = np.interp(allFrames, points[:,0], points[:,1])
-            yinterp = np.interp(allFrames, points[:,0], points[:,2])
+    #     if self.interpolate_checkbox.isChecked():
+    #         #interpolate points for missing frames
+    #         allFrames = range(int(min(points[:,0])), int(max(points[:,0]))+1)
+    #         xinterp = np.interp(allFrames, points[:,0], points[:,1])
+    #         yinterp = np.interp(allFrames, points[:,0], points[:,2])
 
-            points = np.column_stack((allFrames, xinterp, yinterp))
+    #         points = np.column_stack((allFrames, xinterp, yinterp))
 
 
-        # Loop through each point and extract a cropped image
-        for point in points:
-            minX = round(point[1]) - x_limit + self.d # Determine the limits of the crop including padding
-            maxX = round(point[1]) + x_limit + self.d
-            minY = round(point[2]) - y_limit + self.d
-            maxY = round(point[2]) + y_limit + self.d
+    #     # Loop through each point and extract a cropped image
+    #     for point in points:
+    #         minX = round(point[1]) - x_limit + self.d # Determine the limits of the crop including padding
+    #         maxX = round(point[1]) + x_limit + self.d
+    #         minY = round(point[2]) - y_limit + self.d
+    #         maxY = round(point[2]) + y_limit + self.d
 
-            if (self.d % 2) == 0:
-                crop = self.A_pad[int(point[0]),minX:maxX,minY:maxY] - np.min(self.A[int(point[0])])# Extract the crop
+    #         if (self.d % 2) == 0:
+    #             crop = self.A_pad[int(point[0]),minX:maxX,minY:maxY] - np.min(self.A[int(point[0])])# Extract the crop
+    #         else:
+    #             crop = self.A_pad[int(point[0]),minX-1:maxX,minY-1:maxY] - np.min(self.A[int(point[0])])# Extract the crop
+
+    #         A_crop[int(point[0])] = crop
+
+    #     self.A_crop_stack[i] = A_crop # Store the crop in the array of cropped images
+
+    #     A_crop[A_crop==0] = np.nan
+    #     trace = np.mean(A_crop, axis=(1,2))
+
+
+
+    def plotTracks(self, trackIDs):
+        '''Updates track paths '''
+        pos = self.currentROI.pos()
+        frame = self.dataWindow.currentIndex
+
+        # clear self.pathitems
+        self.clearTracks()
+
+        for trackID in trackIDs:
+            trackDF = self.mainGUI.data[self.mainGUI.data['track_number'] == trackID]
+
+            if self.trackPathSelector.value() == 'frame':
+                #filter to current frame
+                trackDF = trackDF[trackDF['frame'] <= frame]
+
+            pathitem = QGraphicsPathItem(self.w1.view)
+
+            # Map the trackID to a colour
+            if self.lineCol_Box.value() == 'random':
+                trackColour = pg.intColor(trackID)
             else:
-                crop = self.A_pad[int(point[0]),minX-1:maxX,minY-1:maxY] - np.min(self.A[int(point[0])])# Extract the crop
+                trackColour = self.lineCol_Box.value()
 
-            A_crop[int(point[0])] = crop
+            pen = pg.mkPen(trackColour, width=2)
 
-        self.A_crop_stack[i] = A_crop # Store the crop in the array of cropped images
+            # set the pen for the path items
+            pathitem.setPen(pen)
 
-        A_crop[A_crop==0] = np.nan
-        trace = np.mean(A_crop, axis=(1,2))
+            # add the path items to the view(s)
+            self.w1.view.addItem(pathitem)
+
+            # keep track of the path items
+            self.pathitems.append(pathitem)
+
+            # extract the x and y coordinates for the track
+            x = trackDF['x'].to_numpy() - pos[0]
+            y = trackDF['y'].to_numpy() - pos[1]
+
+            # create a QPainterPath for the track and set the path for the path item
+            path = QPainterPath(QPointF(x[0],y[0]))
+
+            for i in np.arange(1, len(x)):
+                path.lineTo(QPointF(x[i],y[i]))
+
+            pathitem.setPath(path)
+
+
+    def clearTracks(self):
+        # Check that there is an open plot window
+        if self.w1 is not None:
+            # Remove each path item from the plot window
+            for pathitem in self.pathitems:
+                self.w1.view.removeItem(pathitem)
+
+        # Reset the path items list to an empty list
+        self.pathitems = []
+
 
 
     def play(self):
