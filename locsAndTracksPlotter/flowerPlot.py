@@ -40,7 +40,7 @@ class FlowerPlotWindow():
         self.mainGUI = mainGUI
 
         # Setup window
-        self.win = pg.GraphicsWindow()
+        self.win = pg.GraphicsLayoutWidget()
         self.win.resize(500, 500)
         self.win.setWindowTitle('Flower Plot')
 

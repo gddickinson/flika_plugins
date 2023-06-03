@@ -6,6 +6,18 @@ Created on Fri Jun  2 14:59:21 2023
 @author: george
 """
 
+import pyqtgraph as pg
+from qtpy.QtCore import *
+from qtpy.QtGui import *
+from qtpy.QtWidgets import *
+from distutils.version import StrictVersion
+
+# determine which version of flika to use
+flika_version = flika.__version__
+if StrictVersion(flika_version) < StrictVersion('0.2.23'):
+    from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, save_file_gui
+else:
+    from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, save_file_gui
 
 
 class Scale_Bar_ROIzoom(BaseProcess):

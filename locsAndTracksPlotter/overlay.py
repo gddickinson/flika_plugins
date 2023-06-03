@@ -120,17 +120,17 @@ class Overlay():
 
         #Opacity slider
         self.opacity = SliderLabel(1)
-        self.opacity.setRange(0.0,1.0)
-        self.opacity.setValue(0.5)
-        self.opacity.setSingleStep(0.1)
+        self.opacity.setRange(0,10)
+        self.opacity.setValue(5)
+        self.opacity.setSingleStep(1)
         self.opacity.valueChanged.connect(self.updateOpacity)
         self.opacity_label = QLabel('Opacity')
 
         #Gamma correct slider
         self.gammaCorrect = CheckBox()
         self.gamma = SliderLabel(1)
-        self.gamma.setRange(0.0,20.0)
-        self.gamma.setValue(0.0)
+        self.gamma.setRange(0,200)
+        self.gamma.setValue(0)
         self.gamma.valueChanged.connect(self.updateGamma)
         self.gamma_label = QLabel('Gamma Correct')
         self.gammaCorrect.stateChanged.connect(self.resetGamma)
@@ -138,8 +138,8 @@ class Overlay():
         #Threshold slider
         self.manualThreshold = CheckBox()
         self.threshold_slider = SliderLabel(1)
-        self.threshold_slider.setRange(0.0,20.0)
-        self.threshold_slider.setValue(0.0)
+        self.threshold_slider.setRange(0,20)
+        self.threshold_slider.setValue(0)
         self.threshold_slider.valueChanged.connect(self.detectFilaments)
         self.threshold_label = QLabel('Manual Threshold For Filament Detection')
         self.manualThreshold.stateChanged.connect(self.detectFilaments)
@@ -161,8 +161,8 @@ class Overlay():
         #Point Plot Threshold slider
         self.pointThreshold = CheckBox()
         self.pointThreshold_slider = SliderLabel(1)
-        self.pointThreshold_slider.setRange(0.0,1000.0)
-        self.pointThreshold_slider.setValue(0.0)
+        self.pointThreshold_slider.setRange(0,1000)
+        self.pointThreshold_slider.setValue(0)
         self.pointThreshold_slider.valueChanged.connect(self.plotPoints)
         self.pointThreshold_label = QLabel('Filter Points By Actin Intensity')
         self.pointThreshold.stateChanged.connect(self.plotPoints)
@@ -207,8 +207,8 @@ class Overlay():
 
         self.bgItem = pg.ImageItem()
         if self.gammaCorrect.isChecked():
-            self.overlayedIMG = gammaCorrect(self.overlayedIMG, self.gamma.value())
-        self.bgItem.setImage(self.overlayedIMG, autoRange=False, autoLevels=False, opacity=self.opacity.value())
+            self.overlayedIMG = gammaCorrect(self.overlayedIMG, self.gamma.value()/10)
+        self.bgItem.setImage(self.overlayedIMG, autoRange=False, autoLevels=False, opacity=self.opacity.value()/10)
         self.bgItem.setCompositionMode(self.OverlayMODE)
         self.overlayWindow.view.addItem(self.bgItem)
 
@@ -223,8 +223,8 @@ class Overlay():
         '''aply gamma correction using value from slider'''
         if self.gammaCorrect.isChecked():
             levels = self.bgItem.hist_luttt.getLevels()
-            gammaCorrrectedImg = gammaCorrect(self.overlayIMG, self.gamma.value())
-            self.bgItem.setImage(gammaCorrrectedImg, autoLevels=False, levels=levels, opacity=self.opacity.value())
+            gammaCorrrectedImg = gammaCorrect(self.overlayIMG, self.gamma.value()/10)
+            self.bgItem.setImage(gammaCorrrectedImg, autoLevels=False, levels=levels, opacity=self.opacity.value()/10)
 
     def resetGamma(self):
         '''reset the gamma value used to overlay images'''
@@ -232,16 +232,16 @@ class Overlay():
             self.updateGamma()
         else:
             levels = self.bgItem.hist_luttt.getLevels()
-            self.bgItem.setImage(self.overlayIMG, autoLevels=False, levels=levels, opacity=self.opacity.value())
+            self.bgItem.setImage(self.overlayIMG, autoLevels=False, levels=levels, opacity=self.opacity.value()/10)
 
     def updateOpacity(self):
         '''set opacity of overlaid images'''
         green = self.overlayIMG
         levels = self.bgItem.hist_luttt.getLevels()
         if self.gammaCorrect.isChecked():
-            green = gammaCorrect(green, self.gamma.value())
+            green = gammaCorrect(green, self.gamma.value()/10)
 
-        self.bgItem.setImage(green, autoLevels=False, levels=levels, opacity=self.opacity.value())
+        self.bgItem.setImage(green, autoLevels=False, levels=levels, opacity=self.opacity.value()/10)
 
 
     def loadTiff(self):

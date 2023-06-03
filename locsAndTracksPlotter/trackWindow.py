@@ -39,7 +39,7 @@ class TrackWindow(BaseProcess):
         self.mainGUI = mainGUI
 
         # Setup window
-        self.win = pg.GraphicsWindow()  # Create a PyqtGraph GraphicsWindow object
+        self.win = pg.GraphicsLayoutWidget()  # Create a PyqtGraph GraphicsWindow object
         self.win.resize(600, 800)  # Set the size of the window
         self.win.setWindowTitle('Track Display - press "t" to add track')  # Set the title of the window
 
