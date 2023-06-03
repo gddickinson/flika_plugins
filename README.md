@@ -132,7 +132,9 @@ Function:
 Author: George Dickinson (adapted from Kyle Ellefsen)
 Function:
                                                           
-
+* [locsAndTracksPlotter](https://github.com/gddickinson/flika_plugins/tree/master/locsAndTracksPlotter) 
+Author: George Dickinson
+Function: Plots positions of tracked particles on tiff stack and provides analysis tools for localization data. Uses positions derived from pynsignt (Kyle Ellefsen), thunderStorm (https://zitmen.github.io/thunderstorm/) or trackpy (http://soft-matter.github.io/trackpy/v0.6.1/). 
 
 
 ABOUT
