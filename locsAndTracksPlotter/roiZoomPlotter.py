@@ -440,8 +440,12 @@ class ROIPLOT():
         self.trackSelector_label = QLabel("Filter by ID")
         self.selectTrack_checkbox = CheckBox()
         self.selectTrack_checkbox.setChecked(False)
-
         self.selectTrack_checkbox.stateChanged.connect(self.update)
+
+        self.listAllIDs_checkbox = CheckBox()
+        self.listAllIDs_checkbox.setChecked(True)
+        self.listAllIDs_checkbox.stateChanged.connect(self.update)
+        self.listAllIDs_label = QLabel("List all IDs")
 
         self.displayHist_checkbox = CheckBox()
         self.displayHist_checkbox.setChecked(True)
@@ -563,14 +567,19 @@ class ROIPLOT():
         #display/hide hist and labels
         self.w3.addWidget(self.displayHist_label, row=2,col=0)
         self.w3.addWidget(self.displayHist_checkbox, row=2,col=1)
-        self.w3.addWidget(self.displayAxes_label, row=3,col=0)
-        self.w3.addWidget(self.displayAxes_checkbox, row=3,col=1)
+        self.w3.addWidget(self.displayAxes_label, row=2,col=2)
+        self.w3.addWidget(self.displayAxes_checkbox, row=2,col=3)
+
         #line + point size
-        self.w3.addWidget(self.lineWidth_label, row=4,col=0)
-        self.w3.addWidget(self.lineWidth_box, row=4,col=1)
-        self.w3.addWidget(self.pointSize_label, row=5,col=0)
-        self.w3.addWidget(self.pointSize_box, row=5,col=1)
+        self.w3.addWidget(self.lineWidth_label, row=3,col=0)
+        self.w3.addWidget(self.lineWidth_box, row=3,col=1)
+        self.w3.addWidget(self.pointSize_label, row=4,col=0)
+        self.w3.addWidget(self.pointSize_box, row=4,col=1)
+
         #select track
+        #display track for all frames
+        self.w3.addWidget(self.listAllIDs_label, row=5,col=0, colspan=2)
+        self.w3.addWidget(self.listAllIDs_checkbox, row=5,col=2)
         self.w3.addWidget(self.trackSelector_label, row=6,col=0)
         self.w3.addWidget(self.selectTrack_checkbox, row=6,col=1)
         self.w3.addWidget(self.trackSelector, row=6,col=2)
@@ -819,7 +828,10 @@ class ROIPLOT():
 
             self.dataInView.append([ptFilterDF['track_number'].values[0],ptFilterDF['x'].values[0],ptFilterDF['y'].values[0], intensity[0]])
 
-        self.trackSelector.setItems(dictFromList(self.tracksInView))
+        if self.listAllIDs_checkbox.isChecked():
+            self.updateTrackList()
+        else:
+            self.trackSelector.setItems(dictFromList(self.tracksInView))
 
 
     # def getInterpolatedPoints(self):
