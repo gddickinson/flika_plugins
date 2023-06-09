@@ -12,6 +12,7 @@ from qtpy.QtGui import *
 from qtpy.QtWidgets import *
 from distutils.version import StrictVersion
 import os, shutil, subprocess
+import errno
 
 import flika
 from flika.window import Window
@@ -942,7 +943,7 @@ class ROIPLOT():
             try:
                 subprocess.call(["ffmpeg"])
             except FileNotFoundError as e:
-                if e.errno == os.errno.ENOENT:
+                if e.errno == errno.ENOENT:
                     # handle file not found error.
                     # I used http://ffmpeg.org/releases/ffmpeg-2.8.4.tar.bz2 originally
                     g.alert("The program FFmpeg is required to export movies. \
@@ -975,11 +976,11 @@ class ROIPLOT():
             os.makedirs(d[1])
 
 
-        for i in range(self.start_box.value(),self.end_box.value()):
+        for n,i in enumerate(range(self.start_box.value(),self.end_box.value())):
             self.dataWindow.setIndex(i)
-            exporter0.export(os.path.join(os.path.join(tmpdir, 'main'), '{:03}.jpg'.format(i)))
-            exporter1.export(os.path.join(os.path.join(tmpdir, 'zoom'), '{:03}.jpg'.format(i)))
-            exporter2.export(os.path.join(os.path.join(tmpdir, 'trace'), '{:03}.jpg'.format(i)))
+            exporter0.export(os.path.join(os.path.join(tmpdir, 'main'), '{:03}.jpg'.format(n)))
+            exporter1.export(os.path.join(os.path.join(tmpdir, 'zoom'), '{:03}.jpg'.format(n)))
+            exporter2.export(os.path.join(os.path.join(tmpdir, 'trace'), '{:03}.jpg'.format(n)))
             qApp.processEvents()
 
         print('temp movie files saved to {}'.format(tmpdir))
@@ -987,6 +988,7 @@ class ROIPLOT():
         rate = int(self.frameRate_box.value())
 
         olddir = os.getcwd()
+        print('movie directory: {}'.format(olddir))
 
         for d in subDir_list:
 
