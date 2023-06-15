@@ -36,7 +36,6 @@ class FlowerPlotWindow():
     """
     def __init__(self, mainGUI):
         super().__init__()
-
         self.mainGUI = mainGUI
 
         # Setup window
@@ -59,12 +58,9 @@ class FlowerPlotWindow():
         # List to store plot items representing tracks
         self.pathitems = []
 
-
     def clearTracks(self):
         # Remove all plot items representing tracks
-        if self.win is not None and not self.win.closed:
-            for pathitem in self.pathitems:
-                self.plt.removeItem(pathitem)
+        self.plt.clear()
         self.pathitems = []
 
     def show(self):
