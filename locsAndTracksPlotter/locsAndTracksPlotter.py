@@ -315,7 +315,13 @@ class TrackPlotOptions():
         self.w3 = pg.LayoutWidget()
 
         self.intensityChoice_Box = pg.ComboBox()
-        self.intensityChoice = {'intensity':'intensity', 'intensity - mean roi1':'intensity - mean roi1', 'intensity_roiOnMeanXY': 'intensity_roiOnMeanXY', 'intensity_roiOnMeanXY - mean roi1': 'intensity_roiOnMeanXY - mean roi1', 'intensity_roiOnMeanXY - mean roi1 and black': 'intensity_roiOnMeanXY - mean roi1 and black'}
+        self.intensityChoice = {'intensity':'intensity',
+                                'intensity - mean roi1':'intensity - mean roi1',
+                                'intensity_roiOnMeanXY': 'intensity_roiOnMeanXY',
+                                'intensity_roiOnMeanXY - mean roi1': 'intensity_roiOnMeanXY - mean roi1',
+                                'intensity_roiOnMeanXY - mean roi1 and black': 'intensity_roiOnMeanXY - mean roi1 and black',
+                                'intensity_roiOnMeanXY - smoothed roi_1': 'intensity_roiOnMeanXY - smoothed roi_1',
+                                'intensity - smoothed roi_1': 'intensity - smoothed roi_1'}
         self.intensityChoice_Box.setItems(self.intensityChoice)
         self.intensityChoice_Box_label = QLabel('Intensity plot data')
 
