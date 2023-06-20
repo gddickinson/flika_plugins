@@ -710,7 +710,11 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
        'direction_Relative_To_Origin', 'meanVelocity', 'intensity - mean roi1',
        'intensity - mean roi1 and black', 'nnCountInFrame_within_3_pixels',
        'nnCountInFrame_within_5_pixels', 'nnCountInFrame_within_10_pixels',
-       'nnCountInFrame_within_20_pixels', 'nnCountInFrame_within_30_pixels']
+       'nnCountInFrame_within_20_pixels', 'nnCountInFrame_within_30_pixels',
+        'intensity_roiOnMeanXY','intensity_roiOnMeanXY - mean roi1',
+        'intensity_roiOnMeanXY - mean roi1 and black','roi_1 smoothed',
+        'intensity_roiOnMeanXY - smoothed roi_1',
+        'intensity - smoothed roi_1']
 
         for col in expectedColumns:
             if col not in self.columns:
@@ -1060,6 +1064,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
                 dydt =  trackData['dy-dt: distance'].to_numpy()
                 direction = trackData['direction_Relative_To_Origin'].to_numpy()
                 velocity =  trackData['velocity'].to_numpy()
+                svm = trackData['SVM'].iloc[0]
+                length = trackData['n_segments'].iloc[0]
+
 
                 count_3 = trackData['nnCountInFrame_within_3_pixels'].to_numpy()
                 count_5 = trackData['nnCountInFrame_within_5_pixels'].to_numpy()
@@ -1072,7 +1079,8 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
                 self.trackWindow.update(frame, intensity, distance,
                                         zeroed_X, zeroed_Y, dydt,
                                         direction, velocity, self.displayTrack,
-                                        count_3, count_5, count_10, count_20, count_30 )
+                                        count_3, count_5, count_10, count_20, count_30,
+                                        svm, length)
 
                 # Update the individual track display
                 self.singleTrackPlot.plotTracks()

@@ -45,7 +45,11 @@ class TrackWindow(BaseProcess):
 
         # Add widgets to the window
         self.label = pg.LabelItem(justify='center')  # Create a PyqtGraph LabelItem object for displaying text
+        self.label_2 = pg.LabelItem(justify='center')
+
         self.win.addItem(self.label)  # Add the label to the window
+        self.win.addItem(self.label_2)
+
         self.win.nextRow()  # Move to the next row of the window for adding more widgets
 
         # Create a plot for displaying intensity data
@@ -140,10 +144,13 @@ class TrackWindow(BaseProcess):
 
         self.r = None
 
-    def update(self, time, intensity, distance, zeroed_X, zeroed_Y, dydt, direction, velocity, ID, count_3, count_5, count_10, count_20, count_30):
+    def update(self, time, intensity, distance, zeroed_X, zeroed_Y, dydt, direction, velocity, ID, count_3, count_5, count_10, count_20, count_30, svm, length):
 
         ##Update track ID
         self.label.setText("<span style='font-size: 16pt'>track ID={}".format(ID))
+
+        ##Update track svm
+        self.label_2.setText("<span style='font-size: 16pt'>SVM={} Length={}".format(int(svm), int(length)))
 
         #update intensity plot
         self.plt1.plot(time, intensity, stepMode=False, brush=(0,0,255,150), clear=True)
