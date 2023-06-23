@@ -589,6 +589,24 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         #connections
         self.getFile.valueChanged.connect(self.loadData)
 
+        #add blank columns for missing analysis steps to prevent crashes
+        self.expectedColumns = ['frame', 'track_number', 'x', 'y', 'intensity', 'zeroed_X', 'zeroed_Y',
+       'lagNumber', 'distanceFromOrigin', 'dy-dt: distance', 'radius_gyration',
+       'asymmetry', 'skewness', 'kurtosis', 'fracDimension', 'netDispl',
+       'Straight', 'Experiment', 'SVM', 'nnDist_inFrame', 'n_segments', 'lag',
+       'meanLag', 'track_length', 'radius_gyration_scaled',
+       'radius_gyration_scaled_nSegments',
+       'radius_gyration_scaled_trackLength', 'roi_1', 'camera black estimate',
+       'd_squared', 'lag_squared', 'dt', 'velocity',
+       'direction_Relative_To_Origin', 'meanVelocity', 'intensity - mean roi1',
+       'intensity - mean roi1 and black', 'nnCountInFrame_within_3_pixels',
+       'nnCountInFrame_within_5_pixels', 'nnCountInFrame_within_10_pixels',
+       'nnCountInFrame_within_20_pixels', 'nnCountInFrame_within_30_pixels',
+        'intensity_roiOnMeanXY','intensity_roiOnMeanXY - mean roi1',
+        'intensity_roiOnMeanXY - mean roi1 and black','roi_1 smoothed',
+        'intensity_roiOnMeanXY - smoothed roi_1',
+        'intensity - smoothed roi_1']
+
 
         #################################################################
         # Define the items that will appear in the GUI, and associate them with the appropriate functions.
@@ -640,6 +658,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             self.data  = self.data[~self.data['track_number'].isna()]
 
             self.data['track_number'] = self.data['track_number'].astype(int)
+
+        else:
+            self.data['track_number'] = None
+            self.data_unlinked = self.data
 
         # Check that there are enough frames in the stack to plot all data points
         if np.max(self.data['frame']) > g.win.mt:
@@ -698,25 +720,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.estimatedCameraBlackLevel = np.min(self.plotWindow.image)
         self.trackPlotOptions.estimatedCameraBlack.setText(str(self.estimatedCameraBlackLevel))
 
-        #add blank columns for missing analysis steps to prevent crashes
-        expectedColumns = ['frame', 'track_number', 'x', 'y', 'intensity', 'zeroed_X', 'zeroed_Y',
-       'lagNumber', 'distanceFromOrigin', 'dy-dt: distance', 'radius_gyration',
-       'asymmetry', 'skewness', 'kurtosis', 'fracDimension', 'netDispl',
-       'Straight', 'Experiment', 'SVM', 'nnDist_inFrame', 'n_segments', 'lag',
-       'meanLag', 'track_length', 'radius_gyration_scaled',
-       'radius_gyration_scaled_nSegments',
-       'radius_gyration_scaled_trackLength', 'roi_1', 'camera black estimate',
-       'd_squared', 'lag_squared', 'dt', 'velocity',
-       'direction_Relative_To_Origin', 'meanVelocity', 'intensity - mean roi1',
-       'intensity - mean roi1 and black', 'nnCountInFrame_within_3_pixels',
-       'nnCountInFrame_within_5_pixels', 'nnCountInFrame_within_10_pixels',
-       'nnCountInFrame_within_20_pixels', 'nnCountInFrame_within_30_pixels',
-        'intensity_roiOnMeanXY','intensity_roiOnMeanXY - mean roi1',
-        'intensity_roiOnMeanXY - mean roi1 and black','roi_1 smoothed',
-        'intensity_roiOnMeanXY - smoothed roi_1',
-        'intensity - smoothed roi_1']
-
-        for col in expectedColumns:
+        for col in self.expectedColumns:
             if col not in self.columns:
                 self.data[col] = np.nan
                 self.data_unlinked[col] = np.nan
@@ -751,7 +755,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
     def plotPointsOnStack(self, points, pointColor, unlinkedPoints=None, unlinkedColour=QColor(Qt.blue)):
         points_byFrame = points[['frame','x','y']]
         #align frames with display
-        points_byFrame['frame'] =  points_byFrame['frame']+1
+        if self.filetype_Box.value() == 'thunderstorm':
+            points_byFrame['frame'] =  points_byFrame['frame']
+        else:
+            points_byFrame['frame'] =  points_byFrame['frame']+1
         # Convert the points DataFrame into a numpy array
         pointArray = points_byFrame.to_numpy()
         # Create an empty list for each frame in the stack
@@ -774,7 +781,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
         if self.displayUnlinkedPoints:
             unlinkedPoints_byFrame = unlinkedPoints[['frame','x','y']]
-            unlinkedPoints_byFrame['frame'] =  unlinkedPoints_byFrame['frame']+1
+            if self.filetype_Box.value() == 'thunderstorm':
+                unlinkedPoints_byFrame['frame'] =  unlinkedPoints_byFrame['frame']
+            else:
+                points_byFrame['frame'] =  points_byFrame['frame']+1
             # Convert the points DataFrame into a numpy array
             unlinkedPointArray = unlinkedPoints_byFrame.to_numpy()
 
@@ -854,6 +864,13 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             df['x'] = data['x [nm]']/self.trackPlotOptions.pixelSize_selector.value()
             df['y'] = data['y [nm]']/self.trackPlotOptions.pixelSize_selector.value()
             df['track_number'] = data['track_number']
+
+            colsPresent = df.columns
+
+            for col in self.expectedColumns:
+                if col not in colsPresent:
+                    df[col] = np.nan
+
 
         elif self.filetype_Box.value() == 'flika':
             ######### load FLIKA pyinsight data into DF ############
