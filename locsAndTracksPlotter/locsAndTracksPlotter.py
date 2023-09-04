@@ -256,6 +256,12 @@ class TrackPlotOptions():
         self.trackDefaultColour_Box.setItems(self.trackdefaultcolours)
         self.trackDefaultColour_Box_label = QLabel('Track Default Colour')
 
+        self.lineSize_selector = pg.SpinBox(value=2, int=True)
+        self.lineSize_selector.setSingleStep(1)
+        self.lineSize_selector.setMinimum(0)
+        self.lineSize_selector.setMaximum(100)
+        self.lineSize_selector_label = QLabel('Line Size')
+
         #check boxes
         self.trackColour_checkbox = CheckBox()
         self.trackColour_checkbox.setChecked(False)
@@ -281,6 +287,9 @@ class TrackPlotOptions():
 
         self.w1.addWidget(self.trackDefaultColour_Box_label , row=5,col=0)
         self.w1.addWidget(self.trackDefaultColour_Box , row=5,col=1)
+
+        self.w1.addWidget(self.lineSize_selector_label, row=6,col=0)
+        self.w1.addWidget(self.lineSize_selector, row=6,col=1)
 
         #add layout widget to dock
         self.d1.addWidget(self.w1)
@@ -926,7 +935,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         # setup pens
         pen = QPen(self.trackPlotOptions.trackDefaultColour_Box.value(), .4)
         pen.setCosmetic(True)
-        pen.setWidth(2)
+        pen.setWidth(self.trackPlotOptions.lineSize_selector.value())
 
         pen_FP = QPen(self.trackPlotOptions.trackDefaultColour_Box.value(), .4)
         pen_FP.setCosmetic(True)
@@ -1020,10 +1029,10 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
         # check whether to use filtered data or not, get unique track IDs and create DataFrame of tracks
         if self.useFilteredData == False:
-            self.trackIDs = np.unique(self.data['track_number']).astype(np.int)
+            self.trackIDs = np.unique(self.data['track_number']).astype(int)
             self.tracks = self.makeTrackDF(self.data)
         else:
-            self.trackIDs = np.unique(self.filteredData['track_number']).astype(np.int)
+            self.trackIDs = np.unique(self.filteredData['track_number']).astype(int)
             self.tracks = self.makeTrackDF(self.filteredData)
 
         # show tracks in main view and flower plot
