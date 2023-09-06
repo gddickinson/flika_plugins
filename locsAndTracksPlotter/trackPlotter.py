@@ -21,6 +21,7 @@ from pyqtgraph.dockarea.DockArea import DockArea
 from distutils.version import StrictVersion
 import flika
 from flika.window import Window
+from flika.roi import open_rois
 import flika.global_vars as g
 
 # determine which version of flika to use
@@ -218,6 +219,10 @@ class TrackPlot():
         self.allFrames_checkbox.setChecked(False)
         self.allFrames_label = QLabel("Extend frames")
 
+        self.subtractBackground_checkbox = CheckBox()
+        self.subtractBackground_checkbox.setChecked(False)
+        self.subtractBackground_label = QLabel("Subtract background (mean ROI)")
+
 
         #row0
         self.w2.addWidget(self.lineCol_label, row=0,col=0)
@@ -246,11 +251,14 @@ class TrackPlot():
         self.w2.addWidget(self.allFrames_label, row=4,col=2)
         self.w2.addWidget(self.allFrames_checkbox, row=4,col=3)
 
+        self.w2.addWidget(self.subtractBackground_label, row=5,col=0)
+        self.w2.addWidget(self.subtractBackground_checkbox, row=5,col=1)
+
         #row4
-        self.w2.addWidget(self.trackSelector_label, row=5,col=0)
-        self.w2.addWidget(self.selectTrack_checkbox, row=5,col=1)
-        self.w2.addWidget(self.trackSelector, row=5,col=2)
-        self.w2.addWidget(self.plot_button, row=5,col=3)
+        self.w2.addWidget(self.trackSelector_label, row=6,col=0)
+        self.w2.addWidget(self.selectTrack_checkbox, row=6,col=1)
+        self.w2.addWidget(self.trackSelector, row=6,col=2)
+        self.w2.addWidget(self.plot_button, row=6,col=3)
 
         self.d2.addWidget(self.w2)
 
@@ -450,6 +458,10 @@ class TrackPlot():
             crop = self.A_pad[int(point[0]),minX:maxX,minY:maxY] # Extract the crop
             self.A_crop[int(point[0])] = crop # Store the crop in the array of cropped images
 
+        # subtract background values (if selected)
+        if self.subtractBackground_checkbox.isChecked():
+            self.A_crop = self.backgroundSubtractStack(self.A_crop)
+
         # Display the array of cropped images in the signal image widget
         self.signalIMG.setImage(self.A_crop)
         # Display max and mean intensity projections
@@ -459,6 +471,26 @@ class TrackPlot():
         self.meanIntensity_IMG = np.mean(self.A_crop,axis=0)
         self.meanIntensity.setImage(self.meanIntensity_IMG)
 
+
+    def backgroundSubtractStack(self, A):
+        #get background ROI filename using tiff name
+        directory, fileName = os.path.split(self.mainGUI.filename)
+        roiFile = 'ROI_' + os.path.basename(fileName).split('_locs')[0] + '.txt'
+        path = os.path.join(directory,roiFile)
+
+        #load rois
+        try:
+            rois = open_rois(path)
+        except:
+            print('No background file called: {} detected'.format(path))
+            return A
+
+        #get trace for first roi in file
+        roi_1 = rois[0].getTrace()
+        # subtract mean roi from A
+        A_bgSubtract = np.array([A[i] - roi_1[i] for i in range(len(A))])
+
+        return A_bgSubtract
 
     def updateROI(self):
         # Get the ROI selection as an array of pixel values
