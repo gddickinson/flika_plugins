@@ -114,6 +114,8 @@ class TrackPlot():
         self.d = int(16)
         self.A_pad = None
         self.A_crop = None
+        self.trackPoints = None
+        self.bg_flag = False
 
         # Set up main window
         self.win = QMainWindow()
@@ -187,13 +189,11 @@ class TrackPlot():
         self.plotSegment_checkbox.setChecked(False)
         self.plotSegment_label = QLabel("Plot segment by frame")
 
-
         self.pointCM_button = QPushButton('Point cmap PG')
         self.pointCM_button.pressed.connect(self.setPointColourMap)
 
         self.lineCM_button = QPushButton('Line cmap PG')
         self.lineCM_button.pressed.connect(self.setLineColourMap)
-
 
         self.pointSize_box = pg.SpinBox(value=0.2, int=False)
         self.pointSize_box.setSingleStep(0.01)
@@ -223,6 +223,11 @@ class TrackPlot():
         self.subtractBackground_checkbox.setChecked(False)
         self.subtractBackground_label = QLabel("Subtract background (mean ROI)")
 
+        self.subtractBackground_checkbox.stateChanged.connect(self.updateROI)
+
+        self.export_button = QPushButton('Export')
+        self.export_button.pressed.connect(self.exportTrack)
+
 
         #row0
         self.w2.addWidget(self.lineCol_label, row=0,col=0)
@@ -251,10 +256,12 @@ class TrackPlot():
         self.w2.addWidget(self.allFrames_label, row=4,col=2)
         self.w2.addWidget(self.allFrames_checkbox, row=4,col=3)
 
+        #row4
         self.w2.addWidget(self.subtractBackground_label, row=5,col=0)
         self.w2.addWidget(self.subtractBackground_checkbox, row=5,col=1)
+        self.w2.addWidget(self.export_button, row=5,col=3)
 
-        #row4
+        #row5
         self.w2.addWidget(self.trackSelector_label, row=6,col=0)
         self.w2.addWidget(self.selectTrack_checkbox, row=6,col=1)
         self.w2.addWidget(self.trackSelector, row=6,col=2)
@@ -275,7 +282,7 @@ class TrackPlot():
         self.d6.addWidget(self.meanIntensity)
 
         # Add ROI for selecting an image region
-        self.roi = pg.ROI([0, 0], [5, 5])
+        self.roi = pg.ROI([0, 0], [3, 3])
         self.roi.addScaleHandle([0.5, 1], [0.5, 0.5])
         self.roi.addScaleHandle([0, 0.5], [0.5, 0.5])
         self.signalIMG.addItem(self.roi)
@@ -370,6 +377,9 @@ class TrackPlot():
         self.trackDF = self.mainGUI.data[self.mainGUI.data['track_number'] == trackToPlot]
         #print(self.trackDF)
 
+        # save track ID
+        self.trackPlotted = trackToPlot
+
         # Set the point and line colours to use for the track
         self.setColour()
 
@@ -448,6 +458,8 @@ class TrackPlot():
 
             points = np.column_stack((allFrames, xinterp, yinterp))
 
+        #store track points for exporting
+        self.trackPoints = points
 
         # Loop through each point and extract a cropped image
         for point in points:
@@ -472,6 +484,84 @@ class TrackPlot():
         self.meanIntensity.setImage(self.meanIntensity_IMG)
 
 
+    def exportTrack(self):
+        if isinstance(self.trackPoints,(list,pd.core.series.Series,np.ndarray)):
+            print('Exporting track ID: {}'.format(self.trackPlotted))
+        else:
+            print('First load track')
+            return
+
+        df = pd.DataFrame(self.trackPoints, columns=['frame', 'x', 'y'])
+        df['interpolated'] = 1
+
+
+        # add background subtracted intensity values
+        #TODO!
+
+        # columns to recaculate - #TODO!
+        # 'zeroed_X', 'zeroed_Y',  'camera black estimate'
+        # 'lagNumber', 'distanceFromOrigin', 'dy-dt: distance', 'nnDist_inFrame', 'n_segments', 'lag', 'meanLag', 'track_length', 'radius_gyration_scaled',
+        # 'radius_gyration_scaled_nSegments','radius_gyration_scaled_trackLength', 'roi_1', 'd_squared', 'lag_squared', 'dt', 'velocity',
+        # 'direction_Relative_To_Origin', 'meanVelocity', 'intensity - mean roi1',
+        # 'intensity - mean roi1 and black', 'nnCountInFrame_within_3_pixels',
+        # 'nnCountInFrame_within_5_pixels', 'nnCountInFrame_within_10_pixels',
+        # 'nnCountInFrame_within_20_pixels', 'nnCountInFrame_within_30_pixels',
+        # 'intensity_roiOnMeanXY','intensity_roiOnMeanXY - mean roi1',
+        # 'intensity_roiOnMeanXY - mean roi1 and black','roi_1 smoothed',
+        # 'intensity_roiOnMeanXY - smoothed roi_1',
+        # 'intensity - smoothed roi_1'
+
+        #initiate exportTrack_DF from copy of trackDF
+        exportTrack_DF = self.trackDF
+        #add column for interpolation tag
+        exportTrack_DF['interpolated'] = 0
+
+        # add shared track properties to df
+        colsToCopy = ['track_number', 'netDispl', 'radius_gyration','asymmetry', 'skewness', 'kurtosis', 'fracDimension', 'Straight', 'Experiment', 'SVM']
+        for col in colsToCopy:
+            df[col] = exportTrack_DF[col][0]
+
+
+        #join DFs
+        exportTrack_DF = pd.concat([exportTrack_DF, df])
+
+        #drop duplicate rows from df
+        exportTrack_DF = exportTrack_DF.drop_duplicates(subset=['frame'], keep='first')
+
+        # sort export_track_DF by frame
+        exportTrack_DF = exportTrack_DF.sort_values('frame', ascending=True)
+
+        # set roi_1 column
+        if self.bg_flag:
+            exportTrack_DF['roi_1'] = self.roi_1
+        else:
+            exportTrack_DF['roi_1'] = 0
+
+        # update intensity values
+        if self.subtractBackground_checkbox.isChecked():
+            exportTrack_DF['intensity - mean roi1'] = self.trace
+            exportTrack_DF['intensity'] = exportTrack_DF['intensity - mean roi1'] + exportTrack_DF['roi_1']
+        else:
+            exportTrack_DF['intensity'] = self.trace
+            exportTrack_DF['intensity - mean roi1'] = exportTrack_DF['intensity'] - exportTrack_DF['roi_1']
+
+        # update lag number
+        exportTrack_DF['lagNumber'] = np.arange(len(exportTrack_DF))
+
+        # update zeroed X & Y
+        exportTrack_DF['zeroed_X'] = exportTrack_DF['x'] - exportTrack_DF['x'][0]
+        exportTrack_DF['zeroed_Y'] = exportTrack_DF['y'] - exportTrack_DF['y'][0]
+
+        # ypdate n_segments
+        exportTrack_DF['n_segments'] = len(exportTrack_DF)
+
+        #save df
+        saveName = os.path.splitext(self.mainGUI.filename)[0]+'_trackID_{}.csv'.format(self.trackPlotted)
+        exportTrack_DF.to_csv(saveName, index=None)
+        print('Track file exported as: {}'.format(saveName))
+
+
+
     def backgroundSubtractStack(self, A):
         #get background ROI filename using tiff name
         directory, fileName = os.path.split(self.mainGUI.filename)
@@ -486,9 +576,15 @@ class TrackPlot():
             return A
 
         #get trace for first roi in file
-        roi_1 = rois[0].getTrace()
+        self.roi_1 = rois[0].getTrace()
         # subtract mean roi from A
-        A_bgSubtract = np.array([A[i] - roi_1[i] for i in range(len(A))])
+        A_bgSubtract = np.array([A[i] - self.roi_1[i] for i in range(len(A))])
+
+        #remove roi
+        rois[0].delete()
+
+        # set bg flag
+        self.bg_flag = True
 
         return A_bgSubtract
 
@@ -496,9 +592,9 @@ class TrackPlot():
         # Get the ROI selection as an array of pixel values
         img = self.roi.getArrayRegion(self.A_crop, self.signalIMG.getImageItem(), axes=(1,2))
         # Calculate the average intensity of the selected ROI over time
-        trace = np.mean(img, axis=(1,2))
+        self.trace = np.mean(img, axis=(1,2))
         # Clear the current plot and plot the new trace
-        self.tracePlot.plot(trace, clear=True)
+        self.tracePlot.plot(self.trace, clear=True)
         # Add a vertical line to indicate the current time point
         self.line = self.tracePlot.addLine(x=self.signalIMG.currentIndex, pen=pg.mkPen('y', style=Qt.DashLine), movable=True, bounds=[0,None])
         # When the line is moved, update the time slider
