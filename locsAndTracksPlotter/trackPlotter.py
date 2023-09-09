@@ -282,7 +282,8 @@ class TrackPlot():
         self.d6.addWidget(self.meanIntensity)
 
         # Add ROI for selecting an image region
-        self.roi = pg.ROI([0, 0], [3, 3])
+        roiSize = 3
+        self.roi = pg.ROI([(self.d/2)-(1), (self.d/2)-(1)], [roiSize, roiSize])
         self.roi.addScaleHandle([0.5, 1], [0.5, 0.5])
         self.roi.addScaleHandle([0, 0.5], [0.5, 0.5])
         self.signalIMG.addItem(self.roi)
@@ -513,8 +514,16 @@ class TrackPlot():
 
         #initiate exportTrack_DF from copy of trackDF
         exportTrack_DF = self.trackDF
+        #reset index
+        exportTrack_DF = exportTrack_DF.reset_index(drop=True)
+
         #add column for interpolation tag
         exportTrack_DF['interpolated'] = 0
+
+        # print('----   df   ----')
+        # print(df.head())
+        # print('---- export ----')
+        # print(exportTrack_DF.head())
 
         # add shared track properties to df
         colsToCopy = ['track_number', 'netDispl', 'radius_gyration','asymmetry', 'skewness', 'kurtosis', 'fracDimension', 'Straight', 'Experiment', 'SVM']
@@ -531,18 +540,21 @@ class TrackPlot():
         # sort export_track_DF by frame
         exportTrack_DF = exportTrack_DF.sort_values('frame', ascending=True)
 
+        startFrame = int(min(exportTrack_DF['frame']))
+        endFrame = int(max(exportTrack_DF['frame']))+1
+
         # set roi_1 column
         if self.bg_flag:
-            exportTrack_DF['roi_1'] = self.roi_1
+            exportTrack_DF['roi_1'] = self.roi_1[startFrame:endFrame]
         else:
             exportTrack_DF['roi_1'] = 0
 
         # update intensity values
         if self.subtractBackground_checkbox.isChecked():
-            exportTrack_DF['intensity - mean roi1'] = self.trace
+            exportTrack_DF['intensity - mean roi1'] = self.trace[startFrame:endFrame]
             exportTrack_DF['intensity'] = exportTrack_DF['intensity - mean roi1'] + exportTrack_DF['roi_1']
         else:
-            exportTrack_DF['intensity'] = self.trace
+            exportTrack_DF['intensity'] = self.trace[startFrame:endFrame]
             exportTrack_DF['intensity - mean roi1'] = exportTrack_DF['intensity'] - exportTrack_DF['roi_1']
 
         # update lag number
@@ -552,7 +564,7 @@ class TrackPlot():
         exportTrack_DF['zeroed_X'] = exportTrack_DF['x'] - exportTrack_DF['x'][0]
         exportTrack_DF['zeroed_Y'] = exportTrack_DF['y'] - exportTrack_DF['y'][0]
 
-        # ypdate n_segments
+        # update n_segments
         exportTrack_DF['n_segments'] = len(exportTrack_DF)
 
         #save df
