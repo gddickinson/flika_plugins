@@ -215,15 +215,19 @@ class TrackPlot():
         self.interpolate_checkbox.setChecked(True)
         self.interpolate_label = QLabel("Interpolate 'between' frames")
 
+        self.interpolate_checkbox.stateChanged.connect(self.plotTracks)
+
         self.allFrames_checkbox = CheckBox()
         self.allFrames_checkbox.setChecked(False)
         self.allFrames_label = QLabel("Extend frames")
+
+        self.allFrames_checkbox.stateChanged.connect(self.plotTracks)
 
         self.subtractBackground_checkbox = CheckBox()
         self.subtractBackground_checkbox.setChecked(False)
         self.subtractBackground_label = QLabel("Subtract background (mean ROI)")
 
-        self.subtractBackground_checkbox.stateChanged.connect(self.updateROI)
+        self.subtractBackground_checkbox.stateChanged.connect(self.plotTracks)
 
         self.export_button = QPushButton('Export')
         self.export_button.pressed.connect(self.exportTrack)
@@ -496,8 +500,6 @@ class TrackPlot():
         df['interpolated'] = 1
 
 
-        # add background subtracted intensity values
-        #TODO!
 
         # columns to recaculate - #TODO!
         # 'zeroed_X', 'zeroed_Y',  'camera black estimate'
