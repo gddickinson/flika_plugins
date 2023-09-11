@@ -421,8 +421,8 @@ class ROIPLOT():
         self.w1 = pg.ImageView()
         self.w2 = pg.PlotWidget()
         self.w2.plot()
-        self.w2.setLabel('left', 'intensity', units ='')
-        self.w2.setLabel('bottom', 'time', units ='frames')
+        self.w2.setLabel('left', 'Intensity', units ='')
+        self.w2.setLabel('bottom', 'time', units ='Frames')
 
         self.timeStamp_zoom = pg.TextItem(text='')
         self.w1.addItem(self.timeStamp_zoom)
@@ -661,9 +661,12 @@ class ROIPLOT():
         #update axis labels
         labelStyle = {'color': '#FFF', 'font-size': '{}pt'.format(self.axisLabelSize_box.value())}
         # Set the font size for the x-axis label
-        self.w2.getAxis("left").setLabel('intensity', units='arbitary', **labelStyle)
+        self.w2.getAxis("left").setLabel('Intensity', units='A.U.', **labelStyle)
         # Set the font size for the y-axis label
-        self.w2.getAxis("bottom").setLabel('time', units='frames', **labelStyle)
+        if self.timeInSec_checkbox.isChecked():
+            self.w2.getAxis("bottom").setLabel('Time', units='s', **labelStyle)
+        else:
+            self.w2.getAxis("bottom").setLabel('Time', units='Frames', **labelStyle)
 
         font = QFont()
         font.setPixelSize(self.axisTickSize_box.value())
@@ -747,11 +750,13 @@ class ROIPLOT():
         #add timestamp
         if self.timeInSec_checkbox.isChecked():
             timestamp = (frame * self.mainGUI.trackPlotOptions.frameLength_selector.value()) /1000
+            time_text = str(timestamp) + ' s'
         else:
             timestamp = frame
+            time_text = str(timestamp)
 
         if self.showTimeStamp_checkbox.isChecked():
-            time_text = str(timestamp)
+
             font_size = str(self.timeStampSize_box.value())
             font_style = 'bold'
             html="<span style='font-size: {}pt; font-style: {};'>{}</span>".format(font_size, font_style, time_text)
@@ -776,7 +781,13 @@ class ROIPLOT():
             if self.mainGUI.trackPlotOptions.backgroundSubtract_checkbox.isChecked():
                 intensity = intensity - self.mainGUI.trackPlotOptions.background_selector.value()
 
-            item = pg.PlotDataItem(x=trackDF['frame'].to_numpy(),y=intensity, name=str(trackID))
+
+            if self.timeInSec_checkbox.isChecked():
+                xData = (trackDF['frame'].to_numpy() * self.mainGUI.trackPlotOptions.frameLength_selector.value()) /1000
+            else:
+                xData = trackDF['frame'].to_numpy()
+
+            item = pg.PlotDataItem(x=xData,y=intensity, name=str(trackID))
             # Map the trackID to a colour
             if self.lineCol_Box.value() == 'random':
                 trackColour = pg.intColor(trackID)
