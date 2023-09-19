@@ -1,5 +1,5 @@
 # flika_plugins
-# Python plugins written for the Parker Lab, UCI to expand FLIKA (https://github.com/flika-org/flika)
+# Python plugins written for the Parker Lab (https://parkerlab.bio.uci.edu/) and the Pathak Lab (https://www.pathaklab-uci.com/) at UCI to expand FLIKA (https://github.com/flika-org/flika)
 
 HOW TO USE THE PLUGINS
 -----------------
