@@ -126,13 +126,13 @@ class Scale_Bar_ROIzoom(BaseProcess):
             textRect=self.roiGUI.scaleBarLabel.boundingRect()
 
             if location=='Top Left':
-                barPoint=QPoint(0, textRect.height())
+                barPoint=QPoint(int(0), int(textRect.height()))
             elif location=='Top Right':
-                barPoint=QPoint(-width_pixels, textRect.height())
+                barPoint=QPoint(int(-width_pixels), int(textRect.height()))
             elif location=='Lower Right':
-                barPoint=QPoint(-width_pixels, -textRect.height())
+                barPoint=QPoint(int(-width_pixels), int(-textRect.height()))
             elif location=='Lower Left':
-                barPoint=QPoint(0, -textRect.height())
+                barPoint=QPoint(int(0), int(-textRect.height()))
 
             bar = QGraphicsRectItem(QRectF(barPoint,QSizeF(width_pixels,int(font_size/3))))
             bar.setPen(pg.mkPen(color255)); bar.setBrush(pg.mkBrush(color255))
@@ -159,16 +159,16 @@ class Scale_Bar_ROIzoom(BaseProcess):
         textHeight=textRect.height()*view.viewPixelSize()[1]
 
         if location=='Top Left':
-            barPoint=QPoint(0, 1.3*textHeight)
+            barPoint=QPoint(int(0), int(1.3*textHeight))
             self.roiGUI.scaleBarLabel.setPos(QPointF(width_pixels/2-textWidth/2,0))
         elif location=='Top Right':
-            barPoint=QPoint(self.roiGUI.mx-width_pixels, 1.3*textHeight)
+            barPoint=QPoint(int(self.roiGUI.mx-width_pixels), int(1.3*textHeight))
             self.roiGUI.scaleBarLabel.setPos(QPointF(self.roiGUI.mx-width_pixels/2-textWidth/2,0))
         elif location=='Lower Right':
-            barPoint=QPoint(self.roiGUI.mx-width_pixels, self.roiGUI.my-1.3*textHeight)
-            self.roiGUI.scaleBarLabel.setPos(QPointF(self.roiGUI.mx-width_pixels/2-textWidth/2,self.roiGUI.my-textHeight))
+            barPoint=QPoint(int(self.roiGUI.mx-width_pixels), int(self.roiGUI.my-1.3*textHeight))
+            self.roiGUI.scaleBarLabel.setPos(QPointF(int(self.roiGUI.mx-width_pixels/2-textWidth/2),int(self.roiGUI.my-textHeight)))
         elif location=='Lower Left':
-            barPoint=QPoint(0, self.roiGUI.my-1.3*textHeight)
+            barPoint=QPoint(int(0), int(self.roiGUI.my-1.3*textHeight))
             self.roiGUI.scaleBarLabel.setPos(QPointF(QPointF(width_pixels/2-textWidth/2,self.roiGUI.my-textHeight)))
         self.roiGUI.scaleBarLabel.bar.setRect(QRectF(barPoint, QSizeF(width_pixels,textHeight/4)))
 
@@ -421,7 +421,7 @@ class ROIPLOT():
         self.w1 = pg.ImageView()
         self.w2 = pg.PlotWidget()
         self.w2.plot()
-        self.w2.setLabel('left', 'Intensity', units ='')
+        self.w2.setLabel('left', 'Intensity', units ='a.u.')
         self.w2.setLabel('bottom', 'time', units ='Frames')
 
         self.timeStamp_zoom = pg.TextItem(text='')
@@ -661,7 +661,7 @@ class ROIPLOT():
         #update axis labels
         labelStyle = {'color': '#FFF', 'font-size': '{}pt'.format(self.axisLabelSize_box.value())}
         # Set the font size for the x-axis label
-        self.w2.getAxis("left").setLabel('Intensity', units='A.U.', **labelStyle)
+        self.w2.getAxis("left").setLabel('Intensity', units='a.u.', **labelStyle)
         # Set the font size for the y-axis label
         if self.timeInSec_checkbox.isChecked():
             self.w2.getAxis("bottom").setLabel('Time', units='s', **labelStyle)
