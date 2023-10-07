@@ -500,6 +500,16 @@ class ROIPLOT():
         self.showTimeStamp_checkbox.stateChanged.connect(self.update)
         self.showTimeStamp_label = QLabel("Show Time Stamp")
 
+        self.timeCorrection_checkbox = CheckBox()
+        self.timeCorrection_checkbox.setChecked(False)
+        self.timeCorrection_checkbox.stateChanged.connect(self.update)
+        self.timeCorrection_label = QLabel("Time correction")
+
+        self.timeCorrection_box = pg.SpinBox(value=0, int=True)
+        self.timeCorrection_box.setSingleStep(1)
+        self.timeCorrection_box.setMinimum(0)
+        self.timeCorrection_box.setMaximum(10000)
+
         self.showScaleBar_button = QPushButton('Scale Bar')
         self.showScaleBar_button.pressed.connect(self.addScaleBar)
 
@@ -577,6 +587,7 @@ class ROIPLOT():
         self.pointCol_Box.currentIndexChanged.connect(self.update)
         self.frameRate_box.valueChanged.connect(self.update)
         self.timeStampSize_box.valueChanged.connect(self.update)
+        self.timeCorrection_box.valueChanged.connect(self.update)
 
         # add widgets to layout
         #line + point colour
@@ -631,21 +642,26 @@ class ROIPLOT():
         self.w3.addWidget(self.showTimeStamp_label , row=14,col=0)
         self.w3.addWidget(self.showTimeStamp_checkbox, row=14,col=1)
 
-        #show scale bar
-        self.w3.addWidget(self.showScaleBar_button, row=15,col=0)
-        #play
-        self.w3.addWidget(self.start_label, row=16,col=0)
-        self.w3.addWidget(self.start_box, row=16,col=1)
-        self.w3.addWidget(self.end_label, row=16,col=2)
-        self.w3.addWidget(self.end_box, row=16,col=3)
+        #time correction
+        self.w3.addWidget(self.timeCorrection_label , row=15,col=0)
+        self.w3.addWidget(self.timeCorrection_checkbox, row=15,col=1)
+        self.w3.addWidget(self.timeCorrection_box, row=15,col=2)
 
-        self.w3.addWidget(self.frameRate_label, row=17,col=0)
-        self.w3.addWidget(self.frameRate_box, row=17,col=1)
-        self.w3.addWidget(self.play_button, row=17,col=2)
+        #show scale bar
+        self.w3.addWidget(self.showScaleBar_button, row=16,col=0)
+        #play
+        self.w3.addWidget(self.start_label, row=17,col=0)
+        self.w3.addWidget(self.start_box, row=17,col=1)
+        self.w3.addWidget(self.end_label, row=17,col=2)
+        self.w3.addWidget(self.end_box, row=17,col=3)
+
+        self.w3.addWidget(self.frameRate_label, row=18,col=0)
+        self.w3.addWidget(self.frameRate_box, row=18,col=1)
+        self.w3.addWidget(self.play_button, row=18,col=2)
         #showData
-        self.w3.addWidget(self.showData_button, row=18,col=0)
+        self.w3.addWidget(self.showData_button, row=19,col=0)
         #record
-        self.w3.addWidget(self.record_button, row=18,col=1)
+        self.w3.addWidget(self.record_button, row=19,col=1)
 
         #add layouts to dock
         self.d1.addWidget(self.w1)
@@ -748,11 +764,16 @@ class ROIPLOT():
 
 
         #add timestamp
+        if self.timeCorrection_checkbox.isChecked():
+            correctedFrame = frame - self.timeCorrection_box.value()
+        else:
+            correctedFrame = frame
+
         if self.timeInSec_checkbox.isChecked():
-            timestamp = (frame * self.mainGUI.trackPlotOptions.frameLength_selector.value()) /1000
+            timestamp = (correctedFrame * self.mainGUI.trackPlotOptions.frameLength_selector.value()) /1000
             time_text = str(timestamp) + ' s'
         else:
-            timestamp = frame
+            timestamp = correctedFrame
             time_text = str(timestamp)
 
         if self.showTimeStamp_checkbox.isChecked():
@@ -784,8 +805,14 @@ class ROIPLOT():
 
             if self.timeInSec_checkbox.isChecked():
                 xData = (trackDF['frame'].to_numpy() * self.mainGUI.trackPlotOptions.frameLength_selector.value()) /1000
+                if self.timeCorrection_checkbox.isChecked():
+                    xData = xData - (self.timeCorrection_box.value() * self.mainGUI.trackPlotOptions.frameLength_selector.value() /1000)
             else:
                 xData = trackDF['frame'].to_numpy()
+                if self.timeCorrection_checkbox.isChecked():
+                    xData = xData - self.timeCorrection_box.value()
+
+
 
             item = pg.PlotDataItem(x=xData,y=intensity, name=str(trackID))
             # Map the trackID to a colour
@@ -833,6 +860,8 @@ class ROIPLOT():
         self.end_box.setMinimum(0)
         self.end_box.setMaximum(self.dataWindow.mt)
         self.end_box.setValue(self.dataWindow.mt)
+
+        self.timeCorrection_box.setMaximum(self.dataWindow.mt)
 
         self.update()
 
