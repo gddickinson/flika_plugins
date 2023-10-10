@@ -447,6 +447,17 @@ class ROIPLOT():
         self.listAllIDs_checkbox.stateChanged.connect(self.update)
         self.listAllIDs_label = QLabel("List all IDs")
 
+        self.showXaxisLabel_checkbox = CheckBox()
+        self.showXaxisLabel_checkbox.setChecked(True)
+        self.showXaxisLabel_checkbox.stateChanged.connect(self.update)
+        self.showXaxisLabel_label = QLabel("Show X axis label")
+
+        self.showYaxisLabel_checkbox = CheckBox()
+        self.showYaxisLabel_checkbox.setChecked(True)
+        self.showYaxisLabel_checkbox.stateChanged.connect(self.update)
+        self.showYaxisLabel_label = QLabel("Show Y axis label")
+
+
         self.displayHist_checkbox = CheckBox()
         self.displayHist_checkbox.setChecked(True)
         self.displayHist_checkbox.stateChanged.connect(self.displayHist)
@@ -601,67 +612,73 @@ class ROIPLOT():
         self.w3.addWidget(self.displayAxes_label, row=2,col=2)
         self.w3.addWidget(self.displayAxes_checkbox, row=2,col=3)
 
-        #line + point size
-        self.w3.addWidget(self.lineWidth_label, row=3,col=0)
-        self.w3.addWidget(self.lineWidth_box, row=3,col=1)
-        self.w3.addWidget(self.pointSize_label, row=4,col=0)
-        self.w3.addWidget(self.pointSize_box, row=4,col=1)
-        self.w3.addWidget(self.axisLabelSize_label, row=5,col=0)
-        self.w3.addWidget(self.axisLabelSize_box, row=5,col=1)
+        self.w3.addWidget(self.showXaxisLabel_label, row=3,col=0)
+        self.w3.addWidget(self.showXaxisLabel_checkbox, row=3,col=1)
+        self.w3.addWidget(self.showYaxisLabel_label, row=3,col=2)
+        self.w3.addWidget(self.showYaxisLabel_checkbox, row=3,col=3)
 
-        self.w3.addWidget(self.tickLabelSize_label, row=6,col=0)
-        self.w3.addWidget(self.axisTickSize_box, row=6,col=1)
+
+        #line + point size
+        self.w3.addWidget(self.lineWidth_label, row=4,col=0)
+        self.w3.addWidget(self.lineWidth_box, row=4,col=1)
+        self.w3.addWidget(self.pointSize_label, row=5,col=0)
+        self.w3.addWidget(self.pointSize_box, row=5,col=1)
+        self.w3.addWidget(self.axisLabelSize_label, row=6,col=0)
+        self.w3.addWidget(self.axisLabelSize_box, row=6,col=1)
+
+        self.w3.addWidget(self.tickLabelSize_label, row=7,col=0)
+        self.w3.addWidget(self.axisTickSize_box, row=7,col=1)
 
         #select track
         #display track for all frames
-        self.w3.addWidget(self.listAllIDs_label, row=7,col=0, colspan=2)
-        self.w3.addWidget(self.listAllIDs_checkbox, row=7,col=2)
-        self.w3.addWidget(self.trackSelector_label, row=8,col=0)
-        self.w3.addWidget(self.selectTrack_checkbox, row=8,col=1)
-        self.w3.addWidget(self.trackSelector, row=8,col=2)
+        self.w3.addWidget(self.listAllIDs_label, row=8,col=0, colspan=2)
+        self.w3.addWidget(self.listAllIDs_checkbox, row=8,col=2)
+        self.w3.addWidget(self.trackSelector_label, row=9,col=0)
+        self.w3.addWidget(self.selectTrack_checkbox, row=9,col=1)
+        self.w3.addWidget(self.trackSelector, row=9,col=2)
 
         #set time unit
-        self.w3.addWidget(self.timeInSec_label, row=9,col=0)
-        self.w3.addWidget(self.timeInSec_checkbox , row=9,col=1)
+        self.w3.addWidget(self.timeInSec_label, row=10,col=0)
+        self.w3.addWidget(self.timeInSec_checkbox , row=10,col=1)
 
         #show track path
-        self.w3.addWidget(self.displayTrackPath_label, row=10,col=0)
-        self.w3.addWidget(self.displayTrackPath_checkbox, row=10,col=1)
-        self.w3.addWidget(self.trackPathSelector, row=10,col=2)
+        self.w3.addWidget(self.displayTrackPath_label, row=11,col=0)
+        self.w3.addWidget(self.displayTrackPath_checkbox, row=11,col=1)
+        self.w3.addWidget(self.trackPathSelector, row=11,col=2)
 
         #display track ID
-        self.w3.addWidget(self.displayID_label, row=11,col=0)
-        self.w3.addWidget(self.displayID_checkbox, row=11,col=1)
+        self.w3.addWidget(self.displayID_label, row=12,col=0)
+        self.w3.addWidget(self.displayID_checkbox, row=12,col=1)
         #display Legend
-        self.w3.addWidget(self.displayLegend_label, row=12,col=0)
-        self.w3.addWidget(self.displayLegend_checkbox, row=12,col=1)
+        self.w3.addWidget(self.displayLegend_label, row=13,col=0)
+        self.w3.addWidget(self.displayLegend_checkbox, row=13,col=1)
 
         #show time stamp
-        self.w3.addWidget(self.timeStampSize_label , row=13,col=0)
-        self.w3.addWidget(self.timeStampSize_box, row=13,col=1)
-        self.w3.addWidget(self.showTimeStamp_label , row=14,col=0)
-        self.w3.addWidget(self.showTimeStamp_checkbox, row=14,col=1)
+        self.w3.addWidget(self.timeStampSize_label , row=14,col=0)
+        self.w3.addWidget(self.timeStampSize_box, row=14,col=1)
+        self.w3.addWidget(self.showTimeStamp_label , row=15,col=0)
+        self.w3.addWidget(self.showTimeStamp_checkbox, row=15,col=1)
 
         #time correction
-        self.w3.addWidget(self.timeCorrection_label , row=15,col=0)
-        self.w3.addWidget(self.timeCorrection_checkbox, row=15,col=1)
-        self.w3.addWidget(self.timeCorrection_box, row=15,col=2)
+        self.w3.addWidget(self.timeCorrection_label , row=16,col=0)
+        self.w3.addWidget(self.timeCorrection_checkbox, row=16,col=1)
+        self.w3.addWidget(self.timeCorrection_box, row=16,col=2)
 
         #show scale bar
-        self.w3.addWidget(self.showScaleBar_button, row=16,col=0)
+        self.w3.addWidget(self.showScaleBar_button, row=17,col=0)
         #play
-        self.w3.addWidget(self.start_label, row=17,col=0)
-        self.w3.addWidget(self.start_box, row=17,col=1)
-        self.w3.addWidget(self.end_label, row=17,col=2)
-        self.w3.addWidget(self.end_box, row=17,col=3)
+        self.w3.addWidget(self.start_label, row=18,col=0)
+        self.w3.addWidget(self.start_box, row=18,col=1)
+        self.w3.addWidget(self.end_label, row=18,col=2)
+        self.w3.addWidget(self.end_box, row=18,col=3)
 
-        self.w3.addWidget(self.frameRate_label, row=18,col=0)
-        self.w3.addWidget(self.frameRate_box, row=18,col=1)
-        self.w3.addWidget(self.play_button, row=18,col=2)
+        self.w3.addWidget(self.frameRate_label, row=19,col=0)
+        self.w3.addWidget(self.frameRate_box, row=19,col=1)
+        self.w3.addWidget(self.play_button, row=19,col=2)
         #showData
-        self.w3.addWidget(self.showData_button, row=19,col=0)
+        self.w3.addWidget(self.showData_button, row=20,col=0)
         #record
-        self.w3.addWidget(self.record_button, row=19,col=1)
+        self.w3.addWidget(self.record_button, row=20,col=1)
 
         #add layouts to dock
         self.d1.addWidget(self.w1)
@@ -684,6 +701,16 @@ class ROIPLOT():
         else:
             self.w2.getAxis("bottom").setLabel('Time', units='Frames', **labelStyle)
 
+        if self.showXaxisLabel_checkbox.isChecked():
+            self.w2.getAxis("left").showLabel(show=True)
+        else:
+            self.w2.getAxis("left").showLabel(show=False)
+
+        if self.showYaxisLabel_checkbox.isChecked():
+            self.w2.getAxis("bottom").showLabel(show=True)
+        else:
+            self.w2.getAxis("bottom").showLabel(show=False)
+
         font = QFont()
         font.setPixelSize(self.axisTickSize_box.value())
         self.w2.getAxis("left").setStyle(tickFont = font)
@@ -691,6 +718,9 @@ class ROIPLOT():
 
         self.w2.getAxis("left").setStyle(tickTextOffset = self.axisTickSize_box.value())
         self.w2.getAxis("bottom").setStyle(tickTextOffset = self.axisTickSize_box.value())
+
+        self.w2.getAxis("left").setWidth(60 + self.axisLabelSize_box.value() + (1.5*self.axisTickSize_box.value()))
+        self.w2.getAxis("bottom").setHeight(40 + self.axisLabelSize_box.value() + (1.5*self.axisTickSize_box.value()))
 
         #test if roiZoom plot intiated
         if self.dataWindow == None:
