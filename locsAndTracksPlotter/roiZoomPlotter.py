@@ -578,6 +578,13 @@ class ROIPLOT():
         self.axisTickSize_box.setMinimum(0)
         self.axisTickSize_box.setMaximum(1000)
 
+
+        self.labelSpace_label = QLabel("Space offset")
+        self.labelSpace_box = pg.SpinBox(value=0, int=True)
+        self.labelSpace_box.setSingleStep(1)
+        self.labelSpace_box.setMinimum(-1000)
+        self.labelSpace_box.setMaximum(1000)
+
         self.pointSize_label = QLabel("Point Size")
         self.lineWidth_label = QLabel("Line Width")
         self.axisLabelSize_label = QLabel("Axis Label Size")
@@ -589,6 +596,7 @@ class ROIPLOT():
         self.frameRate_box.setMaximum(1000)
         self.frameRate_label = QLabel("Frames per sec")
 
+
         #connect widgets to update
         self.axisTickSize_box.valueChanged.connect(self.update)
         self.axisLabelSize_box.valueChanged.connect(self.update)
@@ -599,6 +607,7 @@ class ROIPLOT():
         self.frameRate_box.valueChanged.connect(self.update)
         self.timeStampSize_box.valueChanged.connect(self.update)
         self.timeCorrection_box.valueChanged.connect(self.update)
+        self.labelSpace_box.valueChanged.connect(self.update)
 
         # add widgets to layout
         #line + point colour
@@ -621,13 +630,19 @@ class ROIPLOT():
         #line + point size
         self.w3.addWidget(self.lineWidth_label, row=4,col=0)
         self.w3.addWidget(self.lineWidth_box, row=4,col=1)
-        self.w3.addWidget(self.pointSize_label, row=5,col=0)
-        self.w3.addWidget(self.pointSize_box, row=5,col=1)
-        self.w3.addWidget(self.axisLabelSize_label, row=6,col=0)
-        self.w3.addWidget(self.axisLabelSize_box, row=6,col=1)
+        self.w3.addWidget(self.pointSize_label, row=4,col=2)
+        self.w3.addWidget(self.pointSize_box, row=4,col=3)
 
-        self.w3.addWidget(self.tickLabelSize_label, row=7,col=0)
-        self.w3.addWidget(self.axisTickSize_box, row=7,col=1)
+        #label size
+        self.w3.addWidget(self.axisLabelSize_label, row=5,col=0)
+        self.w3.addWidget(self.axisLabelSize_box, row=5,col=1)
+
+        self.w3.addWidget(self.tickLabelSize_label, row=6,col=0)
+        self.w3.addWidget(self.axisTickSize_box, row=6,col=1)
+
+        #label space offset
+        self.w3.addWidget(self.labelSpace_label, row=7,col=0)
+        self.w3.addWidget(self.labelSpace_box, row=7,col=1)
 
         #select track
         #display track for all frames
@@ -719,8 +734,8 @@ class ROIPLOT():
         self.w2.getAxis("left").setStyle(tickTextOffset = self.axisTickSize_box.value())
         self.w2.getAxis("bottom").setStyle(tickTextOffset = self.axisTickSize_box.value())
 
-        self.w2.getAxis("left").setWidth(60 + self.axisLabelSize_box.value() + (1.5*self.axisTickSize_box.value()))
-        self.w2.getAxis("bottom").setHeight(40 + self.axisLabelSize_box.value() + (1.5*self.axisTickSize_box.value()))
+        self.w2.getAxis("left").setWidth(self.labelSpace_box.value() + 60 + self.axisLabelSize_box.value() + (1.8*self.axisTickSize_box.value()))
+        self.w2.getAxis("bottom").setHeight(self.labelSpace_box.value() + 40 + self.axisLabelSize_box.value() + (1.8*self.axisTickSize_box.value()))
 
         #test if roiZoom plot intiated
         if self.dataWindow == None:
