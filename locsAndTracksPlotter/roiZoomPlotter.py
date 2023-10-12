@@ -32,7 +32,7 @@ from pyqtgraph.dockarea.DockArea import DockArea
 from .helperFunctions import *
 
 class Scale_Bar_ROIzoom(BaseProcess):
-    ''' scale_bar(width_NoUnits, width_pixels, font_size, color, background, location, show=True)
+    ''' scale_bar(width_NoUnits, width_pixels, font_size, color, background, offset, location, show=True)
 
     Parameters:
         width_NoUnits (float): width
@@ -41,6 +41,7 @@ class Scale_Bar_ROIzoom(BaseProcess):
         color (string): ['Black', White']
         background (string): ['Black','White', 'None']
         location (string): ['Lower Right','Lower Left','Top Right','Top Left']
+        offset (int): manual positioning of bar and label
         show (bool): controls whether the Scale_bar is displayed or not
     '''
 
@@ -79,9 +80,13 @@ class Scale_Bar_ROIzoom(BaseProcess):
         location.addItem('Top Left')
         show=CheckBox()
 
+        offset=QSpinBox()
+
         font_size.setValue(12)
         width_pixels.setValue(1.00)
         width_NoUnits.setValue(108)
+
+        font_size.setValue(0)
 
         show.setChecked(True)
         self.items.append({'name':'width_NoUnits','string':'Width of bar','object':width_NoUnits})
@@ -91,12 +96,13 @@ class Scale_Bar_ROIzoom(BaseProcess):
         self.items.append({'name':'color','string':'Color','object':color})
         self.items.append({'name':'background','string':'Background','object':background})
         self.items.append({'name':'location','string':'Location','object':location})
+        self.items.append({'name':'offset','string':'Offset','object':offset})
         self.items.append({'name':'show','string':'Show','object':show})
 
         super().gui()
         self.preview()
 
-    def __call__(self,width_NoUnits, width_pixels, font_size, color, background,location,show=True,keepSourceWindow=None):
+    def __call__(self,width_NoUnits, width_pixels, font_size, color, background,location,offset,show=True,keepSourceWindow=None):
 
         if show:
             if hasattr(self.roiGUI,'scaleBarLabel') and self.roiGUI.scaleBarLabel is not None:
@@ -153,23 +159,24 @@ class Scale_Bar_ROIzoom(BaseProcess):
     def updateBar(self):
         width_pixels=self.getValue('width_pixels')
         location=self.getValue('location')
+        offset=self.getValue('offset')
         view = self.w.view
         textRect=self.roiGUI.scaleBarLabel.boundingRect()
         textWidth=textRect.width()*view.viewPixelSize()[0]
         textHeight=textRect.height()*view.viewPixelSize()[1]
 
         if location=='Top Left':
-            barPoint=QPoint(int(0), int(1.3*textHeight))
-            self.roiGUI.scaleBarLabel.setPos(QPointF(width_pixels/2-textWidth/2,0))
+            barPoint=QPoint(int(0) + offset, int(1.3*textHeight))
+            self.roiGUI.scaleBarLabel.setPos(QPointF(offset + width_pixels/2-textWidth/2,0))
         elif location=='Top Right':
-            barPoint=QPoint(int(self.roiGUI.mx-width_pixels), int(1.3*textHeight))
-            self.roiGUI.scaleBarLabel.setPos(QPointF(self.roiGUI.mx-width_pixels/2-textWidth/2,0))
+            barPoint=QPoint(int(self.roiGUI.mx-width_pixels) - offset, int(1.3*textHeight))
+            self.roiGUI.scaleBarLabel.setPos(QPointF(self.roiGUI.mx-width_pixels/2-textWidth/2 - offset,0))
         elif location=='Lower Right':
-            barPoint=QPoint(int(self.roiGUI.mx-width_pixels), int(self.roiGUI.my-1.3*textHeight))
-            self.roiGUI.scaleBarLabel.setPos(QPointF(int(self.roiGUI.mx-width_pixels/2-textWidth/2),int(self.roiGUI.my-textHeight)))
+            barPoint=QPoint(int(self.roiGUI.mx-width_pixels) -offset, int(self.roiGUI.my-1.3*textHeight))
+            self.roiGUI.scaleBarLabel.setPos(QPointF(int(self.roiGUI.mx-width_pixels/2-textWidth/2)-offset,int(self.roiGUI.my-textHeight)))
         elif location=='Lower Left':
-            barPoint=QPoint(int(0), int(self.roiGUI.my-1.3*textHeight))
-            self.roiGUI.scaleBarLabel.setPos(QPointF(QPointF(width_pixels/2-textWidth/2,self.roiGUI.my-textHeight)))
+            barPoint=QPoint(int(0) +offset, int(self.roiGUI.my-1.3*textHeight))
+            self.roiGUI.scaleBarLabel.setPos(QPointF(QPointF(offset + width_pixels/2-textWidth/2,self.roiGUI.my-textHeight)))
         self.roiGUI.scaleBarLabel.bar.setRect(QRectF(barPoint, QSizeF(width_pixels,textHeight/4)))
 
     def preview(self):
@@ -179,8 +186,9 @@ class Scale_Bar_ROIzoom(BaseProcess):
         color=self.getValue('color')
         background=self.getValue('background')
         location=self.getValue('location')
+        offset=self.getValue('offset')
         show=self.getValue('show')
-        self.__call__(width_NoUnits, width_pixels, font_size, color, background, location, show)
+        self.__call__(width_NoUnits, width_pixels, font_size, color, background, location, offset, show)
 
 def extractListElement(l, pos):
     return list(list(zip(*l))[pos])
