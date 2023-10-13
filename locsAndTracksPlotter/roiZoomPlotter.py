@@ -437,7 +437,10 @@ class ROIPLOT():
         self.timeStamp_zoom.setPos(0,0)
 
         self.scatter = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 120))
+        self.scatter2 = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 120))
+
         self.w1.addItem(self.scatter)
+        self.w1.addItem(self.scatter2)
 
         #options panel
         self.w3 = pg.LayoutWidget()
@@ -604,6 +607,14 @@ class ROIPLOT():
         self.frameRate_box.setMaximum(1000)
         self.frameRate_label = QLabel("Frames per sec")
 
+        self.ROISize_checkbox = CheckBox()
+        self.ROISize_checkbox.setChecked(False)
+        self.ROISize_label = QLabel("Show ROI")
+        self.ROISize_box_label = QLabel("ROI size")
+        self.ROISize_box = pg.SpinBox(value=3, int=True)
+        self.ROISize_box.setSingleStep(1)
+        self.ROISize_box.setMinimum(1)
+        self.ROISize_box.setMaximum(1000)
 
         #connect widgets to update
         self.axisTickSize_box.valueChanged.connect(self.update)
@@ -616,6 +627,8 @@ class ROIPLOT():
         self.timeStampSize_box.valueChanged.connect(self.update)
         self.timeCorrection_box.valueChanged.connect(self.update)
         self.labelSpace_box.valueChanged.connect(self.update)
+        self.ROISize_box.valueChanged.connect(self.update)
+        self.ROISize_checkbox.stateChanged.connect(self.update)
 
         # add widgets to layout
         #line + point colour
@@ -633,7 +646,6 @@ class ROIPLOT():
         self.w3.addWidget(self.showXaxisLabel_checkbox, row=3,col=1)
         self.w3.addWidget(self.showYaxisLabel_label, row=3,col=2)
         self.w3.addWidget(self.showYaxisLabel_checkbox, row=3,col=3)
-
 
         #line + point size
         self.w3.addWidget(self.lineWidth_label, row=4,col=0)
@@ -664,44 +676,51 @@ class ROIPLOT():
         self.w3.addWidget(self.timeInSec_label, row=10,col=0)
         self.w3.addWidget(self.timeInSec_checkbox , row=10,col=1)
 
+
+        #Display ROI
+        self.w3.addWidget(self.ROISize_label, row=11,col=0)
+        self.w3.addWidget(self.ROISize_checkbox, row=11,col=1)
+        self.w3.addWidget(self.ROISize_box_label, row=11,col=2)
+        self.w3.addWidget(self.ROISize_box, row=11,col=3)
+
         #show track path
-        self.w3.addWidget(self.displayTrackPath_label, row=11,col=0)
-        self.w3.addWidget(self.displayTrackPath_checkbox, row=11,col=1)
-        self.w3.addWidget(self.trackPathSelector, row=11,col=2)
+        self.w3.addWidget(self.displayTrackPath_label, row=12,col=0)
+        self.w3.addWidget(self.displayTrackPath_checkbox, row=12,col=1)
+        self.w3.addWidget(self.trackPathSelector, row=12,col=2)
 
         #display track ID
-        self.w3.addWidget(self.displayID_label, row=12,col=0)
-        self.w3.addWidget(self.displayID_checkbox, row=12,col=1)
+        self.w3.addWidget(self.displayID_label, row=13,col=0)
+        self.w3.addWidget(self.displayID_checkbox, row=13,col=1)
         #display Legend
-        self.w3.addWidget(self.displayLegend_label, row=13,col=0)
-        self.w3.addWidget(self.displayLegend_checkbox, row=13,col=1)
+        self.w3.addWidget(self.displayLegend_label, row=14,col=0)
+        self.w3.addWidget(self.displayLegend_checkbox, row=14,col=1)
 
         #show time stamp
-        self.w3.addWidget(self.timeStampSize_label , row=14,col=0)
-        self.w3.addWidget(self.timeStampSize_box, row=14,col=1)
-        self.w3.addWidget(self.showTimeStamp_label , row=15,col=0)
-        self.w3.addWidget(self.showTimeStamp_checkbox, row=15,col=1)
+        self.w3.addWidget(self.timeStampSize_label , row=15,col=0)
+        self.w3.addWidget(self.timeStampSize_box, row=15,col=1)
+        self.w3.addWidget(self.showTimeStamp_label , row=16,col=0)
+        self.w3.addWidget(self.showTimeStamp_checkbox, row=16,col=1)
 
         #time correction
-        self.w3.addWidget(self.timeCorrection_label , row=16,col=0)
-        self.w3.addWidget(self.timeCorrection_checkbox, row=16,col=1)
-        self.w3.addWidget(self.timeCorrection_box, row=16,col=2)
+        self.w3.addWidget(self.timeCorrection_label , row=17,col=0)
+        self.w3.addWidget(self.timeCorrection_checkbox, row=17,col=1)
+        self.w3.addWidget(self.timeCorrection_box, row=17,col=2)
 
         #show scale bar
-        self.w3.addWidget(self.showScaleBar_button, row=17,col=0)
+        self.w3.addWidget(self.showScaleBar_button, row=18,col=0)
         #play
-        self.w3.addWidget(self.start_label, row=18,col=0)
-        self.w3.addWidget(self.start_box, row=18,col=1)
-        self.w3.addWidget(self.end_label, row=18,col=2)
-        self.w3.addWidget(self.end_box, row=18,col=3)
+        self.w3.addWidget(self.start_label, row=19,col=0)
+        self.w3.addWidget(self.start_box, row=19,col=1)
+        self.w3.addWidget(self.end_label, row=19,col=2)
+        self.w3.addWidget(self.end_box, row=19,col=3)
 
-        self.w3.addWidget(self.frameRate_label, row=19,col=0)
-        self.w3.addWidget(self.frameRate_box, row=19,col=1)
-        self.w3.addWidget(self.play_button, row=19,col=2)
+        self.w3.addWidget(self.frameRate_label, row=20,col=0)
+        self.w3.addWidget(self.frameRate_box, row=20,col=1)
+        self.w3.addWidget(self.play_button, row=20,col=2)
         #showData
-        self.w3.addWidget(self.showData_button, row=20,col=0)
+        self.w3.addWidget(self.showData_button, row=21,col=0)
         #record
-        self.w3.addWidget(self.record_button, row=20,col=1)
+        self.w3.addWidget(self.record_button, row=21,col=1)
 
         #add layouts to dock
         self.d1.addWidget(self.w1)
@@ -750,6 +769,7 @@ class ROIPLOT():
             return
         #clear scatter plot data
         self.scatter.setData([],[])
+        self.scatter2.setData([],[])
         #clear intensity plot
         self.w2.clear()
 
@@ -807,8 +827,22 @@ class ROIPLOT():
 
 
             brush_list = [pg.mkBrush(i) for i in trackColour_list]
+            pen_list = [pg.mkPen(i, width=5) for i in trackColour_list]
 
             self.scatter.addPoints(x=x_list, y=y_list, size=self.pointSize_box.value(), brush=brush_list, name=trackID_list, hoverable=False)
+
+            #plot boxs representing ROIs used to get mean intensity
+            if self.ROISize_checkbox.isChecked():
+
+                if self.ROISize_box.value() % 2 == 0:
+                    x_rounded_list = np.around(x_list).astype(int)
+                    y_rounded_list = np.around(y_list).astype(int)
+                else:
+                    x_rounded_list = x_list.astype(int) + 0.5
+                    y_rounded_list = y_list.astype(int) + 0.5
+
+                self.scatter2.addPoints(x=x_rounded_list, y=y_rounded_list, size=self.ROISize_box.value(), pen=pen_list, brush=None, symbol='s',pxMode=False, hoverable=False)
+
 
             if self.displayID_checkbox.isChecked():
                 label_list = [custom_symbol(str(i)) for i in trackID_list]
