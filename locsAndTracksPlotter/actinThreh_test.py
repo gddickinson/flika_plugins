@@ -32,13 +32,15 @@ from matplotlib.patches import Ellipse, Arrow
 from tqdm import tqdm
 
 
-fileName = r'/Users/george/Data/actin_test/actin/GB_199_2022_09_01_HTEndothelial_NonBAPTA_plate2_actin.tif'
+#fileName = r'/Users/george/Data/actin_test/actin/GB_199_2022_09_01_HTEndothelial_NonBAPTA_plate2_actin.tif'
+
+fileName = r'/Users/george/actin_test/GB_199_2022_09_01_HTEndothelial_NonBAPTA_plate2_actin_Probabilities_.tiff'
 
 img = skio.imread( fileName )
 
 #if stack convert to single image
-if len(img) > 1:
-    img= img[0] #just 1st image of stack
+if len(img.shape) > 2:
+    img= img[0][0] #just 1st image of stack
 
 #orient image
 img= np.rot90(img)
@@ -63,7 +65,7 @@ from matplotlib import pyplot as plt
 
 #img = data.page()
 
-gaussianBlur = True
+gaussianBlur = False
 
 if gaussianBlur:
     img = gaussian(img,sigma=1.5)
@@ -74,7 +76,7 @@ binary_global = img> global_thresh
 
 #local
 block_size = 35
-offset = 10
+offset = 0.00001
 if gaussianBlur:
     offset = offset/100000
 

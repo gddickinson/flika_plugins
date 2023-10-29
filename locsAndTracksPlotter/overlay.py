@@ -25,7 +25,7 @@ from skimage.draw import circle_perimeter, ellipse_perimeter
 from skimage.util import img_as_ubyte
 from skimage.segmentation import clear_border
 from skimage.measure import label, regionprops
-from skimage.morphology import closing, square
+from skimage.morphology import closing, square, remove_small_objects
 from skimage.color import label2rgb
 import matplotlib.patches as mpatches
 from skimage.draw import ellipse
@@ -90,14 +90,17 @@ class Overlay():
 
         # Create docks, place them into the window one at a time.
         self.d1 = Dock("Overlay", size=(500, 500))
-        self.d2 = Dock('Options', size=(250, 500))
+        self.d2 = Dock('Options - main', size=(250, 500))
         self.d3 = Dock("Binary", size=(500, 500))
+        self.d4 = Dock('Options - binary', size=(250, 500))
 
         self.area.addDock(self.d1, 'left')
         self.area.addDock(self.d2, 'right', self.d1)
         self.area.addDock(self.d3, 'below', self.d1)
+        self.area.addDock(self.d4, 'below', self.d2)
 
         self.d1.raiseDock()
+        self.d2.raiseDock()
 
         # overlay image view
         self.overlayWindow = pg.ImageView()
@@ -109,10 +112,15 @@ class Overlay():
 
         # options widget
         self.w2 = pg.LayoutWidget()
+        self.w4 = pg.LayoutWidget()
 
         # load tiff button
         self.loadTiff_button = FileSelector_overlay(filetypes='*.tif')
         self.loadTiff_button.valueChanged.connect(self.loadTiff)
+
+        # load active window button
+        self.loadWindow_button = WindowSelector()
+        self.loadWindow_button.valueChanged.connect(self.loadWindow)
 
         # overlay button
         self.showData_button = QPushButton('Show Data')
@@ -184,6 +192,17 @@ class Overlay():
         self.fillHoles.stateChanged.connect(self.updateBinary)
         self.hole_label = QLabel('Hole size to close')
 
+        # remove speckle size selector
+        self.removeSpeckle = CheckBox()
+        self.speckle_slider = SliderLabel(0)
+        self.speckle_slider.setRange(1, 50)
+        self.speckle_slider.setValue(3)
+        self.speckle_slider.valueChanged.connect(self.updateBinary)
+        self.removeSpeckle.stateChanged.connect(self.updateBinary)
+        self.speckle_label = QLabel('Speckle size to remove')
+
+
+
         # Size limit slider
         self.maxSizeLimit = CheckBox()
         self.maxSize_slider = SliderLabel(1)
@@ -208,50 +227,59 @@ class Overlay():
         self.pointThreshold.stateChanged.connect(self.plotPoints)
 
         # add buttons etc to layout widget
+        #main image options
         self.w2.addWidget(self.loadTiff_button, row=1, col=0)
+        self.w2.addWidget(self.loadWindow_button, row=2, col=0)
 
-        self.w2.addWidget(self.opacity_label, row=2, col=0)
-        self.w2.addWidget(self.opacity, row=3, col=0)
+        self.w2.addWidget(self.opacity_label, row=3, col=0)
+        self.w2.addWidget(self.opacity, row=4, col=0)
 
-        self.w2.addWidget(self.gamma_label, row=4, col=0)
-        self.w2.addWidget(self.gammaCorrect, row=4, col=1)
-        self.w2.addWidget(self.gamma, row=5, col=0)
+        self.w2.addWidget(self.gamma_label, row=5, col=0)
+        self.w2.addWidget(self.gammaCorrect, row=5, col=2)
+        self.w2.addWidget(self.gamma, row=6, col=0)
 
-        self.w2.addWidget(self.gaussian_label, row=6, col=0)
-        self.w2.addWidget(self.gaussianBlur, row=6, col=1)
-        self.w2.addWidget(self.gaussian_slider, row=7, col=0)
+        self.w2.addWidget(self.minSize_label, row=7, col=0)
+        self.w2.addWidget(self.minSize_slider, row=8, col=0)
 
-        self.w2.addWidget(self.blocksize_label, row=8, col=0)
-        self.w2.addWidget(self.blocksize_slider, row=9, col=0)
+        self.w2.addWidget(self.maxSize_label, row=9, col=0)
+        self.w2.addWidget(self.maxSizeLimit, row=9, col=2)
+        self.w2.addWidget(self.maxSize_slider, row=10, col=0)
 
-        self.w2.addWidget(self.offset_label, row=10, col=0)
-        self.w2.addWidget(self.offset_slider, row=11, col=0)
+        self.w2.addWidget(self.pointThreshold_label, row=11, col=0)
+        self.w2.addWidget(self.pointThreshold, row=11, col=2)
+        self.w2.addWidget(self.pointThreshold_slider, row=12, col=0)
 
-        self.w2.addWidget(self.threshold_label, row=12, col=0)
-        self.w2.addWidget(self.manualThreshold, row=12, col=1)
-        self.w2.addWidget(self.threshold_slider, row=13, col=0)
+        self.w2.addWidget(self.showData_button, row=13, col=0)
+        self.w2.addWidget(self.getFilaments_button, row=14, col=0)
+        self.w2.addWidget(self.getTrackAxis_button, row=15, col=0)
 
-        self.w2.addWidget(self.hole_label, row=14, col=0)
-        self.w2.addWidget(self.fillHoles, row=14, col=1)
-        self.w2.addWidget(self.hole_slider, row=15, col=0)
+        #binary options
+        self.w4.addWidget(self.gaussian_label, row=1, col=0)
+        self.w4.addWidget(self.gaussianBlur, row=1, col=2)
+        self.w4.addWidget(self.gaussian_slider, row=2, col=0)
 
-        self.w2.addWidget(self.minSize_label, row=16, col=0)
-        self.w2.addWidget(self.minSize_slider, row=17, col=0)
+        self.w4.addWidget(self.blocksize_label, row=3, col=0)
+        self.w4.addWidget(self.blocksize_slider, row=4, col=0)
 
-        self.w2.addWidget(self.maxSize_label, row=18, col=0)
-        self.w2.addWidget(self.maxSizeLimit, row=18, col=1)
-        self.w2.addWidget(self.maxSize_slider, row=19, col=0)
+        self.w4.addWidget(self.offset_label, row=5, col=0)
+        self.w4.addWidget(self.offset_slider, row=6, col=0)
 
-        self.w2.addWidget(self.pointThreshold_label, row=20, col=0)
-        self.w2.addWidget(self.pointThreshold, row=20, col=1)
-        self.w2.addWidget(self.pointThreshold_slider, row=21, col=0)
+        self.w4.addWidget(self.threshold_label, row=7, col=0)
+        self.w4.addWidget(self.manualThreshold, row=7, col=2)
+        self.w4.addWidget(self.threshold_slider, row=8, col=0)
 
-        self.w2.addWidget(self.showData_button, row=22, col=0)
-        self.w2.addWidget(self.getFilaments_button, row=23, col=0)
-        self.w2.addWidget(self.getTrackAxis_button, row=24, col=0)
+        self.w4.addWidget(self.hole_label, row=9, col=0)
+        self.w4.addWidget(self.fillHoles, row=9, col=2)
+        self.w4.addWidget(self.hole_slider, row=10, col=0)
+
+        self.w4.addWidget(self.speckle_label, row=11, col=0)
+        self.w4.addWidget(self.removeSpeckle, row=11, col=2)
+        self.w4.addWidget(self.speckle_slider, row=12, col=0)
+
 
         # add layout widget to dock
         self.d2.addWidget(self.w2)
+        self.d4.addWidget(self.w4)
 
     def overlay(self):
         '''overlay single tiff file and recording'''
@@ -354,10 +382,13 @@ class Overlay():
 
         # get binary & close holes
         if self.fillHoles.isChecked():
-            self.binary = closing(actin_img > thresh_mask,
-                                  square(self.hole_slider.value()))
+            self.binary = closing(actin_img > thresh_mask, square(self.hole_slider.value()))
         else:
             self.binary = actin_img > thresh_mask
+
+        if self.removeSpeckle.isChecked():
+            self.binary = remove_small_objects(self.binary, min_size=self.speckle_slider.value())
+
 
         # convert boolean to int
         self.binary = self.binary.astype(int)
@@ -402,6 +433,41 @@ class Overlay():
 
         # add actin image pixel intensity to data df
         self.addActinIntensity()
+
+    def loadWindow(self):
+        """ imports window data to overlay """
+        # get filename
+        self.importWindow = self.loadWindow_button.value()
+
+        # load overlay file
+        self.overlayIMG = self.importWindow.image
+
+        # if stack convert to single image
+        # if len(self.overlayIMG) > 1:
+        #     self.overlayIMG = self.overlayIMG[0]  # just 1st image of stack
+
+        # orient image
+        #self.overlayIMG = np.rot90(self.overlayIMG)
+        #self.overlayIMG = np.flipud(self.overlayIMG)
+
+        # make copy of original
+        self.originalIMG = self.overlayIMG
+
+        # overlay images
+        self.overlay()
+
+        self.updateBinary()
+
+        # set manual threshold slider range
+        self.threshold_slider.setRange(
+            np.min(self.overlayIMG), np.max(self.overlayIMG))
+        self.pointThreshold_slider.setRange(
+            np.min(self.overlayIMG), np.max(self.overlayIMG))
+
+        # add actin image pixel intensity to data df
+        self.addActinIntensity()
+
+
 
     def toggleData(self):
         if self.pointsPlotted:
