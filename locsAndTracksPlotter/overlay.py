@@ -45,6 +45,7 @@ from pyqtgraph.dockarea.DockArea import DockArea
 from distutils.version import StrictVersion
 import flika
 from flika.window import Window
+from flika.process.file_ import open_tiff
 import flika.global_vars as g
 
 # determine which version of flika to use
@@ -72,6 +73,7 @@ class Overlay():
 
         self.pathitems = []
         self.pathitemsActin = []
+        self.pathitemsActin_binary = []
 
         self.actinLabels = []
         self.pointsInFilaments = []
@@ -407,15 +409,17 @@ class Overlay():
         self.overlayFileName = self.loadTiff_button.value()
 
         # load overlay file
-        self.overlayIMG = skio.imread(self.overlayFileName)
+        #self.overlayIMG = skio.imread(self.overlayFileName)
+        self.overlayIMG, metadata = open_tiff(self.overlayFileName, None)
 
         # if stack convert to single image
-        if len(self.overlayIMG) > 1:
+        if len(self.overlayIMG.shape) > 2:
             self.overlayIMG = self.overlayIMG[0]  # just 1st image of stack
 
+
         # orient image
-        self.overlayIMG = np.rot90(self.overlayIMG)
-        self.overlayIMG = np.flipud(self.overlayIMG)
+        #self.overlayIMG = np.rot90(self.overlayIMG)
+        #self.overlayIMG = np.flipud(self.overlayIMG)
 
         # make copy of original
         self.originalIMG = self.overlayIMG
@@ -633,30 +637,36 @@ class Overlay():
             area = props[index].area
 
             if self.maxSizeLimit.isChecked():
-                maxTest = area < self.maxSize_slider.value()
+                maxTest = area <= self.maxSize_slider.value()
             else:
                 maxTest = True
 
             if area >= self.minSize_slider.value() and maxTest:
                 self.actinLabels.append(labels == label_i)
-                contour = measure.find_contours(labels == label_i, 0.5)[0]
+                contour = measure.find_contours(labels == label_i)[0]
                 y, x = contour.T
 
                 pathitem = QGraphicsPathItem(self.overlayWindow.view)
+                pathitem2 = QGraphicsPathItem(self.binaryWindow.view)
 
                 pen = pg.functions.mkPen(width=1)
+                pen2 = pg.functions.mkPen(width=3)
 
                 # set the color of the pen based on the track color
                 pen.setColor(QColor(Qt.red))
+                pen2.setColor(QColor(Qt.red))
 
                 # set the pen for the path items
                 pathitem.setPen(pen)
+                pathitem2.setPen(pen2)
 
                 # add the path items to the view(s)
                 self.overlayWindow.view.addItem(pathitem)
+                self.binaryWindow.view.addItem(pathitem2)
 
                 # keep track of the path items
                 self.pathitemsActin.append(pathitem)
+                self.pathitemsActin_binary.append(pathitem2)
 
                 # create a QPainterPath for the track and set the path for the path item
                 path = QPainterPath(QPointF(x[0], y[0]))
@@ -667,6 +677,7 @@ class Overlay():
                     path.lineTo(QPointF(x[i], y[i]))
 
                 pathitem.setPath(path)
+                pathitem2.setPath(path)
 
                 # get centroids and orientation
                 y0, x0 = props[index].centroid
@@ -765,7 +776,13 @@ class Overlay():
         if self.overlayWindow is not None:
             for pathitem in self.pathitemsActin:
                 self.overlayWindow.view.removeItem(pathitem)
+
+        if self.binaryWindow is not None:
+            for pathitem in self.pathitemsActin_binary:
+                self.binaryWindow.view.removeItem(pathitem)
+
         self.pathitemsActin = []
+        self.pathitemsActin_binary = []
 
     def clearTracks(self):
         # Remove all plot items representing tracks
