@@ -83,6 +83,8 @@ class Overlay():
 
         self.pointMapScatter = None
 
+        self.showFilaments = False
+
         # Set up main window
         self.win = QMainWindow()
         self.area = DockArea()
@@ -129,8 +131,8 @@ class Overlay():
         self.showData_button.pressed.connect(self.toggleData)
 
         # detect filaments button
-        self.getFilaments_button = QPushButton('Detect Filaments')
-        self.getFilaments_button.pressed.connect(self.detectFilaments)
+        self.getFilaments_button = QPushButton('Show Detected Filaments')
+        self.getFilaments_button.pressed.connect(self.showDetectedFilaments)
 
         # detect track axis
         self.getTrackAxis_button = QPushButton('Detect Track axis')
@@ -169,7 +171,7 @@ class Overlay():
         self.threshold_slider.setValue(0)
         self.threshold_slider.valueChanged.connect(self.updateBinary)
         self.threshold_label = QLabel('Global Threshold cuttoff')
-        self.manualThreshold.stateChanged.connect(self.detectFilaments)
+        self.manualThreshold.stateChanged.connect(self.updateBinary)
 
         # local threshold sliders
         self.blocksize_slider = SliderLabel(0)
@@ -202,7 +204,6 @@ class Overlay():
         self.speckle_slider.valueChanged.connect(self.updateBinary)
         self.removeSpeckle.stateChanged.connect(self.updateBinary)
         self.speckle_label = QLabel('Speckle size to remove')
-
 
 
         # Size limit slider
@@ -391,17 +392,13 @@ class Overlay():
         if self.removeSpeckle.isChecked():
             self.binary = remove_small_objects(self.binary, min_size=self.speckle_slider.value())
 
-
         # convert boolean to int
         self.binary = self.binary.astype(int)
-
-        # remove artifacts connected to image border
-        # self.binary = clear_border(self.binary)
 
         self.binaryWindow.setImage(self.binary)
 
         # update filament detection
-        self.detectFilaments
+        self.detectFilaments()
 
     def loadTiff(self):
         """ imports the tiff file to overlay """
@@ -646,38 +643,40 @@ class Overlay():
                 contour = measure.find_contours(labels == label_i)[0]
                 y, x = contour.T
 
-                pathitem = QGraphicsPathItem(self.overlayWindow.view)
-                pathitem2 = QGraphicsPathItem(self.binaryWindow.view)
+                if self.showFilaments:
 
-                pen = pg.functions.mkPen(width=1)
-                pen2 = pg.functions.mkPen(width=3)
+                    pathitem = QGraphicsPathItem(self.overlayWindow.view)
+                    pathitem2 = QGraphicsPathItem(self.binaryWindow.view)
 
-                # set the color of the pen based on the track color
-                pen.setColor(QColor(Qt.red))
-                pen2.setColor(QColor(Qt.red))
+                    pen = pg.functions.mkPen(width=1)
+                    pen2 = pg.functions.mkPen(width=3)
 
-                # set the pen for the path items
-                pathitem.setPen(pen)
-                pathitem2.setPen(pen2)
+                    # set the color of the pen based on the track color
+                    pen.setColor(QColor(Qt.red))
+                    pen2.setColor(QColor(Qt.red))
 
-                # add the path items to the view(s)
-                self.overlayWindow.view.addItem(pathitem)
-                self.binaryWindow.view.addItem(pathitem2)
+                    # set the pen for the path items
+                    pathitem.setPen(pen)
+                    pathitem2.setPen(pen2)
 
-                # keep track of the path items
-                self.pathitemsActin.append(pathitem)
-                self.pathitemsActin_binary.append(pathitem2)
+                    # add the path items to the view(s)
+                    self.overlayWindow.view.addItem(pathitem)
+                    self.binaryWindow.view.addItem(pathitem2)
 
-                # create a QPainterPath for the track and set the path for the path item
-                path = QPainterPath(QPointF(x[0], y[0]))
+                    # keep track of the path items
+                    self.pathitemsActin.append(pathitem)
+                    self.pathitemsActin_binary.append(pathitem2)
 
-                path_overlay = QPainterPath(QPointF(x[0], y[0]))
+                    # create a QPainterPath for the track and set the path for the path item
+                    path = QPainterPath(QPointF(x[0], y[0]))
 
-                for i in np.arange(1, len(x)):
-                    path.lineTo(QPointF(x[i], y[i]))
+                    path_overlay = QPainterPath(QPointF(x[0], y[0]))
 
-                pathitem.setPath(path)
-                pathitem2.setPath(path)
+                    for i in np.arange(1, len(x)):
+                        path.lineTo(QPointF(x[i], y[i]))
+
+                    pathitem.setPath(path)
+                    pathitem2.setPath(path)
 
                 # get centroids and orientation
                 y0, x0 = props[index].centroid
@@ -736,7 +735,7 @@ class Overlay():
 
         # filter df based on actin_intensity column
         if self.pointThreshold.isChecked():
-            df = df[df['actin_intensity'] > self.pointThreshold_slider.value()]
+            df = df[df['actin_intensity'] >= self.pointThreshold_slider.value()]
 
         # Create a ScatterPlotItem and add it to the ImageView
         self.pointMapScatter = pg.ScatterPlotItem(
@@ -770,6 +769,14 @@ class Overlay():
         Hides the main window.
         """
         self.win.hide()
+
+    def showDetectedFilaments(self):
+        if self.showFilaments == False:
+            self.showFilaments = True
+            self.detectFilaments()
+        else:
+            self.showFilaments = False
+            self.detectFilaments()
 
     def clearActinOutlines(self):
         # Remove all plot items representing tracks
