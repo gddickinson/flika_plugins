@@ -391,12 +391,22 @@ class ROIPLOT():
         #get current frame number
         frame = self.dataWindow.currentIndex
 
+        #get old histogram levels
+        if self.ROIplotInitiated == False:
+            #get mainwindow level for 1st plot
+            hist_levels = self.dataWindow.imageview.getHistogramWidget().getLevels()
+        else:
+            hist_levels = self.w1.getLevels()
+
 
         #set ROI zoom image
         self.w1.setImage(self.dataWindow.currentROI.getArrayRegion(self.array[frame], self.dataWindow.imageview.imageItem, autoLevels=False))
 
         #set mx and my
         self.mx, self.my = self.dataWindow.currentROI.size()
+
+        #update hist
+        self.w1.setLevels(min=hist_levels[0],max=hist_levels[1])
 
         #add timestamp
         if self.timeCorrection_checkbox.isChecked():
@@ -419,6 +429,10 @@ class ROIPLOT():
             self.timeStamp_zoom.setHtml(html)
         else:
             self.timeStamp_zoom.setText('')
+
+        #update plotInitiated flag
+        if self.ROIplotInitiated == False:
+            self.ROIplotInitiated = True
 
 
     def startPlot(self, startup=False):
