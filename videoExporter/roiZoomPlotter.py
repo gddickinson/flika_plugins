@@ -415,7 +415,7 @@ class ROIPLOT():
             correctedFrame = frame
 
         if self.timeInSec_checkbox.isChecked():
-            timestamp = (correctedFrame * self.framelength_box.value()) /1000
+            timestamp = round((correctedFrame * self.framelength_box.value()) /1000, 1)
             time_text = str(timestamp) + ' s'
         else:
             timestamp = correctedFrame
