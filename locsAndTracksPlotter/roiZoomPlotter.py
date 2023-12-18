@@ -857,8 +857,8 @@ class ROIPLOT():
             correctedFrame = frame
 
         if self.timeInSec_checkbox.isChecked():
-            timestamp = (correctedFrame * self.mainGUI.trackPlotOptions.frameLength_selector.value()) /1000
-            time_text = str(timestamp) + ' s'
+            timestamp = round((correctedFrame * self.mainGUI.trackPlotOptions.frameLength_selector.value()) /1000, 2)
+            time_text = '{0:.2f} s'.format(timestamp)
         else:
             timestamp = correctedFrame
             time_text = str(timestamp)
