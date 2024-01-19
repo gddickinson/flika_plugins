@@ -55,33 +55,121 @@ from pyqtgraph.dockarea.Dock import Dock
 from pyqtgraph.dockarea.DockArea import DockArea
 
 
+
+class DisplayParams():
+    '''
+    Display translation parameters
+    '''
+    def __init__(self, mainGUI):
+        super().__init__()
+        self.mainGUI = mainGUI
+
+        # Set up main window
+        self.win = QMainWindow()
+        self.area = DockArea()
+        self.win.setCentralWidget(self.area)
+        #self.win.resize(250, 200)
+        self.win.setWindowTitle('Parameters')
+
+        ## Create docks
+        self.d0 = Dock("ROI parameters")
+
+        self.area.addDock(self.d0)
+
+
+        #point options widget
+        self.w0 = pg.LayoutWidget()
+
+        self.centerPos_text = QLabel('--,--')
+        self.centerPos_label = QLabel('Center x,y:')
+
+        self.angle_text = QLabel('--')
+        self.angle_label = QLabel('Angle:')
+
+        #layout
+        self.w0.addWidget(self.centerPos_label , row=0,col=0)
+        self.w0.addWidget(self.centerPos_text, row=0,col=1)
+
+        self.w0.addWidget(self.angle_label , row=1,col=0)
+        self.w0.addWidget(self.angle_text, row=1,col=1)
+
+        #add layout widget to dock
+        self.d0.addWidget(self.w0)
+
+
+    def show(self):
+        """
+        Shows the main window.
+        """
+        self.win.show()
+
+    def close(self):
+        """
+        Closes the main window.
+        """
+        self.win.close()
+
+    def hide(self):
+        """
+        Hides the main window.
+        """
+        self.win.hide()
+
+
+
+
+def find_equilateral_triangle_vertices(centroid, side_length):
+    """Finds the XY vertices of an equilateral triangle from the centroid and side length.
+
+    Args:
+      centroid: A tuple of (x, y) coordinates of the centroid.
+      side_length: The length of a side of the equilateral triangle.
+
+    Returns:
+      A list of three tuples of (x, y) coordinates of the vertices of the equilateral triangle.
+    """
+
+    # Calculate the coordinates of the first vertex.
+    vertex1 = (centroid[0] + side_length * np.sqrt(3) / 2, centroid[1] + side_length * np.sqrt(3) / 2)
+
+    # Calculate the coordinates of the second vertex.
+    vertex2 = (centroid[0] - side_length * np.sqrt(3) / 2, centroid[1] + side_length * np.sqrt(3) / 2)
+
+    # Calculate the coordinates of the third vertex.
+    vertex3 = (centroid[0], centroid[1] - side_length)
+
+    return [vertex1, vertex2, vertex3]
+
 class TemplateROI(pg.RectROI):
-    def __init__(self,template = 'disk', *args, **kwds):
+    def __init__(self, template = 'disk', display= None, *args, **kwds):
         pg.RectROI.__init__(self, aspectLocked=True, *args, **kwds)
         self.addRotateHandle([1,0], [0.5, 0.5])
         self.template = template
 
+        self.outlinePen = pg.mkPen('y', width=1, style=Qt.DashLine)
+        self.centerPointPen = pg.mkPen('g', width=20)
+
+
     def paint(self, p, opt, widget):
+        radius = self.getState()['size'][1]
         if self.template == 'disk':
-            r = self.boundingRect()
+            #shape
             p.setRenderHint(QPainter.RenderHint.Antialiasing)
             p.setPen(self.currentPen)
-            p.scale(r.width(), r.height())## workaround for GL bug
-            r = QRectF(r.x()/r.width(), r.y()/r.height(), 1,1)
-            p.drawEllipse(r)
+            #get center of ROI
+            br = self.boundingRect()
+            center = br.center()
+            #draw shape
+            p.drawEllipse(center,int(radius/2),int(radius/2))
+
 
         elif self.template == 'square':
-            # Note: don't use self.boundingRect here, because subclasses may need to redefine it.
-            r = QRectF(0, 0, self.state['size'][0], self.state['size'][1]).normalized()
+            #shape
             p.setRenderHint(QPainter.RenderHint.Antialiasing)
             p.setPen(self.currentPen)
-            p.translate(r.left(), r.top())
-            p.scale(r.width(), r.height())
-            p.drawRect(0, 0, 1, 1)
-
+            p.drawRect(int(0), int(0), int(radius), int(radius))
 
         elif self.template == 'crossbow':
-            radius = self.getState()['size'][1]
             p.setRenderHint(QPainter.RenderHint.Antialiasing)
             p.setPen(self.currentPen)
             #p.drawLine(Point(radius/2, -radius/2), Point(radius/2, radius/2))
@@ -93,17 +181,70 @@ class TemplateROI(pg.RectROI):
             p.setPen(pen2)
             p.drawPoint(int(radius-10),int(radius/2))
 
-            r = QRectF(0, 0, self.state['size'][0], self.state['size'][1]).normalized()
+
+        elif self.template == 'y-shape':
+            #get equilatoral triangle vertices
+            angles = np.linspace(0, np.pi * 4 / 3, 3)
+            verticies = (np.array((np.sin(angles), np.cos(angles))).T * radius) / 2.0
+            #scale by roi size
+            verticies = np.array([[i[0] + radius/2, i[1] + radius/2] for i in verticies])
+            #create poly
+            poly = QPolygonF()
+            for pt in verticies:
+                poly.append(QPointF(*pt))
+
+            #draw shape
             p.setRenderHint(QPainter.RenderHint.Antialiasing)
             p.setPen(self.currentPen)
-            p.translate(r.left(), r.top())
-            p.scale(r.width(), r.height())
-            p.drawRect(0, 0, 1, 1)
+            p.drawPolygon(poly)
 
 
-disk_template = TemplateROI(pos=[80, 50], size=[20, 20], template = 'disk', pen=(0,9))
-square_template = TemplateROI(pos=[80, 50], size=[20, 20], template = 'square', pen=(0,9))
-crossbow_template = TemplateROI(pos=[80, 50], size=[20, 20], template = 'crossbow', pen=(0,9))
+        elif self.template == 'h-shape':
+            #shape
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
+            p.setPen(self.currentPen)
+            p.drawLine(Point(radius, 0), Point(0, radius/2))
+            p.drawLine(Point(radius, radius), Point(0, radius/2))
+
+
+        #draw center point
+        p.setPen(self.centerPointPen)
+        p.drawPoint(int(radius/2),int(radius/2))
+
+
+        #outline
+        # Note: don't use self.boundingRect here, because subclasses may need to redefine it.
+        r = QRectF(0, 0, self.state['size'][0], self.state['size'][1]).normalized()
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(self.outlinePen)
+        p.translate(r.left(), r.top())
+        p.scale(r.width(), r.height())
+        p.drawRect(0, 0, 1, 1)
+
+        self.updateDisplay()
+
+    def getCenter(self):
+        posX,posY = self.pos()
+        sizeX,sizeY = self.size()
+        return (int(posX+sizeX/2), int(posY+sizeY/2))
+
+    def addDisplay(self, display):
+        self.display = display
+
+    def updateDisplay(self):
+        if self.display != None:
+            x,y = self.getCenter()
+            self.display.centerPos_text.setText('{},{}'.format(x,y))
+            self.display.angle_text.setText('{}'.format(round(self.angle(), 2)))
+
+shapeSize = [400,400]
+startPosition = [80, 50]
+
+disk_template = TemplateROI(pos=startPosition, size=shapeSize, template = 'disk', pen=(0,9))
+square_template = TemplateROI(pos=startPosition, size=shapeSize, template = 'square', pen=(0,9))
+crossbow_template = TemplateROI(pos=startPosition, size=shapeSize, template = 'crossbow', pen=(0,9))
+yShape_template = TemplateROI(pos=startPosition, size=shapeSize, template = 'y-shape', pen=(0,9))
+hShape_template = TemplateROI(pos=startPosition, size=shapeSize, template = 'h-shape', pen=(0,9))
 
 '''
 #####################################################################################################################################
@@ -175,7 +316,10 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
         self.templateBox = pg.ComboBox()
         self.templates = {'Disk': disk_template,
                           'Square': square_template,
-                          'Crossbow': crossbow_template}
+                          'Crossbow': crossbow_template,
+                          'Y-shape': yShape_template,
+                          'H-shape': hShape_template
+                          }
         self.templateBox.setItems(self.templates)
 
         self.items.append({'name': 'dataWindow', 'string': 'Data Window', 'object': self.dataWindow})
@@ -185,10 +329,15 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
 
         super().gui()
 
+        #initialize display window and hide it
+        self.displayParams = DisplayParams(self)
+        self.displayParams.show()
+
         return
 
     def startAlign(self):
         template = self.getValue('template')
+        template.addDisplay(self.displayParams)
         self.getValue('dataWindow').imageview.addItem(template)
         self.currentTemplate = template
         return
