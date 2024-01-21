@@ -36,6 +36,10 @@ import sys
 from scipy.ndimage import center_of_mass, gaussian_filter, binary_fill_holes, binary_closing, label, find_objects
 from skimage.filters import threshold_otsu
 
+from skimage.registration import phase_cross_correlation
+from skimage.transform import warp_polar, rotate, rescale
+from skimage.util import img_as_float
+
 #from pyqtgraph.canvas import Canvas, CanvasItem
 
 from pyqtgraph import Point
@@ -383,7 +387,7 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
         print(x,y)
 
         #display autodetected micropattern binary
-        #Window((img))
+        Window((img))
 
         #attempt to scale
         self.currentTemplate.scale(height/self.currentTemplate.size()[0])
@@ -391,7 +395,36 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
         #attempt to center on micropattern
         self.currentTemplate.setPos((x-(self.currentTemplate.size()[0]/2),y-(self.currentTemplate.size()[0]/2)))
 
+        #use phasediff to guess rotation
+        #generate image for comparison
+        rotated = np.zeros_like(img)
 
+        shapeSize = 300
+
+        if self.currentTemplate.template == 'square':
+            rotShape = np.ones((shapeSize ,shapeSize ))
+        else:
+            return
+
+        startx = int(img.shape[0]/2-(shapeSize/2) )
+        starty = int(img.shape[1]/2-(shapeSize/2) )
+        endx = startx+rotShape.shape[0]
+        endy = startx+rotShape.shape[1]
+
+        # Add the value 10 to the index (1, 1)
+        rotated[startx:endx,starty:endy] = rotShape
+
+        shifts, error, phasediff = phase_cross_correlation(img,
+                                                           rotated,
+                                                           normalization=None)
+        angleToRotate = shifts[0]
+
+        print('rotation: {}'.format(shifts[0]))
+
+        #attempt to rotate to match micropattern template
+        self.currentTemplate.rotate(angleToRotate)
+
+        Window(rotated)
 
         return
 
