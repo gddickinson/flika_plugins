@@ -33,6 +33,9 @@ import os, shutil, subprocess
 import math
 import sys
 
+from scipy.ndimage import center_of_mass, gaussian_filter, binary_fill_holes, binary_closing, label, find_objects
+from skimage.filters import threshold_otsu
+
 #from pyqtgraph.canvas import Canvas, CanvasItem
 
 from pyqtgraph import Point
@@ -81,10 +84,13 @@ class DisplayParams():
         self.w0 = pg.LayoutWidget()
 
         self.centerPos_text = QLabel('--,--')
-        self.centerPos_label = QLabel('Center x,y:')
+        self.centerPos_label = QLabel('Center:')
 
         self.angle_text = QLabel('--')
         self.angle_label = QLabel('Angle:')
+
+        self.size_text = QLabel('--')
+        self.size_label = QLabel('Size:')
 
         #layout
         self.w0.addWidget(self.centerPos_label , row=0,col=0)
@@ -92,6 +98,9 @@ class DisplayParams():
 
         self.w0.addWidget(self.angle_label , row=1,col=0)
         self.w0.addWidget(self.angle_text, row=1,col=1)
+
+        self.w0.addWidget(self.size_label , row=2,col=0)
+        self.w0.addWidget(self.size_text, row=2,col=1)
 
         #add layout widget to dock
         self.d0.addWidget(self.w0)
@@ -116,29 +125,6 @@ class DisplayParams():
         self.win.hide()
 
 
-
-
-def find_equilateral_triangle_vertices(centroid, side_length):
-    """Finds the XY vertices of an equilateral triangle from the centroid and side length.
-
-    Args:
-      centroid: A tuple of (x, y) coordinates of the centroid.
-      side_length: The length of a side of the equilateral triangle.
-
-    Returns:
-      A list of three tuples of (x, y) coordinates of the vertices of the equilateral triangle.
-    """
-
-    # Calculate the coordinates of the first vertex.
-    vertex1 = (centroid[0] + side_length * np.sqrt(3) / 2, centroid[1] + side_length * np.sqrt(3) / 2)
-
-    # Calculate the coordinates of the second vertex.
-    vertex2 = (centroid[0] - side_length * np.sqrt(3) / 2, centroid[1] + side_length * np.sqrt(3) / 2)
-
-    # Calculate the coordinates of the third vertex.
-    vertex3 = (centroid[0], centroid[1] - side_length)
-
-    return [vertex1, vertex2, vertex3]
 
 class TemplateROI(pg.RectROI):
     def __init__(self, template = 'disk', display= None, *args, **kwds):
@@ -203,8 +189,8 @@ class TemplateROI(pg.RectROI):
             #shape
             p.setRenderHint(QPainter.RenderHint.Antialiasing)
             p.setPen(self.currentPen)
-            p.drawLine(Point(radius, 0), Point(0, radius/2))
-            p.drawLine(Point(radius, radius), Point(0, radius/2))
+            p.drawLine(Point(0, radius/5), Point(radius, radius/5))
+            p.drawLine(Point(0, radius-(radius/5)), Point(radius, radius-(radius/5)))
 
 
         #draw center point
@@ -228,14 +214,24 @@ class TemplateROI(pg.RectROI):
         sizeX,sizeY = self.size()
         return (int(posX+sizeX/2), int(posY+sizeY/2))
 
+
+    def getAngle(self):
+        return self.angle() % 360
+
+    def getSize(self):
+        return self.size()[0]
+
     def addDisplay(self, display):
         self.display = display
 
     def updateDisplay(self):
         if self.display != None:
             x,y = self.getCenter()
+            angle = self.getAngle()
+            size = self.getSize()
             self.display.centerPos_text.setText('{},{}'.format(x,y))
-            self.display.angle_text.setText('{}'.format(round(self.angle(), 2)))
+            self.display.angle_text.setText('{}'.format(round(angle, 2)))
+            self.display.size_text.setText('{}'.format(round(size, 2)))
 
 shapeSize = [400,400]
 startPosition = [80, 50]
@@ -336,10 +332,67 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
         return
 
     def startAlign(self):
+        #initiate template
         template = self.getValue('template')
         template.addDisplay(self.displayParams)
         self.getValue('dataWindow').imageview.addItem(template)
         self.currentTemplate = template
+
+        #autodetect micropattern
+        img = self.getValue('dataWindow').image
+
+        print(img.shape)
+
+        #get max projection if stack
+        if len(img.shape) > 2:
+            img = np.max(img,0)
+
+        print(img.shape)
+
+        #blur
+        img = gaussian_filter(img, 3)
+
+        #set threshold
+        threshold = threshold_otsu(img)
+
+        # Create a mask
+        mask = np.zeros_like(img)
+        mask[img > threshold] = 1
+
+        # Apply the mask to the image stack
+        img = img * mask
+
+        #img = binary_fill_holes(img).astype(int)
+        img = binary_closing(img, iterations=50).astype(int)
+
+        #blur again
+        img = gaussian_filter(img, 3)
+
+        # Find the location of micropattern (assuming 1 per image)
+        objs = find_objects(img)
+
+        # Get the height and width
+        height = int(objs[0][0].stop - objs[0][0].start)
+        width = int(objs[0][1].stop - objs[0][1].start)
+
+        center = center_of_mass(img)
+        if len(center) == 2:
+            x,y = center[0], center[1]
+        else:
+            x,y = center[1], center[2]
+        print(x,y)
+
+        #display autodetected micropattern binary
+        #Window((img))
+
+        #attempt to scale
+        self.currentTemplate.scale(height/self.currentTemplate.size()[0])
+
+        #attempt to center on micropattern
+        self.currentTemplate.setPos((x-(self.currentTemplate.size()[0]/2),y-(self.currentTemplate.size()[0]/2)))
+
+
+
         return
 
     def endAlign(self):
