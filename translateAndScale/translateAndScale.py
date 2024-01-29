@@ -422,7 +422,7 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
         '''
 
         # Save the input parameters to the locs and tracks plotter settings
-        g.settings['videoExporter']['pixelSize'] = pixelSize
+        g.settings['translateAndScale']['pixelSize'] = pixelSize
 
 
         return
