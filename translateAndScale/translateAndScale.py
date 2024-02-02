@@ -505,11 +505,11 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
         return
 
     def startAlign(self):
-        shapeSize = [400,400]
+        roiSize = [400,400]
         startPosition = [80, 50]
         #initiate template
         if self.currentTemplate == None:
-            template = TemplateROI(pos=startPosition, size=shapeSize, template = self.getValue('template'), pen=(0,9))
+            template = TemplateROI(pos=startPosition, size=roiSize, template = self.getValue('template'), pen=(0,9))
             self.currentTemplate = template
 
         self.currentTemplate.addDisplay(self.displayParams)
@@ -573,22 +573,28 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
         #generate image for comparison
         rotated = np.zeros_like(img)
 
-        shapeSize = 300
-
         if self.currentTemplate.template == 'square':
+            shapeSize = 300
             rotShape = np.ones((shapeSize ,shapeSize ))
 
         elif self.currentTemplate.template == 'h-shape':
+            shapeSize = 350
             rotShape = zoom(hShape, shapeSize/hShape.shape[0])
 
         elif self.currentTemplate.template == 'y-shape':
+            shapeSize = 450
             rotShape = zoom(yShape, shapeSize/yShape.shape[0])
 
         elif self.currentTemplate.template == 'crossbow':
+            shapeSize = 350
             rotShape = zoom(crossbowShape, shapeSize/yShape.shape[0])
 
         else:
+            #disc
+            shapeSize = 300
             return
+
+        self.currentTemplate.setSize([shapeSize,shapeSize])
 
         startx = int(img.shape[0]/2-(shapeSize/2) )
         starty = int(img.shape[1]/2-(shapeSize/2) )
@@ -606,10 +612,8 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
         print('rotation: {}'.format(shifts[0]))
 
         #attempt to rotate to match micropattern template
-        #roiSize = self.currentTemplate.getSize()
-        #self.currentTemplate._rotate(angleToRotate) #THIS ROTATION AROUND CORNER POS - CAN'T FIGURE OUT HOW TO FIX! Try moving roation handle instead
 
-        #move rotation handle to rotate roi
+        #move rotation handle to rotate roi - using this approach as pyqt rotate function appears to have a bug in which it only rotates around origin
         handles = self.currentTemplate.getHandles()
         print(handles)
         handlesPos = self.currentTemplate.getLocalHandlePositions()
@@ -620,15 +624,6 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
         print(newX,newY)
 
         self.currentTemplate.movePoint(handles[1],QPointF(newX,newY))
-
-
-        #Rotation still not working - probably need to align shape center with roi...
-        # newAngle = self.currentTemplate.getAngle() + angleToRotate
-
-        # roiSize = self.currentTemplate.getSize()
-        # print(roiSize)
-        # self.currentTemplate.setAngle(newAngle, centerLocal=(roiSize,roiSize))
-
 
         #Window(rotated)
 
@@ -716,11 +711,12 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
             img = np.max(img,0)
 
         #pad image with 2000x2000 pixels to provide room for cropping to center of micropattern
-        img = np.pad(img, 2000, mode='constant')
+        padSize = 2000
+        img = np.pad(img, padSize, mode='constant')
 
         #crop micropattern based on point data center
         crop_width = 400
-        img = img[int(center[0]-crop_width)+2000:int(center[0]+crop_width+2000), int(center[1]-crop_width)+2000: int(center[1]+crop_width)+2000]
+        img = img[int(center[0]-crop_width)+padSize:int(center[0]+crop_width+padSize), int(center[1]-crop_width)+padSize: int(center[1]+crop_width)+padSize]
 
         #pad edges
         pad_width = 400
@@ -737,7 +733,6 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
         self.transformDF['x'] = self.transformDF['x'] + imgCenter[0] - center[0]
         self.transformDF['y'] = self.transformDF['y'] + imgCenter[1] - center[1]
 
-        #img = rotateImg(img, -angle, pivot=center)
         self.plotWindow.imageview.setImage(img)
 
         #replot
