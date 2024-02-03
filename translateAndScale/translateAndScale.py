@@ -38,6 +38,7 @@ from skimage.filters import threshold_otsu
 from scipy.ndimage import rotate as nd_rotate
 from skimage.registration import phase_cross_correlation
 from skimage.transform import warp_polar, rotate, rescale
+import skimage.io as skio
 
 import pandas as pd
 
@@ -478,6 +479,9 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
         self.transformDataButton = QPushButton('Transform data')
         self.transformDataButton.pressed.connect(self.transformData)
 
+        self.saveTransformDataButton = QPushButton('Save Transform')
+        self.saveTransformDataButton.pressed.connect(self.saveTransformedData)
+
 
         self.items.append({'name': 'dataWindow', 'string': 'Image Window', 'object': self.dataWindow})
         self.items.append({'name': 'filename ', 'string': 'Data File', 'object': self.getFile})
@@ -486,7 +490,8 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
         self.items.append({'name': 'endButton', 'string': '', 'object': self.endButton})
         self.items.append({'name': 'clearButton', 'string': '', 'object': self.clearButton})
         self.items.append({'name': 'clearButton', 'string': '', 'object': self.clearButton})
-        self.items.append({'name': 'transformButton', 'string': 'Transform data file', 'object': self.transformDataButton})
+        self.items.append({'name': 'transformButton', 'string': 'Transform data', 'object': self.transformDataButton})
+        self.items.append({'name': 'saveTransformButton', 'string': 'Save Transformed data', 'object': self.saveTransformDataButton})
 
         super().gui()
 
@@ -737,6 +742,27 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
 
         #replot
         self.plotDataPoints()
+
+        return
+
+    def saveTransformedData(self):
+        baseName = os.path.splitext(self.filename)[0]
+        #export transformed img and data points
+        #export tif
+        exportIMG = self.plotWindow.imageview.image
+        saveName_img = baseName + '_transform.tif'
+        skio.imsave(saveName_img, exportIMG)
+        print('transformed image file saved as: {}'.format(saveName_img))
+
+        #export transformDF
+        exportDF = self.data
+        exportDF['x_transformed'] = self.transformDF['x']
+        exportDF['y_transformed'] = self.transformDF['y']
+        saveName_DF = baseName + '_transform.csv'
+
+        exportDF.to_csv(saveName_DF, index=None)
+
+        print('transformed point file saved as: {}'.format(saveName_DF))
 
         return
 
