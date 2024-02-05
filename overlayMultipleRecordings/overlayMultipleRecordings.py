@@ -32,6 +32,7 @@ from os.path import expanduser
 import os, shutil, subprocess
 import math
 import sys
+import glob
 
 from scipy.ndimage import center_of_mass, gaussian_filter, binary_fill_holes, binary_closing, label, find_objects, zoom
 from skimage.filters import threshold_otsu
@@ -78,17 +79,14 @@ def rotate_around_point(x,y, angle, origin=(0,0)):
 
 
 
-class FileSelector(QWidget):
+class FolderSelector(QWidget):
     """
-    This widget is a button with a label.  Once you click the button, the widget waits for you to select a file to save.  Once you do, it sets self.filename and it sets the label.
+    This widget is a button with a label.  Once you click the button, the widget waits for you to select a folder.  Once you do, it sets self.folder and it sets the label.
     """
     valueChanged=Signal()
-    def __init__(self,filetypes='*.*', mainGUI=None):
+    def __init__(self,filetypes='*.*'):
         QWidget.__init__(self)
-
-        self.mainGUI = mainGUI
-
-        self.button=QPushButton('Load Data')
+        self.button=QPushButton('Select Folder')
         self.label=QLabel('None')
         self.window=None
         self.layout=QHBoxLayout()
@@ -97,25 +95,20 @@ class FileSelector(QWidget):
         self.setLayout(self.layout)
         self.button.clicked.connect(self.buttonclicked)
         self.filetypes = filetypes
-        self.filename = ''
-        self.columns = []
-
+        self.folder = ''
 
     def buttonclicked(self):
-        if g.win == None:
-            g.alert('Load tiff stack and set as current window first')
-            return
-        prompt = 'testing fileSelector'
-        self.filename = open_file_gui(prompt, filetypes=self.filetypes)
-        self.label.setText('...'+os.path.split(self.filename)[-1][-20:])
+        prompt = 'testing folderSelector'
+        self.folder = QFileDialog.getExistingDirectory(g.m, "Select recording folder.", expanduser("~"), QFileDialog.ShowDirsOnly)
+        self.label.setText('...'+os.path.split(self.folder)[-1][-20:])
         self.valueChanged.emit()
 
     def value(self):
-        return self.filename
+        return self.folder
 
-    def setValue(self, filename):
-        self.filename = str(filename)
-        self.label.setText('...' + os.path.split(self.filename)[-1][-20:])
+    def setValue(self, folder):
+        self.folder = str(folder)
+        self.label.setText('...' + os.path.split(self.folder)[-1][-20:])
 
 class DisplayParams():
     '''
@@ -243,45 +236,42 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
         self.gui_reset()
         self.dataWindow = WindowSelector()
 
-        self.currentTemplate = None
 
-        self.startButton = QPushButton('Start Alignment')
-        self.startButton.pressed.connect(self.startAlign)
+        self.loadButton = QPushButton('Load Data')
+        self.loadButton.pressed.connect(self.loadData)
 
-        self.endButton = QPushButton('Save Alignment')
-        self.endButton.pressed.connect(self.endAlign)
+        #self.endButton = QPushButton('Save Alignment')
+        #self.endButton.pressed.connect(self.endAlign)
 
-        self.clearButton = QPushButton('Clear Alignment')
-        self.clearButton.pressed.connect(self.clearTemplate)
+        #self.clearButton = QPushButton('Clear Alignment')
+        #self.clearButton.pressed.connect(self.clearTemplate)
 
-        self.templateBox = pg.ComboBox()
-        self.templates = {'Disk': 'disk',
-                          'Square': 'square',
-                          'Crossbow': 'crossbow',
-                          'Y-shape': 'y-shape',
-                          'H-shape': 'h-shape'
-                          }
-        self.templateBox.setItems(self.templates)
-        self.templateBox.activated.connect(self.update)
+        # self.templateBox = pg.ComboBox()
+        # self.templates = {'Disk': 'disk',
+        #                   'Square': 'square',
+        #                   'Crossbow': 'crossbow',
+        #                   'Y-shape': 'y-shape',
+        #                   'H-shape': 'h-shape'
+        #                   }
+        # self.templateBox.setItems(self.templates)
+        # self.templateBox.activated.connect(self.update)
 
         #data file selector
-        self.getFile = FileSelector(filetypes='*.csv', mainGUI=self)
+        self.getFolder = FolderSelector()
 
-        #connections
-        self.getFile.valueChanged.connect(self.loadData)
-
-        self.transformDataButton = QPushButton('Transform data')
-        self.transformDataButton.pressed.connect(self.transformData)
+        #self.transformDataButton = QPushButton('Transform data')
+        #self.transformDataButton.pressed.connect(self.transformData)
 
 
         self.items.append({'name': 'dataWindow', 'string': 'Image Window', 'object': self.dataWindow})
-        self.items.append({'name': 'filename ', 'string': 'Data File', 'object': self.getFile})
-        self.items.append({'name': 'template', 'string': 'Choose template', 'object': self.templateBox})
-        self.items.append({'name': 'startButton', 'string': '', 'object': self.startButton})
-        self.items.append({'name': 'endButton', 'string': '', 'object': self.endButton})
-        self.items.append({'name': 'clearButton', 'string': '', 'object': self.clearButton})
-        self.items.append({'name': 'clearButton', 'string': '', 'object': self.clearButton})
-        self.items.append({'name': 'transformButton', 'string': 'Transform data file', 'object': self.transformDataButton})
+        self.items.append({'name': 'foldername ', 'string': 'Data Folder', 'object': self.getFolder})
+
+        self.items.append({'name': 'loadButton', 'string': '', 'object': self.loadButton})
+
+        #self.items.append({'name': 'endButton', 'string': '', 'object': self.endButton})
+        #self.items.append({'name': 'clearButton', 'string': '', 'object': self.clearButton})
+        #self.items.append({'name': 'clearButton', 'string': '', 'object': self.clearButton})
+        #self.items.append({'name': 'transformButton', 'string': 'Transform data file', 'object': self.transformDataButton})
 
         super().gui()
 
@@ -289,53 +279,55 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
         self.displayParams = DisplayParams(self)
         self.displayParams.show()
 
-        self.df = None
+        self.data = None
 
-        self.filename = ''
-        self.dataDF = None
+        self.foldername = None
+        self.filenames = []
+
         self.plotWindow = None
 
         self.pointMapScatter = None
+        self.heatMap = None
 
         return
 
-    def startAlign(self):
-        ...
-
-        return
-
-    def endAlign(self):
-        ...
-
-        return
-
-    def clearTemplate(self):
-        ...
 
     def update(self):
         ...
 
     def loadData(self):
-        # Set the plot window to the global window instance
-        img = self.getValue('dataWindow').image
-        if len(img.shape) > 2:
-            img = np.max(img,0)
+        #Check folder selected
+        if self.getValue('dataWindow') == None:
+            print('Select Plot Window')
+            return
 
-        self.plotWindow = Window(img)
+        #set plot window as selected window
+        self.plotWindow = self.getValue('dataWindow')
 
-        # Get the filename from the GUI
-        self.filename = self.getFile.value()
+        #get folders '*_transform.csv' file path using glob
+        self.foldername = self.getFolder.value()
+        print(self.foldername)
+        self.filenames = glob.glob(self.foldername + '/*_transform.csv', recursive = False)
+        print(self.filenames)
+        # Load xy data from the selected files using Pandas
+        for file in tqdm(self.filenames):
+            tempDF = pd.read_csv(file, usecols=['x_transformed', 'y_transformed'])
+            truncFileName = os.path.basename(file).split('_locsID')[0]
+            tempDF['file'] = truncFileName
+            self.data = pd.concat([self.data, tempDF])
 
-        # Load the data from the selected file using Pandas
-        self.data = pd.read_csv(self.filename)
-        # create new df to store transform points
-        self.transformDF = self.data[['x','y']]
+
+        print('Data loaded')
 
         #plot data on image
         self.plotDataPoints()
 
 
     def plotDataPoints(self):
+        if self.plotWindow == None:
+            print('First Load Data')
+            return
+
         if self.pointMapScatter != None:
             self.plotWindow.imageview.view.removeItem(self.pointMapScatter)
 
@@ -343,15 +335,10 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
         # Create a ScatterPlotItem and add it to the ImageView
         self.pointMapScatter = pg.ScatterPlotItem(size=2, pen=None, brush=pg.mkBrush(30, 255, 35, 255))
         self.pointMapScatter.setSize(2, update=False)
-        self.pointMapScatter.setData(self.transformDF['x'], self.transformDF['y'])
+        self.pointMapScatter.setData(self.data['x_transformed'], self.data['y_transformed'])
         self.plotWindow.imageview.view.addItem(self.pointMapScatter)
 
 
-
-    def transformData(self):
-        ...
-
-        return
 
 
 # Instantiate the LocsAndTracksPlotter class
