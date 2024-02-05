@@ -447,11 +447,14 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
 
     def gui(self):
         self.gui_reset()
+        # Get settings for locsAndTracksPlotter
+        s=g.settings['translateAndScale']
         self.dataWindow = WindowSelector()
+        self.pixelSize = None
 
         self.currentTemplate = None
 
-        self.startButton = QPushButton('Start Alignment')
+        self.startButton = QPushButton('Restart Alignment')
         self.startButton.pressed.connect(self.startAlign)
 
         self.endButton = QPushButton('Save Alignment')
@@ -657,7 +660,8 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
 
     def clearTemplate(self):
         #clear roi
-        self.getValue('dataWindow').imageview.removeItem(self.currentTemplate)
+        if self.currentTemplate != None:
+            self.getValue('dataWindow').imageview.removeItem(self.currentTemplate)
         self.currentTemplate = None
 
     def update(self):
@@ -682,6 +686,9 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
 
         #plot data on image
         self.plotDataPoints()
+
+        #initiate alignment
+        self.update()
 
 
     def plotDataPoints(self):
@@ -746,8 +753,9 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
         return
 
     def saveTransformedData(self):
-        baseName = os.path.splitext(self.filename)[0]
         #export transformed img and data points
+        baseName = os.path.splitext(self.filename)[0]
+
         #export tif
         exportIMG = self.plotWindow.imageview.image
         saveName_img = baseName + '_transform.tif'
