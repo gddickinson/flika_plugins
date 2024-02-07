@@ -78,6 +78,8 @@ def rotate_around_point(x,y, angle, origin=(0,0)):
     return dx, dy
 
 
+def dictFromList(lst):
+    return {str(x): str(x) for x in lst}
 
 class FolderSelector(QWidget):
     """
@@ -110,9 +112,9 @@ class FolderSelector(QWidget):
         self.folder = str(folder)
         self.label.setText('...' + os.path.split(self.folder)[-1][-20:])
 
-class DisplayParams():
+class ControlPanel():
     '''
-    Display translation parameters
+    Controls for manipulating data
     '''
     def __init__(self, mainGUI):
         super().__init__()
@@ -123,39 +125,132 @@ class DisplayParams():
         self.area = DockArea()
         self.win.setCentralWidget(self.area)
         #self.win.resize(250, 200)
-        self.win.setWindowTitle('Parameters')
+        self.win.setWindowTitle('Control Panel')
 
         ## Create docks
-        self.d0 = Dock("ROI parameters")
+        self.d0 = Dock("Controls")
+        self.d1 = Dock("Parameters")
+        self.d2 = Dock("File Selector")
 
         self.area.addDock(self.d0)
+        self.area.addDock(self.d1)
+        self.area.addDock(self.d2)
 
-
-        #point options widget
+        #control widget
         self.w0 = pg.LayoutWidget()
 
-        self.centerPos_text = QLabel('--,--')
-        self.centerPos_label = QLabel('Center:')
+        self.leftButton = QPushButton('Left')
+        self.leftButton.pressed.connect(self.moveLeft)
 
-        self.angle_text = QLabel('--')
-        self.angle_label = QLabel('Angle:')
+        self.rightButton = QPushButton('Right')
+        self.rightButton.pressed.connect(self.moveRight)
 
-        self.size_text = QLabel('--')
-        self.size_label = QLabel('Size:')
+        self.upButton = QPushButton('Up')
+        self.upButton.pressed.connect(self.moveUp)
+
+        self.downButton = QPushButton('Down')
+        self.downButton.pressed.connect(self.moveDown)
+
+        self.counterClockButton = QPushButton('Counter')
+        self.counterClockButton.pressed.connect(self.rotateCounter)
+
+        self.clockButton = QPushButton('Clock')
+        self.clockButton.pressed.connect(self.rotateClock)
 
         #layout
-        self.w0.addWidget(self.centerPos_label , row=0,col=0)
-        self.w0.addWidget(self.centerPos_text, row=0,col=1)
+        self.w0.addWidget(self.upButton, row=0,col=1)
+        self.w0.addWidget(self.leftButton, row=1,col=0)
+        self.w0.addWidget(self.rightButton, row=1,col=2)
+        self.w0.addWidget(self.downButton, row=2,col=1)
+        self.w0.addWidget(self.counterClockButton, row=3,col=0)
+        self.w0.addWidget(self.clockButton, row=3,col=2)
 
-        self.w0.addWidget(self.angle_label , row=1,col=0)
-        self.w0.addWidget(self.angle_text, row=1,col=1)
-
-        self.w0.addWidget(self.size_label , row=2,col=0)
-        self.w0.addWidget(self.size_text, row=2,col=1)
 
         #add layout widget to dock
         self.d0.addWidget(self.w0)
 
+        #param widget
+        self.w1 = pg.LayoutWidget()
+
+        self.moveSize_label = QLabel('Step size:')
+        self.moveSize = pg.SpinBox(int=True, step=1)
+        self.moveSize.setValue(1)
+        self.moveSize.setMinimum(1)
+
+        self.multiply_label = QLabel('Multiply by:')
+        self.multiply = pg.SpinBox(int=True, step=100)
+        self.multiply.setValue(1)
+        self.multiply.setMinimum(1)
+
+        self.degrees_label = QLabel('Rotation degrees')
+        self.degrees = pg.SpinBox(int=True, step=1)
+        self.degrees.setValue(1)
+        self.degrees.setMinimum(1)
+        self.degrees.setMaximum(360)
+
+        #layout
+        self.w1.addWidget(self.moveSize_label, row=0,col=0)
+        self.w1.addWidget(self.moveSize, row=0,col=1)
+        self.w1.addWidget(self.multiply_label, row=1,col=0)
+        self.w1.addWidget(self.multiply, row=1,col=1)
+        self.w1.addWidget(self.degrees_label, row=2,col=0)
+        self.w1.addWidget(self.degrees, row=2,col=1)
+
+
+        #add layout widget to dock
+        self.d1.addWidget(self.w1)
+
+        #file selector widget
+        self.w2 = pg.LayoutWidget()
+
+        self.fileSelector_label = QLabel('File:')
+        self.fileSelector_box = pg.ComboBox()
+        self.fileList = {'None':'None'}
+        self.fileSelector_box.setItems(self.fileList)
+        self.fileSelector_box.activated.connect(self.update)
+
+        #layout
+        self.w2.addWidget(self.fileSelector_label, row=0,col=0)
+        self.w2.addWidget(self.fileSelector_box, row=0,col=1)
+
+        #add layout widget to dock
+        self.d2.addWidget(self.w2)
+
+    def moveLeft(self):
+        shiftValue = self.moveSize.value() * self.multiply.value()
+        self.mainGUI.move(shiftValue, 'l')
+        return
+
+    def moveRight(self):
+        shiftValue = self.moveSize.value() * self.multiply.value()
+        self.mainGUI.move(shiftValue, 'r')
+        return
+
+    def moveUp(self):
+        shiftValue = self.moveSize.value() * self.multiply.value()
+        self.mainGUI.move(shiftValue, 'u')
+        return
+
+    def moveDown(self):
+        shiftValue = self.moveSize.value() * self.multiply.value()
+        self.mainGUI.move(shiftValue, 'd')
+        return
+
+    def rotateClock(self):
+        self.mainGUI.rotatePoints(-self.degrees.value())
+        return
+
+    def rotateCounter(self):
+        self.mainGUI.rotatePoints(self.degrees.value())
+        return
+
+    def update(self):
+        self.mainGUI.update()
+        return
+
+    def updateFileList(self, files):
+        self.fileList = dictFromList(files)
+        self.fileSelector_box.setItems(self.fileList)
 
     def show(self):
         """
@@ -190,16 +285,17 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
     """
     def __init__(self):
         # Initialize settings for locs and tracks plotter
-        if g.settings['overlayMultipleRecordings'] is None or 'pixelSize' not in g.settings['overlayMultipleRecordings']:
+        if g.settings['overlayMultipleRecordings'] is None or 'heatmapBins' not in g.settings['overlayMultipleRecordings']:
             s = dict()
-            s['pixelSize'] = 108
+            #s['pixelSize'] = 108
+            s['heatmapBins'] = 100
             g.settings['overlayMultipleRecordings'] = s
 
         # Call the initialization function for the BaseProcess_noPriorWindow class
         BaseProcess_noPriorWindow.__init__(self)
 
 
-    def __call__(self, pixelSize,  keepSourceWindow=False):
+    def __call__(self, heatmapBins,  keepSourceWindow=False):
         '''
         Plots loc and track data onto the current window.
 
@@ -210,7 +306,8 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
         '''
 
         # Save the input parameters to the locs and tracks plotter settings
-        g.settings['overlayMultipleRecordings']['pixelSize'] = pixelSize
+        #g.settings['overlayMultipleRecordings']['pixelSize'] = pixelSize
+        g.settings['overlayMultipleRecordings']['heatmapBins'] = heatmapBins
 
 
         return
@@ -234,66 +331,59 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
 
     def gui(self):
         self.gui_reset()
+        s=g.settings['overlayMultipleRecordings']
         self.dataWindow = WindowSelector()
 
 
         self.loadButton = QPushButton('Load Data')
         self.loadButton.pressed.connect(self.loadData)
 
-        #self.endButton = QPushButton('Save Alignment')
-        #self.endButton.pressed.connect(self.endAlign)
-
-        #self.clearButton = QPushButton('Clear Alignment')
-        #self.clearButton.pressed.connect(self.clearTemplate)
-
-        # self.templateBox = pg.ComboBox()
-        # self.templates = {'Disk': 'disk',
-        #                   'Square': 'square',
-        #                   'Crossbow': 'crossbow',
-        #                   'Y-shape': 'y-shape',
-        #                   'H-shape': 'h-shape'
-        #                   }
-        # self.templateBox.setItems(self.templates)
-        # self.templateBox.activated.connect(self.update)
-
         #data file selector
         self.getFolder = FolderSelector()
 
-        #self.transformDataButton = QPushButton('Transform data')
-        #self.transformDataButton.pressed.connect(self.transformData)
 
+        self.heatmapButton = QPushButton('Make heatmap')
+        self.heatmapButton.pressed.connect(self.plotHeatMap)
+
+        self.heatmapBinSelector = pg.SpinBox(int=True, step=1)
+        self.heatmapBinSelector.setValue(s['heatmapBins'])
 
         self.items.append({'name': 'dataWindow', 'string': 'Image Window', 'object': self.dataWindow})
         self.items.append({'name': 'foldername ', 'string': 'Data Folder', 'object': self.getFolder})
 
         self.items.append({'name': 'loadButton', 'string': '', 'object': self.loadButton})
+        self.items.append({'name': 'heatmapBins', 'string': 'Number of bins in heatmap', 'object': self.heatmapBinSelector})
+        self.items.append({'name': 'heatmapButton', 'string': '', 'object': self.heatmapButton})
 
-        #self.items.append({'name': 'endButton', 'string': '', 'object': self.endButton})
-        #self.items.append({'name': 'clearButton', 'string': '', 'object': self.clearButton})
-        #self.items.append({'name': 'clearButton', 'string': '', 'object': self.clearButton})
-        #self.items.append({'name': 'transformButton', 'string': 'Transform data file', 'object': self.transformDataButton})
 
         super().gui()
 
         #initialize display window and hide it
-        self.displayParams = DisplayParams(self)
-        self.displayParams.show()
+        self.controlPanel = ControlPanel(self)
+        self.controlPanel.show()
 
         self.data = None
+        self.delectedData = None
 
         self.foldername = None
         self.filenames = []
+        self.selectedFile = None
 
         self.plotWindow = None
 
         self.pointMapScatter = None
+        self.selectedPointMapScatter = None
+
         self.heatMap = None
 
         return
 
 
     def update(self):
-        ...
+        self.selectedFile = self.controlPanel.fileSelector_box.value()
+        self.selectedData = self.data [self.data ['file'] == self.selectedFile]
+        self.plotSelectedDataPoints()
+
 
     def loadData(self):
         #Check folder selected
@@ -316,21 +406,26 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
             tempDF['file'] = truncFileName
             self.data = pd.concat([self.data, tempDF])
 
-
         print('Data loaded')
 
         #plot data on image
         self.plotDataPoints()
 
+        #update control panel file list
+        self.controlPanel.updateFileList(self.data['file'].tolist())
+
+        self.update()
+
+
 
     def plotDataPoints(self):
+        #plot all points
         if self.plotWindow == None:
             print('First Load Data')
             return
 
         if self.pointMapScatter != None:
             self.plotWindow.imageview.view.removeItem(self.pointMapScatter)
-
 
         # Create a ScatterPlotItem and add it to the ImageView
         self.pointMapScatter = pg.ScatterPlotItem(size=2, pen=None, brush=pg.mkBrush(30, 255, 35, 255))
@@ -339,7 +434,48 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
         self.plotWindow.imageview.view.addItem(self.pointMapScatter)
 
 
+    def plotSelectedDataPoints(self):
+        #plot filterd points
+        if self.selectedPointMapScatter != None:
+            self.plotWindow.imageview.view.removeItem(self.selectedPointMapScatter)
 
+        # Create a ScatterPlotItem and add it to the ImageView
+        self.selectedPointMapScatter = pg.ScatterPlotItem(size=2, pen=None, brush=pg.mkBrush(255, 0, 0, 255))
+        self.selectedPointMapScatter.setSize(2, update=False)
+        self.selectedPointMapScatter.setData(self.selectedData['x_transformed'], self.selectedData['y_transformed'])
+        self.plotWindow.imageview.view.addItem(self.selectedPointMapScatter)
+
+
+    def plotHeatMap(self):
+        #mkae 2D histogram
+        H, yedges, xedges = np.histogram2d(self.data['x_transformed'], self.data['y_transformed'], bins=self.getValue('heatmapBins') )
+        self.heatMap = H
+        #plot in new window
+        self.heatmapWindow = Window(self.heatMap)
+
+
+    def move(self, shiftValue, direction):
+        #translate data points
+        if direction == 'l':
+            self.selectedData['x_transformed'] = self.selectedData['x_transformed'] - shiftValue
+        if direction == 'r':
+            self.selectedData['x_transformed'] = self.selectedData['x_transformed'] + shiftValue
+        if direction == 'u':
+            self.selectedData['y_transformed'] = self.selectedData['y_transformed'] - shiftValue
+        if direction == 'd':
+            self.selectedData['y_transformed'] = self.selectedData['y_transformed'] + shiftValue
+        #plot new positions
+        self.plotSelectedDataPoints()
+
+    def rotatePoints(self, angle):
+        #get origin for filtered points
+        origin = (np.mean(self.selectedData['x_transformed']),np.mean(self.selectedData['y_transformed']))
+        #rotate points
+        newX,newY = rotate_around_point(self.selectedData['x_transformed'], self.selectedData['y_transformed'], angle, origin=origin)
+        self.selectedData['x_transformed'] = newX
+        self.selectedData['y_transformed'] = newY
+        #plot new positions
+        self.plotSelectedDataPoints()
 
 # Instantiate the LocsAndTracksPlotter class
 overlayMultipleRecordings = OverlayMultipleRecordings()

@@ -135,6 +135,28 @@ yShape = np.array([
 [0,0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,0]
 ])
 
+squareShape = np.array([
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+ [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0]])
+
 def rotate_around_point(x,y, angle, origin=(0,0)):
     radians = angle * math.pi / 180
     offset_x, offset_y = origin
@@ -403,16 +425,16 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
     """
     def __init__(self):
         # Initialize settings for locs and tracks plotter
-        if g.settings['translateAndScale'] is None or 'pixelSize' not in g.settings['translateAndScale']:
+        if g.settings['translateAndScale'] is None or 'template' not in g.settings['translateAndScale']:
             s = dict()
-            s['pixelSize'] = 108
+            s['template'] = 'square'
             g.settings['translateAndScale'] = s
 
         # Call the initialization function for the BaseProcess_noPriorWindow class
         BaseProcess_noPriorWindow.__init__(self)
 
 
-    def __call__(self, pixelSize,  keepSourceWindow=False):
+    def __call__(self, template,  keepSourceWindow=False):
         '''
         Plots loc and track data onto the current window.
 
@@ -423,7 +445,7 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
         '''
 
         # Save the input parameters to the locs and tracks plotter settings
-        g.settings['translateAndScale']['pixelSize'] = pixelSize
+        g.settings['translateAndScale']['template'] = template
 
 
         return
@@ -471,6 +493,11 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
                           'H-shape': 'h-shape'
                           }
         self.templateBox.setItems(self.templates)
+
+        index = self.templateBox.findText(s['template'], Qt.MatchFixedString)
+        if index >= 0:
+            self.templateBox.setCurrentIndex(index)
+
         self.templateBox.activated.connect(self.update)
 
         #data file selector
@@ -487,7 +514,7 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
 
 
         self.items.append({'name': 'dataWindow', 'string': 'Image Window', 'object': self.dataWindow})
-        self.items.append({'name': 'filename ', 'string': 'Data File', 'object': self.getFile})
+        self.items.append({'name': 'filename', 'string': 'Data File', 'object': self.getFile})
         self.items.append({'name': 'template', 'string': 'Choose template', 'object': self.templateBox})
         self.items.append({'name': 'startButton', 'string': '', 'object': self.startButton})
         self.items.append({'name': 'endButton', 'string': '', 'object': self.endButton})
@@ -583,7 +610,8 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
 
         if self.currentTemplate.template == 'square':
             shapeSize = 300
-            rotShape = np.ones((shapeSize ,shapeSize ))
+            rotShape = zoom(squareShape, shapeSize/squareShape.shape[0])
+            #rotShape = np.ones((shapeSize ,shapeSize )),
 
         elif self.currentTemplate.template == 'h-shape':
             shapeSize = 350
