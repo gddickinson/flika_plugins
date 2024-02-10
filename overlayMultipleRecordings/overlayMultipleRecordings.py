@@ -157,6 +157,9 @@ class ControlPanel():
         self.clockButton = QPushButton('Clock')
         self.clockButton.pressed.connect(self.rotateClock)
 
+        self.saveButton = QPushButton('Save New Positions')
+        self.saveButton.pressed.connect(self.save)
+
         #layout
         self.w0.addWidget(self.upButton, row=0,col=1)
         self.w0.addWidget(self.leftButton, row=1,col=0)
@@ -164,6 +167,7 @@ class ControlPanel():
         self.w0.addWidget(self.downButton, row=2,col=1)
         self.w0.addWidget(self.counterClockButton, row=3,col=0)
         self.w0.addWidget(self.clockButton, row=3,col=2)
+        self.w0.addWidget(self.saveButton, row=4,col=0, colspan=3)
 
 
         #add layout widget to dock
@@ -251,6 +255,13 @@ class ControlPanel():
     def updateFileList(self, files):
         self.fileList = dictFromList(files)
         self.fileSelector_box.setItems(self.fileList)
+
+    def save(self):
+        fileName = self.mainGUI.selectedFile + '_newPos_transform.csv'
+        saveName = os.path.join(self.mainGUI.foldername, fileName)
+        self.mainGUI.selectedData.to_csv(saveName, index=None)
+        print('new positions saved to: {}'.format(saveName))
+
 
     def show(self):
         """
@@ -396,9 +407,9 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
 
         #get folders '*_transform.csv' file path using glob
         self.foldername = self.getFolder.value()
-        print(self.foldername)
+        print('folder: {}'.format(self.foldername))
         self.filenames = glob.glob(self.foldername + '/*_transform.csv', recursive = False)
-        print(self.filenames)
+        print('files loaded: {}'.format(self.filenames))
         # Load xy data from the selected files using Pandas
         for file in tqdm(self.filenames):
             tempDF = pd.read_csv(file, usecols=['x_transformed', 'y_transformed'])
