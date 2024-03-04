@@ -296,17 +296,18 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
     """
     def __init__(self):
         # Initialize settings for locs and tracks plotter
-        if g.settings['overlayMultipleRecordings'] is None or 'heatmapBins' not in g.settings['overlayMultipleRecordings']:
+        if g.settings['overlayMultipleRecordings'] is None or 'centerData' not in g.settings['overlayMultipleRecordings']:
             s = dict()
             #s['pixelSize'] = 108
             s['heatmapBins'] = 100
+            s['centerData'] = True
             g.settings['overlayMultipleRecordings'] = s
 
         # Call the initialization function for the BaseProcess_noPriorWindow class
         BaseProcess_noPriorWindow.__init__(self)
 
 
-    def __call__(self, heatmapBins,  keepSourceWindow=False):
+    def __call__(self, heatmapBins, centerData, keepSourceWindow=False):
         '''
         Plots loc and track data onto the current window.
 
@@ -319,7 +320,7 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
         # Save the input parameters to the locs and tracks plotter settings
         #g.settings['overlayMultipleRecordings']['pixelSize'] = pixelSize
         g.settings['overlayMultipleRecordings']['heatmapBins'] = heatmapBins
-
+        g.settings['overlayMultipleRecordings']['centerData'] = centerData
 
         return
 
@@ -352,6 +353,9 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
         #data file selector
         self.getFolder = FolderSelector()
 
+        self.centerData_checkbox = CheckBox()
+        self.centerData_checkbox.setChecked(True)
+
 
         self.heatmapButton = QPushButton('Make heatmap')
         self.heatmapButton.pressed.connect(self.plotHeatMap)
@@ -360,8 +364,8 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
         self.heatmapBinSelector.setValue(s['heatmapBins'])
 
         self.items.append({'name': 'dataWindow', 'string': 'Image Window', 'object': self.dataWindow})
-        self.items.append({'name': 'foldername ', 'string': 'Data Folder', 'object': self.getFolder})
-
+        self.items.append({'name': 'foldername', 'string': 'Data Folder', 'object': self.getFolder})
+        self.items.append({'name': 'centerData', 'string': 'Center Data on Image', 'object': self.centerData_checkbox})
         self.items.append({'name': 'loadButton', 'string': '', 'object': self.loadButton})
         self.items.append({'name': 'heatmapBins', 'string': 'Number of bins in heatmap', 'object': self.heatmapBinSelector})
         self.items.append({'name': 'heatmapButton', 'string': '', 'object': self.heatmapButton})
@@ -405,6 +409,9 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
         #set plot window as selected window
         self.plotWindow = self.getValue('dataWindow')
 
+        img = self.plotWindow.image
+        imgCenter =  (img.shape[0]/2, img.shape[1]/2)
+
         #get folders '*_transform.csv' file path using glob
         self.foldername = self.getFolder.value()
         print('folder: {}'.format(self.foldername))
@@ -413,6 +420,13 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
         # Load xy data from the selected files using Pandas
         for file in tqdm(self.filenames):
             tempDF = pd.read_csv(file, usecols=['x_transformed', 'y_transformed'])
+            if self.getValue('centerData'):
+                print('centering')
+                center = tempDF[['x_transformed', 'y_transformed']].mean()
+                xShift = center[0] - imgCenter[0]
+                yShift = center[1] - imgCenter[1]
+                tempDF['x_transformed'] = tempDF['x_transformed'] - xShift
+                tempDF['y_transformed'] = tempDF['y_transformed'] - yShift
             truncFileName = os.path.basename(file).split('_locsID')[0]
             tempDF['file'] = truncFileName
             self.data = pd.concat([self.data, tempDF])

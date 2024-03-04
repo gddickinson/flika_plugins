@@ -451,16 +451,18 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
     """
     def __init__(self):
         # Initialize settings for locs and tracks plotter
-        if g.settings['translateAndScale'] is None or 'template' not in g.settings['translateAndScale']:
+        if g.settings['translateAndScale'] is None or 'rescale' not in g.settings['translateAndScale']:
             s = dict()
             s['template'] = 'square'
+            s['size'] = 500
+            s['rescale'] = False
             g.settings['translateAndScale'] = s
 
         # Call the initialization function for the BaseProcess_noPriorWindow class
         BaseProcess_noPriorWindow.__init__(self)
 
 
-    def __call__(self, template,  keepSourceWindow=False):
+    def __call__(self, template, size, rescaleOption, keepSourceWindow=False):
         '''
         Plots loc and track data onto the current window.
 
@@ -472,8 +474,8 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
 
         # Save the input parameters to the locs and tracks plotter settings
         g.settings['translateAndScale']['template'] = template
-
-
+        g.settings['translateAndScale']['size'] = size
+        g.settings['translateAndScale']['rescale'] = rescaleOption
         return
 
 
@@ -511,6 +513,7 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
         self.clearButton = QPushButton('Clear Alignment')
         self.clearButton.pressed.connect(self.clearTemplate)
 
+        #roi template optiomns
         self.templateBox = pg.ComboBox()
         self.templates = {'Disc': 'disc',
                           'Square': 'square',
@@ -525,6 +528,16 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
             self.templateBox.setCurrentIndex(index)
 
         self.templateBox.activated.connect(self.update)
+
+        #rescale size options
+        self.targetSize = pg.SpinBox(int=True, step=100)
+        self.targetSize.setValue(s['size'])
+        self.targetSize.setMinimum(100)
+
+        self.targetSize_checkbox = CheckBox()
+        self.targetSize_checkbox.setChecked(s['rescale'])
+
+        self.rescaleFactor = None
 
         #data file selector
         self.getFile = FileSelector(filetypes='*.csv', mainGUI=self)
@@ -542,9 +555,10 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
         self.items.append({'name': 'dataWindow', 'string': 'Image Window', 'object': self.dataWindow})
         self.items.append({'name': 'filename', 'string': 'Data File', 'object': self.getFile})
         self.items.append({'name': 'template', 'string': 'Choose template', 'object': self.templateBox})
+        self.items.append({'name': 'rescale', 'string': 'Rescale to new size?', 'object': self.targetSize_checkbox})
+        self.items.append({'name': 'size', 'string': 'Rescale Size', 'object': self.targetSize})
         self.items.append({'name': 'startButton', 'string': '', 'object': self.startButton})
         self.items.append({'name': 'endButton', 'string': '', 'object': self.endButton})
-        self.items.append({'name': 'clearButton', 'string': '', 'object': self.clearButton})
         self.items.append({'name': 'clearButton', 'string': '', 'object': self.clearButton})
         self.items.append({'name': 'transformButton', 'string': 'Transform data', 'object': self.transformDataButton})
         self.items.append({'name': 'saveTransformButton', 'string': 'Save Transformed data', 'object': self.saveTransformDataButton})
@@ -625,7 +639,7 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
         #Window((img))
 
         #attempt to scale
-        self.currentTemplate.scale(height/self.currentTemplate.size()[0])
+        self.currentTemplate.scale(height/self.currentTemplate.size()[0]) #TODO!
 
         #attempt to center on micropattern
         self.currentTemplate.setPos((x-(self.currentTemplate.size()[0]/2),y-(self.currentTemplate.size()[0]/2)))
@@ -764,10 +778,7 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
 
 
     def transformData(self):
-        target_X = 0
-        target_Y = 0
         target_angle = 0
-        target_size = 400
 
         #get angle to rotate
         angle = target_angle + self.currentTemplate.getAngle()
@@ -778,8 +789,11 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
 
         #center and rotate img
         img = self.getValue('dataWindow').image
+
         if len(img.shape) > 2:
             img = np.max(img,0)
+
+        originalImg_w, originalImg_h = img.shape
 
         #pad image with 2000x2000 pixels to provide room for cropping to center of micropattern
         padSize = 2000
@@ -790,19 +804,38 @@ class TranslateAndScale(BaseProcess_noPriorWindow):
         img = img[int(center[0]-crop_width)+padSize:int(center[0]+crop_width+padSize), int(center[1]-crop_width)+padSize: int(center[1]+crop_width)+padSize]
 
         #pad edges
-        pad_width = 400
+        pad_width = 500
         img = np.pad(img, pad_width, mode='constant')
 
         #rotate image
         img= nd_rotate(img, angle= -angle, reshape=False)
 
-        #crop img
-        #img = img[padX:padX+h,padY:padY+w]
+        # #crop img to original size + buffer
+        # buffer = 100
+        # imgCenter = (img.shape[0]/2, img.shape[1]/2)
+        # img = img[int(imgCenter[0]-originalImg_w/2)-buffer: int(imgCenter[0]+originalImg_w/2)+buffer, int(imgCenter[1]-originalImg_h/2)-buffer: int(imgCenter[1]+originalImg_h/2)+buffer]
+
 
         #center points on image
         imgCenter = (img.shape[0]/2, img.shape[1]/2)
         self.transformDF['x'] = self.transformDF['x'] + imgCenter[0] - center[0]
         self.transformDF['y'] = self.transformDF['y'] + imgCenter[1] - center[1]
+
+        #if rescale selected rescale data
+        if self.getValue('rescale'):
+            #get rescale factor
+            targetSize = self.getValue('size')
+            self.rescaleFactor = targetSize/self.currentTemplate.getSize()
+
+            #rescale img
+            img = rescale(img,self.rescaleFactor)
+
+
+            #rescale points
+            self.transformDF['x'] = self.transformDF['x'] * self.rescaleFactor
+            self.transformDF['y'] = self.transformDF['y'] * self.rescaleFactor
+
+
 
         self.plotWindow.imageview.setImage(img)
 
