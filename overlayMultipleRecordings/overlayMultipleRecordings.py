@@ -41,6 +41,8 @@ from skimage.registration import phase_cross_correlation
 from skimage.transform import warp_polar, rotate, rescale
 
 import pandas as pd
+from matplotlib import pyplot as plt
+import matplotlib.colors as mcolors
 
 #from pyqtgraph.canvas import Canvas, CanvasItem
 
@@ -112,6 +114,7 @@ class FolderSelector(QWidget):
         self.folder = str(folder)
         self.label.setText('...' + os.path.split(self.folder)[-1][-20:])
 
+
 class ControlPanel():
     '''
     Controls for manipulating data
@@ -130,11 +133,13 @@ class ControlPanel():
         ## Create docks
         self.d0 = Dock("Controls")
         self.d1 = Dock("Parameters")
-        self.d2 = Dock("File Selector")
+        self.d2 = Dock("File")
+        self.d3 = Dock("Heatmap")
 
         self.area.addDock(self.d0)
         self.area.addDock(self.d1)
         self.area.addDock(self.d2)
+        self.area.addDock(self.d3)
 
         #control widget
         self.w0 = pg.LayoutWidget()
@@ -220,6 +225,28 @@ class ControlPanel():
         #add layout widget to dock
         self.d2.addWidget(self.w2)
 
+        #heatmap value selector widget
+        self.w3 = pg.LayoutWidget()
+
+        self.heatmapValue_label = QLabel('Use point values in heatmap:')
+        self.heatmapValue_checkbox = CheckBox()
+
+        self.heatmapSelector_label = QLabel('Select Value:')
+        self.heatmapSelector_box = pg.ComboBox()
+        self.heatmapList = {'None':'None'}
+        self.heatmapSelector_box.setItems(self.heatmapList)
+        self.heatmapSelector_box.activated.connect(self.update)
+
+        #layout
+        self.w3.addWidget(self.heatmapValue_label, row=0,col=0)
+        self.w3.addWidget(self.heatmapValue_checkbox, row=0,col=1)
+        self.w3.addWidget(self.heatmapSelector_label, row=1,col=0)
+        self.w3.addWidget(self.heatmapSelector_box, row=1,col=1)
+
+        #add layout widget to dock
+        self.d3.addWidget(self.w3)
+
+
     def moveLeft(self):
         shiftValue = self.moveSize.value() * self.multiply.value()
         self.mainGUI.move(shiftValue, 'l')
@@ -255,6 +282,10 @@ class ControlPanel():
     def updateFileList(self, files):
         self.fileList = dictFromList(files)
         self.fileSelector_box.setItems(self.fileList)
+
+    def updateHeatmapList(self, l):
+        self.heatmapList = dictFromList(l)
+        self.heatmapSelector_box.setItems(self.heatmapList)
 
     def save(self):
         fileName = self.mainGUI.selectedFile + '_newPos_transform.csv'
@@ -384,6 +415,8 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
         self.filenames = []
         self.selectedFile = None
 
+        self.heatmapValue = None
+
         self.plotWindow = None
 
         self.pointMapScatter = None
@@ -397,6 +430,7 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
     def update(self):
         self.selectedFile = self.controlPanel.fileSelector_box.value()
         self.selectedData = self.data [self.data ['file'] == self.selectedFile]
+        self.heatmapValue = self.controlPanel.heatmapSelector_box.value()
         self.plotSelectedDataPoints()
 
 
@@ -417,9 +451,25 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
         print('folder: {}'.format(self.foldername))
         self.filenames = glob.glob(self.foldername + '/*_transform.csv', recursive = False)
         print('files loaded: {}'.format(self.filenames))
+
+
         # Load xy data from the selected files using Pandas
         for file in tqdm(self.filenames):
-            tempDF = pd.read_csv(file, usecols=['x_transformed', 'y_transformed'])
+            #tempDF = pd.read_csv(file, usecols=['x_transformed', 'y_transformed'])
+            tempDF = pd.read_csv(file)
+
+
+            if 'track_number' in tempDF.columns:
+                # filter any points that dont have track_numbers to seperate df
+                tempDF_unlinked = tempDF[tempDF['track_number'].isna()]
+                tempDF  = tempDF[~tempDF['track_number'].isna()]
+
+                tempDF['track_number'] = tempDF['track_number'].astype(int)
+
+            else:
+                tempDF['track_number'] = None
+                tempDF_unlinked = tempDF
+
             if self.getValue('centerData'):
                 print('centering')
                 center = tempDF[['x_transformed', 'y_transformed']].mean()
@@ -438,6 +488,9 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
 
         #update control panel file list
         self.controlPanel.updateFileList(self.data['file'].tolist())
+
+        #update control panel heatmap value list
+        self.controlPanel.updateHeatmapList(list(self.data.columns))
 
         self.update()
 
@@ -471,12 +524,66 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
         self.plotWindow.imageview.view.addItem(self.selectedPointMapScatter)
 
 
+    def makeHeatmap(self):
+        H, xedges, yedges = np.histogram2d(self.data['x_transformed'], self.data['y_transformed'], bins=self.getValue('heatmapBins'))
+
+        H = H.T
+
+        #assign bins to DF
+        self.data['bin_x'] = np.digitize(self.data['x_transformed'],xedges)
+        self.data['bin_y'] = np.digitize(self.data['y_transformed'],yedges)
+
+        self.data['bin_x'] -= 1
+        self.data['bin_y'] -= 1
+
+        #group by bins
+        groupedDF = self.data.groupby(['bin_x','bin_y'])
+
+        #get mean values for each bin
+        mean_Rg = groupedDF[self.heatmapValue].mean().to_frame(name = self.heatmapValue).reset_index()
+
+        #convert df columns to image
+        X = mean_Rg['bin_x'].to_numpy()
+        Y = mean_Rg['bin_y'].to_numpy()
+        Z = mean_Rg[self.heatmapValue].to_numpy()
+
+        Xu = np.unique(X)
+        Yu = np.unique(Y)
+
+        img = np.zeros((Xu.size, Yu.size))
+
+        for i in range(X.size):
+            img[np.where(Xu==X[i]), np.where(Yu==Y[i])] = Z[i]
+
+        return img, xedges, yedges
+
+
     def plotHeatMap(self):
-        #mkae 2D histogram
-        H, yedges, xedges = np.histogram2d(self.data['x_transformed'], self.data['y_transformed'], bins=self.getValue('heatmapBins') )
-        self.heatMap = H
+        print('generating heatmap...')
+        #make 2D histogram
+        if self.controlPanel.heatmapValue_checkbox.isChecked():
+            print('using binned {} values for heatmap'.format(self.heatmapValue))
+            H, yedges, xedges = self.makeHeatmap()
+        else:
+            H, yedges, xedges = np.histogram2d(self.data['x_transformed'], self.data['y_transformed'], bins=self.getValue('heatmapBins') )
+
         #plot in new window
+        self.heatMap = H
         self.heatmapWindow = Window(self.heatMap)
+
+        # #plot without bin edges
+        # fig, ax1 = plt.subplots()
+        # ax1.pcolormesh(xedges, yedges, self.heatMap, cmap='rainbow')
+        # ax1.plot(self.data['y_transformed'], self.data['y_transformed'], 'k-')
+        # ax1.set_xlim(self.data['x_transformed'].min(), self.data['x_transformed'].max())
+        # ax1.set_ylim(self.data['y_transformed'].min(), self.data['y_transformed'].max())
+        # ax1.set_xlabel('x')
+        # ax1.set_ylabel('y')
+        # ax1.set_title('histogram2d')
+        # ax1.grid()
+        # plt.show()
+
+        print('finished heatmap')
 
 
     def move(self, shiftValue, direction):
