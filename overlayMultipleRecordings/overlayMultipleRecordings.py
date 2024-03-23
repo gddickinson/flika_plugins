@@ -237,11 +237,24 @@ class ControlPanel():
         self.heatmapSelector_box.setItems(self.heatmapList)
         self.heatmapSelector_box.activated.connect(self.update)
 
+        #heatmap optiomns
+        self.statBox_label =  QLabel('Statistic:')
+        self.statBox = pg.ComboBox()
+        self.stats = {'mean': 'mean',
+                          'median': 'median',
+                          'max': 'max',
+                          'min': 'min'
+                          }
+        self.statBox.setItems(self.stats)
+        self.statBox.activated.connect(self.update)
+
         #layout
         self.w3.addWidget(self.heatmapValue_label, row=0,col=0)
         self.w3.addWidget(self.heatmapValue_checkbox, row=0,col=1)
         self.w3.addWidget(self.heatmapSelector_label, row=1,col=0)
         self.w3.addWidget(self.heatmapSelector_box, row=1,col=1)
+        self.w3.addWidget(self.statBox_label, row=2,col=0)
+        self.w3.addWidget(self.statBox, row=2,col=1)
 
         #add layout widget to dock
         self.d3.addWidget(self.w3)
@@ -386,7 +399,6 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
 
         self.centerData_checkbox = CheckBox()
         self.centerData_checkbox.setChecked(True)
-
 
         self.heatmapButton = QPushButton('Make heatmap')
         self.heatmapButton.pressed.connect(self.plotHeatMap)
@@ -540,12 +552,23 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
         groupedDF = self.data.groupby(['bin_x','bin_y'])
 
         #get mean values for each bin
-        mean_Rg = groupedDF[self.heatmapValue].mean().to_frame(name = self.heatmapValue).reset_index()
+        stat = self.controlPanel.statBox.value()
+        if stat == 'mean':
+            mapDF = groupedDF[self.heatmapValue].mean().to_frame(name = self.heatmapValue).reset_index()
+        elif stat == 'median':
+            mapDF = groupedDF[self.heatmapValue].median().to_frame(name = self.heatmapValue).reset_index()
+        elif stat == 'max':
+            mapDF = groupedDF[self.heatmapValue].max().to_frame(name = self.heatmapValue).reset_index()
+        elif stat == 'min':
+            mapDF = groupedDF[self.heatmapValue].min().to_frame(name = self.heatmapValue).reset_index()
+        # elif stat == 'SD':
+        #     mapDF = groupedDF[self.heatmapValue].std().to_frame(name = self.heatmapValue).reset_index()
+
 
         #convert df columns to image
-        X = mean_Rg['bin_x'].to_numpy()
-        Y = mean_Rg['bin_y'].to_numpy()
-        Z = mean_Rg[self.heatmapValue].to_numpy()
+        X = mapDF['bin_x'].to_numpy()
+        Y = mapDF['bin_y'].to_numpy()
+        Z = mapDF[self.heatmapValue].to_numpy()
 
         Xu = np.unique(X)
         Yu = np.unique(Y)
@@ -564,24 +587,19 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
         if self.controlPanel.heatmapValue_checkbox.isChecked():
             print('using binned {} values for heatmap'.format(self.heatmapValue))
             H, yedges, xedges = self.makeHeatmap()
+            #set title
+            title = '{} : {}'.format(self.heatmapValue, self.controlPanel.statBox.value())
+
         else:
             H, yedges, xedges = np.histogram2d(self.data['x_transformed'], self.data['y_transformed'], bins=self.getValue('heatmapBins') )
+            #set title
+            title = 'point count'
+
+        self.heatMap = H
 
         #plot in new window
-        self.heatMap = H
-        self.heatmapWindow = Window(self.heatMap)
+        self.heatmapWindow = Window(self.heatMap, name =title)
 
-        # #plot without bin edges
-        # fig, ax1 = plt.subplots()
-        # ax1.pcolormesh(xedges, yedges, self.heatMap, cmap='rainbow')
-        # ax1.plot(self.data['y_transformed'], self.data['y_transformed'], 'k-')
-        # ax1.set_xlim(self.data['x_transformed'].min(), self.data['x_transformed'].max())
-        # ax1.set_ylim(self.data['y_transformed'].min(), self.data['y_transformed'].max())
-        # ax1.set_xlabel('x')
-        # ax1.set_ylabel('y')
-        # ax1.set_title('histogram2d')
-        # ax1.grid()
-        # plt.show()
 
         print('finished heatmap')
 
