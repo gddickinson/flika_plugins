@@ -4,11 +4,9 @@ Created on Jan 29 2024
 
 @author: george.dickinson@gmail.com
 
-This program is a Python script developed to analyze the motion of intracellular Piezo1 proteins labeled with a fluorescent tag.
-It allows the user to load raw data from a series of image files and track the movement of individual particles over time.
-The script includes several data analysis and visualization tools, including the ability to filter data by various parameters, plot tracks, generate scatter and line plots, and create statistics for track speed and displacement.
-Additional features include the ability to toggle between different color maps, plot diffusion maps, and save filtered data to a CSV file.
-
+This FLIKA plugun ius designed to work with the translateAndScale plugin. I
+t allows multiple localization files that have been centered and scaled to be displayed on a single image.
+The user can then generate heat mpas of point counts or other datasheet values.
 """
 
 # ignore warnings
@@ -41,6 +39,7 @@ from skimage.registration import phase_cross_correlation
 from skimage.transform import warp_polar, rotate, rescale
 
 import pandas as pd
+from pandas.api.types import is_numeric_dtype
 from matplotlib import pyplot as plt
 import matplotlib.colors as mcolors
 
@@ -248,6 +247,9 @@ class ControlPanel():
         self.statBox.setItems(self.stats)
         self.statBox.activated.connect(self.update)
 
+        self.experimentBin_label = QLabel('Bin by Experiment:')
+        self.experimentBin_checkbox = CheckBox()
+
         #layout
         self.w3.addWidget(self.heatmapValue_label, row=0,col=0)
         self.w3.addWidget(self.heatmapValue_checkbox, row=0,col=1)
@@ -255,6 +257,9 @@ class ControlPanel():
         self.w3.addWidget(self.heatmapSelector_box, row=1,col=1)
         self.w3.addWidget(self.statBox_label, row=2,col=0)
         self.w3.addWidget(self.statBox, row=2,col=1)
+        self.w3.addWidget(self.experimentBin_label, row=3,col=0)
+        self.w3.addWidget(self.experimentBin_checkbox, row=3,col=1)
+
 
         #add layout widget to dock
         self.d3.addWidget(self.w3)
@@ -336,7 +341,9 @@ class ControlPanel():
 
 class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
     """
-    Generate alignment for rotation, translation and scaling of point data
+    Plot multiple localization csv file point data.
+    Generate heat maps of point counts or other datasheet values.
+    To be used in conjungtion with the 'translateAndScale' plugin
     """
     def __init__(self):
         # Initialize settings for locs and tracks plotter
@@ -549,7 +556,11 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
         self.data['bin_y'] -= 1
 
         #group by bins
-        groupedDF = self.data.groupby(['bin_x','bin_y'])
+
+        if self.controlPanel.experimentBin_checkbox.isChecked():
+            groupedDF = self.data.groupby(['Experiment','bin_x','bin_y'])
+        else:
+            groupedDF = self.data.groupby(['bin_x','bin_y'])
 
         #get mean values for each bin
         stat = self.controlPanel.statBox.value()
@@ -585,10 +596,16 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
         print('generating heatmap...')
         #make 2D histogram
         if self.controlPanel.heatmapValue_checkbox.isChecked():
+            if not is_numeric_dtype(self.data[self.heatmapValue]):
+                print('Can only generate heat maps from numeric data')
+                return
+
             print('using binned {} values for heatmap'.format(self.heatmapValue))
             H, yedges, xedges = self.makeHeatmap()
             #set title
             title = '{} : {}'.format(self.heatmapValue, self.controlPanel.statBox.value())
+            if self.controlPanel.experimentBin_checkbox.isChecked():
+                title = title + ' (binned by experiment)'
 
         else:
             H, yedges, xedges = np.histogram2d(self.data['x_transformed'], self.data['y_transformed'], bins=self.getValue('heatmapBins') )

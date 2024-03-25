@@ -46,7 +46,7 @@ data['bin_y'] = np.digitize(data['y_transformed'],yedges, right=False)
 data['bin_x'] -= 1
 data['bin_y'] -= 1
 
-groupedDF = data.groupby(['bin_x','bin_y'])
+groupedDF = data.groupby(['Experiment','bin_x','bin_y'])
 
 mean_Rg = groupedDF['radius_gyration'].mean().to_frame(name = 'radius_gyration').reset_index()
 count = groupedDF['bin_x'].count().to_frame(name = 'count').reset_index()
