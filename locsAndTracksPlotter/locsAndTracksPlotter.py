@@ -90,6 +90,60 @@ from .chartDock import ChartDock
 from .overlay import Overlay
 
 
+
+class ColorButton(QPushButton):
+    '''
+    Custom Qt Widget to show a chosen color.
+
+    Left-clicking the button shows the color-chooser, while
+    right-clicking resets the color to None (no-color).
+    '''
+
+    colorChanged = Signal(object)
+
+    def __init__(self, *args, color=None, **kwargs):
+        super(ColorButton, self).__init__(*args, **kwargs)
+
+        self._color = None
+        self._default = color
+        self.pressed.connect(self.onColorPicker)
+
+        # Set the initial/default state.
+        self.setColor(self._default)
+
+    def setColor(self, color):
+        if color != self._color:
+            self._color = color
+            self.colorChanged.emit(color)
+
+        if self._color:
+            self.setStyleSheet("background-color: %s;" % self._color)
+        else:
+            self.setStyleSheet("")
+
+    def color(self):
+        return self._color
+
+    def onColorPicker(self):
+        '''
+        Show color-picker dialog to select color.
+
+        Qt will use the native dialog by default.
+
+        '''
+        dlg = QColorDialog(self)
+        if self._color:
+            dlg.setCurrentColor(QColor(self._color))
+
+        if dlg.exec_():
+            self.setColor(dlg.currentColor().name())
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.RightButton:
+            self.setColor(self._default)
+
+        return super(ColorButton, self).mousePressEvent(e)
+
 class FilterOptions():
     """
     A class for a GUI setting filter options for points and tracks.
@@ -245,6 +299,7 @@ class TrackPlotOptions():
         self.trackcolourcols = {'None':'None'}
         self.trackColourCol_Box.setItems(self.trackcolourcols)
         self.trackColourCol_Box_label = QLabel('Colour By')
+        self.trackColourCol_Box.currentIndexChanged.connect(self.update)
 
         self.colourMap_Box = pg.ComboBox()
         self.colourMaps = dictFromList(pg.colormap.listMaps())
@@ -272,6 +327,26 @@ class TrackPlotOptions():
         self.matplotCM_checkbox.setChecked(False)
         self.matplotCM_checkbox_label = QLabel('Use Matplot Colour Map')
 
+        self.threshold_checkbox = CheckBox()
+        self.threshold_checkbox.setChecked(False)
+        self.threshold_checkbox_label = QLabel('Colour By Threshold (overrides above)')
+        self.threshold_checkbox.stateChanged.connect(self.update)
+
+        self.threshValue_selector = pg.SpinBox(value=20, int=False)
+        self.threshValue_selector.setSingleStep(0.1)
+        self.threshValue_selector.setMinimum(0)
+        self.threshValue_selector.setMaximum(1000)
+        self.threshValue_selector_label = QLabel('Threshold Value')
+        self.threshValue_selector.valueChanged.connect(self.update)
+
+        self.aboveColour_button = ColorButton(color='#00fdff')
+        self.aboveColour_button_label = QLabel('Above Colour (click to set)')
+        self.aboveColour_button.pressed.connect(self.setAboveColour)
+
+        self.belowColour_button = ColorButton(color='#ff40ff')
+        self.belowColour_button_label = QLabel('Below Colour (click to set)')
+        self.belowColour_button.pressed.connect(self.setBelowColour)
+
         #layout
         self.w1.addWidget(self.trackColour_checkbox_label , row=1,col=0)
         self.w1.addWidget(self.trackColour_checkbox, row=1,col=1)
@@ -290,6 +365,19 @@ class TrackPlotOptions():
 
         self.w1.addWidget(self.lineSize_selector_label, row=6,col=0)
         self.w1.addWidget(self.lineSize_selector, row=6,col=1)
+
+
+        self.w1.addWidget(self.threshold_checkbox_label, row=7,col=0)
+        self.w1.addWidget(self.threshold_checkbox, row=7,col=1)
+
+        self.w1.addWidget(self.threshValue_selector_label, row=8,col=0)
+        self.w1.addWidget(self.threshValue_selector, row=8,col=1)
+
+        self.w1.addWidget(self.aboveColour_button_label, row=9,col=0)
+        self.w1.addWidget(self.aboveColour_button, row=9,col=1)
+
+        self.w1.addWidget(self.belowColour_button_label, row=10,col=0)
+        self.w1.addWidget(self.belowColour_button, row=10,col=1)
 
         #add layout widget to dock
         self.d1.addWidget(self.w1)
@@ -361,6 +449,21 @@ class TrackPlotOptions():
 
         #add layout widget to dock
         self.d3.addWidget(self.w3)
+
+    def setAboveColour(self):
+        self.update()
+        print('Above threshold {} colour set to {}'.format(self.threshValue_selector.value(), self.aboveColour_button.color()))
+
+    def setBelowColour(self):
+        self.update()
+        print('Below threshold {} colour set to {}'.format(self.threshValue_selector.value(), self.belowColour_button.color()))
+
+    def update(self):
+        colName = self.trackColourCol_Box.value()
+        thresh = self.threshValue_selector.value()
+        belowColour = QColor(self.belowColour_button.color())
+        aboveColour = QColor(self.aboveColour_button.color())
+        self.mainGUI.data['threshColour'] = np.where(self.mainGUI.data[colName] > thresh, belowColour ,aboveColour)
 
 
     def show(self):
@@ -894,6 +997,7 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
             # Add a color column to the DataFrame based on the selected color map and column
             if self.trackPlotOptions.trackColour_checkbox.isChecked():
+
                 if self.useMatplotCM:
                     cm = pg.colormap.getFromMatplotlib(self.trackPlotOptions.colourMap_Box.value()) # Get the colormap from Matplotlib and convert it to a PyqtGraph colormap
                 else:
@@ -901,6 +1005,8 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
                 # Map the values from the selected color column to a QColor using the selected colormap
                 df['colour'] = cm.mapToQColor(data[self.trackPlotOptions.trackColourCol_Box.value()].to_numpy()/max(data[self.trackPlotOptions.trackColourCol_Box.value()]))
+                df['threshColour'] = data['threshColour']
+
 
         # Group the data by track number
         return df.groupby(['track_number'])
@@ -939,11 +1045,11 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
         pen_FP = QPen(self.trackPlotOptions.trackDefaultColour_Box.value(), .4)
         pen_FP.setCosmetic(True)
-        pen_FP.setWidth(1)
+        pen_FP.setWidth(self.trackPlotOptions.lineSize_selector.value())
 
         pen_overlay = QPen(self.trackPlotOptions.trackDefaultColour_Box.value(), .4)
         pen_overlay.setCosmetic(True)
-        pen_overlay.setWidth(1)
+        pen_overlay.setWidth(self.trackPlotOptions.lineSize_selector.value())
 
         # determine which track IDs to plot based on whether filtered tracks are being used
         if self.useFilteredTracks:
@@ -963,10 +1069,19 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
                 pathitem_FP = QGraphicsPathItem(self.flowerPlotWindow.plt)
 
             # set the color of the pen based on the track color
+
+
+            if self.trackPlotOptions.threshold_checkbox.isChecked():
+                cmChoice ='threshColour'
+            else:
+                cmChoice ='colour'
+
             if self.trackPlotOptions.trackColour_checkbox.isChecked():
-                pen.setColor(tracks['colour'].to_list()[0])
-                pen_overlay.setColor(tracks['colour'].to_list()[0])
-                pen_FP.setColor(tracks['colour'].to_list()[0])
+                pen.setColor(tracks[cmChoice].to_list()[0])
+                pen_overlay.setColor(tracks[cmChoice].to_list()[0])
+                pen_FP.setColor(tracks[cmChoice].to_list()[0])
+
+
 
             # set the pen for the path items
             pathitem.setPen(pen)
