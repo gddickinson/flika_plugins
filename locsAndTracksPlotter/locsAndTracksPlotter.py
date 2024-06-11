@@ -463,7 +463,7 @@ class TrackPlotOptions():
         thresh = self.threshValue_selector.value()
         belowColour = QColor(self.belowColour_button.color())
         aboveColour = QColor(self.aboveColour_button.color())
-        self.mainGUI.data['threshColour'] = np.where(self.mainGUI.data[colName] > thresh, belowColour ,aboveColour)
+        self.mainGUI.data['threshColour'] = np.where(self.mainGUI.data[colName] > thresh, aboveColour ,belowColour)
 
 
     def show(self):
