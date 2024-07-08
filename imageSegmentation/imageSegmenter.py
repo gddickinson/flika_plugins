@@ -38,7 +38,7 @@ from pyqtgraph.dockarea.Dock import Dock
 from pyqtgraph.dockarea.DockArea import DockArea
 
 #to get tensorflow GPU Mac M1 compatibility pip install tensorflow-macos AND pip install tensorflow-metal
-import os
+import os, shutil
 import pandas as pd
 import matplotlib.pyplot as plt
 from skimage.io import imread, imsave
@@ -56,7 +56,20 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+def deleteFolderFiles(folder = None):
+    ''''Helper function to delete contents of a folder'''
+    for filename in os.listdir(folder):
+        file_path = os.path.join(folder, filename)
+        try:
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.unlink(file_path)
+            elif os.path.isdir(file_path):
+                shutil.rmtree(file_path)
+        except Exception as e:
+            print('Failed to delete %s. Reason: %s' % (file_path, e))
+
 def custom_binary_crossentropy(y_true, y_pred):
+    ''''Custom binary cross entrop loss function'''
     epsilon = K.epsilon()
     y_pred = K.clip(y_pred, epsilon, 1.0 - epsilon)
     return -K.mean(y_true * K.log(y_pred) + (1.0 - y_true) * K.log(1.0 - y_pred))
@@ -390,6 +403,7 @@ class UNetClassifier:
                 if image.shape[:2] != (self.IMG_HEIGHT, self.IMG_WIDTH):
                     print(f"Warning: {image_file} is not {self.IMG_HEIGHT}x{self.IMG_WIDTH}. Resizing.")
                     image = resize(image, (self.IMG_HEIGHT, self.IMG_WIDTH), mode='constant', preserve_range=True)
+                    #print(f"New size: {image.shape[:2]}.")
 
                 image = np.expand_dims(image, axis=-1)
                 image = np.expand_dims(image, axis=0)
@@ -413,6 +427,12 @@ class UNetClassifier:
 
         min_intensity = np.min(test_array)
         max_intensity = np.max(test_array)
+        frames, original_height, original_width = test_array.shape
+
+        if test_array[0].shape[:2] != (self.IMG_HEIGHT, self.IMG_WIDTH):
+            resizeImage = True
+        else:
+            resizeImage = False
 
         pred_array = np.zeros_like(test_array)
 
@@ -424,7 +444,8 @@ class UNetClassifier:
 
                 image = self.normalize_image(image, min_intensity, max_intensity)
 
-                if image.shape[:2] != (self.IMG_HEIGHT, self.IMG_WIDTH):
+                #if image.shape[:2] != (self.IMG_HEIGHT, self.IMG_WIDTH):
+                if resizeImage:
                     print(f"Warning: {image} is not {self.IMG_HEIGHT}x{self.IMG_WIDTH}. Resizing.")
                     image = resize(image, (self.IMG_HEIGHT, self.IMG_WIDTH), mode='constant', preserve_range=True)
 
@@ -434,10 +455,15 @@ class UNetClassifier:
                 prediction = self.model.predict(image)
                 #prediction = (prediction > 0.5).astype(np.uint8) * 255
 
-                output_path = os.path.join(output_folder, f"pred_{frame}.tif")
-                imsave(output_path, prediction[0, ..., 0])
+                if resizeImage:
+                    prediction = resize(prediction[0, ..., 0], (original_height, original_width), mode='constant', preserve_range=True)
+                else:
+                    prediction = prediction[0, ..., 0]
 
-                pred_array[frame] = prediction[0, ..., 0]
+                output_path = os.path.join(output_folder, f"pred_{frame}.tif")
+                imsave(output_path, prediction)
+
+                pred_array[frame] = prediction
 
             except Exception as e:
                 print(f"Error processing frame {frame}: {str(e)}")
@@ -739,11 +765,13 @@ class ImageSegmenter:
     def export_images(self):
         export_dir = QFileDialog.getExistingDirectory(caption="Select Directory to Export Images")
         if export_dir:
+            deleteFolderFiles(export_dir)
             self.save_tiff_stack(g.windows[self.train_window.currentIndex()], export_dir, 'image')
 
     def export_masks(self):
         export_dir = QFileDialog.getExistingDirectory(caption="Select Directory to Export Masks")
         if export_dir:
+            deleteFolderFiles(export_dir)
             self.save_tiff_stack(g.windows[self.train_window.currentIndex()], export_dir, 'image')
 
     def save_tiff_stack(self, win, export_dir, data_type):

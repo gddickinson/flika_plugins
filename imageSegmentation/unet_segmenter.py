@@ -468,7 +468,7 @@ predictions = segmenter.predict()
 segmenter.visualize_results(predictions, masks_dir=masks_dir, num_samples=3)
 
 # You can also save weights manually at any point
-#segmenter.save_weights(weights_path)
+segmenter.save_weights(weights_path)
 
 
 
