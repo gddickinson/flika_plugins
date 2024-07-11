@@ -26,6 +26,11 @@ from OpenGL.GL import *
 from qtpy.QtCore import Signal
 import glob
 import gc
+import logging
+
+#logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+from typing import Tuple
 
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
@@ -41,10 +46,11 @@ from .texturePlot import *
 from .volumeSlider_3DViewer import *
 from .volumeSlider_Main_GUI import *
 from .tiffLoader import openTiff
+from .volume_processor import VolumeProcessor
 
 from pyqtgraph import HistogramLUTWidget
 
-dataType = np.float16
+dataType = np.float32
 from matplotlib import cm
 
 
@@ -55,35 +61,67 @@ def handler(msg_type, msg_log_context, msg_string):
 QtCore.qInstallMessageHandler(handler)
 #####################################################
 
+# Create a logger
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+# Create console handler and set level to info
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+
+# Create file handler and set level to info
+file_handler = logging.FileHandler('volumeslider.log')
+file_handler.setLevel(logging.INFO)
+
+# Create formatter
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+# Add formatter to handlers
+console_handler.setFormatter(formatter)
+file_handler.setFormatter(formatter)
+
+# Add handlers to logger
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
 
 #########################################################################################
 #############                  volumeViewer class                ########################
 #########################################################################################
-class CamVolumeSlider(BaseProcess):
+import numpy as np
+import logging
+from typing import Optional, List, Tuple, Dict, Any
+from qtpy import QtWidgets, QtCore, QtGui
+import flika
+from flika import global_vars as g
+from flika.window import Window
+import os
+import gc
+import glob
 
+from .helperFunctions import perform_shear_transform
+from .volume_processor import VolumeProcessor
+from .volumeSlider_Main_GUI import Form2
+from .volumeSlider_3DViewer import SliceViewer
+from .tiffLoader import openTiff
+
+class CamVolumeSlider:
     def __init__(self):
-        super().__init__()
-        #init fileName variable
-        self.fileName = ''
-        
-        self.nVols = 1
+        self.processor: Optional[VolumeProcessor] = None
+        self.fileName: str = ''
+        self.nVols: int = 1
+        self.dataType = np.float32
+        self.batch: bool = False
+        self.overlayEmbeded: bool = False  # Add this line
+        self.setup_data_structures()
+        self.setup_array_parameters()
+        self.setup_logger()
 
-        #create dtype dict
-        self.dTypeDict = {
-                'float16': np.float16,
-                'float32': np.float32,
-                'float64': np.float64,
-                'int8': np.uint8,
-                'int16': np.uint16,
-                'int32': np.uint32,
-                'int64': np.uint64                                  }
-
-        self.dataType = dataType
-        
-        self.batch = False
-
-        #create array order dict
-        self.arrayDict = {
+    def setup_data_structures(self):
+        self.dTypeDict: Dict[str, np.dtype] = {
+            'float16': np.float16, 'float32': np.float32, 'float64': np.float64,
+            'int8': np.uint8, 'int16': np.uint16, 'int32': np.uint32, 'int64': np.uint64
+        }
+        self.arrayDict: Dict[str, List[int]] = {
                 '[0, 1, 2, 3]': [0, 1, 2, 3],
                 '[0, 1, 3, 2]': [0, 1, 3, 2],
                 '[0, 2, 1, 3]': [0, 2, 1, 3],
@@ -108,619 +146,603 @@ class CamVolumeSlider(BaseProcess):
                 '[3, 1, 2, 0]': [3, 1, 2, 0],
                 '[3, 2, 0, 1]': [3, 2, 0, 1],
                 '[3, 2, 1, 0]': [3, 2, 1, 0]
-                }
+        }
 
-        self.inputArrayOrder = [0, 3, 1, 2]
-        self.displayArrayOrder = [3, 0, 1, 2]
+    def setup_array_parameters(self):
+        self.inputArrayOrder: List[int] = [0, 3, 1, 2]
+        self.displayArrayOrder: List[int] = [3, 0, 1, 2]
+        self.B: Optional[np.ndarray] = None
+        self.savePath: str = ''
+        self._A: Optional[np.ndarray] = None
+        self.nFrames: int = 0
+        self.x: int = 0
+        self.y: int = 0
+        self.framesPerVol: int = 0
 
-        #array savepath
-        self.savePath = ''
-        return
+    def setup_logger(self):
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-    def startVolumeSlider(self, A=[], keepWindow=False, batch=False, preProcess=False, nVols = None, framesPerVol = None, framesToDelete = 0, overlayEmbeded = False, A_overlay = None):
-        self.overlayEmbeded = overlayEmbeded
-        if batch:
-            self.batch = True
-            self.batchOptions = BatchOptions()
-            self.batchOptions.start()
-            return
-        
-        if A == []:
-            #copy selected window
-            self.A =  np.array(deepcopy(g.win.image),dtype=self.dataType)
-            if keepWindow == False:
+    @property
+    def A(self) -> np.ndarray:
+        if self._A is None:
+            raise ValueError("Data not loaded")
+        return self._A
+
+    @A.setter
+    def A(self, value: np.ndarray):
+        self._A = value
+        self.nFrames, self.x, self.y = value.shape
+        self.framesPerVol = int(self.nFrames / self.nVols)
+
+    def startVolumeSlider(self, A: Optional[np.ndarray] = None, keepWindow: bool = False,
+                          batch: bool = False, preProcess: bool = False,
+                          nVols: Optional[int] = None, framesPerVol: Optional[int] = None,
+                          framesToDelete: int = 0, overlayEmbeded: bool = False,
+                          A_overlay: Optional[np.ndarray] = None):
+        try:
+            if batch:
+                self.batch = True
+                self.batchOptions = BatchOptions()
+                self.batchOptions.start()
+                return
+
+            self.A = A if A is not None else np.array(g.win.image, dtype=self.dataType)
+            if not keepWindow:
                 g.win.close()
-            
-        else:
-            #load numpy array
-            self.B = A
-            self.nFrames, self.nVols, self.x, self.y = self.B.shape
-            self.dialogbox = Form2(camVolumeSlider)
-            self.viewer = SliceViewer(camVolumeSlider, self.B)            
-            return
-            
-        self.B = []
-        #get shape
-        self.nFrames, self.x, self.y = self.A.shape
-        self.framesPerVol = int(self.nFrames/self.nVols)
-        #setup display window
-        self.displayWindow = Window(self.A,'Volume Slider Window')
-        #open gui
-        self.dialogbox = Form2(camVolumeSlider)
-        self.dialogbox.show()    
-        
-        if preProcess:
-            self.preProcess_stack(framesPerVol, framesToDelete = 0)
 
-        if overlayEmbeded:
-            print('Generating overlay window...')
-            self.A_overlay = A_overlay
-            self.overlayWindow = Window(self.A_overlay,'Overlay Window')
-            self.processOverlay(framesPerVol, framesToDelete = 0)
-            #start 3D display
-            self.startViewer()
-        
-        return
+            self.processor = VolumeProcessor(self.A)
+            self.B = None
+            self.setup_display_window()
+            self.setup_dialog_box()
 
-    def updateVolumeSlider(self, A):
-        self.A = A
-        self.B = []
-        self.nFrames, self.x, self.y = self.A.shape
-        self.framesPerVol = int(self.nFrames/self.nVols)
-        
+            if preProcess:
+                self.preProcess_stack(framesPerVol, framesToDelete)
 
-    def preProcess_stack(self, framesPerVol, framesToDelete = 0):
-        print('Precrocessing Image Stack')  
-        self.dialogbox.updateVolumeValue()
-        
-    def processOverlay(self, framesPerVol, framesToDelete = 0):
-        print("Processing overlay")
-        #TODO
-        return
+            if overlayEmbeded:
+                self.setup_overlay(A_overlay, framesPerVol, framesToDelete)
+
+        except Exception as e:
+            logging.error(f"Error in startVolumeSlider: {str(e)}")
+            QtWidgets.QMessageBox.critical(None, "Error", f"Failed to start Volume Slider: {str(e)}")
+
+    def setup_display_window(self):
+        self.displayWindow = Window(self.A, 'Volume Slider Window')
+
+    def setup_dialog_box(self):
+        self.dialogbox = Form2(self)
+        self.dialogbox.show()
+
+    def setup_overlay(self, A_overlay: np.ndarray, framesPerVol: int, framesToDelete: int):
+        logging.info('Generating overlay window...')
+        self.A_overlay = A_overlay
+        self.overlayWindow = Window(self.A_overlay, 'Overlay Window')
+        self.processOverlay(framesPerVol, framesToDelete)
+        self.overlayEmbeded = True  # Set this to True when overlay is set up
+        self.startViewer()
 
     def setOverlay(self):
-        
-        if self.B == []:
-            print('first set number of frames per volume')
-            g.m.statusBar().showMessage("first set number of frames per volume")
-        
-        self.overlayVolume = self.displayWindow.imageview.currentIndex
-        print("Setting overlay from currrent volume: " + str(self.overlayVolume) )  
-
-        #create overlay
-        self.A_overlay = self.B[:,self.overlayVolume,:,:]
-        self.overlayWindow = Window(self.A_overlay[0],'Overlay Window')
-        self.overlayEmbeded = True
-        
-        #update main display
-        self.B = self.B[:,0:self.overlayVolume,:,:]
-        self.displayWindow.imageview.setImage(self.B[0], autoLevels=False)
-        self.displayWindow.imageview.setCurrentIndex(self.overlayVolume-1)        
-        return
+        if self.B is not None and len(self.B) > 0:
+            self.overlayVolume = self.displayWindow.imageview.currentIndex
+            self.A_overlay = self.B[:, self.overlayVolume, :, :]
+            self.overlayWindow = Window(self.A_overlay[0], 'Overlay Window')
+            self.overlayEmbeded = True  # Set this to True when overlay is set
+            self.B = self.B[:, :self.overlayVolume, :, :]
+            self.updateDisplay()
+        else:
+            logging.error("No valid data to set overlay")
+            QtWidgets.QMessageBox.warning(None, "Error", "No valid data to set overlay")
 
 
-    def batchProcess(self, paramDict):
-        print(paramDict)
-        #get filenames from import folder
-        tiffFiles = []
-        for file in glob.glob(os.path.join(paramDict['inputDirectory'],"*.tiff")):
-            tiffFiles.append(file)
-        for file in glob.glob(os.path.join(paramDict['inputDirectory'],"*.tif")):
-            tiffFiles.append(file)
-        print(tiffFiles)
-        #loop through files
-        i = 0
-        for tiff_file in tiffFiles:
-            self.imsPath = tiff_file
-            #load tiff
-            if i == 0:
-                self.A, _, _ = openTiff(tiff_file)
-                self.B = []
-            else:
-                self.dialogbox.loadNewFile(tiff_file)
-            #get shape
-            self.nFrames, self.x, self.y = self.A.shape
-            self.framesPerVol = paramDict['slicesPerVolume']
-            self.displayWindow = Window(self.A,'Volume Slider Window')
-            self.displayWindow.hide()
-            if i == 0:
-                self.dialogbox = Form2(camVolumeSlider)
-            self.dialogbox.batch = True
-            #self.dialogbox.show() 
-            #shape tiff to 4D
-            self.dialogbox.slicesPerVolume = self.framesPerVol
-            self.dialogbox.SpinBox2.setValue(self.framesPerVol)
-            self.dialogbox.button2.click()
-            #subtract baseline
-            self.dialogbox.baselineValue = paramDict['baselineValue']
-            self.dialogbox.SpinBox4.setValue(self.dialogbox.baselineValue)            
-            if paramDict['subtractBaseline']:
-                self.dialogbox.button4.click()
-            #DF/F0    
-            self.dialogbox.f0Start = paramDict['f0Start']
-            self.dialogbox.SpinBox6.setValue(self.dialogbox.f0Start)            
-            self.dialogbox.f0End = paramDict['f0End']
-            self.dialogbox.SpinBox7.setValue(self.dialogbox.f0End)            
-            self.dialogbox.f0VolStart = paramDict['f0VolStart']
-            self.dialogbox.SpinBox11.setValue(self.dialogbox.f0VolStart)            
-            self.dialogbox.f0VolEnd = paramDict['f0VolEnd']
-            self.dialogbox.SpinBox12.setValue(self.dialogbox.f0VolEnd)                 
-            if paramDict['runDFF0']:
-                self.dialogbox.button5.click() 
-            #scale by multiplication factor
-            self.dialogbox.multiplicationFactor = paramDict['multiplicationFactor']
-            self.dialogbox.SpinBox8.setValue(self.dialogbox.multiplicationFactor)  
-            if paramDict['runMultiplication']:
-                self.dialogbox.button8.click() 
-            #theta
-            self.dialogbox.theta = paramDict['theta']
-            self.dialogbox.SpinBox9.setValue(self.dialogbox.theta)
-            #shift factor
-            self.dialogbox.shiftFactor = paramDict['shiftFactor']
-            self.dialogbox.SpinBox10.setValue(self.dialogbox.shiftFactor)
-            #trim last frame
-            self.dialogbox.trim_last_frame = paramDict['trim_last_frame']
-            self.dialogbox.trim_last_frame_checkbox.setChecked(self.dialogbox.trim_last_frame)
-            #start volumeSlider3D
-            if i == 0:
-                self.dialogbox.button12.click() 
-            else:
-                self.viewer.changeMainImage(self.B)
-                self.viewer.runBatchStep(self.imsPath)   
-            #update counter
-            i = i+1
-            
+    def preProcess_stack(self, framesPerVol: int, framesToDelete: int = 0):
+        logging.info('Preprocessing Image Stack')
+        logging.info(f"Input shape: {self.A.shape}, Frames per volume: {framesPerVol}")
 
-        g.m.statusBar().showMessage('finished batch processing')   
-        return
+        try:
+            reshaped_data = self.processor.reshape_to_4d(self.A, framesPerVol)
+            if reshaped_data is None:
+                raise ValueError("Failed to reshape data")
+
+            self.B = reshaped_data
+            self.nVols = self.B.shape[1]
+
+            logging.info(f"Reshaped data shape: {self.B.shape}")
+
+            if framesToDelete > 0:
+                self.B = self.processor.delete_frames(self.B, framesToDelete)
+                logging.info(f"Shape after deleting frames: {self.B.shape}")
+
+            self.updateDisplay()
+        except Exception as e:
+            logging.error(f"Error in preProcess_stack: {str(e)}")
+            raise
+
+    def processOverlay(self, framesPerVol: int, framesToDelete: int = 0):
+        logging.info("Processing overlay")
+        # TODO: Implement overlay processing
+
+    def updateVolumeSlider(self, A: np.ndarray):
+        self.A = A
+        self.B = None
+        self.framesPerVol = int(self.nFrames / self.nVols)
 
     def updateDisplay_volumeSizeChange(self):
-        #remove final volume if it dosen't contain the full number of frames
-        numberFramesToRemove = self.nFrames%self.getFramesPerVol()
-        if numberFramesToRemove != 0:
-            self.B = self.A[:-numberFramesToRemove,:,:]
+        try:
+            reshaped_data = self.processor.reshape_to_4d(self.A, self.getFramesPerVol(), self.getNVols())
+            if reshaped_data is None:
+                raise ValueError("Failed to reshape data")
+
+            self.B = reshaped_data
+
+            if self.framesToDelete != 0:
+                self.B = self.processor.delete_frames(self.B, self.framesToDelete)
+
+            first_slice = self.B[0] if self.B is not None else None
+            if first_slice is not None:
+                self.safe_update_display(first_slice)
+            else:
+                logging.warning("No valid first slice to display")
+
+            self.connect_timeline()
+            self.update_shape_text()
+
+        except Exception as e:
+            logging.error(f"Error in updateDisplay_volumeSizeChange: {str(e)}")
+            QtWidgets.QMessageBox.critical(None, "Error", f"Failed to update display: {str(e)}")
+
+    def connect_timeline(self):
+        timeline = getattr(self.displayWindow.imageview, 'timeLine', None)
+        if timeline is not None:
+            timeline.sigPositionChanged.connect(self.displayCurrentVolume)
         else:
-            self.B = self.A
+            logging.warning("Display window does not have a timeline")
 
-        self.nFrames, self.x, self.y = self.B.shape
+    def update_shape_text(self):
+        if hasattr(self, 'dialogbox') and hasattr(self.dialogbox, 'shapeText'):
+            self.dialogbox.shapeText.setText(str(self.B.shape if self.B is not None else "N/A"))
 
-        #reshape to 4D
-        self.B = np.reshape(self.B, (self.getFramesPerVol(),self.getNVols(),self.x,self.y), order='F')
-        print(self.B.shape)
-        
-        #delete frames from start of each volume
-        if self.framesToDelete != 0:
-            self.B = self.B[self.framesToDelete:-1,:,:,:]
-                
-        self.displayWindow.imageview.setImage(self.B[0],autoLevels=False)
-        
-        self.displayWindow.imageview.timeLine.sigPositionChanged.connect(self.displayCurrentVolume)
-        
-        return
+    def safe_update_display(self, image: np.ndarray):
+        if hasattr(self, 'displayWindow') and self.displayWindow is not None:
+            try:
+                self.displayWindow.imageview.setImage(image, autoLevels=False)
+            except Exception as e:
+                logging.error(f"Error updating display: {str(e)}")
 
-    def updateDisplay_sliceNumberChange(self, index):
+    def updateDisplay_sliceNumberChange(self, index: int):
         displayIndex = self.displayWindow.imageview.currentIndex
-        self.displayWindow.imageview.setImage(self.B[index],autoLevels=False)
-        self.displayWindow.imageview.setCurrentIndex(displayIndex)
+        slice_data = self.safe_get_array_value(self.B, index)
+        if slice_data is not None:
+            self.displayWindow.imageview.setImage(slice_data, autoLevels=False)
+            self.displayWindow.imageview.setCurrentIndex(displayIndex)
+        else:
+            logging.warning(f"No valid slice data at index {index}")
 
         if self.overlayEmbeded:
-            self.overlayWindow.imageview.setImage(self.A_overlay[index],autoLevels=False)
-            self.overlayWindow.imageview.setCurrentIndex(displayIndex)
-        
-        
-        return
+            self.update_overlay(index, displayIndex)
 
-    def getNFrames(self):
+    def update_overlay(self, index: int, displayIndex: int):
+        overlay_data = self.safe_get_array_value(self.A_overlay, index)
+        if overlay_data is not None:
+            self.overlayWindow.imageview.setImage(overlay_data, autoLevels=False)
+            self.overlayWindow.imageview.setCurrentIndex(displayIndex)
+        else:
+            logging.warning(f"No valid overlay data at index {index}")
+
+    def safe_get_array_value(self, arr: Optional[np.ndarray], index: int) -> Optional[np.ndarray]:
+        try:
+            return arr[index] if arr is not None else None
+        except IndexError:
+            logging.warning(f"Index {index} out of bounds for array of shape {arr.shape if arr is not None else 'None'}")
+            return None
+
+    def getNFrames(self) -> int:
         return self.nFrames
 
-    def getNVols(self):
+    def getNVols(self) -> int:
         return self.nVols
 
-    def getFramesPerVol(self):
+    def getFramesPerVol(self) -> int:
         return self.framesPerVol
 
-    def updateVolsandFramesPerVol(self, nVols, framesPerVol, framesToDelete = 0):
-        self.nVols = nVols
-        self.framesPerVol = framesPerVol
-        self.framesToDelete = framesToDelete
+    def updateVolsandFramesPerVol(self, nVols: int, framesPerVol: int, framesToDelete: int = 0):
+        try:
+            self.validate_parameters(nVols, framesPerVol, framesToDelete)
+            self.nVols = nVols
+            self.framesPerVol = framesPerVol
+            self.framesToDelete = framesToDelete
+            logging.info(f"Updated to {nVols} volumes with {framesPerVol} frames per volume, deleting {framesToDelete} frames")
+        except ValueError as e:
+            logging.error(f"Invalid parameters: {str(e)}")
+            raise
 
-    def closeEvent(self, event):
-        event.accept()
+    def validate_parameters(self, nVols: int, framesPerVol: int, framesToDelete: int):
+        if nVols <= 0 or framesPerVol <= 0:
+            raise ValueError("nVols and framesPerVol must be positive integers")
+        if framesToDelete < 0 or framesToDelete >= framesPerVol:
+            raise ValueError("framesToDelete must be non-negative and less than framesPerVol")
 
-    def getArrayShape(self):
-        if self.B == []:
+    def getArrayShape(self) -> Tuple[int, ...]:
+        if self.B is None:
+            logging.info(f'Array shape: {self.A.shape}')
             return self.A.shape
         return self.B.shape
 
     def subtractBaseline(self):
-        index = self.displayWindow.imageview.currentIndex
+        if self.B is None:
+            raise ValueError("No data to subtract baseline from")
         baseline = self.dialogbox.getBaseline()
-        if self.B == []:
-            print('first set number of frames per volume')
-            g.m.statusBar().showMessage('first set number of frames per volume')
-            return
-        else:
-            self.B = self.B - baseline
-            self.displayWindow.imageview.setImage(self.B[index],autoLevels=False)
-
-    def averageByVol(self):
-        index = self.displayWindow.imageview.currentIndex
-        #TODO
-        return
+        self.B = self.processor.subtract_baseline(self.B, baseline)
+        self.updateDisplay()
 
     def ratioDFF0(self):
-        index = self.displayWindow.imageview.currentIndex
-        ratioStart, ratioEnd , volStart, volEnd = self.dialogbox.getF0()
-        
-        if ratioStart >= ratioEnd:
-            print('invalid F0 selection')
-            g.m.statusBar().showMessage('invalid F0 selection')
-            return
-        
-        if volStart >= volEnd:
-            print('invalid F0 Volume selection')
-            g.m.statusBar().showMessage('invalid F0 Volume selection')
-            return
-
-        #get mean of vols used to make ratio
-        ratioVol = self.B[:,ratioStart:ratioEnd,:,]
-        ratioVolmean = np.mean(ratioVol, axis=1,keepdims=True)
-        #get vols to be ratio-ed
-        volsToRatio = self.B[:,volStart:volEnd,:,]
-        #make ratio
-        ratio = np.divide(volsToRatio, ratioVolmean, out=np.zeros_like(volsToRatio), where=ratioVolmean!=0, dtype=self.dataType)
-        #replace original array data with raio values
-        self.B[:,volStart:volEnd,:,] = ratio
-
-        #self.B = np.divide(self.B, ratioVolmean, dtype=self.dataType)
-        self.displayWindow.imageview.setImage(self.B[index],autoLevels=False)
-        return
+        if self.B is None:
+            raise ValueError("No data to calculate DF/F0")
+        f0_start, f0_end, vol_start, vol_end = self.dialogbox.getF0()
+        self.B = self.processor.calculate_df_f0(self.B, f0_start, f0_end, vol_start, vol_end)
+        self.updateDisplay()
 
     def exportToWindow(self):
-        if self.B == []:
-            print('first set number of frames per volume')
-            g.m.statusBar().showMessage("first set number of frames per volume")
+        if self.B is not None:
+            Window(self.B.reshape(self.nFrames, self.x, self.y))
         else:
-            Window(np.reshape(self.B, (self.nFrames, self.x, self.y), order='F'))
-        return
+            logging.error("No valid data to export")
+            QtWidgets.QMessageBox.warning(None, "Export Error", "No valid data to export")
 
-    def exportArray(self, vol='None'):
-        if vol == 'None':
-            np.save(self.savePath, self.B)
-        else:
-            f,v,x,y = self.B.shape
-            np.save(self.savePath, self.B[:,vol,:,:].reshape((f,1,x,y)))
-        return
+    def exportArray(self, vol: str = 'None'):
+        try:
+            with open(self.savePath, 'wb') as f:
+                if vol == 'None':
+                    np.save(f, self.B)
+                else:
+                    f, v, x, y = self.B.shape
+                    np.save(f, self.B[:, int(vol), :, :].reshape((f, 1, x, y)))
+            logging.info(f"Array exported successfully to {self.savePath}")
+        except Exception as e:
+            logging.error(f"Failed to export array: {str(e)}")
+            QtWidgets.QMessageBox.critical(None, "Export Error", f"Failed to export array: {str(e)}")
 
-    def getVolumeArray(self, vol):
-        f,v,x,y = self.B.shape
-        return self.B[:,vol,:,:].reshape((f,1,x,y))
+    def getVolumeArray(self, vol: int) -> np.ndarray:
+        f, v, x, y = self.B.shape
+        return self.B[:, vol, :, :].reshape((f, 1, x, y))
 
-    def getMaxPixel(self):
-        if self.B == []:
-            return np.max(self.A)
-        else:
-            return np.max(self.B)
+    def getMaxPixel(self) -> float:
+        return np.max(self.B) if self.B is not None else np.max(self.A)
 
-    def setDType(self, newDataType):
-        index = self.displayWindow.imageview.currentIndex
-        if self.B == []:
-            print('first set number of frames per volume')
-            g.m.statusBar().showMessage("first set number of frames per volume")
-            return
-        else:
+    def setDType(self, newDataType: str):
+        if self.B is not None:
+            self.B = self.B.astype(self.dTypeDict[newDataType])
             self.dataType = self.dTypeDict[newDataType]
-            self.B = self.B.astype(self.dataType)
             self.dialogbox.dataTypeText.setText(self.getDataType())
-            self.displayWindow.imageview.setImage(self.B[index],autoLevels=False)
-        return
+            self.updateDisplay()
+        else:
+            logging.error("No valid data to change data type")
+            QtWidgets.QMessageBox.warning(None, "Error", "No valid data to change data type")
 
-    def getDataType(self):
+    def getDataType(self) -> str:
         return str(self.dataType).split(".")[-1].split("'")[0]
 
-    def getArrayKeys(self):
+    def getArrayKeys(self) -> List[str]:
         return list(self.arrayDict.keys())
 
-    def getInputArrayOrder(self):
-        return self.inputArrayOrder
-
-    def getDisplayArrayOrder(self):
-        return self.displayArrayOrder
-
-    def setInputArrayOrder(self, value):
+    def setInputArrayOrder(self, value: str):
         self.inputArrayOrder = self.arrayDict[value]
-        return
 
-    def setDisplayArrayOrder(self, value):
+    def setDisplayArrayOrder(self, value: str):
         self.displayArrayOrder = self.arrayDict[value]
-        return
 
-    def multiplyByFactor(self, factor):
-        index = self.displayWindow.imageview.currentIndex
-        if self.B == []:
-            print('first set number of frames per volume')
-            g.m.statusBar().showMessage("first set number of frames per volume")
-            return
+    def multiplyByFactor(self, factor: float):
+        if self.B is not None:
+            self.B = self.processor.multiply_by_factor(self.B, float(factor))
+            self.updateDisplay()
         else:
-            self.B = self.B * float(factor)
-            print(self.B.shape)
-            self.displayWindow.imageview.setImage(self.B[index],autoLevels=False)
-        return
+            logging.error("No valid data to multiply")
+            QtWidgets.QMessageBox.warning(None, "Error", "No valid data to multiply")
 
     def startViewer(self):
-        if self.B == []:
-            print('first set number of frames per volume')
-            g.m.statusBar().showMessage("first set number of frames per volume")
+        if self.B is None:
+            logging.warning("First set number of frames per volume")
+            g.m.statusBar().showMessage("First set number of frames per volume")
         else:
             if self.batch:
-                self.viewer = SliceViewer(camVolumeSlider, self.B, batch=True, imsExportPath=self.imsPath)
-                return
-            
-            #start viewer with GUI
-            print('3D viewer starting...')
-            self.viewer = SliceViewer(camVolumeSlider, self.B)
-            print(self.overlayEmbeded)
-            #add overlay embedded in  stack
-            if self.overlayEmbeded:
-                print('overlay added from stack')
-                #overlay_nFrames, overlay_x, overlay_y = self.A.shape
-                A_overlay_trim = self.A_overlay[0:self.getFramesPerVol(),:,:] #first volume only
-                A_overlay_4D = np.reshape(A_overlay_trim, (self.getFramesPerVol(),1,self.x,self.y), order='F')
-                self.viewer.overlayArray_start(overlayFromStack=True, overlayArray = A_overlay_4D)
-
-        return
+                self.viewer = SliceViewer(self, self.B, batch=True, imsExportPath=self.imsPath)
+            else:
+                logging.info('3D viewer starting...')
+                self.viewer = SliceViewer(self, self.B)
+                if self.overlayEmbeded:
+                    logging.info('Overlay added from stack')
+                    A_overlay_trim = self.A_overlay[0:self.getFramesPerVol(), :, :]
+                    A_overlay_4D = A_overlay_trim.reshape((self.getFramesPerVol(), 1, self.x, self.y))
+                    self.viewer.overlayArray_start(overlayFromStack=True, overlayArray=A_overlay_4D)
 
     def closeViewer(self):
-        self.viewer.close()
-        return
-
+        if hasattr(self, 'viewer'):
+            self.viewer.close()
+        else:
+            logging.warning("No viewer to close")
 
     def displayCurrentVolume(self):
-        self.dialogbox.currentVolumeText.setText(str(self.displayWindow.imageview.currentIndex))
-        return
+        if hasattr(self, 'dialogbox'):
+            self.dialogbox.currentVolumeText.setText(str(self.displayWindow.imageview.currentIndex))
 
-    def setFileName(self, fileName):
+    def setFileName(self, fileName: str):
         self.fileName = fileName
 
-    def getFileName(self):
+    def getFileName(self) -> str:
         return self.fileName
+
+    def updateDisplay(self):
+        if self.B is not None:
+            self.safe_update_display(self.B[0])
+        else:
+            logging.warning("No data to display")
+
+    def batchProcess(self, paramDict: Dict[str, Any]):
+        logging.info(f"Starting batch process with parameters: {paramDict}")
+        tiffFiles = glob.glob(os.path.join(paramDict['inputDirectory'], "*.tif*"))
+
+        progress = QtWidgets.QProgressDialog("Processing files...", "Abort", 0, len(tiffFiles))
+        progress.setWindowModality(QtCore.Qt.WindowModal)
+
+        for i, tiff_file in enumerate(tiffFiles):
+            if progress.wasCanceled():
+                break
+
+            progress.setValue(i)
+            progress.setLabelText(f"Processing file {i+1}/{len(tiffFiles)}: {tiff_file}")
+
+            try:
+                self.process_single_file(tiff_file, paramDict, i == 0)
+            except Exception as e:
+                logging.error(f"Error processing file {tiff_file}: {str(e)}")
+                QtWidgets.QMessageBox.warning(None, "Processing Error", f"Error processing file {tiff_file}: {str(e)}")
+
+        progress.setValue(len(tiffFiles))
+        logging.info("Batch processing completed")
+        g.m.statusBar().showMessage('Batch processing finished')
+
+    def process_single_file(self, tiff_file: str, paramDict: Dict[str, Any], is_first: bool):
+        self.imsPath = tiff_file
+        A, _, _ = openTiff(tiff_file)
+        self.updateVolumeSlider(A)
+        self.dialogbox.SpinBox2.setValue(paramDict['slicesPerVolume'])
+        self.dialogbox.updateVolumeValue()
+
+        if paramDict['subtractBaseline']:
+            self.dialogbox.SpinBox4.setValue(paramDict['baselineValue'])
+            self.subtractBaseline()
+
+        if paramDict['runDFF0']:
+            self.dialogbox.SpinBox6.setValue(paramDict['f0Start'])
+            self.dialogbox.SpinBox7.setValue(paramDict['f0End'])
+            self.dialogbox.SpinBox11.setValue(paramDict['f0VolStart'])
+            self.dialogbox.SpinBox12.setValue(paramDict['f0VolEnd'])
+            self.ratioDFF0()
+
+        if paramDict['runMultiplication']:
+            self.dialogbox.SpinBox8.setValue(paramDict['multiplicationFactor'])
+            self.multiplyByFactor(paramDict['multiplicationFactor'])
+
+        self.dialogbox.SpinBox9.setValue(paramDict['theta'])
+        self.dialogbox.SpinBox10.setValue(paramDict['shiftFactor'])
+        self.dialogbox.trim_last_frame_checkbox.setChecked(paramDict['trim_last_frame'])
+
+        if is_first:
+            self.startViewer()
+        else:
+            self.viewer.changeMainImage(self.B)
+            self.viewer.runBatchStep(tiff_file)
+
+    def setOverlay(self):
+        if self.B is not None and len(self.B) > 0:
+            self.overlayVolume = self.displayWindow.imageview.currentIndex
+            self.A_overlay = self.B[:, self.overlayVolume, :, :]
+            self.overlayWindow = Window(self.A_overlay[0], 'Overlay Window')
+            self.overlayEmbeded = True
+            self.B = self.B[:, :self.overlayVolume, :, :]
+            self.updateDisplay()
+        else:
+            logging.error("No valid data to set overlay")
+            QtWidgets.QMessageBox.warning(None, "Error", "No valid data to set overlay")
+
+    def changeMainImage(self, A: np.ndarray):
+        if self.dialogbox.trim_last_frame:
+            self.A = A[:, :-1, :, :]
+        else:
+            self.A = A
+
+        self.A = perform_shear_transform(self.A, self.dialogbox.shiftFactor, False, self.A.dtype,
+                                         self.dialogbox.theta, inputArrayOrder=self.inputArrayOrder,
+                                         displayArrayOrder=self.displayArrayOrder)
+        self.data = self.A[:, 0, :, :]
+        self.updateAllMainWins()
+
+    def updateAllMainWins(self):
+        for win in [1, 2, 3, 6]:
+            self.update(win)
+        self.update_center()
+
+    def update(self, win: int):
+        # Implement update logic for different windows
+        pass
+
+    def update_center(self):
+        # Implement update center logic
+        pass
+
+    def closeEvent(self, event):
+        self.close()
+        event.accept()
+
+    def end(self):
+        #TODO!
+        ...
+
+    def closeAllWindows(self):
+        #TODO!
+        ...
+
+    def close(self):
+        self.saveSettings()
+        self.closeViewer()
+        if hasattr(self, 'displayWindow'):
+            self.displayWindow.close()
+        if hasattr(self, 'dialogbox'):
+            self.dialogbox.close()
+        gc.collect()
+
+    def getInputArrayOrder(self) -> List[int]:
+        return self.inputArrayOrder
+
+    def getDisplayArrayOrder(self) -> List[int]:
+        return self.displayArrayOrder
 
 camVolumeSlider = CamVolumeSlider()
 
+
 class BatchOptions(QtWidgets.QDialog):
-    def __init__(self, parent = None):
+    def __init__(self, parent=None):
         super(BatchOptions, self).__init__(parent)
-
         self.s = g.settings['volumeSlider']
-        
-        self.slicesPerVolume = self.s['slicesPerVolume']
-        self.baselineValue = self.s['baselineValue']
-        self.f0Start = self.s['f0Start']
-        self.f0End = self.s['f0End']
-        self.f0VolStart = self.s['f0VolStart']
-        self.f0VolEnd = self.s['f0VolEnd']                
-        self.multiplicationFactor = self.s['multiplicationFactor']
-        self.currentDataType = self.s['currentDataType']
-        self.newDataType = self.s['newDataType']
-        self.inputArrayOrder = self.s['inputArrayOrder']
-        self.displayArrayOrder = self.s['displayArrayOrder'] = 16
-        self.theta = self.s['theta']
-        self.shiftFactor = self.s['shiftFactor']
-        self.trim_last_frame = self.s['trimLastFrame']  
+        self.setup_ui()
+        self.connect_signals()
 
-        self.subtractBaseline = False 
-        self.runDFF0 = False
-        self.runMultiplication = False
+    def setup_ui(self):
+        self.setWindowTitle("Batch Options")
+        self.setGeometry(300, 300, 400, 600)
 
-        self.inputDirectory = ''
-        
-        #window geometry
-        self.left = 300
-        self.top = 300
-        self.width = 300
-        self.height = 200
+        layout = QtWidgets.QGridLayout(self)
+        layout.setSpacing(10)
 
-        #labels
-        self.label_slicesPerVolume = QtWidgets.QLabel("slices per volume:") 
-        self.label_theta = QtWidgets.QLabel("theta:") 
-        self.label_baselineValue = QtWidgets.QLabel('baseline Value:')
-        self.label_f0Start = QtWidgets.QLabel('f0 Start:')
-        self.label_f0End = QtWidgets.QLabel('f0 End:')
-        self.label_f0VolStart = QtWidgets.QLabel('f0Vol Start:')
-        self.label_f0VolEnd = QtWidgets.QLabel('f0Vol End:')            
-        self.label_multiplicationFactor = QtWidgets.QLabel('multiplication Factor:')
-        self.label_shiftFactor = QtWidgets.QLabel('shift Factor:')
-        self.label_trim_last_frame = QtWidgets.QLabel('trim Last Frame:') 
-        self.label_inputDirectory = QtWidgets.QLabel('input directory:') 
-      
-        self.label_subtractBaseline = QtWidgets.QLabel('subtract baseline:') 
-        self.label_runDFF0 = QtWidgets.QLabel('run DF/F0:') 
-        self.label_runMultiplication = QtWidgets.QLabel('scale by multiplication factor:')         
-        
-        #spinboxes/comboboxes
-        self.volBox = QtWidgets.QSpinBox()
-        self.volBox.setRange(0,10000)
-        self.volBox.setValue(self.slicesPerVolume)
+        self.create_spinboxes()
+        self.create_checkboxes()
+        self.create_buttons()
+        self.create_labels()
 
-        self.thetaBox = QtWidgets.QSpinBox()
-        self.thetaBox.setRange(0,360)
-        self.thetaBox.setValue(self.theta)
+        self.add_widgets_to_layout(layout)
 
-        self.baselineBox = QtWidgets.QSpinBox()
-        self.baselineBox.setRange(0,100000)
-        self.baselineBox.setValue(self.baselineValue)
+    def create_spinboxes(self):
+        self.spinboxes = {
+            'slicesPerVolume': self.create_spinbox(0, 10000, self.s['slicesPerVolume']),
+            'theta': self.create_spinbox(0, 360, self.s['theta']),
+            'baselineValue': self.create_spinbox(0, 100000, self.s['baselineValue']),
+            'f0Start': self.create_spinbox(0, 100000, self.s['f0Start']),
+            'f0End': self.create_spinbox(0, 100000, self.s['f0End']),
+            'f0VolStart': self.create_spinbox(0, 100000, self.s['f0VolStart']),
+            'f0VolEnd': self.create_spinbox(0, 100000, self.s['f0VolEnd']),
+            'multiplicationFactor': self.create_spinbox(0, 100000, self.s['multiplicationFactor']),
+            'shiftFactor': self.create_spinbox(0, 100000, self.s['shiftFactor']),
+        }
 
-        self.f0StartBox = QtWidgets.QSpinBox()
-        self.f0StartBox.setRange(0,100000)
-        self.f0StartBox.setValue(self.f0Start)
+    def create_spinbox(self, min_val: int, max_val: int, default_val: int) -> QtWidgets.QSpinBox:
+        spinbox = QtWidgets.QSpinBox()
+        spinbox.setRange(min_val, max_val)
+        spinbox.setValue(default_val)
+        return spinbox
 
-        self.f0EndBox = QtWidgets.QSpinBox()
-        self.f0EndBox.setRange(0,100000)
-        self.f0EndBox.setValue(self.f0End)
+    def create_checkboxes(self):
+        self.checkboxes = {
+            'trim_last_frame': QtWidgets.QCheckBox(),
+            'subtractBaseline': QtWidgets.QCheckBox(),
+            'runDFF0': QtWidgets.QCheckBox(),
+            'runMultiplication': QtWidgets.QCheckBox(),
+        }
+        self.checkboxes['trim_last_frame'].setChecked(self.s['trimLastFrame'])
 
-        self.f0VolStartBox = QtWidgets.QSpinBox()
-        self.f0VolStartBox.setRange(0,100000)
-        self.f0VolStartBox.setValue(self.f0VolStart)
-
-        self.f0VolEndBox = QtWidgets.QSpinBox()
-        self.f0VolEndBox.setRange(0,100000)
-        self.f0VolEndBox.setValue(self.f0VolEnd) 
-        
-        self.multiplicationFactorBox = QtWidgets.QSpinBox()
-        self.multiplicationFactorBox.setRange(0,100000)
-        self.multiplicationFactorBox.setValue(self.multiplicationFactor)         
-        
-        self.shiftFactorBox = QtWidgets.QSpinBox()
-        self.shiftFactorBox.setRange(0,100000)
-        self.shiftFactorBox.setValue(self.shiftFactor)         
-
-        self.trim_last_frame_checkbox = CheckBox()
-        self.trim_last_frame_checkbox.setChecked(self.trim_last_frame)
-
-        self.subtractBaseline_checkbox = CheckBox()
-        self.subtractBaseline_checkbox.setChecked(self.subtractBaseline)
-
-        self.runDFF0_checkbox = CheckBox()
-        self.runDFF0_checkbox.setChecked(self.runDFF0)
-
-        self.runMultiplication_checkbox = CheckBox()
-        self.runMultiplication_checkbox.setChecked(self.runMultiplication)
-
-        
-        self.inputDirectory_display = QtWidgets.QLabel(self.inputDirectory)
-
-        #buttons
+    def create_buttons(self):
         self.button_setInputDirectory = QtWidgets.QPushButton("Set Folder")
         self.button_startBatch = QtWidgets.QPushButton("Go")
 
-        #grid layout
-        layout = QtWidgets.QGridLayout()
-        layout.setSpacing(5)
-        layout.addWidget(self.label_slicesPerVolume, 0, 0)        
-        layout.addWidget(self.volBox, 0, 1)
-        layout.addWidget(self.label_theta, 1, 0)        
-        layout.addWidget(self.thetaBox, 1, 1)
-        layout.addWidget(self.label_baselineValue, 2, 0)        
-        layout.addWidget(self.baselineBox, 2, 1)        
-        layout.addWidget(self.label_f0Start, 3, 0)        
-        layout.addWidget(self.f0StartBox, 3, 1)         
-        layout.addWidget(self.label_f0End, 4, 0)        
-        layout.addWidget(self.f0EndBox, 4, 1)         
-        layout.addWidget(self.label_f0VolStart, 5, 0)        
-        layout.addWidget(self.f0VolStartBox, 5, 1)         
-        layout.addWidget(self.label_f0VolEnd, 6, 0)        
-        layout.addWidget(self.f0VolEndBox, 6, 1)  
-        layout.addWidget(self.label_multiplicationFactor, 7, 0)        
-        layout.addWidget(self.multiplicationFactorBox, 7, 1)  
-        layout.addWidget(self.label_shiftFactor, 8, 0)        
-        layout.addWidget(self.shiftFactorBox, 8, 1) 
-        layout.addWidget(self.label_trim_last_frame, 9, 0)        
-        layout.addWidget(self.trim_last_frame_checkbox, 9, 1) 
-        
-        layout.addWidget(self.label_subtractBaseline, 10, 0)        
-        layout.addWidget(self.subtractBaseline_checkbox, 10, 1) 
+    def create_labels(self):
+        self.labels = {
+            'slicesPerVolume': QtWidgets.QLabel("slices per volume:"),
+            'theta': QtWidgets.QLabel("theta:"),
+            'baselineValue': QtWidgets.QLabel('baseline Value:'),
+            'f0Start': QtWidgets.QLabel('f0 Start:'),
+            'f0End': QtWidgets.QLabel('f0 End:'),
+            'f0VolStart': QtWidgets.QLabel('f0Vol Start:'),
+            'f0VolEnd': QtWidgets.QLabel('f0Vol End:'),
+            'multiplicationFactor': QtWidgets.QLabel('multiplication Factor:'),
+            'shiftFactor': QtWidgets.QLabel('shift Factor:'),
+            'trim_last_frame': QtWidgets.QLabel('trim Last Frame:'),
+            'subtractBaseline': QtWidgets.QLabel('subtract baseline:'),
+            'runDFF0': QtWidgets.QLabel('run DF/F0:'),
+            'runMultiplication': QtWidgets.QLabel('scale by multiplication factor:'),
+            'inputDirectory': QtWidgets.QLabel('input directory:'),
+        }
+        self.inputDirectory_display = QtWidgets.QLabel("No directory selected")
 
-        layout.addWidget(self.label_runDFF0, 11, 0)        
-        layout.addWidget(self.runDFF0_checkbox, 11, 1)        
-        layout.addWidget(self.label_runMultiplication, 12, 0)        
-        layout.addWidget(self.runMultiplication_checkbox, 12, 1)        
-        
-        layout.addWidget(self.label_inputDirectory, 13, 0)        
-        layout.addWidget(self.inputDirectory_display, 13, 1) 
-        layout.addWidget(self.button_setInputDirectory, 13, 2) 
-        layout.addWidget(self.button_startBatch, 14, 2) 
-        
-        self.setLayout(layout)
-        self.setGeometry(self.left, self.top, self.width, self.height)
+    def add_widgets_to_layout(self, layout: QtWidgets.QGridLayout):
+        for i, (key, label) in enumerate(self.labels.items()):
+            layout.addWidget(label, i, 0)
+            if key in self.spinboxes:
+                layout.addWidget(self.spinboxes[key], i, 1)
+            elif key in self.checkboxes:
+                layout.addWidget(self.checkboxes[key], i, 1)
 
-        #add window title
-        self.setWindowTitle("Batch Options")
+        layout.addWidget(self.inputDirectory_display, len(self.labels), 1)
+        layout.addWidget(self.button_setInputDirectory, len(self.labels) + 1, 0)
+        layout.addWidget(self.button_startBatch, len(self.labels) + 1, 1)
 
-        #connect spinboxes/comboboxes
-        self.volBox.valueChanged.connect(self.set_slicesPerVolume) 
-        self.thetaBox.valueChanged.connect(self.set_theta) 
-        self.baselineBox.valueChanged.connect(self.set_baselineValue) 
-        self.f0StartBox.valueChanged.connect(self.set_f0Start) 
-        self.f0EndBox.valueChanged.connect(self.set_f0End) 
-        self.f0VolStartBox.valueChanged.connect(self.set_f0VolStart) 
-        self.f0VolEndBox.valueChanged.connect(self.set_f0VolEnd)  
-        self.multiplicationFactorBox.valueChanged.connect(self.set_multiplicationFactor) 
-        self.shiftFactorBox.valueChanged.connect(self.set_shiftFactor) 
-        self.trim_last_frame_checkbox.stateChanged.connect(self.set_trim_last_frame)
-        self.subtractBaseline_checkbox.stateChanged.connect(self.set_subtractBaseline)          
-        self.runDFF0_checkbox.stateChanged.connect(self.set_runDFF0)        
-        self.runMultiplication_checkbox.stateChanged.connect(self.set_runMultiplication)         
-        self.button_setInputDirectory.pressed.connect(lambda: self.setInput_button())
-        self.button_startBatch.pressed.connect(lambda: self.start_button())        
-        return
+    def connect_signals(self):
+        for key, spinbox in self.spinboxes.items():
+            spinbox.valueChanged.connect(lambda value, k=key: self.update_setting(k, value))
 
+        for key, checkbox in self.checkboxes.items():
+            checkbox.stateChanged.connect(lambda state, k=key: self.update_checkbox(k, state))
 
-    def set_slicesPerVolume(self,value):
-        self.slicesPerVolume = value
-        
-    def set_baselineValue(self,value):        
-        self.baselineValue = value
+        self.button_setInputDirectory.clicked.connect(self.setInput_button)
+        self.button_startBatch.clicked.connect(self.start_button)
 
-    def set_f0Start (self,value):                  
-        self.f0Start = value
-        
-    def set_f0End (self,value):        
-        self.f0End = value
-        
-    def set_f0VolStart (self,value):        
-        self.f0VolStart = value
-                
-    def set_f0VolEnd(self,value):            
-        self.f0VolEnd = value
+    def update_setting(self, key: str, value: int):
+        self.s[key] = value
 
-    def set_multiplicationFactor(self,value):               
-        self.multiplicationFactor = value
+    def update_checkbox(self, key: str, state: int):
+        self.s[key] = bool(state)
 
-    def set_theta(self,value):  
-        self.theta = value
-
-    def set_shiftFactor(self,value):         
-        self.shiftFactor = value
-        
-    def set_trim_last_frame(self):           
-        self.trim_last_frame = self.trim_last_frame_checkbox.isChecked()     
- 
-    def set_subtractBaseline(self):           
-        self.subtractBaseline = self.subtractBaseline_checkbox.isChecked() 
-
-    def set_runDFF0(self):           
-        self.runDFF0 = self.runDFF0_checkbox.isChecked()
-
-    def set_runMultiplication(self):           
-        self.runMultiplication = self.runMultiplication_checkbox.isChecked()
-       
     def setInput_button(self):
-        self.inputDirectory = QtWidgets.QFileDialog.getExistingDirectory()
-        self.inputDirectory_display.setText('...\\' + os.path.basename(self.inputDirectory))
-        return
+        self.inputDirectory = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Directory")
+        if self.inputDirectory:
+            self.inputDirectory_display.setText(f".../{os.path.basename(self.inputDirectory)}")
 
     def start_button(self):
+        if not hasattr(self, 'inputDirectory') or not self.inputDirectory:
+            QtWidgets.QMessageBox.warning(self, "Error", "Please select an input directory first.")
+            return
+
         paramDict = {
-                     'slicesPerVolume': self.slicesPerVolume,
-                     'theta': self.theta,
-                     'baselineValue': self.baselineValue,
-                     'f0Start': self.f0Start,
-                     'f0End': self.f0End,
-                     'f0VolStart': self.f0VolStart,
-                     'f0VolEnd': self.f0VolEnd   ,      
-                     'multiplicationFactor': self.multiplicationFactor,
-                     'shiftFactor': self.shiftFactor ,
-                     'trim_last_frame': self.trim_last_frame,
-                     'inputDirectory': self.inputDirectory,                    
-                     'subtractBaseline': self.subtractBaseline,                     
-                     'runDFF0': self.runDFF0,                     
-                     'runMultiplication': self.runMultiplication                     
-                     }
-        
+            'slicesPerVolume': self.spinboxes['slicesPerVolume'].value(),
+            'theta': self.spinboxes['theta'].value(),
+            'baselineValue': self.spinboxes['baselineValue'].value(),
+            'f0Start': self.spinboxes['f0Start'].value(),
+            'f0End': self.spinboxes['f0End'].value(),
+            'f0VolStart': self.spinboxes['f0VolStart'].value(),
+            'f0VolEnd': self.spinboxes['f0VolEnd'].value(),
+            'multiplicationFactor': self.spinboxes['multiplicationFactor'].value(),
+            'shiftFactor': self.spinboxes['shiftFactor'].value(),
+            'trim_last_frame': self.checkboxes['trim_last_frame'].isChecked(),
+            'inputDirectory': self.inputDirectory,
+            'subtractBaseline': self.checkboxes['subtractBaseline'].isChecked(),
+            'runDFF0': self.checkboxes['runDFF0'].isChecked(),
+            'runMultiplication': self.checkboxes['runMultiplication'].isChecked()
+        }
+
         self.hide()
-        camVolumeSlider.batchProcess(paramDict)
-        return
-    
+        try:
+            g.win.camVolumeSlider.batchProcess(paramDict)
+        except Exception as e:
+            logging.error(f"Error during batch processing: {str(e)}")
+            QtWidgets.QMessageBox.critical(self, "Error", f"An error occurred during batch processing: {str(e)}")
+        finally:
+            self.close()
+
+    def closeEvent(self, event: QtCore.QEvent):
+        g.settings['volumeSlider'] = self.s
+        super().closeEvent(event)
+
     def start(self):
+        """
+        Show the BatchOptions dialog.
+        """
         self.show()
+
+
 

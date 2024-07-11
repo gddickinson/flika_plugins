@@ -1,77 +1,180 @@
+from typing import Optional, Tuple, List, Dict
 import numpy as np
 from qtpy import QtWidgets, QtCore, QtGui
 import flika
 from flika import global_vars as g
-from flika.window import Window
-from flika.utils.io import tifffile
-from flika.process.file_ import get_permutation_tuple
-from flika.utils.misc import open_file_gui
+import os
+from distutils.version import StrictVersion
+from pyqtgraph.dockarea import *
+from OpenGL.GL import *
 import pyqtgraph as pg
 import time
-import os
-from os import listdir
-from os.path import expanduser, isfile, join
-from distutils.version import StrictVersion
-from copy import deepcopy
-from numpy import moveaxis
-from skimage.transform import rescale
-from pyqtgraph.dockarea import *
-from pyqtgraph import mkPen
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
-import copy
-import pyqtgraph.opengl as gl
-from OpenGL.GL import *
-from qtpy.QtCore import Signal
 
+import logging
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
     from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, FileSelector
 else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, FileSelector
 
-from .helperFunctions import *
+from .helperFunctions import windowGeometry, setSliderUp, setMenuUp
 from .pyqtGraph_classOverwrites import *
-from .scalebar_classOverwrite import Scale_Bar_volumeView
-from .histogramExtension import HistogramLUTWidget_Overlay
+
+
 from .texturePlot import *
 from .volumeSlider_3DViewer import *
-from .tiffLoader import openTiff
 
-from pyqtgraph import HistogramLUTWidget
+from .volume_processor import VolumeProcessor
 
 dataType = np.float16
-from matplotlib import cm
 import gc
+import glob
 
 #########################################################################################
 #############                  volumeViewer GUI setup            ########################
 #########################################################################################
+
 class Form2(QtWidgets.QDialog):
-    def __init__(self, viewerInstance, parent = None):
-        super(Form2, self).__init__(parent)
-        self.batch = False
+    def __init__(self, viewerInstance):
+        super().__init__()
         self.viewer = viewerInstance
-        self.fileName = self.viewer.getFileName()
-        #print('loaded: ',self.fileName)
+        self.batch = False
         self.s = g.settings['volumeSlider']
+        self.setup_ui()
+        self.initialize_variables()
+        self.connect_signals()
 
-        self.arraySavePath = self.viewer.savePath
-        self.arrayImportPath = "None"
+    def setup_ui(self):
+        self.create_widgets()
+        self.create_layout()
+        self.set_window_properties()
 
-        #window geometry
+    def create_widgets(self):
+        # Labels
+        self.labels = {
+            'slice': QtWidgets.QLabel("Slice #"),
+            'slices_per_volume': QtWidgets.QLabel("# of slices per volume: "),
+            'slices_removed': QtWidgets.QLabel("# of slices removed per volume: "),
+            'baseline': QtWidgets.QLabel("baseline value: "),
+            'f0_start': QtWidgets.QLabel("F0 start volume: "),
+            'f0_end': QtWidgets.QLabel("F0 end volume: "),
+            'multiplication': QtWidgets.QLabel("factor to multiply by: "),
+            'theta': QtWidgets.QLabel("theta: "),
+            'shift': QtWidgets.QLabel("shift factor: "),
+            'volume': QtWidgets.QLabel("# of volumes: "),
+            'current_volume': QtWidgets.QLabel("current volume: "),
+            'shape': QtWidgets.QLabel("array shape: "),
+            'data_type': QtWidgets.QLabel("current data type: "),
+            'new_data_type': QtWidgets.QLabel("new data type: "),
+            'input_array': QtWidgets.QLabel("input array order: "),
+            'display_array': QtWidgets.QLabel("display array order: "),
+            'trim_last_frame': QtWidgets.QLabel("Trim Last Frame: "),
+            'file_name': QtWidgets.QLabel("file name: ")
+        }
+
+        # Text labels
+        self.text_labels = {
+            'volume': QtWidgets.QLabel("  "),
+            'current_volume': QtWidgets.QLabel("0"),
+            'shape': QtWidgets.QLabel(str(self.viewer.getArrayShape())),
+            'data_type': QtWidgets.QLabel(str(self.viewer.getDataType())),
+            'array_save_path': QtWidgets.QLabel(str(self.viewer.savePath)),
+            'file_name': QtWidgets.QLabel(str(self.viewer.getFileName()))
+        }
+
+        # Spinboxes
+        self.spinboxes = {name: QtWidgets.QSpinBox() for name in
+            ['slice', 'slices_per_volume', 'slices_removed', 'baseline', 'f0_start', 'f0_end',
+             'multiplication', 'theta', 'shift', 'f0_vol_start', 'f0_vol_end']}
+
+        # Slider
+        self.slider1 = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+
+        # Buttons
+        self.buttons = {
+            'autolevel': QtWidgets.QPushButton("Autolevel"),
+            'set_slices': QtWidgets.QPushButton("Set Slices"),
+            'subtract_baseline': QtWidgets.QPushButton("subtract baseline"),
+            'run_df_f0': QtWidgets.QPushButton("run DF/F0"),
+            'export_window': QtWidgets.QPushButton("export to Window"),
+            'set_data_type': QtWidgets.QPushButton("set data Type"),
+            'multiply': QtWidgets.QPushButton("multiply"),
+            'export_array': QtWidgets.QPushButton("export to array"),
+            'open_3d_viewer': QtWidgets.QPushButton("open 3D viewer"),
+            'close_3d_viewer': QtWidgets.QPushButton("close 3D viewer"),
+            'load_new_file': QtWidgets.QPushButton("load new file"),
+            'set_overlay': QtWidgets.QPushButton("Set overlay to current volume")
+        }
+
+        # Comboboxes
+        self.dTypeSelectorBox = QtWidgets.QComboBox()
+        self.dTypeSelectorBox.addItems(["float16", "float32", "float64", "int8", "int16", "int32", "int64"])
+        self.inputArraySelectorBox = QtWidgets.QComboBox()
+        self.inputArraySelectorBox.addItems(self.viewer.getArrayKeys())
+        self.displayArraySelectorBox = QtWidgets.QComboBox()
+        self.displayArraySelectorBox.addItems(self.viewer.getArrayKeys())
+
+        # Checkbox
+        self.trim_last_frame_checkbox = QtWidgets.QCheckBox()
+
+    def create_layout(self):
+        layout = QtWidgets.QGridLayout()
+        layout.setSpacing(10)
+
+        widgets = [
+            (self.labels['slice'], 1, 0), (self.spinboxes['slice'], 1, 1),
+            (self.slider1, 2, 0, 2, 5),
+            (self.labels['slices_per_volume'], 4, 0), (self.spinboxes['slices_per_volume'], 4, 1),
+            (self.buttons['set_slices'], 4, 4),
+            (self.labels['slices_removed'], 4, 2), (self.spinboxes['slices_removed'], 4, 3),
+            (self.labels['baseline'], 6, 0), (self.spinboxes['baseline'], 6, 1),
+            (self.buttons['subtract_baseline'], 6, 2),
+            (self.labels['f0_start'], 7, 0), (self.spinboxes['f0_start'], 7, 1),
+            (self.labels['f0_end'], 7, 2), (self.spinboxes['f0_end'], 7, 3),
+            (self.buttons['run_df_f0'], 7, 4),
+            (QtWidgets.QLabel("ratio start volume: "), 8, 0), (self.spinboxes['f0_vol_start'], 8, 1),
+            (QtWidgets.QLabel("ratio End volume: "), 8, 2), (self.spinboxes['f0_vol_end'], 8, 3),
+            (self.labels['volume'], 9, 0), (self.text_labels['volume'], 9, 1),
+            (self.labels['current_volume'], 9, 2), (self.text_labels['current_volume'], 9, 3),
+            (self.labels['shape'], 10, 0), (self.text_labels['shape'], 10, 1),
+            (self.labels['multiplication'], 11, 0), (self.spinboxes['multiplication'], 11, 1),
+            (self.buttons['multiply'], 11, 2),
+            (self.buttons['set_overlay'], 12, 0),
+            (self.labels['data_type'], 13, 0), (self.text_labels['data_type'], 13, 1),
+            (self.labels['new_data_type'], 13, 2), (self.dTypeSelectorBox, 13, 3),
+            (self.buttons['set_data_type'], 13, 4),
+            (self.buttons['export_window'], 15, 0), (self.buttons['autolevel'], 15, 4),
+            (self.buttons['export_array'], 16, 0), (self.text_labels['array_save_path'], 16, 1, 1, 4),
+            (self.labels['theta'], 18, 0), (self.spinboxes['theta'], 18, 1),
+            (self.labels['shift'], 19, 0), (self.spinboxes['shift'], 19, 1),
+            (self.labels['trim_last_frame'], 20, 0), (self.trim_last_frame_checkbox, 20, 1),
+            (self.labels['input_array'], 21, 0), (self.inputArraySelectorBox, 21, 1),
+            (self.labels['display_array'], 21, 2), (self.displayArraySelectorBox, 21, 3),
+            (self.buttons['open_3d_viewer'], 22, 0), (self.buttons['close_3d_viewer'], 22, 1),
+            (self.buttons['load_new_file'], 22, 2),
+            (self.labels['file_name'], 23, 0), (self.text_labels['file_name'], 23, 1, 1, 4)
+        ]
+
+        for item in widgets:
+            if len(item) == 3:
+                layout.addWidget(item[0], item[1], item[2])
+            elif len(item) == 5:
+                layout.addWidget(item[0], item[1], item[2], item[3], item[4])
+
+        self.setLayout(layout)
+
+    def set_window_properties(self):
         windowGeometry(self, left=300, top=300, height=600, width=400)
+        self.setWindowTitle("Volume Slider GUI")
 
+    def initialize_variables(self):
         self.slicesPerVolume = self.s['slicesPerVolume']
-        
-        self.slicesDeletedPerVolume = self.s['slicesDeletedPerVolume']       
-        
+        self.slicesDeletedPerVolume = self.s['slicesDeletedPerVolume']
         self.baselineValue = self.s['baselineValue']
         self.f0Start = self.s['f0Start']
         self.f0End = self.s['f0End']
         self.f0VolStart = self.s['f0VolStart']
-        self.f0VolEnd = self.s['f0VolEnd']                
+        self.f0VolEnd = self.s['f0VolEnd']
         self.multiplicationFactor = self.s['multiplicationFactor']
         self.currentDataType = self.s['currentDataType']
         self.newDataType = self.s['newDataType']
@@ -81,396 +184,183 @@ class Form2(QtWidgets.QDialog):
         self.shiftFactor = self.s['shiftFactor']
         self.trim_last_frame = self.s['trimLastFrame']
 
-        #spinboxes
-        self.spinLabel1 = QtWidgets.QLabel("Slice #")
-        self.SpinBox1 = QtWidgets.QSpinBox()
-        self.SpinBox1.setRange(0,self.viewer.getNFrames())
-        self.SpinBox1.setValue(0)
+        self.setup_spinboxes()
+        self.setup_slider()
 
-        self.spinLabel2 = QtWidgets.QLabel("# of slices per volume: ")
-        self.SpinBox2 = QtWidgets.QSpinBox()
-        self.SpinBox2.setRange(0,self.viewer.getNFrames())
-        if self.slicesPerVolume < self.viewer.getNFrames():
-            self.SpinBox2.setValue(self.slicesPerVolume)
-        else:
-            self.SpinBox2.setValue(1)
+    def setup_spinboxes(self):
+        spinbox_configs = {
+            'slice': (0, self.viewer.getNFrames(), 0),
+            'slices_per_volume': (1, self.viewer.getNFrames(), self.slicesPerVolume),
+            'slices_removed': (0, self.viewer.getNFrames() - 1, self.slicesDeletedPerVolume),
+            'baseline': (0, int(self.viewer.getMaxPixel()), int(self.baselineValue)),
+            'f0_start': (0, self.viewer.getNVols(), self.f0Start),
+            'f0_end': (0, self.viewer.getNVols(), self.f0End),
+            'multiplication': (0, 10000, self.multiplicationFactor),
+            'theta': (0, 360, self.theta),
+            'shift': (0, 100, self.shiftFactor),
+            'f0_vol_start': (0, self.viewer.getNVols(), self.f0VolStart),
+            'f0_vol_end': (0, self.viewer.getNVols(), self.f0VolEnd)
+        }
 
-        self.spinLabel13 = QtWidgets.QLabel("# of slices removed per volume: ")
-        self.SpinBox13 = QtWidgets.QSpinBox()
-        self.SpinBox13.setRange(0,self.viewer.getNFrames())
-        if self.slicesDeletedPerVolume < self.viewer.getNFrames():
-            self.SpinBox13.setValue(self.slicesDeletedPerVolume)
-        else:
-            self.SpinBox13.setValue(0)
+        for name, (min_val, max_val, value) in spinbox_configs.items():
+            spinbox = self.spinboxes[name]
+            spinbox.setRange(min_val, max_val)
+            spinbox.setValue(value)
 
+        self.trim_last_frame_checkbox.setChecked(self.trim_last_frame)
+        self.inputArraySelectorBox.setCurrentIndex(4)
+        self.displayArraySelectorBox.setCurrentIndex(18)
 
-        self.spinLabel4 = QtWidgets.QLabel("baseline value: ")
-        self.SpinBox4 = QtWidgets.QSpinBox()
-        self.SpinBox4.setRange(0,self.viewer.getMaxPixel())
-        if self.baselineValue < self.viewer.getMaxPixel():
-            self.SpinBox4.setValue(self.baselineValue)
-        else:
-            self.SpinBox4.setValue(0)           
-
-        self.spinLabel6 = QtWidgets.QLabel("F0 start volume: ")
-        self.SpinBox6 = QtWidgets.QSpinBox()
-        self.SpinBox6.setRange(0,self.viewer.getNVols())
-        if self.f0Start < self.viewer.getNVols():
-            self.SpinBox6.setValue(self.f0Start)
-        else:
-            self.SpinBox6.setValue(0)            
-
-        self.spinLabel7 = QtWidgets.QLabel("F0 end volume: ")
-        self.SpinBox7 = QtWidgets.QSpinBox()
-        self.SpinBox7.setRange(0,self.viewer.getNVols())
-        if self.f0End < self.viewer.getNVols():
-            self.SpinBox7.setValue(self.f0End)
-        else:
-            self.SpinBox7.setValue(0)
-
-        self.spinLabel8 = QtWidgets.QLabel("factor to multiply by: ")
-        self.SpinBox8 = QtWidgets.QSpinBox()
-        self.SpinBox8.setRange(0,10000)
-        self.SpinBox8.setValue(self.multiplicationFactor)
-
-        self.spinLabel9 = QtWidgets.QLabel("theta: ")
-        self.SpinBox9 = QtWidgets.QSpinBox()
-        self.SpinBox9.setRange(0,360)
-        self.SpinBox9.setValue(self.theta)
-
-        self.spinLabel10 = QtWidgets.QLabel("shift factor: ")
-        self.SpinBox10 = QtWidgets.QSpinBox()
-        self.SpinBox10.setRange(0,100)
-        self.SpinBox10.setValue(self.shiftFactor)
-
-
-        self.SpinBox11 = QtWidgets.QSpinBox()
-        self.SpinBox11.setRange(0,self.viewer.getNVols())
-        if self.f0Start < self.viewer.getNVols():
-            self.SpinBox11.setValue(self.f0VolStart)
-        else:
-            self.SpinBox6.setValue(0)            
-
-
-        self.SpinBox12 = QtWidgets.QSpinBox()
-        self.SpinBox12.setRange(0,self.viewer.getNVols())
-        if self.f0End <= self.viewer.getNVols():
-            self.SpinBox12.setValue(self.f0VolEnd)
-        else:
-            self.SpinBox12.setValue(self.viewer.getNVols())
-
-
-        #sliders
-        self.slider1 = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+    def setup_slider(self):
         setSliderUp(self.slider1, minimum=0, maximum=self.viewer.getNFrames(), tickInterval=1, singleStep=1, value=0)
 
+    def connect_signals(self):
+        self.slider1.valueChanged.connect(self.slider1ValueChange)
+        self.spinboxes['slice'].valueChanged.connect(self.spinBox1ValueChange)
+        self.spinboxes['theta'].valueChanged.connect(self.setTheta)
+        self.spinboxes['shift'].valueChanged.connect(self.setShiftFactor)
 
-        #ComboBox
-        self.dTypeSelectorBox = QtWidgets.QComboBox()
-        self.dTypeSelectorBox.addItems(["float16", "float32", "float64","int8","int16","int32","int64"])
-        self.inputArraySelectorBox = QtWidgets.QComboBox()
-        self.inputArraySelectorBox.addItems(self.viewer.getArrayKeys())
-        self.inputArraySelectorBox.setCurrentIndex(4)
+        button_connections = {
+            'autolevel': self.autoLevel,
+            'set_slices': self.updateVolumeValue,
+            'subtract_baseline': self.subtractBaseline,
+            'run_df_f0': self.ratioDFF0,
+            'export_window': self.exportToWindow,
+            'set_data_type': self.dTypeSelectionChange,
+            'multiply': self.multiplyByFactor,
+            'export_array': self.exportArray,
+            'open_3d_viewer': self.startViewer,
+            'close_3d_viewer': self.closeViewer,
+            'load_new_file': lambda: self.loadNewFile(''),
+            'set_overlay': self.setOverlay
+        }
+
+        for name, func in button_connections.items():
+            self.buttons[name].clicked.connect(func)
+
+        self.trim_last_frame_checkbox.stateChanged.connect(self.trim_last_frameClicked)
         self.inputArraySelectorBox.currentIndexChanged.connect(self.inputArraySelectionChange)
-
-        self.displayArraySelectorBox = QtWidgets.QComboBox()
-        self.displayArraySelectorBox.addItems(self.viewer.getArrayKeys())
-        self.displayArraySelectorBox.setCurrentIndex(18)
         self.displayArraySelectorBox.currentIndexChanged.connect(self.displayArraySelectionChange)
 
-        #buttons
-        self.button1 = QtWidgets.QPushButton("Autolevel")
-        self.button2 = QtWidgets.QPushButton("Set Slices")
-        #self.button3 = QtWidgets.QPushButton("Average Volumes")
-        self.button4 = QtWidgets.QPushButton("subtract baseline")
-        self.button5 = QtWidgets.QPushButton("run DF/F0")
-        self.button6 = QtWidgets.QPushButton("export to Window")
-        self.button7 = QtWidgets.QPushButton("set data Type")
-        self.button8 = QtWidgets.QPushButton("multiply")
-        self.button9 = QtWidgets.QPushButton("export to array")        
-
-        self.button12 = QtWidgets.QPushButton("open 3D viewer")
-        self.button13 = QtWidgets.QPushButton("close 3D viewer")
-        
-        self.button14 = QtWidgets.QPushButton("load new file")
-        
-        self.button15 = QtWidgets.QPushButton("Set overlay to current volume")       
-        
-
-        #labels
-        self.ratioVolStartLabel = QtWidgets.QLabel("ratio start volume: ")
-        self.ratioVolEndLabel = QtWidgets.QLabel("ratio End volume: ")        
-        self.volumeLabel = QtWidgets.QLabel("# of volumes: ")
-        self.volumeText = QtWidgets.QLabel("  ")
-        
-        self.currentVolumeLabel = QtWidgets.QLabel("current volume: ")
-        self.currentVolumeText = QtWidgets.QLabel("0")        
-        
-
-        self.shapeLabel = QtWidgets.QLabel("array shape: ")
-        self.shapeText = QtWidgets.QLabel(str(self.viewer.getArrayShape()))
-
-        self.dataTypeLabel = QtWidgets.QLabel("current data type: ")
-        self.dataTypeText = QtWidgets.QLabel(str(self.viewer.getDataType()))
-        self.dataTypeChangeLabel = QtWidgets.QLabel("new data type: ")
-
-        self.inputArrayLabel = QtWidgets.QLabel("input array order: ")
-        self.displayArrayLabel = QtWidgets.QLabel("display array order: ")
-
-        self.arraySavePathLabel = QtWidgets.QLabel(str(self.arraySavePath))
-
-        self.trim_last_frameLabel = QtWidgets.QLabel("Trim Last Frame: ")
-        self.trim_last_frame_checkbox = CheckBox()
-        self.trim_last_frame_checkbox.setChecked(self.trim_last_frame)
-        self.trim_last_frame_checkbox.stateChanged.connect(self.trim_last_frameClicked)
-        
-        self.fileNameLabel = QtWidgets.QLabel("file name: ")
-        self.fileNameText = QtWidgets.QLabel(str(self.fileName))
-
-
-        #grid layout
-        layout = QtWidgets.QGridLayout()
-        layout.setSpacing(10)
-
-        layout.addWidget(self.spinLabel1, 1, 0)
-        layout.addWidget(self.SpinBox1, 1, 1)
-
-        layout.addWidget(self.slider1, 2, 0, 2, 5)
-
-        layout.addWidget(self.spinLabel2, 4, 0)
-        layout.addWidget(self.SpinBox2, 4, 1)
-        layout.addWidget(self.button2, 4, 4)
-
-        layout.addWidget(self.spinLabel13, 4, 2)
-        layout.addWidget(self.SpinBox13, 4, 3)
-
-
-        layout.addWidget(self.spinLabel4, 6, 0)
-        layout.addWidget(self.SpinBox4, 6, 1)
-        layout.addWidget(self.button4, 6, 2)
-
-        layout.addWidget(self.spinLabel6, 7, 0)
-        layout.addWidget(self.SpinBox6, 7, 1)
-        layout.addWidget(self.spinLabel7, 7, 2)
-        layout.addWidget(self.SpinBox7, 7, 3)
-        layout.addWidget(self.button5, 7, 4)
-
-        layout.addWidget(self.ratioVolStartLabel, 8, 0)
-        layout.addWidget(self.SpinBox11, 8, 1)
-        layout.addWidget(self.ratioVolEndLabel, 8, 2)
-        layout.addWidget(self.SpinBox12, 8, 3)
-
-        layout.addWidget(self.volumeLabel, 9, 0)
-        layout.addWidget(self.volumeText, 9, 1)
-        
-        layout.addWidget(self.currentVolumeLabel, 9, 2)
-        layout.addWidget(self.currentVolumeText, 9, 3)        
-        
-        layout.addWidget(self.shapeLabel, 10, 0)
-        layout.addWidget(self.shapeText, 10, 1)
-
-        layout.addWidget(self.spinLabel8, 11, 0)
-        layout.addWidget(self.SpinBox8, 11, 1)
-        layout.addWidget(self.button8, 11, 2)
-        
-        layout.addWidget(self.button15, 12, 0)       
-        
-
-        layout.addWidget(self.dataTypeLabel, 13, 0)
-        layout.addWidget(self.dataTypeText, 13, 1)
-        layout.addWidget(self.dataTypeChangeLabel, 13, 2)
-        layout.addWidget(self.dTypeSelectorBox, 13,3)
-        layout.addWidget(self.button7, 13, 4)
-
-        layout.addWidget(self.button6, 15, 0)
-        layout.addWidget(self.button1, 15, 4)
-        layout.addWidget(self.button6, 15, 0)
-        layout.addWidget(self.button1, 15, 4)
-        layout.addWidget(self.button9, 16, 0)
-      
-        layout.addWidget(self.arraySavePathLabel, 16, 1, 1, 4)      
-        
-        
-        layout.addWidget(self.spinLabel9, 18, 0)
-        layout.addWidget(self.SpinBox9, 18, 1)
-
-        layout.addWidget(self.spinLabel10, 19, 0)
-        layout.addWidget(self.SpinBox10, 19, 1)
-        layout.addWidget(self.trim_last_frameLabel, 20, 0)
-        layout.addWidget(self.trim_last_frame_checkbox, 20, 1)
-
-        layout.addWidget(self.inputArrayLabel, 21, 0)
-        layout.addWidget(self.inputArraySelectorBox, 21, 1)
-
-        layout.addWidget(self.displayArrayLabel, 21, 2)
-        layout.addWidget(self.displayArraySelectorBox, 21, 3)
-
-        layout.addWidget(self.button12, 22, 0)
-        layout.addWidget(self.button13, 22, 1)
-        layout.addWidget(self.button14, 22, 2)  
-        
-        layout.addWidget(self.fileNameLabel, 23, 0)
-        layout.addWidget(self.fileNameText, 23, 1, 1, 4)        
-
-        self.setLayout(layout)
-        self.setGeometry(self.left, self.top, self.width, self.height)
-
-        #add window title
-        self.setWindowTitle("Volume Slider GUI")
-
-        #connect sliders & spinboxes
-        self.slider1.valueChanged.connect(self.slider1ValueChange)
-        self.SpinBox1.valueChanged.connect(self.spinBox1ValueChange)
-        self.SpinBox9.valueChanged.connect(self.setTheta)
-        self.SpinBox10.valueChanged.connect(self.setShiftFactor)
-
-        #connect buttons
-        self.button1.clicked.connect(self.autoLevel)
-        self.button2.clicked.connect(self.updateVolumeValue)
-        #self.button3.clicked.connect(self.averageByVol)
-        self.button4.clicked.connect(self.subtractBaseline)
-        self.button5.clicked.connect(self.ratioDFF0)
-        self.button6.clicked.connect(self.exportToWindow)
-        self.button7.clicked.connect(self.dTypeSelectionChange)
-        self.button8.clicked.connect(self.multiplyByFactor)
-        self.button9.clicked.connect(self.exportArray)            
-        self.button12.clicked.connect(self.startViewer)
-        self.button13.clicked.connect(self.closeViewer)
-        self.button14.clicked.connect(lambda: self.loadNewFile(''))   
-        self.button15.clicked.connect(self.setOverlay)
-
-        return
-
-     #volume changes with slider & spinbox
-    def loadNewFile(self, fileName):
-        if self.batch == False:
-            fileName = QtWidgets.QFileDialog.getOpenFileName(self,'Open File', os.path.expanduser("~/Desktop"), 'tiff files (*.tif *.tiff)')
-            fileName = str(fileName[0])
-            
-        A, _, _ = openTiff(fileName)
-        self.viewer.updateVolumeSlider(A)
-        self.viewer.displayWindow.imageview.setImage(A)  
-        self.setFileName(fileName) 
-        self.viewer.setFileName(fileName)
-        return
-
-
     def slider1ValueChange(self, value):
-        self.SpinBox1.setValue(value)
-        return
+        self.spinboxes['slice'].setValue(value)
 
     def spinBox1ValueChange(self, value):
-        self.slider1.setValue(value)
-        self.viewer.updateDisplay_sliceNumberChange(value)
-        return
+        if 0 <= value <= self.slider1.maximum():
+            self.slider1.setValue(value)
+            self.viewer.updateDisplay_sliceNumberChange(value)
+        else:
+            logging.warning(f"Invalid spinbox value: {value}")
 
     def autoLevel(self):
         self.viewer.displayWindow.imageview.autoLevels()
-        return
 
     def updateVolumeValue(self):
-        self.slicesPerVolume = self.SpinBox2.value()
-        noVols = int(self.viewer.getNFrames()/self.slicesPerVolume)
-        self.framesToDelete = self.SpinBox13.value()
-        self.viewer.updateVolsandFramesPerVol(noVols, self.slicesPerVolume, framesToDelete = self.framesToDelete)
-        self.volumeText.setText(str(noVols))
+        try:
+            self.slicesPerVolume = self.spinboxes['slices_per_volume'].value()
+            noVols = int(self.viewer.getNFrames() / self.slicesPerVolume)
+            self.framesToDelete = self.spinboxes['slices_removed'].value()
+            self.viewer.updateVolsandFramesPerVol(noVols, self.slicesPerVolume, framesToDelete=self.framesToDelete)
+            self.text_labels['volume'].setText(str(noVols))
 
-        self.viewer.updateDisplay_volumeSizeChange()
-        self.shapeText.setText(str(self.viewer.getArrayShape()))
+            self.viewer.updateDisplay_volumeSizeChange()
+            self.text_labels['shape'].setText(str(self.viewer.getArrayShape()))
 
-        if (self.slicesPerVolume)%2 == 0:
-            self.SpinBox1.setRange(0,self.slicesPerVolume - 1 - self.framesToDelete) #if even, display the last volume
-            self.slider1.setMaximum(self.slicesPerVolume - 1 - self.framesToDelete)
-        else:
-            self.SpinBox1.setRange(0,self.slicesPerVolume - 2 - self.framesToDelete) #else, don't display the last volume
-            self.slider1.setMaximum(self.slicesPerVolume - 2 - self.framesToDelete)
+            max_value = self.slicesPerVolume - 1 - self.framesToDelete if self.slicesPerVolume % 2 == 0 else self.slicesPerVolume - 2 - self.framesToDelete
 
-        self.updateVolSpinBoxes()
-        return
+            self.spinboxes['slice'].setRange(0, max_value)
+            self.slider1.setMaximum(max_value)
+
+            self.updateVolSpinBoxes()
+        except ValueError as e:
+            logging.error(f"Failed to update volume: {e}")
+            QtWidgets.QMessageBox.critical(self, "Error", f"Failed to update volume: {e}")
 
     def updateVolSpinBoxes(self):
-        rangeValue = self.viewer.getNVols()-1
-        #self.SpinBox3.setRange(0,self.viewer.getNVols())        
-        self.SpinBox6.setRange(0,rangeValue)
-        self.SpinBox7.setRange(0,rangeValue)
-        self.SpinBox11.setRange(0,rangeValue)
-        self.SpinBox12.setRange(0,rangeValue) 
-        self.SpinBox12.setValue(rangeValue)             
-        return
+        range_value = self.viewer.getNVols() - 1
+        for name in ['f0_start', 'f0_end', 'f0_vol_start', 'f0_vol_end']:
+            self.spinboxes[name].setRange(0, range_value)
+        self.spinboxes['f0_vol_end'].setValue(range_value)
 
     def getBaseline(self):
-        return self.SpinBox4.value()
+        return self.spinboxes['baseline'].value()
 
     def getF0(self):
-        return self.SpinBox6.value(), self.SpinBox7.value(), self.SpinBox11.value(), self.SpinBox12.value()
+        return (self.spinboxes['f0_start'].value(),
+                self.spinboxes['f0_end'].value(),
+                self.spinboxes['f0_vol_start'].value(),
+                self.spinboxes['f0_vol_end'].value())
 
     def subtractBaseline(self):
         self.viewer.subtractBaseline()
-        return
 
     def ratioDFF0(self):
         self.viewer.ratioDFF0()
-        return
 
     def exportToWindow(self):
-        self.viewer.savePath = self.arraySavePath
-        self.viewer.exportToWindow()
-        return
+        try:
+            data = self.viewer.getExportData()
+            if data is not None:
+                Window(data)
+            else:
+                raise ValueError("No valid data to export")
+        except Exception as e:
+            logging.error(f"Failed to export to window: {e}")
+            QtWidgets.QMessageBox.critical(self, "Export Error", f"Failed to export to window: {e}")
+
+    def exportArray(self, vol='None'):
+        try:
+            if vol == 'None':
+                np.save(self.viewer.savePath, self.viewer.B)
+            else:
+                f, v, x, y = self.viewer.B.shape
+                np.save(self.viewer.savePath, self.viewer.B[:, vol, :, :].reshape((f, 1, x, y)))
+            logging.info(f"Array exported successfully to {self.viewer.savePath}")
+        except Exception as e:
+            logging.error(f"Failed to export array: {e}")
+            QtWidgets.QMessageBox.critical(self, "Export Error", f"Failed to export array: {e}")
 
     def dTypeSelectionChange(self):
-        self.viewer.setDType(self.dTypeSelectorBox.currentText())
-        self.dataTypeText = QtWidgets.QLabel(str(self.viewer.getDataType()))
-        return
+        try:
+            new_dtype = self.dTypeSelectorBox.currentText()
+            self.viewer.setDType(new_dtype)
+            self.text_labels['data_type'].setText(str(self.viewer.getDataType()))
+        except Exception as e:
+            logging.error(f"Failed to change data type: {e}")
+            QtWidgets.QMessageBox.critical(self, "Error", f"Failed to change data type: {e}")
 
     def multiplyByFactor(self):
-        self.viewer.multiplyByFactor(self.SpinBox8.value())
-        return
-
-    def exportArray(self):
-        if self.viewer.B == []:
-            print('first set number of frames per volume')
-            g.m.statusBar().showMessage("first set number of frames per volume")
-            return
-        self.arraySavePath = QtWidgets.QFileDialog.getSaveFileName(self, 'Save File', self.arraySavePath, 'Numpy array (*.npy)')
-        self.arraySavePath = str(self.arraySavePath[0])
-        self.viewer.savePath = self.arraySavePath
-        self.arraySavePathLabel.setText(self.arraySavePath)
-        self.viewer.exportArray()
-        return
+        self.viewer.multiplyByFactor(self.spinboxes['multiplication'].value())
 
     def startViewer(self):
         self.saveSettings()
         self.viewer.startViewer()
-        return
 
     def setOverlay(self):
         self.viewer.setOverlay()
 
     def closeViewer(self):
         self.viewer.closeViewer()
-        return
 
     def setTheta(self):
-        self.theta = self.SpinBox9.value()
+        self.theta = self.spinboxes['theta'].value()
 
     def setShiftFactor(self):
-        self.shiftFactor = self.SpinBox10.value()
+        self.shiftFactor = self.spinboxes['shift'].value()
 
     def trim_last_frameClicked(self):
         self.trim_last_frame = self.trim_last_frame_checkbox.isChecked()
 
     def inputArraySelectionChange(self, value):
         self.viewer.setInputArrayOrder(self.inputArraySelectorBox.currentText())
-        return
 
     def displayArraySelectionChange(self, value):
         self.viewer.setDisplayArrayOrder(self.displayArraySelectorBox.currentText())
-        return
 
     def saveSettings(self):
         self.s['theta'] = self.theta
         self.s['slicesPerVolume'] = self.slicesPerVolume
-        self.s['slicesDeletedPerVolume'] = self.slicesDeletedPerVolume      
+        self.s['slicesDeletedPerVolume'] = self.slicesDeletedPerVolume
         self.s['baselineValue'] = self.baselineValue
         self.s['f0Start'] = self.f0Start
         self.s['f0End'] = self.f0End
@@ -478,18 +368,16 @@ class Form2(QtWidgets.QDialog):
         self.s['currentDataType'] = self.currentDataType
         self.s['newDataType'] = self.newDataType
         self.s['shiftFactor'] = self.shiftFactor
-        self.s['trimLastFrame'] = self.trim_last_frame      
+        self.s['trimLastFrame'] = self.trim_last_frame
         self.s['f0VolStart'] = self.f0VolStart
-        self.s['f0VolEnd'] = self.f0VolEnd 
-        
+        self.s['f0VolEnd'] = self.f0VolEnd
+
         g.settings['volumeSlider'] = self.s
-        
-        return
 
     def setFileName(self, fileName):
         self.fileName = fileName
-        self.fileNameText.setText(self.fileName)
-        
+        self.text_labels['file_name'].setText(self.fileName)
+
     def getFileName(self):
         return self.fileName
 
@@ -501,11 +389,88 @@ class Form2(QtWidgets.QDialog):
         self.viewer.end()
         self.closeAllWindows()
         gc.collect()
-        return
 
     def clearData(self):
         self.viewer.A = []
         self.viewer.B = []
 
-        
+    def loadNewFile(self, fileName):
+        if not self.batch:
+            fileName, _ = QtWidgets.QFileDialog.getOpenFileName(self, 'Open File',
+                                                                os.path.expanduser("~/Desktop"),
+                                                                'tiff files (*.tif *.tiff)')
+        if fileName:
+            try:
+                A, _, _ = self.viewer.openTiff(fileName)
+                self.viewer.updateVolumeSlider(A)
+                self.viewer.displayWindow.imageview.setImage(A)
+                self.setFileName(fileName)
+                self.viewer.setFileName(fileName)
+            except Exception as e:
+                logging.error(f"Failed to load new file: {e}")
+                QtWidgets.QMessageBox.critical(self, "Error", f"Failed to load new file: {e}")
 
+    def update_ui(self):
+        self.text_labels['volume'].setText(str(self.viewer.getNVols()))
+        self.text_labels['shape'].setText(str(self.viewer.getArrayShape()))
+        self.text_labels['data_type'].setText(str(self.viewer.getDataType()))
+        self.updateVolSpinBoxes()
+
+    def batchProcess(self, paramDict: dict):
+        logging.info(f"Starting batch process with parameters: {paramDict}")
+        tiffFiles = glob.glob(os.path.join(paramDict['inputDirectory'], "*.tif*"))
+
+        with QtWidgets.QProgressDialog("Processing files...", "Abort", 0, len(tiffFiles), self) as progress:
+            progress.setWindowModality(QtCore.Qt.WindowModal)
+
+            for i, tiff_file in enumerate(tiffFiles):
+                if progress.wasCanceled():
+                    break
+
+                progress.setValue(i)
+                progress.setLabelText(f"Processing file {i+1}/{len(tiffFiles)}: {tiff_file}")
+
+                try:
+                    self.process_single_file(tiff_file, paramDict, i == 0)
+                except Exception as e:
+                    logging.error(f"Error processing file {tiff_file}: {e}")
+                    QtWidgets.QMessageBox.warning(self, "Processing Error", f"Error processing file {tiff_file}: {e}")
+
+            progress.setValue(len(tiffFiles))
+
+        logging.info("Batch processing completed")
+        g.m.statusBar().showMessage('Batch processing finished')
+
+    def process_single_file(self, tiff_file: str, paramDict: dict, is_first: bool):
+        self.loadNewFile(tiff_file)
+        self.spinboxes['slices_per_volume'].setValue(paramDict['slicesPerVolume'])
+        self.updateVolumeValue()
+
+        if paramDict['subtractBaseline']:
+            self.spinboxes['baseline'].setValue(paramDict['baselineValue'])
+            self.subtractBaseline()
+
+        if paramDict['runDFF0']:
+            self.spinboxes['f0_start'].setValue(paramDict['f0Start'])
+            self.spinboxes['f0_end'].setValue(paramDict['f0End'])
+            self.spinboxes['f0_vol_start'].setValue(paramDict['f0VolStart'])
+            self.spinboxes['f0_vol_end'].setValue(paramDict['f0VolEnd'])
+            self.ratioDFF0()
+
+        if paramDict['runMultiplication']:
+            self.spinboxes['multiplication'].setValue(paramDict['multiplicationFactor'])
+            self.multiplyByFactor()
+
+        self.spinboxes['theta'].setValue(paramDict['theta'])
+        self.spinboxes['shift'].setValue(paramDict['shiftFactor'])
+        self.trim_last_frame_checkbox.setChecked(paramDict['trim_last_frame'])
+
+        if is_first:
+            self.startViewer()
+        else:
+            self.viewer.viewer.changeMainImage(self.viewer.B)
+            self.viewer.viewer.runBatchStep(tiff_file)
+
+    def closeEvent(self, event):
+        self.close()
+        event.accept()
