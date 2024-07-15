@@ -3,34 +3,15 @@ from qtpy import QtWidgets, QtCore, QtGui
 import flika
 from flika import global_vars as g
 from flika.window import Window
-from flika.utils.io import tifffile
-from flika.process.file_ import get_permutation_tuple
-from flika.utils.misc import open_file_gui
-import pyqtgraph as pg
-import time
 import os
-from os import listdir
-from os.path import expanduser, isfile, join
 from distutils.version import StrictVersion
-from copy import deepcopy
-from numpy import moveaxis
-from skimage.transform import rescale
 from pyqtgraph.dockarea import *
-from pyqtgraph import mkPen
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
-import copy
-import pyqtgraph.opengl as gl
 from OpenGL.GL import *
-from qtpy.QtCore import Signal
 import glob
 import gc
 import logging
-
-#logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-from typing import Tuple
+from typing import Optional, List, Tuple, Dict, Any
 
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
@@ -40,18 +21,16 @@ else:
 
 from .helperFunctions import *
 from .pyqtGraph_classOverwrites import *
-from .scalebar_classOverwrite import Scale_Bar_volumeView
-from .histogramExtension import HistogramLUTWidget_Overlay
-from .texturePlot import *
+
 from .volumeSlider_3DViewer import *
 from .volumeSlider_Main_GUI import *
 from .tiffLoader import openTiff
 from .volume_processor import VolumeProcessor
-
-from pyqtgraph import HistogramLUTWidget
+from .volumeSlider_Main_GUI import Form2
+from .volumeSlider_3DViewer import SliceViewer
+from .helperFunctions import perform_shear_transform
 
 dataType = np.float32
-from matplotlib import cm
 
 
 ### disable messages from PyQt ################
@@ -59,9 +38,10 @@ def handler(msg_type, msg_log_context, msg_string):
     pass
 
 QtCore.qInstallMessageHandler(handler)
-#####################################################
+############################################################################
+##########                Create a logger      #############################
+############################################################################
 
-# Create a logger
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -85,25 +65,8 @@ logger.addHandler(console_handler)
 logger.addHandler(file_handler)
 
 #########################################################################################
-#############                  volumeViewer class                ########################
+#############                  CamVolumeSlider class                #####################
 #########################################################################################
-import numpy as np
-import logging
-from typing import Optional, List, Tuple, Dict, Any
-from qtpy import QtWidgets, QtCore, QtGui
-import flika
-from flika import global_vars as g
-from flika.window import Window
-import os
-import gc
-import glob
-
-from .helperFunctions import perform_shear_transform
-from .volume_processor import VolumeProcessor
-from .volumeSlider_Main_GUI import Form2
-from .volumeSlider_3DViewer import SliceViewer
-from .tiffLoader import openTiff
-
 class CamVolumeSlider:
     def __init__(self):
         self.processor: Optional[VolumeProcessor] = None
