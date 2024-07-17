@@ -4,17 +4,17 @@ import logging
 import tifffile
 import os
 from scipy.ndimage import rotate
-from typing import Tuple, List, Optional, Any
+from typing import Tuple, List, Optional, Any, Dict
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget,
                              QPushButton, QSlider, QLabel, QSpinBox, QDoubleSpinBox,
                              QComboBox, QFileDialog, QMessageBox, QCheckBox, QDockWidget, QSizePolicy, QTableWidget,
-                             QTableWidgetItem, QDialog, QGridLayout, QTabWidget, QTextEdit)
+                             QTableWidgetItem, QDialog, QGridLayout, QTabWidget, QTextEdit, QAction, QFormLayout)
 from PyQt5.QtCore import Qt
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
-from PyQt5.QtCore import QTimer
-from PyQt5.QtGui import QColor, QVector3D, QImage
+from PyQt5.QtCore import QTimer, QEvent
+from PyQt5.QtGui import QColor, QVector3D, QImage, QMouseEvent, QWheelEvent
 import traceback
 
 from matplotlib import pyplot as plt
@@ -23,12 +23,545 @@ from skimage.feature import blob_log
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
 from scipy.spatial import cKDTree
-from scipy.ndimage import center_of_mass
+from scipy.ndimage import center_of_mass, binary_dilation, gaussian_filter
 from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import pyqtSlot
 
 
 #from data_generator import DataGenerator
 #from volume_processor import VolumeProcessor
+
+
+class BiologicalSimulator:
+    def __init__(self, size, num_time_points):
+        self.size = size
+        self.num_time_points = num_time_points
+        self.logger = logging.getLogger(__name__)
+        self.call_count = 0
+
+    def simulate_protein_diffusion(self, D, initial_concentration):
+        self.call_count += 1
+        #print(f"Debug: Call number {self.call_count} to simulate_protein_diffusion")
+        #print(f"Debug: Called from: {traceback.extract_stack()[-2][2]}")  # Print the caller's function name
+        # ... rest of the method remains the same
+        #print("Debug: Entering simulate_protein_diffusion method")
+        #print(f"Debug: D = {D}")
+        #print(f"Debug: self.size = {self.size}")
+        #print(f"Debug: initial_concentration.shape = {initial_concentration.shape}")
+
+        try:
+            self.logger.info(f"Starting protein diffusion simulation with D={D}")
+            self.logger.info(f"Simulator size: {self.size}")
+            self.logger.info(f"Initial concentration shape: {initial_concentration.shape}")
+
+            #print("Debug: Before shape check")
+            if initial_concentration.shape != self.size:
+                self.logger.warning(f"Initial concentration shape {initial_concentration.shape} does not match simulator size {self.size}")
+                raise ValueError(f"Initial concentration shape {initial_concentration.shape} does not match simulator size {self.size}")
+
+            #print("Debug: After shape check")
+            result = np.zeros((self.num_time_points, *self.size))
+            result[0] = initial_concentration
+
+            #print("Debug: Before diffusion loop")
+            # Assuming 1 second per time step
+            for t in range(1, self.num_time_points):
+                result[t] = gaussian_filter(result[t-1], sigma=np.sqrt(2*D))
+
+            #print("Debug: After diffusion loop")
+            self.logger.info("Protein diffusion simulation completed successfully")
+            self.logger.info(f"Result shape: {result.shape}")
+            return result
+
+        except ValueError as e:
+            # Log expected errors as warnings
+            self.logger.warning(f"Expected error in protein diffusion simulation: {str(e)}")
+            raise
+
+        except Exception as e:
+            #print(f"Debug: Exception caught: {str(e)}")
+            self.logger.error(f"Error in protein diffusion simulation: {str(e)}")
+            raise
+
+    def simulate_active_transport(self, velocity: Tuple[float, float, float], cargo_concentration: np.ndarray) -> np.ndarray:
+        """
+        Simulate active transport of cargo along cytoskeleton.
+
+        Args:
+        velocity (Tuple[float, float, float]): Velocity vector for transport
+        cargo_concentration (np.ndarray): Initial cargo concentration
+
+        Returns:
+        np.ndarray: Time series of cargo concentrations
+        """
+        try:
+            result = np.zeros((self.num_time_points, *self.size))
+            result[0] = cargo_concentration
+            for t in range(1, self.num_time_points):
+                result[t] = np.roll(result[t-1], shift=(int(velocity[0]), int(velocity[1]), int(velocity[2])), axis=(0,1,2))
+            return result
+        except Exception as e:
+            self.logger.error(f"Error in active transport simulation: {str(e)}")
+            raise
+
+
+
+    def generate_cellular_structure(self, structure_type: str) -> np.ndarray:
+        """
+        Generate a 3D representation of a cellular structure.
+
+        Args:
+        structure_type (str): Type of cellular structure ('nucleus', 'mitochondria', 'actin', 'lysosomes')
+
+        Returns:
+        np.ndarray: 3D array representing the cellular structure
+        """
+        try:
+            if structure_type == 'nucleus':
+                return self._generate_nucleus()
+            elif structure_type == 'mitochondria':
+                return self._generate_mitochondria()
+            elif structure_type == 'actin':
+                return self._generate_actin()
+            elif structure_type == 'lysosomes':
+                return self._generate_lysosomes()
+            else:
+                raise ValueError(f"Unknown structure type: {structure_type}")
+        except Exception as e:
+            self.logger.error(f"Error generating cellular structure: {str(e)}")
+            raise
+
+    def generate_cell_membrane(self, center, radius, thickness=1):
+        """
+        Generate a cell plasma membrane.
+
+        Args:
+        center (tuple): The (z, y, x) coordinates of the cell center
+        radius (float): The radius of the cell
+        thickness (float): The thickness of the membrane
+
+        Returns:
+        np.ndarray: 3D array representing the cell membrane
+        """
+        try:
+            self.logger.info(f"Generating cell membrane at {center} with radius {radius}")
+
+            z, y, x = np.ogrid[:self.size[0], :self.size[1], :self.size[2]]
+            dist_from_center = np.sqrt((z - center[0])**2 + (y - center[1])**2 + (x - center[2])**2)
+
+            membrane = (dist_from_center >= radius - thickness/2) & (dist_from_center <= radius + thickness/2)
+
+            self.logger.info("Cell membrane generated successfully")
+            return membrane.astype(float)
+
+        except Exception as e:
+            self.logger.error(f"Error in cell membrane generation: {str(e)}")
+            raise
+
+    def generate_nucleus(self, cell_center, cell_radius, nucleus_radius, thickness=1, pixel_size=(1,1,1)):
+        """
+        Generate a hollow cell nucleus inside the cell membrane.
+
+        Args:
+        cell_center (tuple): The (z, y, x) coordinates of the cell center
+        cell_radius (float): The radius of the cell
+        nucleus_radius (float): The outer radius of the nucleus
+        thickness (float): The thickness of the nuclear envelope
+        pixel_size (tuple): The size of a pixel in (z, y, x) dimensions
+
+        Returns:
+        np.ndarray: 3D array representing the cell nucleus
+        """
+        try:
+            self.logger.info(f"Generating hollow cell nucleus at {cell_center} with radius {nucleus_radius} and thickness {thickness}")
+
+            if nucleus_radius >= cell_radius:
+                raise ValueError("Nucleus radius must be smaller than cell radius")
+
+            z, y, x = np.ogrid[:self.size[0], :self.size[1], :self.size[2]]
+            dist_from_center = np.sqrt(
+                ((z - cell_center[0]) * pixel_size[0])**2 +
+                ((y - cell_center[1]) * pixel_size[1])**2 +
+                ((x - cell_center[2]) * pixel_size[2])**2
+            )
+
+            outer_nucleus = dist_from_center <= nucleus_radius
+            inner_nucleus = dist_from_center <= (nucleus_radius - thickness)
+            nucleus = outer_nucleus ^ inner_nucleus
+
+            self.logger.info("Hollow cell nucleus generated successfully")
+            return nucleus.astype(float)
+
+        except Exception as e:
+            self.logger.error(f"Error in cell nucleus generation: {str(e)}")
+            raise
+
+
+    def generate_er(self, cell_shape, nucleus_center, nucleus_radius, er_density=0.1, pixel_size=(1,1,1)):
+        try:
+            self.logger.info(f"Generating ER with density {er_density}")
+
+            z, y, x = np.ogrid[:self.size[0], :self.size[1], :self.size[2]]
+            dist_from_center = np.sqrt(
+                ((z - nucleus_center[0]) * pixel_size[0])**2 +
+                ((y - nucleus_center[1]) * pixel_size[1])**2 +
+                ((x - nucleus_center[2]) * pixel_size[2])**2
+            )
+
+            # Convert cell_shape to boolean
+            cytoplasm_mask = cell_shape.astype(bool)
+            nucleus_mask = dist_from_center <= nucleus_radius
+            cytoplasm_mask[nucleus_mask] = False
+
+            # Initialize ER
+            er = np.zeros(self.size, dtype=bool)
+
+            # Start points for ER growth (on nuclear envelope)
+            nuclear_envelope = (dist_from_center >= nucleus_radius) & (dist_from_center <= nucleus_radius + max(pixel_size))
+            start_points = np.argwhere(nuclear_envelope & cytoplasm_mask)
+            num_start_points = min(50, len(start_points))
+            start_points = start_points[np.random.choice(len(start_points), num_start_points, replace=False)]
+
+            for start in start_points:
+                current_point = start
+                for _ in range(100):  # Grow each branch for 100 steps
+                    er[tuple(current_point)] = True
+                    # Random step
+                    step = np.random.randint(-1, 2, 3)
+                    new_point = current_point + step
+                    new_point = np.clip(new_point, [0, 0, 0], np.array(self.size) - 1)
+                    if cytoplasm_mask[tuple(new_point)]:
+                        current_point = new_point
+
+            # Add some sheet-like structures near the nucleus
+            sheet_mask = (dist_from_center > nucleus_radius) & (dist_from_center <= nucleus_radius + 5*max(pixel_size))
+            er |= sheet_mask & cytoplasm_mask & (np.random.rand(*self.size) < 0.3)
+
+            # Dilate and smooth to create more continuous structures
+            er = binary_dilation(er, iterations=2)
+            er = gaussian_filter(er.astype(float), sigma=1) > 0.5
+
+            # Ensure ER is only within the cytoplasm
+            er &= cytoplasm_mask
+
+            # Adjust density
+            while np.sum(er) / np.sum(cytoplasm_mask) > er_density:
+                er &= (np.random.rand(*self.size) < 0.9)
+
+            self.logger.info("ER generated successfully")
+            return er.astype(float)
+
+        except Exception as e:
+            self.logger.error(f"Error in ER generation: {str(e)}")
+            raise
+
+    def generate_cell_shape(self, cell_type, size, pixel_size=(1,1,1), membrane_thickness=1):
+        try:
+            self.logger.info(f"Generating {cell_type} cell shape")
+
+            z, y, x = np.ogrid[:size[0], :size[1], :size[2]]
+            center = np.array(size) // 2
+
+            if cell_type == 'spherical':
+                radius = min(size) // 2 - 1
+                dist_from_center = np.sqrt(
+                    ((z - center[0]) * pixel_size[0])**2 +
+                    ((y - center[1]) * pixel_size[1])**2 +
+                    ((x - center[2]) * pixel_size[2])**2
+                )
+                outer_membrane = dist_from_center <= radius
+                inner_membrane = dist_from_center <= (radius - membrane_thickness)
+                cell_shape = outer_membrane ^ inner_membrane
+
+            elif cell_type == 'neuron':
+                cell_body_radius = min(size) // 4
+                cell_body = ((z - center[0])*pixel_size[0])**2 + ((y - center[1])*pixel_size[1])**2 + ((x - center[2])*pixel_size[2])**2 <= cell_body_radius**2
+                axon = (x >= center[2]) & (np.abs(y - center[1]) <= size[1]//10) & (np.abs(z - center[0]) <= size[0]//10)
+                dendrites = np.random.rand(*size) < 0.05
+                dendrites = binary_dilation(dendrites, iterations=3)
+                dendrites = dendrites & ~cell_body & (x < center[2])
+                cell_shape = binary_dilation(cell_body | axon | dendrites, iterations=membrane_thickness) ^ (cell_body | axon | dendrites)
+
+            elif cell_type == 'epithelial':
+                height = size[0] // 3
+                outer_shape = z < height
+                inner_shape = z < (height - membrane_thickness)
+                cell_shape = outer_shape ^ inner_shape
+
+            elif cell_type == 'muscle':
+                outer_shape = ((y - center[1])*pixel_size[1])**2 + ((z - center[0])*pixel_size[0])**2 <= (min(size)//4)**2
+                inner_shape = ((y - center[1])*pixel_size[1])**2 + ((z - center[0])*pixel_size[0])**2 <= (min(size)//4 - membrane_thickness)**2
+                cell_shape = outer_shape ^ inner_shape
+
+            else:
+                raise ValueError(f"Unknown cell type: {cell_type}")
+
+            self.logger.info(f"{cell_type} cell shape generated successfully")
+            return cell_shape.astype(float)
+
+        except Exception as e:
+            self.logger.error(f"Error in cell shape generation: {str(e)}")
+            raise
+
+    def _generate_nucleus(self) -> np.ndarray:
+        # Implement nucleus generation here
+        pass
+
+    def _generate_mitochondria(self) -> np.ndarray:
+        # Implement mitochondria generation here
+        pass
+
+    def _generate_actin(self) -> np.ndarray:
+        # Implement actin network generation here
+        pass
+
+    def _generate_lysosomes(self) -> np.ndarray:
+        # Implement lysosome generation here
+        pass
+
+    def simulate_calcium_signal(self, signal_type: str, params: Dict) -> np.ndarray:
+        """
+        Simulate calcium signaling events.
+
+        Args:
+        signal_type (str): Type of calcium signal ('blip', 'puff', 'wave')
+        params (Dict): Parameters for the specific signal type
+
+        Returns:
+        np.ndarray: Time series of calcium concentrations
+        """
+        try:
+            if signal_type == 'blip':
+                return self._simulate_calcium_blip(params)
+            elif signal_type == 'puff':
+                return self._simulate_calcium_puff(params)
+            elif signal_type == 'wave':
+                return self._simulate_calcium_wave(params)
+            else:
+                raise ValueError(f"Unknown calcium signal type: {signal_type}")
+        except Exception as e:
+            self.logger.error(f"Error in calcium signal simulation: {str(e)}")
+            raise
+
+    def _simulate_calcium_blip(self, params: Dict) -> np.ndarray:
+        # Implement calcium blip simulation here
+        pass
+
+    def _simulate_calcium_puff(self, params: Dict) -> np.ndarray:
+        # Implement calcium puff simulation here
+        pass
+
+    def _simulate_calcium_wave(self, params: Dict) -> np.ndarray:
+        # Implement calcium wave simulation here
+        pass
+
+
+class BiologicalSimulationWidget(QWidget):
+    simulationRequested = pyqtSignal(dict)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.initUI()
+
+    def initUI(self):
+        main_layout = QVBoxLayout(self)  # Use self as the parent for the layout
+
+        # Create tab widget
+        self.tab_widget = QTabWidget()
+        main_layout.addWidget(self.tab_widget)
+
+        # Create tabs
+        self.create_protein_tab()
+        self.create_structure_tab()
+        self.create_calcium_tab()
+
+        # Simulate Button
+        self.simulate_button = QPushButton("Simulate")
+        self.simulate_button.clicked.connect(self.requestSimulation)
+        main_layout.addWidget(self.simulate_button)
+
+    def create_protein_tab(self):
+        protein_tab = QWidget()
+        layout = QVBoxLayout(protein_tab)
+
+        # Protein Diffusion
+        diffusion_layout = QHBoxLayout()
+        diffusion_layout.addWidget(QLabel("Protein Diffusion:"))
+        self.diffusion_checkbox = QCheckBox()
+        diffusion_layout.addWidget(self.diffusion_checkbox)
+        self.diffusion_coefficient = QDoubleSpinBox()
+        self.diffusion_coefficient.setRange(0, 100)
+        self.diffusion_coefficient.setValue(1)
+        diffusion_layout.addWidget(self.diffusion_coefficient)
+        layout.addLayout(diffusion_layout)
+
+        # Active Transport
+        transport_layout = QHBoxLayout()
+        transport_layout.addWidget(QLabel("Active Transport:"))
+        self.transport_checkbox = QCheckBox()
+        transport_layout.addWidget(self.transport_checkbox)
+        self.transport_velocity = QDoubleSpinBox()
+        self.transport_velocity.setRange(-10, 10)
+        self.transport_velocity.setValue(1)
+        transport_layout.addWidget(self.transport_velocity)
+        layout.addLayout(transport_layout)
+
+        self.tab_widget.addTab(protein_tab, "Protein Dynamics")
+
+    def create_structure_tab(self):
+        structure_tab = QWidget()
+        main_layout = QVBoxLayout(structure_tab)
+
+        # Cellular Structures
+        structure_layout = QHBoxLayout()
+        structure_layout.addWidget(QLabel("Cellular Structure:"))
+        self.structure_combo = QComboBox()
+        self.structure_combo.addItems(['None', 'Cell Membrane', 'Nucleus', 'Cell Membrane + Nucleus', 'Cell Membrane + Nucleus + ER'])
+        structure_layout.addWidget(self.structure_combo)
+        main_layout.addLayout(structure_layout)
+
+        # Create a form layout for the rest of the options
+        form_layout = QFormLayout()
+
+        # Cell type selection
+        self.cell_type_combo = QComboBox()
+        self.cell_type_combo.addItems(['spherical', 'neuron', 'epithelial', 'muscle'])
+        form_layout.addRow("Cell Type:", self.cell_type_combo)
+
+        # Pixel size inputs
+        self.pixel_size_x = QDoubleSpinBox()
+        self.pixel_size_y = QDoubleSpinBox()
+        self.pixel_size_z = QDoubleSpinBox()
+        for spinbox in [self.pixel_size_x, self.pixel_size_y, self.pixel_size_z]:
+            spinbox.setRange(0.1, 10)
+            spinbox.setSingleStep(0.1)
+            spinbox.setValue(1)
+        pixel_size_layout = QHBoxLayout()
+        pixel_size_layout.addWidget(self.pixel_size_x)
+        pixel_size_layout.addWidget(self.pixel_size_y)
+        pixel_size_layout.addWidget(self.pixel_size_z)
+        form_layout.addRow("Pixel Size (x, y, z):", pixel_size_layout)
+
+        # Cell Membrane options
+        self.membrane_options = QWidget()
+        membrane_layout = QFormLayout(self.membrane_options)
+        self.cell_radius = QSpinBox()
+        self.cell_radius.setRange(5, 50)
+        self.cell_radius.setValue(20)
+        membrane_layout.addRow("Cell Radius:", self.cell_radius)
+        self.membrane_thickness = QSpinBox()
+        self.membrane_thickness.setRange(1, 5)
+        self.membrane_thickness.setValue(1)
+        membrane_layout.addRow("Membrane Thickness:", self.membrane_thickness)
+        form_layout.addRow(self.membrane_options)
+
+        # Nucleus options
+        self.nucleus_options = QWidget()
+        nucleus_layout = QFormLayout(self.nucleus_options)
+        self.nucleus_radius = QSpinBox()
+        self.nucleus_radius.setRange(1, 15)
+        self.nucleus_radius.setValue(5)
+        nucleus_layout.addRow("Nucleus Radius:", self.nucleus_radius)
+        self.nucleus_thickness = QSpinBox()
+        self.nucleus_thickness.setRange(1, 3)
+        self.nucleus_thickness.setValue(1)
+        nucleus_layout.addRow("Nucleus Thickness:", self.nucleus_thickness)
+        form_layout.addRow(self.nucleus_options)
+
+        # ER options
+        self.er_options = QWidget()
+        er_layout = QFormLayout(self.er_options)
+        self.er_density = QDoubleSpinBox()
+        self.er_density.setRange(0.05, 0.2)
+        self.er_density.setSingleStep(0.01)
+        self.er_density.setValue(0.1)
+        er_layout.addRow("ER Density:", self.er_density)
+        form_layout.addRow(self.er_options)
+
+        main_layout.addLayout(form_layout)
+
+        self.structure_combo.currentTextChanged.connect(self.toggle_structure_options)
+
+        self.tab_widget.addTab(structure_tab, "Cellular Structures")
+
+    def toggle_structure_options(self, structure):
+        self.membrane_options.setVisible('Cell Membrane' in structure)
+        self.nucleus_options.setVisible('Nucleus' in structure)
+        self.er_options.setVisible('ER' in structure)
+
+    def create_calcium_tab(self):
+        calcium_tab = QWidget()
+        layout = QVBoxLayout(calcium_tab)
+
+        # Calcium Signaling
+        calcium_layout = QHBoxLayout()
+        calcium_layout.addWidget(QLabel("Calcium Signal:"))
+        self.calcium_combo = QComboBox()
+        self.calcium_combo.addItems(['None', 'Blip', 'Puff', 'Wave'])
+        calcium_layout.addWidget(self.calcium_combo)
+        layout.addLayout(calcium_layout)
+
+        # Add more calcium signal-related controls here
+        # For example:
+        intensity_layout = QHBoxLayout()
+        intensity_layout.addWidget(QLabel("Signal Intensity:"))
+        self.calcium_intensity = QDoubleSpinBox()
+        self.calcium_intensity.setRange(0, 1)
+        self.calcium_intensity.setSingleStep(0.1)
+        self.calcium_intensity.setValue(0.5)
+        intensity_layout.addWidget(self.calcium_intensity)
+        layout.addLayout(intensity_layout)
+
+        duration_layout = QHBoxLayout()
+        duration_layout.addWidget(QLabel("Signal Duration:"))
+        self.calcium_duration = QSpinBox()
+        self.calcium_duration.setRange(1, 100)
+        self.calcium_duration.setValue(10)
+        duration_layout.addWidget(self.calcium_duration)
+        layout.addLayout(duration_layout)
+
+        self.tab_widget.addTab(calcium_tab, "Calcium Signaling")
+
+    def requestSimulation(self):
+        params = {
+            'protein_diffusion': {
+                'enabled': self.diffusion_checkbox.isChecked(),
+                'coefficient': self.diffusion_coefficient.value()
+            },
+            'active_transport': {
+                'enabled': self.transport_checkbox.isChecked(),
+                'velocity': self.transport_velocity.value()
+            },
+            'cellular_structure': self.structure_combo.currentText(),
+            'cell_radius': self.cell_radius.value(),
+            'membrane_thickness': self.membrane_thickness.value(),
+            'nucleus_radius': self.nucleus_radius.value(),
+            'nucleus_thickness': self.nucleus_thickness.value(),
+            'er_density': self.er_density.value(),
+            'cell_type': self.cell_type_combo.currentText(),
+            'pixel_size': (self.pixel_size_x.value(), self.pixel_size_y.value(), self.pixel_size_z.value()),
+
+            'calcium_signal': {
+                'type': self.calcium_combo.currentText(),
+                'intensity': self.calcium_intensity.value(),
+                'duration': self.calcium_duration.value()
+            }
+        }
+        self.simulationRequested.emit(params)
+
+    def toggle_structure_options(self, structure):
+        self.membrane_options.setVisible(structure in ['Cell Membrane', 'Cell Membrane + Nucleus'])
+        self.nucleus_options.setVisible(structure in ['Nucleus', 'Cell Membrane + Nucleus'])
+
+
+class BiologicalSimulationWindow(QMainWindow):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Biological Simulation")
+        self.simulation_widget = BiologicalSimulationWidget()
+        self.setCentralWidget(self.simulation_widget)
+        self.resize(400, 300)  # Set an initial size for the window
+
 
 class VolumeProcessor:
     def __init__(self):
@@ -94,9 +627,44 @@ class DataGenerator:
             volume[c] = np.clip(volume[c], 0, 1)
         return volume
 
-    def generate_multi_channel_time_series(self, num_volumes, num_channels=2, size=(30, 100, 100),
-                                           num_blobs=30, intensity_range=(0.5, 1.0), sigma_range=(2, 6),
-                                           noise_level=0.02, movement_speed=1.0):
+    def _generate_single_volume(
+        self,
+        size: Tuple[int, int, int],
+        blob_positions: np.ndarray,
+        blob_velocities: np.ndarray,
+        intensity_range: Tuple[float, float],
+        sigma_range: Tuple[float, float],
+        noise_level: float
+    ) -> np.ndarray:
+        z, y, x = size
+        volume = np.zeros((z, y, x))
+
+        for i, (bz, by, bx) in enumerate(blob_positions):
+            sigma = np.random.uniform(*sigma_range)
+            intensity = np.random.uniform(*intensity_range)
+
+            zz, yy, xx = np.ogrid[
+                max(0, int(bz-3*sigma)):min(z, int(bz+3*sigma)),
+                max(0, int(by-3*sigma)):min(y, int(by+3*sigma)),
+                max(0, int(bx-3*sigma)):min(x, int(bx+3*sigma))
+            ]
+            blob = np.exp(-((zz-bz)**2 + (yy-by)**2 + (xx-bx)**2) / (2*sigma*sigma))
+            volume[zz, yy, xx] += intensity * blob
+
+        volume += np.random.normal(0, noise_level, (z, y, x))
+        return np.clip(volume, 0, 1)
+
+    def generate_multi_channel_time_series(
+        self,
+        num_volumes: int,
+        num_channels: int = 2,
+        size: Tuple[int, int, int] = (30, 100, 100),
+        num_blobs: int = 30,
+        intensity_range: Tuple[float, float] = (0.5, 1.0),
+        sigma_range: Tuple[float, float] = (2, 6),
+        noise_level: float = 0.02,
+        movement_speed: float = 1.0
+    ) -> np.ndarray:
         z, y, x = size
         time_series = np.zeros((num_volumes, num_channels, z, y, x))
         blob_positions = np.random.rand(num_channels, num_blobs, 3) * np.array([z, y, x])
@@ -104,33 +672,18 @@ class DataGenerator:
 
         for t in range(num_volumes):
             for c in range(num_channels):
-                volume = np.zeros((z, y, x))
-                for i in range(num_blobs):
-                    bz, by, bx = blob_positions[c, i]
-                    sigma = np.random.uniform(*sigma_range)
-                    intensity = np.random.uniform(*intensity_range)
+                volume = self._generate_single_volume(
+                    size, blob_positions[c], blob_velocities[c],
+                    intensity_range, sigma_range, noise_level
+                )
+                time_series[t, c] = volume
 
-                    zz, yy, xx = np.ogrid[-bz:z-bz, -by:y-by, -bx:x-bx]
-                    blob = np.exp(-(zz*zz + yy*yy + xx*xx) / (2*sigma*sigma))
-                    volume += intensity * blob
-
-                    # Update blob position
-                    blob_positions[c, i] += blob_velocities[c, i]
-                    blob_positions[c, i] %= [z, y, x]  # Wrap around the volume
-
-                volume += np.random.normal(0, noise_level, (z, y, x))
-                time_series[t, c] = np.clip(volume, 0, 1)
+                # Update blob positions
+                blob_positions[c] += blob_velocities[c]
+                blob_positions[c] %= [z, y, x]  # Wrap around the volume
 
         self.data = time_series
-
-        self.logger.debug(f"Volume shape: {volume.shape}")
-        self.logger.debug(f"Blob shape: {blob.shape}")
-        self.logger.debug(f"Time series shape: {time_series.shape}")
-
-        print(f"Volume shape: {volume.shape}")
-        print(f"Blob shape: {blob.shape}")
-        print(f"Time series shape: {time_series.shape}")
-
+        self.logger.info(f"Generated time series with shape: {time_series.shape}")
         return time_series
 
 
@@ -477,6 +1030,8 @@ class BlobAnalysisDialog(QDialog):
         tab.setLayout(layout)
         self.tabWidget.addTab(tab, "Distance Analysis")
 
+        plt.close()
+
     def addDensityAnalysisTab(self, time_point):
         tab = QWidget()
         layout = QVBoxLayout()
@@ -512,6 +1067,8 @@ class BlobAnalysisDialog(QDialog):
 
         tab.setLayout(layout)
         self.tabWidget.addTab(tab, "Blob Size Analysis")
+
+        plt.close()
 
     def addStatsTab(self, time_point):
         tab = QWidget()
@@ -584,6 +1141,8 @@ class BlobAnalysisDialog(QDialog):
         tab.setLayout(layout)
         self.tabWidget.addTab(tab, "Intensity Analysis")
 
+        plt.close()
+
     def add3DVisualizationTab(self, time_point):
         tab = QWidget()
         layout = QVBoxLayout()
@@ -609,6 +1168,8 @@ class BlobAnalysisDialog(QDialog):
 
         tab.setLayout(layout)
         self.tabWidget.addTab(tab, "3D Visualization")
+
+        plt.close()
 
     def addColocalizationTab(self, time_point):
         tab = QWidget()
@@ -714,15 +1275,27 @@ class TimeSeriesDialog(QDialog):
 
         self.setLayout(layout)
 
+######################################################################################################
+######################################################################################################
+'''                                   MAIN LIGHTSHEETVIEWER CLASS                                  '''
+######################################################################################################
+######################################################################################################
+
 class LightsheetViewer(QMainWindow):
     def __init__(self):
         super().__init__()
         self.initLogging()
         self.volume_processor = VolumeProcessor()
         self.data = None
+        self.lastPos = None
         self.data_generator = DataGenerator()
 
         self.channel_colors = [(1, 0, 0, 1), (0, 1, 0, 1), (0, 0, 1, 1)]  # RGB for up to 3 channels
+        self.biological_simulator = BiologicalSimulator(size=(30, 100, 100), num_time_points=10)
+        self.biological_simulation_window = None  # We'll create this lazily
+
+        self.setupChannelControlsWidget()
+
         self.initUI()
 
         self.generateData()
@@ -751,9 +1324,11 @@ class LightsheetViewer(QMainWindow):
         self.create3DVisualizationDock()
         self.createVisualizationControlDock()
         self.createPlaybackControlDock()
-
         # blob visualization dock
         self.createBlobVisualizationDock()
+
+
+        self.connectViewEvents()
 
         # Create menu bar
         self.createMenuBar()
@@ -787,9 +1362,122 @@ class LightsheetViewer(QMainWindow):
         self.resizeDocks([self.dockXY, self.dockXZ, self.dockYZ], [200, 200, 200], Qt.Vertical)
         self.resizeDocks([self.dock3D, self.dockDataGeneration], [800, 300], Qt.Horizontal)
 
-    def display_blob_results(self, blobs):
-        self.blob_results_dialog.update_results(blobs)
-        self.blob_results_dialog.show()
+        self.check_view_state()  # Check the state after initialization
+
+
+
+    # def display_blob_results(self, blobs):
+    #     self.blob_results_dialog.update_results(blobs)
+    #     self.blob_results_dialog.show()
+
+
+    def runBiologicalSimulation(self, params):
+        try:
+            # Run protein diffusion simulation if enabled
+            if params['protein_diffusion']['enabled']:
+                diffusion_coefficient = params['protein_diffusion']['coefficient']
+
+                # Ensure the biological simulator has the correct number of time points
+                if self.data is not None:
+                    self.biological_simulator.num_time_points = self.data.shape[0]
+                else:
+                    self.logger.warning("No existing data. Creating new data set for protein diffusion.")
+                    self.biological_simulator.num_time_points = 10  # or any default value
+
+                initial_concentration = np.zeros(self.biological_simulator.size)
+                initial_concentration[self.biological_simulator.size[0]//2,
+                                      self.biological_simulator.size[1]//2,
+                                      self.biological_simulator.size[2]//2] = 1.0  # Point source in the center
+
+                diffusion_data = self.biological_simulator.simulate_protein_diffusion(
+                    diffusion_coefficient,
+                    initial_concentration
+                )
+
+                # Add the diffusion data as a new channel
+                if self.data is None:
+                    self.data = diffusion_data[:, np.newaxis, :, :, :]  # Add channel dimension
+                else:
+                    self.data = np.concatenate((self.data, diffusion_data[:, np.newaxis, :, :, :]), axis=1)
+
+                self.logger.info(f"Added protein diffusion data. New data shape: {self.data.shape}")
+
+                # Update UI elements for the new channel
+                self.updateUIForNewData()
+
+            # Run active transport simulation if enabled
+            if params['active_transport']['enabled']:
+                # We haven't implemented this yet, so let's just log it
+                self.logger.info("Active transport simulation not yet implemented")
+
+            # Generate cellular structures
+            if params['cellular_structure'] != 'None':
+                center = (self.biological_simulator.size[0] // 2,
+                          self.biological_simulator.size[1] // 2,
+                          self.biological_simulator.size[2] // 2)
+                pixel_size = params['pixel_size']
+                cell_shape = self.biological_simulator.generate_cell_shape(
+                    params['cell_type'],
+                    self.biological_simulator.size,
+                    pixel_size,
+                    membrane_thickness=params['membrane_thickness'])
+
+                nucleus_center = np.array(self.biological_simulator.size) // 2
+                nucleus_radius = params['nucleus_radius'] * max(pixel_size)
+
+                if 'Cell Membrane' in params['cellular_structure']:
+                    membrane_data = cell_shape
+                    membrane_timeseries = np.repeat(membrane_data[np.newaxis, np.newaxis, :, :, :], self.biological_simulator.num_time_points, axis=0)
+                    self.data = membrane_timeseries
+                    self.logger.info(f"Added cell membrane data. Data shape: {self.data.shape}")
+
+
+                if 'Nucleus' in params['cellular_structure']:
+                    nucleus_data = self.biological_simulator.generate_nucleus(
+                        nucleus_center,
+                        cell_radius=min(self.biological_simulator.size) // 2,
+                        nucleus_radius=nucleus_radius,
+                        thickness=params['nucleus_thickness'],
+                        pixel_size=pixel_size
+                    )
+                    nucleus_timeseries = np.repeat(nucleus_data[np.newaxis, np.newaxis, :, :, :], self.biological_simulator.num_time_points, axis=0)
+                    if self.data is None:
+                        self.data = nucleus_timeseries
+                    else:
+                        self.data = np.concatenate((self.data, nucleus_timeseries), axis=1)
+                    self.logger.info(f"Added cell nucleus data. New data shape: {self.data.shape}")
+
+
+                if 'ER' in params['cellular_structure']:
+                    er_data = self.biological_simulator.generate_er(
+                        cell_shape,
+                        nucleus_center,
+                        nucleus_radius,
+                        params['er_density'],
+                        pixel_size
+                    )
+                    er_timeseries = np.repeat(er_data[np.newaxis, np.newaxis, :, :, :], self.biological_simulator.num_time_points, axis=0)
+                    if self.data is None:
+                        self.data = er_timeseries
+                    else:
+                        self.data = np.concatenate((self.data, er_timeseries), axis=1)
+                    self.logger.info(f"Added ER data. New data shape: {self.data.shape}")
+
+                self.updateUIForNewData()
+                self.updateViews()
+                self.create3DVisualization()
+
+            # Simulate calcium signal if selected
+            if params['calcium_signal']['type'] != 'None':
+                # We haven't implemented this yet, so let's just log it
+                self.logger.info(f"Calcium signal simulation for {params['calcium_signal']['type']} not yet implemented")
+
+            self.updateViews()
+            self.create3DVisualization()
+
+        except Exception as e:
+            self.logger.error(f"Error in biological simulation: {str(e)}")
+            QMessageBox.critical(self, "Simulation Error", f"An error occurred during simulation: {str(e)}")
 
     def createViewDocks(self):
         # XY View
@@ -986,31 +1674,27 @@ class LightsheetViewer(QMainWindow):
         visControlWidget = QWidget()
         layout = QVBoxLayout(visControlWidget)
 
-        # Channel controls
-        self.channelControls = []
-        for i in range(3):  # Assume max 3 channels for now
-            channelLayout = QHBoxLayout()
-            channelLayout.addWidget(QLabel(f"Channel {i+1}:"))
-            visibilityCheck = QCheckBox("Visible")
-            visibilityCheck.setChecked(True)
-            visibilityCheck.stateChanged.connect(self.updateChannelVisibility)
-            channelLayout.addWidget(visibilityCheck)
-            opacitySlider = QSlider(Qt.Horizontal)
-            opacitySlider.setRange(0, 100)
-            opacitySlider.setValue(100)
-            opacitySlider.valueChanged.connect(self.updateChannelOpacity)
-            channelLayout.addWidget(opacitySlider)
-            self.channelControls.append((visibilityCheck, opacitySlider))
-            layout.addLayout(channelLayout)
+        # Set up channel controls widget
+        self.setupChannelControlsWidget()
+        layout.addWidget(self.channelControlsWidget)
 
 
         layout.addWidget(QLabel("Threshold:"))
         self.thresholdSpinBox = QDoubleSpinBox()
         self.thresholdSpinBox.setRange(0, 1)
-        self.thresholdSpinBox.setSingleStep(0.05)
-        self.thresholdSpinBox.setValue(0.5)
+        self.thresholdSpinBox.setSingleStep(0.1)
+        self.thresholdSpinBox.setValue(0)
         self.thresholdSpinBox.valueChanged.connect(self.updateThreshold)
         layout.addWidget(self.thresholdSpinBox)
+
+        layout.addWidget(QLabel("Point Size"))
+        self.scatterPointSizeSpinBox = QDoubleSpinBox()
+        self.scatterPointSizeSpinBox.setRange(0, 100)
+        self.scatterPointSizeSpinBox.setSingleStep(1)
+        self.scatterPointSizeSpinBox.setValue(2)
+        self.scatterPointSizeSpinBox.valueChanged.connect(self.updateScatterPointSize)
+        layout.addWidget(self.scatterPointSizeSpinBox)
+
 
         layout.addWidget(QLabel("3D Rendering Mode:"))
         self.renderModeCombo = QComboBox()
@@ -1036,6 +1720,29 @@ class LightsheetViewer(QMainWindow):
         self.clipSlider.valueChanged.connect(self.updateClipPlane)
         layout.addWidget(self.clipSlider)
 
+        # Add checkbox for synchronizing views
+        self.syncViewsCheck = QCheckBox("Synchronize 3D Views")
+        self.syncViewsCheck.setChecked(False)
+        layout.addWidget(self.syncViewsCheck)
+
+        # Add button for auto-scaling
+        self.autoScaleButton = QPushButton("Auto Scale Views")
+        self.autoScaleButton.clicked.connect(self.autoScaleViews)
+        layout.addWidget(self.autoScaleButton)
+
+        # Add buttons for orienting views
+        self.topDownButton = QPushButton("Top-Down View")
+        self.topDownButton.clicked.connect(self.setTopDownView)
+        layout.addWidget(self.topDownButton)
+
+        self.sideViewButton = QPushButton("Side View (XZ)")
+        self.sideViewButton.clicked.connect(self.setSideView)
+        layout.addWidget(self.sideViewButton)
+
+        self.frontViewButton = QPushButton("Front View (YZ)")
+        self.frontViewButton.clicked.connect(self.setFrontView)
+        layout.addWidget(self.frontViewButton)
+
         # Add Blob Detection controls
         layout.addWidget(QLabel("Blob Detection:"))
 
@@ -1057,8 +1764,9 @@ class LightsheetViewer(QMainWindow):
         self.blobThresholdSpinBox = QDoubleSpinBox()
         self.blobThresholdSpinBox.setRange(0, 1)
         self.blobThresholdSpinBox.setSingleStep(0.01)
-        self.blobThresholdSpinBox.setValue(0.1)
+        self.blobThresholdSpinBox.setValue(0.5)
         blobLayout.addWidget(self.blobThresholdSpinBox, 2, 1)
+        self.blobThresholdSpinBox.valueChanged.connect(self.updateBlobThreshold)
 
         # Add checkbox for showing all blobs
         self.showAllBlobsCheck = QCheckBox("Show All Blobs")
@@ -1111,6 +1819,13 @@ class LightsheetViewer(QMainWindow):
         self.blob_items = []
         self.slice_marker_items = []
 
+        # Connect mouse events
+        self.blobGLView.mousePressEvent = self.on3DViewMousePress
+        self.blobGLView.mouseReleaseEvent = self.on3DViewMouseRelease
+        self.blobGLView.mouseMoveEvent = self.on3DViewMouseMove
+        self.blobGLView.wheelEvent = self.on3DViewWheel
+        self.logger.debug(f"Blob visualization dock created. blobGLView: {self.blobGLView}")
+
     def create3DVisualizationDock(self):
         # 3D View
         self.dock3D = QDockWidget("3D View", self)
@@ -1131,6 +1846,17 @@ class LightsheetViewer(QMainWindow):
         # Initialize empty lists to store data and slice marker items
         self.data_items = []
         self.main_slice_marker_items = []
+
+        self.glView.opts['fov'] = 60
+        self.glView.opts['elevation'] = 30
+        self.glView.opts['azimuth'] = 45
+
+        # Connect mouse events
+        self.glView.mousePressEvent = self.on3DViewMousePress
+        self.glView.mouseReleaseEvent = self.on3DViewMouseRelease
+        self.glView.mouseMoveEvent = self.on3DViewMouseMove
+        self.glView.wheelEvent = self.on3DViewWheel
+        self.logger.debug(f"3D visualization dock created. glView: {self.glView}")
 
 
     def visualize_blobs(self, blobs):
@@ -1171,7 +1897,7 @@ class LightsheetViewer(QMainWindow):
 
             # Add to blob visualization view
             blob_item_vis = gl.GLMeshItem(meshdata=mesh, smooth=True, color=color, shader='shaded')
-            blob_item_vis.translate(x, z, y)  # Swapped y and z
+            blob_item_vis.translate(z, x, y)  # Swapped y and z
             self.blobGLView.addItem(blob_item_vis)
             self.blob_items.append(blob_item_vis)
 
@@ -1273,6 +1999,22 @@ class LightsheetViewer(QMainWindow):
         timeSeriesAction = analysisMenu.addAction('Time Series Analysis')
         timeSeriesAction.triggered.connect(self.showTimeSeriesAnalysis)
 
+        # Add a new menu item for the Biological Simulation window
+        viewMenu = menuBar.addMenu('&View')
+        self.showBioSimAction = QAction('Biological Simulation', self, checkable=True)
+        self.showBioSimAction.triggered.connect(self.toggleBiologicalSimulationWindow)
+        viewMenu.addAction(self.showBioSimAction)
+
+
+    def toggleBiologicalSimulationWindow(self, checked):
+        if checked:
+            if self.biological_simulation_window is None:
+                self.biological_simulation_window = BiologicalSimulationWindow(self)
+                self.biological_simulation_window.simulation_widget.simulationRequested.connect(self.runBiologicalSimulation)
+            self.biological_simulation_window.show()
+        else:
+            if self.biological_simulation_window:
+                self.biological_simulation_window.hide()
 
     def generateData(self):
         try:
@@ -1323,11 +2065,12 @@ class LightsheetViewer(QMainWindow):
             self.logger.info(f"Generated  {num_blobs*num_channels*num_volumes} blobs")
             #self.visualize_data_distribution()  # Call this to visualize the data distribution
             self.updateUIForNewData()
-
             self.timeSlider.setMaximum(num_volumes - 1)
             self.updateViews()
             self.create3DVisualization()
+            self.autoScaleViews()  # Add this line
             self.logger.info("Data generated and visualized successfully")
+
         except Exception as e:
             self.logger.error(f"Error in data generation: {str(e)}")
             self.logger.error(f"Error type: {type(e).__name__}")
@@ -1336,115 +2079,98 @@ class LightsheetViewer(QMainWindow):
             self.logger.error(f"Traceback: {traceback.format_exc()}")
             QMessageBox.critical(self, "Error", f"Failed to generate data: {str(e)}")
 
+
     def updateViews(self):
         if self.data is None:
             self.logger.warning("No data to update views")
             return
         t = self.timeSlider.value()
+        threshold = self.thresholdSpinBox.value()
 
         self.logger.debug(f"Updating views for time point {t}")
         self.logger.debug(f"Data shape: {self.data.shape}")
 
-        # Assuming data shape is (t, c, z, y, x)
-        num_channels, depth, height, width = self.data.shape[1:]
+        num_channels = self.data.shape[1]
+        depth, height, width = self.data.shape[2:]
 
         # Prepare 3D RGB images for each view
         combined_xy = np.zeros((depth, height, width, 3))
         combined_xz = np.zeros((height, depth, width, 3))
         combined_yz = np.zeros((height, depth, width, 3))
 
-        for c in range(min(num_channels, 3)):  # Limit to 3 channels for RGB
-            if self.channelControls[c][0].isChecked():
+        # Define colors for each channel (RGB)
+        channel_colors = [(1, 0, 0), (0, 1, 0), (0, 0, 1)]  # Red, Green, Blue
+
+        for c in range(num_channels):
+            if c < len(self.channelControls) and self.channelControls[c][0].isChecked():
                 opacity = self.channelControls[c][1].value() / 100
                 channel_data = self.data[t, c]
 
                 self.logger.debug(f"Channel {c} data shape: {channel_data.shape}")
+                self.logger.debug(f"Channel {c} data range: {channel_data.min()} to {channel_data.max()}")
 
                 # Normalize channel data
                 channel_data = (channel_data - channel_data.min()) / (channel_data.max() - channel_data.min() + 1e-8)
 
-                combined_xy[:, :, :, c] = channel_data * opacity
-                combined_xz[:, :, :, c] = np.transpose(channel_data, (1, 0, 2)) * opacity
-                combined_yz[:, :, :, c] = np.transpose(channel_data, (2, 0, 1)) * opacity
+                channel_data[channel_data < threshold] = 0
 
-        self.logger.debug(f"Combined XY shape: {combined_xy.shape}")
-        self.logger.debug(f"Combined XZ shape: {combined_xz.shape}")
-        self.logger.debug(f"Combined YZ shape: {combined_yz.shape}")
+                # Apply color to the channel
+                colored_data = channel_data[:, :, :, np.newaxis] * channel_colors[c]
 
-        try:
-            self.imageViewXY.setImage(combined_xy)
-            self.imageViewXY.setCurrentIndex(depth // 2)
+                combined_xy += colored_data * opacity
+                combined_xz += np.transpose(colored_data, (1, 0, 2, 3)) * opacity
+                combined_yz += np.transpose(colored_data, (2, 0, 1, 3)) * opacity
 
-            self.imageViewXZ.setImage(combined_xz)
-            self.imageViewXZ.setCurrentIndex(height // 2)
+        # Clip values to [0, 1] range
+        combined_xy = np.clip(combined_xy, 0, 1)
+        combined_xz = np.clip(combined_xz, 0, 1)
+        combined_yz = np.clip(combined_yz, 0, 1)
 
-            self.imageViewYZ.setImage(combined_yz)
-            self.imageViewYZ.setCurrentIndex(width // 2)
-
-        except Exception as e:
-            self.logger.error(f"Error setting images: {str(e)}")
-            self.logger.error(f"Error type: {type(e).__name__}")
-            self.logger.error(f"Error args: {e.args}")
-            self.logger.error(f"Traceback: {traceback.format_exc()}")
+        self.imageViewXY.setImage(combined_xy, autoLevels=False, levels=[0, 1])
+        self.imageViewXZ.setImage(combined_xz, autoLevels=False, levels=[0, 1])
+        self.imageViewYZ.setImage(combined_yz, autoLevels=False, levels=[0, 1])
 
         self.updateSliceMarkers()
 
     def create3DVisualization(self):
         try:
-            for item in (self.data_items):
+            for item in self.data_items:
                 self.glView.removeItem(item)
-        except:
-            pass
+            self.data_items.clear()
 
-        self.data_items.clear()
-
-        try:
-            #self.glView.clear()
             t = self.timeSlider.value()
             threshold = self.thresholdSpinBox.value()
 
-            num_channels, depth, height, width = self.data.shape[1:]
+            num_channels = self.data.shape[1]
 
-            self.logger.debug(f"3D Visualization - Time: {t}, Threshold: {threshold}")
-            self.logger.debug(f"Data shape: {self.data.shape}")
+            channel_colors = [(1, 0, 0, 1), (0, 1, 0, 1), (0, 0, 1, 1)]  # RGBA
 
-            total_points = 0
-            for c in range(min(num_channels, 3)):  # Limit to 3 channels for RGB
-                if self.channelControls[c][0].isChecked():
+            for c in range(num_channels):
+                if c < len(self.channelControls) and self.channelControls[c][0].isChecked():
                     opacity = self.channelControls[c][1].value() / 100
                     volume_data = self.data[t, c]
+
+                    self.logger.debug(f"3D Channel {c} data shape: {volume_data.shape}")
+                    self.logger.debug(f"3D Channel {c} data range: {volume_data.min()} to {volume_data.max()}")
 
                     # Get 3D coordinates of all points above threshold
                     z, y, x = np.where(volume_data > threshold)
                     pos = np.column_stack((x, y, z))
 
-                    # debugging info
-                    self.logger.debug(f"Channel {c} - Data shape: {volume_data.shape}")
-                    self.logger.debug(f"Channel {c} - Data range: {volume_data.min():.3f} to {volume_data.max():.3f}")
-                    self.logger.debug(f"Channel {c} - Threshold: {threshold}")
-                    self.logger.debug(f"Channel {c} - Points above threshold: {len(pos)}")
-                    self.logger.debug(f"Channel {c} - X range: {x.min()} to {x.max()}")
-                    self.logger.debug(f"Channel {c} - Y range: {y.min()} to {y.max()}")
-                    self.logger.debug(f"Channel {c} - Z range: {z.min()} to {z.max()}")
-
-
                     if len(pos) > 0:
-                        colors = np.tile(self.channel_colors[c], (len(pos), 1))
+                        colors = np.tile(channel_colors[c], (len(pos), 1))
                         colors[:, 3] = opacity * (volume_data[z, y, x] - volume_data.min()) / (volume_data.max() - volume_data.min())
 
-                        scatter = gl.GLScatterPlotItem(pos=pos, color=colors, size=2)
+                        scatter = gl.GLScatterPlotItem(pos=pos, color=colors, size=self.scatterPointSizeSpinBox.value())
                         self.glView.addItem(scatter)
                         self.data_items.append(scatter)
 
-                        total_points += len(pos)
-
             self.glView.update()
-            self.logger.debug(f"3D visualization created successfully. Total points plotted: {total_points}")
+
         except Exception as e:
             self.logger.error(f"Error in 3D visualization: {str(e)}")
             self.logger.error(f"Traceback: {traceback.format_exc()}")
             QMessageBox.critical(self, "Error", f"Failed to create 3D visualization: {str(e)}")
-
 
     def visualize_data_distribution(self):
         t = self.timeSlider.value()
@@ -1471,6 +2197,10 @@ class LightsheetViewer(QMainWindow):
         plt.xlabel('Intensity')
         plt.ylabel('Frequency')
         plt.show()
+
+    def updateScatterPointSize(self, value):
+        self.updateViews()
+        self.create3DVisualization()
 
     def updateChannelVisibility(self):
         self.updateViews()
@@ -1520,7 +2250,18 @@ class LightsheetViewer(QMainWindow):
 
 
     def updateThreshold(self, value):
-        self.create3DVisualization()
+        # if value >= 1:
+        #     self.logger.warning("Array compute error")
+        #     return
+
+        if self.data is not None:
+            self.updateViews()
+            self.create3DVisualization()
+        else:
+            self.logger.warning("No data available to update display threshold")
+
+    def updateBlobThreshold(self, value):
+       self.filter_blobs()
 
     def saveData(self):
         try:
@@ -1543,15 +2284,18 @@ class LightsheetViewer(QMainWindow):
                     self.data = self.data_generator.load_tiff(filename)
                 elif filename.endswith('.npy'):
                     self.data = self.data_generator.load_numpy(filename)
+
                 self.timeSlider.setMaximum(self.data.shape[0] - 1)
                 self.updateViews()
                 self.create3DVisualization()
+                self.autoScaleViews()  # Add this line
                 self.logger.info(f"Data loaded from {filename}")
 
                 # Stop playback when loading new data
                 if self.playbackTimer.isActive():
                     self.playbackTimer.stop()
                     self.playPauseButton.setText("Play")
+
         except Exception as e:
             self.logger.error(f"Error loading data: {str(e)}")
             QMessageBox.critical(self, "Error", f"Failed to load data: {str(e)}")
@@ -1575,6 +2319,33 @@ class LightsheetViewer(QMainWindow):
     def updateUIForNewData(self):
         if self.data is not None:
             self.timeSlider.setMaximum(self.data.shape[0] - 1)
+
+            # Update channel controls
+            num_channels = self.data.shape[1]
+
+            # Clear existing channel controls
+            for i in reversed(range(self.channelControlsLayout.count())):
+                self.channelControlsLayout.itemAt(i).widget().setParent(None)
+            self.channelControls.clear()
+
+            for i in range(num_channels):
+                channelLayout = QHBoxLayout()
+                channelLayout.addWidget(QLabel(f"Channel {i+1}:"))
+                visibilityCheck = QCheckBox("Visible")
+                visibilityCheck.setChecked(True)
+                visibilityCheck.stateChanged.connect(self.updateChannelVisibility)
+                channelLayout.addWidget(visibilityCheck)
+                opacitySlider = QSlider(Qt.Horizontal)
+                opacitySlider.setRange(0, 100)
+                opacitySlider.setValue(100)
+                opacitySlider.valueChanged.connect(self.updateChannelOpacity)
+                channelLayout.addWidget(opacitySlider)
+                self.channelControls.append((visibilityCheck, opacitySlider))
+
+                channelWidget = QWidget()
+                channelWidget.setLayout(channelLayout)
+                self.channelControlsLayout.addWidget(channelWidget)
+
             self.updateViews()
             self.create3DVisualization()
         else:
@@ -1593,6 +2364,10 @@ class LightsheetViewer(QMainWindow):
 
         # Accept the event to allow the window to close
         event.accept()
+
+        # Make sure to close the biological simulation window when the main window is closed
+        if self.biological_simulation_window:
+            self.biological_simulation_window.close()
 
         # Call the base class implementation
         super().closeEvent(event)
@@ -1639,7 +2414,7 @@ class LightsheetViewer(QMainWindow):
         # Get blob detection parameters from UI
         max_sigma = self.maxSigmaSpinBox.value()
         num_sigma = self.numSigmaSpinBox.value()
-        threshold = self.blobThresholdSpinBox.value()
+        #threshold = self.blobThresholdSpinBox.value()
 
         all_blobs = []
         for channel in range(num_channels):
@@ -1648,7 +2423,7 @@ class LightsheetViewer(QMainWindow):
                 volume = self.data[t, channel]
 
                 # Detect blobs
-                blobs = blob_log(volume, max_sigma=max_sigma, num_sigma=num_sigma, threshold=threshold)
+                blobs = blob_log(volume, max_sigma=max_sigma, num_sigma=num_sigma)
 
                 # Calculate intensity for each blob
                 for blob in blobs:
@@ -1670,17 +2445,22 @@ class LightsheetViewer(QMainWindow):
                     # Add blob information including intensity
                     all_blobs.append([y, x, z, r, channel, t, intensity])
 
+        # Convert to numpy array
+        all_blobs = np.array(all_blobs)
 
-        # Combine blobs from all channels
-        all_blobs = np.vstack(all_blobs)
+        # Store the original blob data
+        self.original_blobs = all_blobs
+
+        # Filter blobs based on threshold -> creates self.all_detected_blobs
+        self.filter_blobs()
 
         self.logger.info(f"Detected {len(all_blobs)} blobs across all channels")
 
         # Store all detected blobs
-        self.all_detected_blobs = all_blobs
+        #self.all_detected_blobs = all_blobs
 
         # Display results
-        self.display_blob_results(all_blobs)
+        self.display_blob_results(self.all_detected_blobs)
 
         # Visualize blobs
         self.updateBlobVisualization()
@@ -1690,6 +2470,18 @@ class LightsheetViewer(QMainWindow):
         self.showBlobResultsButton.setText("Show Blob Results")
 
         return all_blobs
+
+
+    def filter_blobs(self):
+        if not hasattr(self, 'original_blobs'):
+            return
+
+        threshold = self.blobThresholdSpinBox.value()
+        self.all_detected_blobs = self.original_blobs[self.original_blobs[:, 6] > threshold]
+
+        # Update visualization
+        self.updateBlobVisualization()
+
 
     def display_blob_results(self, blobs):
         result_dialog = QDialog(self)
@@ -1722,6 +2514,11 @@ class LightsheetViewer(QMainWindow):
     def updateBlobVisualization(self):
         if not hasattr(self, 'all_detected_blobs') or self.all_detected_blobs is None:
             return
+
+        # Clear previous visualizations
+        for item in self.blob_items:
+            self.blobGLView.removeItem(item)
+        self.blob_items.clear()
 
         current_time = self.timeSlider.value()
 
@@ -1765,6 +2562,144 @@ class LightsheetViewer(QMainWindow):
             dialog.exec_()
         else:
             QMessageBox.warning(self, "No Data", "Please detect blobs first.")
+
+    def autoScaleViews(self):
+        if self.data is None:
+            return
+
+        # Get the bounds of the data
+        z, y, x = self.data.shape[2:]  # Assuming shape is (t, c, z, y, x)
+        center = QVector3D(x/2, y/2, z/2)
+
+        # Calculate the diagonal of the bounding box
+        diagonal = np.sqrt(x**2 + y**2 + z**2)
+
+        # Set the camera position for both views
+        for view in [self.glView, self.blobGLView]:
+            view.setCameraPosition(pos=center, distance=diagonal*1.2, elevation=30, azimuth=45)
+            view.opts['center'] = center
+
+        self.glView.update()
+        self.blobGLView.update()
+
+
+
+    def connectViewEvents(self):
+        for view in [self.glView, self.blobGLView]:
+            if view is not None:
+                view.installEventFilter(self)
+        self.logger.debug("View events connected")
+
+    def eventFilter(self, source, event):
+        if source in [self.glView, self.blobGLView]:
+            if event.type() == QEvent.MouseButtonPress:
+                self.on3DViewMousePress(event, source)
+                return True
+            elif event.type() == QEvent.MouseButtonRelease:
+                self.on3DViewMouseRelease(event, source)
+                return True
+            elif event.type() == QEvent.MouseMove:
+                self.on3DViewMouseMove(event, source)
+                return True
+            elif event.type() == QEvent.Wheel:
+                self.on3DViewWheel(event, source)
+                return True
+        return super().eventFilter(source, event)
+
+    @pyqtSlot(QEvent)
+    def on3DViewMousePress(self, event, source):
+        self.lastPos = event.pos()
+        self.logger.debug(f"Mouse press event on {source}")
+
+    @pyqtSlot(QEvent)
+    def on3DViewMouseRelease(self, event, source):
+        self.lastPos = None
+        self.logger.debug(f"Mouse release event on {source}")
+
+    @pyqtSlot(QEvent)
+    def on3DViewMouseMove(self, event, source):
+        if self.lastPos is None:
+            return
+
+        diff = event.pos() - self.lastPos
+        self.lastPos = event.pos()
+
+        self.logger.debug(f"Mouse move event on {source}")
+
+        if event.buttons() == Qt.LeftButton:
+            self.rotate3DViews(diff.x(), diff.y(), source)
+        elif event.buttons() == Qt.MidButton:
+            self.pan3DViews(diff.x(), diff.y(), source)
+
+    @pyqtSlot(QEvent)
+    def on3DViewWheel(self, event, source):
+        delta = event.angleDelta().y()
+        self.logger.debug(f"Wheel event on {source}")
+        self.zoom3DViews(delta, source)
+
+    def rotate3DViews(self, dx, dy, active_view):
+        views_to_update = [active_view]
+        if self.syncViewsCheck.isChecked():
+            views_to_update = [self.glView, self.blobGLView]
+
+        for view in views_to_update:
+            if view is not None and hasattr(view, 'opts'):
+                view.opts['elevation'] -= dy * 0.5
+                view.opts['azimuth'] += dx * 0.5
+                view.update()
+            else:
+                self.logger.error(f"Invalid view object: {view}")
+
+    def pan3DViews(self, dx, dy, active_view):
+        views_to_update = [active_view]
+        if self.syncViewsCheck.isChecked():
+            views_to_update = [self.glView, self.blobGLView]
+
+        for view in views_to_update:
+            if view is not None and hasattr(view, 'pan'):
+                view.pan(dx, dy, 0, relative='view')
+            else:
+                self.logger.error(f"Invalid view object for panning: {view}")
+
+    def zoom3DViews(self, delta, active_view):
+        views_to_update = [active_view]
+        if self.syncViewsCheck.isChecked():
+            views_to_update = [self.glView, self.blobGLView]
+
+        for view in views_to_update:
+            if view is not None and hasattr(view, 'opts'):
+                view.opts['fov'] *= 0.999**delta
+                view.update()
+            else:
+                self.logger.error(f"Invalid view object for zooming: {view}")
+
+    def check_view_state(self):
+        self.logger.debug(f"glView state: {self.glView}, has opts: {hasattr(self.glView, 'opts')}")
+        self.logger.debug(f"blobGLView state: {self.blobGLView}, has opts: {hasattr(self.blobGLView, 'opts')}")
+        self.logger.debug(f"Sync checked: {self.syncViewsCheck.isChecked()}")
+
+
+    def setTopDownView(self):
+        for view in [self.glView, self.blobGLView]:
+            view.setCameraPosition(elevation=90, azimuth=0)
+            view.update()
+
+    def setSideView(self):
+        for view in [self.glView, self.blobGLView]:
+            view.setCameraPosition(elevation=0, azimuth=0)
+            view.update()
+
+    def setFrontView(self):
+        for view in [self.glView, self.blobGLView]:
+            view.setCameraPosition(elevation=0, azimuth=90)
+            view.update()
+
+    def setupChannelControlsWidget(self):
+        self.channelControlsWidget = QWidget()
+        self.channelControlsLayout = QVBoxLayout(self.channelControlsWidget)
+        self.channelControls = []
+
+##############################################################################
 
 def main():
     app = QApplication(sys.argv)

@@ -13,8 +13,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
 from PyQt5.QtCore import Qt
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
-from PyQt5.QtCore import QTimer
-from PyQt5.QtGui import QColor, QVector3D, QImage
+from PyQt5.QtCore import QTimer, QEvent
+from PyQt5.QtGui import QColor, QVector3D, QImage, QMouseEvent, QWheelEvent
 import traceback
 
 from matplotlib import pyplot as plt
@@ -24,8 +24,8 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
 from scipy.spatial import cKDTree
 from scipy.ndimage import center_of_mass
-
-
+from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import pyqtSlot
 
 #from data_generator import DataGenerator
 #from volume_processor import VolumeProcessor
@@ -126,10 +126,6 @@ class DataGenerator:
         self.logger.debug(f"Volume shape: {volume.shape}")
         self.logger.debug(f"Blob shape: {blob.shape}")
         self.logger.debug(f"Time series shape: {time_series.shape}")
-
-        print(f"Volume shape: {volume.shape}")
-        print(f"Blob shape: {blob.shape}")
-        print(f"Time series shape: {time_series.shape}")
 
         return time_series
 
@@ -477,6 +473,8 @@ class BlobAnalysisDialog(QDialog):
         tab.setLayout(layout)
         self.tabWidget.addTab(tab, "Distance Analysis")
 
+        plt.close()
+
     def addDensityAnalysisTab(self, time_point):
         tab = QWidget()
         layout = QVBoxLayout()
@@ -512,6 +510,8 @@ class BlobAnalysisDialog(QDialog):
 
         tab.setLayout(layout)
         self.tabWidget.addTab(tab, "Blob Size Analysis")
+
+        plt.close()
 
     def addStatsTab(self, time_point):
         tab = QWidget()
@@ -584,6 +584,8 @@ class BlobAnalysisDialog(QDialog):
         tab.setLayout(layout)
         self.tabWidget.addTab(tab, "Intensity Analysis")
 
+        plt.close()
+
     def add3DVisualizationTab(self, time_point):
         tab = QWidget()
         layout = QVBoxLayout()
@@ -609,6 +611,8 @@ class BlobAnalysisDialog(QDialog):
 
         tab.setLayout(layout)
         self.tabWidget.addTab(tab, "3D Visualization")
+
+        plt.close()
 
     def addColocalizationTab(self, time_point):
         tab = QWidget()
@@ -660,6 +664,59 @@ class BlobResultsDialog(QDialog):
             self.table.setItem(i, 4, QTableWidgetItem(f"{int(channel)}"))
             self.table.setItem(i, 5, QTableWidgetItem(f"{int(t)}"))
 
+class ROI3D(gl.GLMeshItem):
+    sigRegionChanged = pyqtSignal(object)
+
+    def __init__(self, size=(10, 10, 10), color=(1, 1, 1, 0.3)):
+        verts, faces = self.create_cube(size)
+        super().__init__(vertexes=verts, faces=faces, smooth=False, drawEdges=True, edgeColor=color)
+        self.size = size
+        self.setColor(color)
+
+    @staticmethod
+    def create_cube(size):
+        x, y, z = size
+        verts = np.array([
+            [0, 0, 0], [x, 0, 0], [x, y, 0], [0, y, 0],
+            [0, 0, z], [x, 0, z], [x, y, z], [0, y, z]
+        ])
+        faces = np.array([
+            [0, 1, 2], [0, 2, 3], [0, 1, 4], [1, 4, 5],
+            [1, 2, 5], [2, 5, 6], [2, 3, 6], [3, 6, 7],
+            [3, 0, 7], [0, 4, 7], [4, 5, 6], [4, 6, 7]
+        ])
+        return verts, faces
+
+    def setPosition(self, pos):
+        self.resetTransform()
+        self.translate(*pos)
+        self.sigRegionChanged.emit(self)
+
+class TimeSeriesDialog(QDialog):
+    def __init__(self, blob_analyzer, parent=None):
+        super().__init__(parent)
+        self.blob_analyzer = blob_analyzer
+        self.setWindowTitle("Time Series Analysis")
+        self.initUI()
+
+    def initUI(self):
+        layout = QVBoxLayout()
+        plot_widget = pg.PlotWidget()
+        layout.addWidget(plot_widget)
+
+        time_points = np.unique(self.blob_analyzer.blobs[:, 5])
+        channels = np.unique(self.blob_analyzer.blobs[:, 4])
+
+        for channel in channels:
+            blob_counts = [np.sum((self.blob_analyzer.blobs[:, 5] == t) & (self.blob_analyzer.blobs[:, 4] == channel))
+                           for t in time_points]
+            plot_widget.plot(time_points, blob_counts, pen=(int(channel), len(channels)), name=f'Channel {int(channel)}')
+
+        plot_widget.setLabel('left', "Number of Blobs")
+        plot_widget.setLabel('bottom', "Time Point")
+        plot_widget.addLegend()
+
+        self.setLayout(layout)
 
 class LightsheetViewer(QMainWindow):
     def __init__(self):
@@ -667,6 +724,7 @@ class LightsheetViewer(QMainWindow):
         self.initLogging()
         self.volume_processor = VolumeProcessor()
         self.data = None
+        self.lastPos = None
         self.data_generator = DataGenerator()
 
         self.channel_colors = [(1, 0, 0, 1), (0, 1, 0, 1), (0, 0, 1, 1)]  # RGB for up to 3 channels
@@ -698,9 +756,10 @@ class LightsheetViewer(QMainWindow):
         self.create3DVisualizationDock()
         self.createVisualizationControlDock()
         self.createPlaybackControlDock()
-
         # blob visualization dock
         self.createBlobVisualizationDock()
+
+        self.connectViewEvents()
 
         # Create menu bar
         self.createMenuBar()
@@ -734,9 +793,11 @@ class LightsheetViewer(QMainWindow):
         self.resizeDocks([self.dockXY, self.dockXZ, self.dockYZ], [200, 200, 200], Qt.Vertical)
         self.resizeDocks([self.dock3D, self.dockDataGeneration], [800, 300], Qt.Horizontal)
 
-    def display_blob_results(self, blobs):
-        self.blob_results_dialog.update_results(blobs)
-        self.blob_results_dialog.show()
+        self.check_view_state()  # Check the state after initialization
+
+    # def display_blob_results(self, blobs):
+    #     self.blob_results_dialog.update_results(blobs)
+    #     self.blob_results_dialog.show()
 
     def createViewDocks(self):
         # XY View
@@ -954,10 +1015,19 @@ class LightsheetViewer(QMainWindow):
         layout.addWidget(QLabel("Threshold:"))
         self.thresholdSpinBox = QDoubleSpinBox()
         self.thresholdSpinBox.setRange(0, 1)
-        self.thresholdSpinBox.setSingleStep(0.05)
-        self.thresholdSpinBox.setValue(0.5)
+        self.thresholdSpinBox.setSingleStep(0.1)
+        self.thresholdSpinBox.setValue(0)
         self.thresholdSpinBox.valueChanged.connect(self.updateThreshold)
         layout.addWidget(self.thresholdSpinBox)
+
+        layout.addWidget(QLabel("Point Size"))
+        self.scatterPointSizeSpinBox = QDoubleSpinBox()
+        self.scatterPointSizeSpinBox.setRange(0, 100)
+        self.scatterPointSizeSpinBox.setSingleStep(1)
+        self.scatterPointSizeSpinBox.setValue(2)
+        self.scatterPointSizeSpinBox.valueChanged.connect(self.updateScatterPointSize)
+        layout.addWidget(self.scatterPointSizeSpinBox)
+
 
         layout.addWidget(QLabel("3D Rendering Mode:"))
         self.renderModeCombo = QComboBox()
@@ -983,6 +1053,29 @@ class LightsheetViewer(QMainWindow):
         self.clipSlider.valueChanged.connect(self.updateClipPlane)
         layout.addWidget(self.clipSlider)
 
+        # Add checkbox for synchronizing views
+        self.syncViewsCheck = QCheckBox("Synchronize 3D Views")
+        self.syncViewsCheck.setChecked(False)
+        layout.addWidget(self.syncViewsCheck)
+
+        # Add button for auto-scaling
+        self.autoScaleButton = QPushButton("Auto Scale Views")
+        self.autoScaleButton.clicked.connect(self.autoScaleViews)
+        layout.addWidget(self.autoScaleButton)
+
+        # Add buttons for orienting views
+        self.topDownButton = QPushButton("Top-Down View")
+        self.topDownButton.clicked.connect(self.setTopDownView)
+        layout.addWidget(self.topDownButton)
+
+        self.sideViewButton = QPushButton("Side View (XZ)")
+        self.sideViewButton.clicked.connect(self.setSideView)
+        layout.addWidget(self.sideViewButton)
+
+        self.frontViewButton = QPushButton("Front View (YZ)")
+        self.frontViewButton.clicked.connect(self.setFrontView)
+        layout.addWidget(self.frontViewButton)
+
         # Add Blob Detection controls
         layout.addWidget(QLabel("Blob Detection:"))
 
@@ -1004,8 +1097,9 @@ class LightsheetViewer(QMainWindow):
         self.blobThresholdSpinBox = QDoubleSpinBox()
         self.blobThresholdSpinBox.setRange(0, 1)
         self.blobThresholdSpinBox.setSingleStep(0.01)
-        self.blobThresholdSpinBox.setValue(0.1)
+        self.blobThresholdSpinBox.setValue(0.5)
         blobLayout.addWidget(self.blobThresholdSpinBox, 2, 1)
+        self.blobThresholdSpinBox.valueChanged.connect(self.updateBlobThreshold)
 
         # Add checkbox for showing all blobs
         self.showAllBlobsCheck = QCheckBox("Show All Blobs")
@@ -1030,6 +1124,11 @@ class LightsheetViewer(QMainWindow):
         self.blobAnalysisButton.clicked.connect(self.analyzeBlobsasdkjfb )
         layout.addWidget(self.blobAnalysisButton)
 
+        # Time Series Analysis button
+        self.timeSeriesButton = QPushButton("Time Series Analysis")
+        self.timeSeriesButton.clicked.connect(self.showTimeSeriesAnalysis)
+        layout.addWidget(self.timeSeriesButton)
+
         layout.addStretch(1)  # This pushes everything up
         self.dockVisualizationControl.setWidget(visControlWidget)
 
@@ -1053,6 +1152,13 @@ class LightsheetViewer(QMainWindow):
         self.blob_items = []
         self.slice_marker_items = []
 
+        # Connect mouse events
+        self.blobGLView.mousePressEvent = self.on3DViewMousePress
+        self.blobGLView.mouseReleaseEvent = self.on3DViewMouseRelease
+        self.blobGLView.mouseMoveEvent = self.on3DViewMouseMove
+        self.blobGLView.wheelEvent = self.on3DViewWheel
+        self.logger.debug(f"Blob visualization dock created. blobGLView: {self.blobGLView}")
+
     def create3DVisualizationDock(self):
         # 3D View
         self.dock3D = QDockWidget("3D View", self)
@@ -1073,6 +1179,17 @@ class LightsheetViewer(QMainWindow):
         # Initialize empty lists to store data and slice marker items
         self.data_items = []
         self.main_slice_marker_items = []
+
+        self.glView.opts['fov'] = 60
+        self.glView.opts['elevation'] = 30
+        self.glView.opts['azimuth'] = 45
+
+        # Connect mouse events
+        self.glView.mousePressEvent = self.on3DViewMousePress
+        self.glView.mouseReleaseEvent = self.on3DViewMouseRelease
+        self.glView.mouseMoveEvent = self.on3DViewMouseMove
+        self.glView.wheelEvent = self.on3DViewWheel
+        self.logger.debug(f"3D visualization dock created. glView: {self.glView}")
 
 
     def visualize_blobs(self, blobs):
@@ -1113,7 +1230,7 @@ class LightsheetViewer(QMainWindow):
 
             # Add to blob visualization view
             blob_item_vis = gl.GLMeshItem(meshdata=mesh, smooth=True, color=color, shader='shaded')
-            blob_item_vis.translate(x, z, y)  # Swapped y and z
+            blob_item_vis.translate(z, x, y)  # Swapped y and z
             self.blobGLView.addItem(blob_item_vis)
             self.blob_items.append(blob_item_vis)
 
@@ -1210,6 +1327,12 @@ class LightsheetViewer(QMainWindow):
                      self.dockDataGeneration, self.dockVisualizationControl, self.dockPlaybackControl]:
             viewMenu.addAction(dock.toggleViewAction())
 
+
+        analysisMenu = menuBar.addMenu('&Analysis')
+        timeSeriesAction = analysisMenu.addAction('Time Series Analysis')
+        timeSeriesAction.triggered.connect(self.showTimeSeriesAnalysis)
+
+
     def generateData(self):
         try:
             num_volumes = self.numVolumesSpinBox.value()
@@ -1259,11 +1382,12 @@ class LightsheetViewer(QMainWindow):
             self.logger.info(f"Generated  {num_blobs*num_channels*num_volumes} blobs")
             #self.visualize_data_distribution()  # Call this to visualize the data distribution
             self.updateUIForNewData()
-
             self.timeSlider.setMaximum(num_volumes - 1)
             self.updateViews()
             self.create3DVisualization()
+            self.autoScaleViews()  # Add this line
             self.logger.info("Data generated and visualized successfully")
+
         except Exception as e:
             self.logger.error(f"Error in data generation: {str(e)}")
             self.logger.error(f"Error type: {type(e).__name__}")
@@ -1272,11 +1396,14 @@ class LightsheetViewer(QMainWindow):
             self.logger.error(f"Traceback: {traceback.format_exc()}")
             QMessageBox.critical(self, "Error", f"Failed to generate data: {str(e)}")
 
+
+
     def updateViews(self):
         if self.data is None:
             self.logger.warning("No data to update views")
             return
         t = self.timeSlider.value()
+        threshold = self.thresholdSpinBox.value()
 
         self.logger.debug(f"Updating views for time point {t}")
         self.logger.debug(f"Data shape: {self.data.shape}")
@@ -1298,6 +1425,8 @@ class LightsheetViewer(QMainWindow):
 
                 # Normalize channel data
                 channel_data = (channel_data - channel_data.min()) / (channel_data.max() - channel_data.min() + 1e-8)
+
+                channel_data[channel_data < threshold] = 0.00000
 
                 combined_xy[:, :, :, c] = channel_data * opacity
                 combined_xz[:, :, :, c] = np.transpose(channel_data, (1, 0, 2)) * opacity
@@ -1368,7 +1497,7 @@ class LightsheetViewer(QMainWindow):
                         colors = np.tile(self.channel_colors[c], (len(pos), 1))
                         colors[:, 3] = opacity * (volume_data[z, y, x] - volume_data.min()) / (volume_data.max() - volume_data.min())
 
-                        scatter = gl.GLScatterPlotItem(pos=pos, color=colors, size=2)
+                        scatter = gl.GLScatterPlotItem(pos=pos, color=colors, size=self.scatterPointSizeSpinBox.value())
                         self.glView.addItem(scatter)
                         self.data_items.append(scatter)
 
@@ -1407,6 +1536,10 @@ class LightsheetViewer(QMainWindow):
         plt.xlabel('Intensity')
         plt.ylabel('Frequency')
         plt.show()
+
+    def updateScatterPointSize(self, value):
+        self.updateViews()
+        self.create3DVisualization()
 
     def updateChannelVisibility(self):
         self.updateViews()
@@ -1456,7 +1589,18 @@ class LightsheetViewer(QMainWindow):
 
 
     def updateThreshold(self, value):
-        self.create3DVisualization()
+        # if value >= 1:
+        #     self.logger.warning("Array compute error")
+        #     return
+
+        if self.data is not None:
+            self.updateViews()
+            self.create3DVisualization()
+        else:
+            self.logger.warning("No data available to update display threshold")
+
+    def updateBlobThreshold(self, value):
+       self.filter_blobs()
 
     def saveData(self):
         try:
@@ -1479,15 +1623,18 @@ class LightsheetViewer(QMainWindow):
                     self.data = self.data_generator.load_tiff(filename)
                 elif filename.endswith('.npy'):
                     self.data = self.data_generator.load_numpy(filename)
+
                 self.timeSlider.setMaximum(self.data.shape[0] - 1)
                 self.updateViews()
                 self.create3DVisualization()
+                self.autoScaleViews()  # Add this line
                 self.logger.info(f"Data loaded from {filename}")
 
                 # Stop playback when loading new data
                 if self.playbackTimer.isActive():
                     self.playbackTimer.stop()
                     self.playPauseButton.setText("Play")
+
         except Exception as e:
             self.logger.error(f"Error loading data: {str(e)}")
             QMessageBox.critical(self, "Error", f"Failed to load data: {str(e)}")
@@ -1575,7 +1722,7 @@ class LightsheetViewer(QMainWindow):
         # Get blob detection parameters from UI
         max_sigma = self.maxSigmaSpinBox.value()
         num_sigma = self.numSigmaSpinBox.value()
-        threshold = self.blobThresholdSpinBox.value()
+        #threshold = self.blobThresholdSpinBox.value()
 
         all_blobs = []
         for channel in range(num_channels):
@@ -1584,7 +1731,7 @@ class LightsheetViewer(QMainWindow):
                 volume = self.data[t, channel]
 
                 # Detect blobs
-                blobs = blob_log(volume, max_sigma=max_sigma, num_sigma=num_sigma, threshold=threshold)
+                blobs = blob_log(volume, max_sigma=max_sigma, num_sigma=num_sigma)
 
                 # Calculate intensity for each blob
                 for blob in blobs:
@@ -1606,17 +1753,22 @@ class LightsheetViewer(QMainWindow):
                     # Add blob information including intensity
                     all_blobs.append([y, x, z, r, channel, t, intensity])
 
+        # Convert to numpy array
+        all_blobs = np.array(all_blobs)
 
-        # Combine blobs from all channels
-        all_blobs = np.vstack(all_blobs)
+        # Store the original blob data
+        self.original_blobs = all_blobs
+
+        # Filter blobs based on threshold -> creates self.all_detected_blobs
+        self.filter_blobs()
 
         self.logger.info(f"Detected {len(all_blobs)} blobs across all channels")
 
         # Store all detected blobs
-        self.all_detected_blobs = all_blobs
+        #self.all_detected_blobs = all_blobs
 
         # Display results
-        self.display_blob_results(all_blobs)
+        self.display_blob_results(self.all_detected_blobs)
 
         # Visualize blobs
         self.updateBlobVisualization()
@@ -1626,6 +1778,18 @@ class LightsheetViewer(QMainWindow):
         self.showBlobResultsButton.setText("Show Blob Results")
 
         return all_blobs
+
+
+    def filter_blobs(self):
+        if not hasattr(self, 'original_blobs'):
+            return
+
+        threshold = self.blobThresholdSpinBox.value()
+        self.all_detected_blobs = self.original_blobs[self.original_blobs[:, 6] > threshold]
+
+        # Update visualization
+        self.updateBlobVisualization()
+
 
     def display_blob_results(self, blobs):
         result_dialog = QDialog(self)
@@ -1658,6 +1822,11 @@ class LightsheetViewer(QMainWindow):
     def updateBlobVisualization(self):
         if not hasattr(self, 'all_detected_blobs') or self.all_detected_blobs is None:
             return
+
+        # Clear previous visualizations
+        for item in self.blob_items:
+            self.blobGLView.removeItem(item)
+        self.blob_items.clear()
 
         current_time = self.timeSlider.value()
 
@@ -1695,6 +1864,146 @@ class LightsheetViewer(QMainWindow):
         else:
             QMessageBox.warning(self, "No Blobs Detected", "Please detect blobs before running analysis.")
 
+    def showTimeSeriesAnalysis(self):
+        if hasattr(self, 'all_detected_blobs') and self.all_detected_blobs is not None:
+            dialog = TimeSeriesDialog(BlobAnalyzer(self.all_detected_blobs), self)
+            dialog.exec_()
+        else:
+            QMessageBox.warning(self, "No Data", "Please detect blobs first.")
+
+    def autoScaleViews(self):
+        if self.data is None:
+            return
+
+        # Get the bounds of the data
+        z, y, x = self.data.shape[2:]  # Assuming shape is (t, c, z, y, x)
+        center = QVector3D(x/2, y/2, z/2)
+
+        # Calculate the diagonal of the bounding box
+        diagonal = np.sqrt(x**2 + y**2 + z**2)
+
+        # Set the camera position for both views
+        for view in [self.glView, self.blobGLView]:
+            view.setCameraPosition(pos=center, distance=diagonal*1.2, elevation=30, azimuth=45)
+            view.opts['center'] = center
+
+        self.glView.update()
+        self.blobGLView.update()
+
+
+
+    def connectViewEvents(self):
+        for view in [self.glView, self.blobGLView]:
+            if view is not None:
+                view.installEventFilter(self)
+        self.logger.debug("View events connected")
+
+    def eventFilter(self, source, event):
+        if source in [self.glView, self.blobGLView]:
+            if event.type() == QEvent.MouseButtonPress:
+                self.on3DViewMousePress(event, source)
+                return True
+            elif event.type() == QEvent.MouseButtonRelease:
+                self.on3DViewMouseRelease(event, source)
+                return True
+            elif event.type() == QEvent.MouseMove:
+                self.on3DViewMouseMove(event, source)
+                return True
+            elif event.type() == QEvent.Wheel:
+                self.on3DViewWheel(event, source)
+                return True
+        return super().eventFilter(source, event)
+
+    @pyqtSlot(QEvent)
+    def on3DViewMousePress(self, event, source):
+        self.lastPos = event.pos()
+        self.logger.debug(f"Mouse press event on {source}")
+
+    @pyqtSlot(QEvent)
+    def on3DViewMouseRelease(self, event, source):
+        self.lastPos = None
+        self.logger.debug(f"Mouse release event on {source}")
+
+    @pyqtSlot(QEvent)
+    def on3DViewMouseMove(self, event, source):
+        if self.lastPos is None:
+            return
+
+        diff = event.pos() - self.lastPos
+        self.lastPos = event.pos()
+
+        self.logger.debug(f"Mouse move event on {source}")
+
+        if event.buttons() == Qt.LeftButton:
+            self.rotate3DViews(diff.x(), diff.y(), source)
+        elif event.buttons() == Qt.MidButton:
+            self.pan3DViews(diff.x(), diff.y(), source)
+
+    @pyqtSlot(QEvent)
+    def on3DViewWheel(self, event, source):
+        delta = event.angleDelta().y()
+        self.logger.debug(f"Wheel event on {source}")
+        self.zoom3DViews(delta, source)
+
+    def rotate3DViews(self, dx, dy, active_view):
+        views_to_update = [active_view]
+        if self.syncViewsCheck.isChecked():
+            views_to_update = [self.glView, self.blobGLView]
+
+        for view in views_to_update:
+            if view is not None and hasattr(view, 'opts'):
+                view.opts['elevation'] -= dy * 0.5
+                view.opts['azimuth'] += dx * 0.5
+                view.update()
+            else:
+                self.logger.error(f"Invalid view object: {view}")
+
+    def pan3DViews(self, dx, dy, active_view):
+        views_to_update = [active_view]
+        if self.syncViewsCheck.isChecked():
+            views_to_update = [self.glView, self.blobGLView]
+
+        for view in views_to_update:
+            if view is not None and hasattr(view, 'pan'):
+                view.pan(dx, dy, 0, relative='view')
+            else:
+                self.logger.error(f"Invalid view object for panning: {view}")
+
+    def zoom3DViews(self, delta, active_view):
+        views_to_update = [active_view]
+        if self.syncViewsCheck.isChecked():
+            views_to_update = [self.glView, self.blobGLView]
+
+        for view in views_to_update:
+            if view is not None and hasattr(view, 'opts'):
+                view.opts['fov'] *= 0.999**delta
+                view.update()
+            else:
+                self.logger.error(f"Invalid view object for zooming: {view}")
+
+    def check_view_state(self):
+        self.logger.debug(f"glView state: {self.glView}, has opts: {hasattr(self.glView, 'opts')}")
+        self.logger.debug(f"blobGLView state: {self.blobGLView}, has opts: {hasattr(self.blobGLView, 'opts')}")
+        self.logger.debug(f"Sync checked: {self.syncViewsCheck.isChecked()}")
+
+
+    def setTopDownView(self):
+        for view in [self.glView, self.blobGLView]:
+            view.setCameraPosition(elevation=90, azimuth=0)
+            view.update()
+
+    def setSideView(self):
+        for view in [self.glView, self.blobGLView]:
+            view.setCameraPosition(elevation=0, azimuth=0)
+            view.update()
+
+    def setFrontView(self):
+        for view in [self.glView, self.blobGLView]:
+            view.setCameraPosition(elevation=0, azimuth=90)
+            view.update()
+
+
+##############################################################################
 
 def main():
     app = QApplication(sys.argv)
