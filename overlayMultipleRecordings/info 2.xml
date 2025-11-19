@@ -1,0 +1,18 @@
+<plugin name="overlayMultipleRecordings">
+	<directory>
+		overlayMultipleRecordings
+	</directory>
+	<version>
+		2024.01.29
+	</version>
+	<author>
+		George Dickinson
+	</author>
+	<url>
+	</url>
+	<dependencies>
+	</dependencies>
+	<menu_layout>
+		<action location="overlayMultipleRecordings" function="overlayMultipleRecordings.gui">overlayMultipleRecordings</action>
+	</menu_layout>
+</plugin>

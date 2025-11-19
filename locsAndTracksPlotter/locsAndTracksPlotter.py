@@ -1,323 +1,412 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+FLIKA Plugin for Localizations and Tracks Plotting
+
+This plugin provides comprehensive tools for analyzing and visualizing single-particle
+tracking data from fluorescence microscopy experiments. It supports multiple file formats
+and provides various analysis and visualization options.
+
+Features:
+- Load and display localization data from various formats
+- Track visualization with customizable appearance
+- Interactive filtering and analysis tools
+- Export capabilities for processed data
+- Integration with FLIKA image analysis platform
+
 Created on Sat May 23 10:38:20 2020
-
 @author: george.dickinson@gmail.com
-
-This program is a Python script developed to analyze the motion of intracellular Piezo1 proteins labeled with a fluorescent tag.
-It allows the user to load raw data from a series of image files and track the movement of individual particles over time.
-The script includes several data analysis and visualization tools, including the ability to filter data by various parameters, plot tracks, generate scatter and line plots, and create statistics for track speed and displacement.
-Additional features include the ability to toggle between different color maps, plot diffusion maps, and save filtered data to a CSV file.
-
 """
 
-# ignore warnings
+import json
+import logging
+import os
 import warnings
-warnings.simplefilter(action='ignore', category=Warning)
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union, Any
 
-# import necessary modules
-from qtpy.QtCore import *
-from qtpy.QtGui import *
-from qtpy.QtWidgets import *
 import numpy as np
+import pandas as pd
+import pyqtgraph as pg
+from qtpy.QtCore import Qt, Signal, QPointF
+from qtpy.QtGui import QColor, QPainter, QPen, QPainterPath
+from qtpy.QtWidgets import (QMainWindow, QLabel, QPushButton, QLineEdit,
+                           QFileDialog, QMessageBox, QGraphicsPathItem)
+from scipy.stats import skew, kurtosis
+from scipy.optimize import curve_fit
+from distutils.version import StrictVersion
+
+# FLIKA imports
+import flika
 from flika.window import Window
 import flika.global_vars as g
-import pyqtgraph as pg
-from time import time
-from distutils.version import StrictVersion
-import flika
-from flika import global_vars as g
-from flika.window import Window
-from os.path import expanduser
-import os, shutil, subprocess
-import math
-import sys
-from scipy.optimize import curve_fit
-import time
-import skimage.io as skio
-from tqdm import tqdm
 
-from skimage.filters import threshold_otsu
-from skimage import data, color, measure
-from skimage.transform import hough_circle, hough_circle_peaks, hough_ellipse
-from skimage.feature import canny
-from skimage.draw import circle_perimeter, ellipse_perimeter
-from skimage.util import img_as_ubyte
-from skimage.segmentation import clear_border
-from skimage.measure import label, regionprops
-from skimage.morphology import closing, square
-from skimage.color import label2rgb
-import matplotlib.patches as mpatches
-from skimage.draw import ellipse
-from skimage.measure import label, regionprops, regionprops_table
-from skimage.transform import rotate
-from math import cos, sin, degrees
-
-
-# determine which version of flika to use
+# Version-specific imports
 flika_version = flika.__version__
 if StrictVersion(flika_version) < StrictVersion('0.2.23'):
-    from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, save_file_gui
+    from flika.process.BaseProcess import (BaseProcess, SliderLabel, CheckBox,
+                                         ComboBox, BaseProcess_noPriorWindow,
+                                         WindowSelector, save_file_gui)
 else:
-    from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, save_file_gui
+    from flika.utils.BaseProcess import (BaseProcess, SliderLabel, CheckBox,
+                                       ComboBox, BaseProcess_noPriorWindow,
+                                       WindowSelector, save_file_gui)
 
-from pyqtgraph import HistogramLUTWidget
+# Suppress warnings for cleaner output
+warnings.simplefilter(action='ignore', category=Warning)
 
-# enable Numba for performance
-import numba
-pg.setConfigOption('useNumba', True)
+# Enable Numba for performance if available
+try:
+    import numba
+    pg.setConfigOption('useNumba', True)
+    logging.getLogger(__name__).info("Numba acceleration enabled")
+except ImportError:
+    logging.getLogger(__name__).warning("Numba not available, performance may be reduced")
 
-# import pandas and matplotlib for generating graphs
-import pandas as pd
-from matplotlib import pyplot as plt
-from matplotlib.patches import Ellipse, Arrow
-
-# import pyqtgraph modules for dockable windows
-from pyqtgraph.dockarea.Dock import Dock
-from pyqtgraph.dockarea.DockArea import DockArea
-
-# import custom module to join tracks
+# Plugin modules
+from .helperFunctions import dictFromList, gammaCorrect
+from .io import FileSelector
 from .joinTracks import JoinTracks
-from .helperFunctions import *
-from .io import *
-from .roiZoomPlotter import *
 from .allTracksPlotter import AllTracksPlot
-from .trackPlotter import *
-from .flowerPlot import *
-from .diffusionPlot import *
-from .trackWindow import TrackWindow
 from .chartDock import ChartDock
+from .trackPlotter import TrackPlot
+from .flowerPlot import FlowerPlotWindow
+from .diffusionPlot import DiffusionPlotWindow
+from .trackWindow import TrackWindow
 from .overlay import Overlay
+from .roiZoomPlotter import ROIPLOT
 
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 class ColorButton(QPushButton):
-    '''
-    Custom Qt Widget to show a chosen color.
+    """
+    Custom Qt Widget to show and select colors.
 
-    Left-clicking the button shows the color-chooser, while
-    right-clicking resets the color to None (no-color).
-    '''
+    Left-clicking shows the color chooser, right-clicking resets to default.
+
+    Signals:
+        colorChanged: Emitted when color changes
+    """
 
     colorChanged = Signal(object)
 
-    def __init__(self, *args, color=None, **kwargs):
-        super(ColorButton, self).__init__(*args, **kwargs)
+    def __init__(self, *args, color: Optional[str] = None, **kwargs):
+        """
+        Initialize ColorButton.
 
-        self._color = None
-        self._default = color
-        self.pressed.connect(self.onColorPicker)
-
-        # Set the initial/default state.
+        Args:
+            color: Default color as hex string (e.g., '#ff0000')
+        """
+        super().__init__(*args, **kwargs)
+        self._color: Optional[str] = None
+        self._default: Optional[str] = color
+        self.pressed.connect(self._on_color_picker)
         self.setColor(self._default)
+        logger.debug(f"ColorButton initialized with default color: {color}")
 
-    def setColor(self, color):
+    def setColor(self, color: Optional[str]) -> None:
+        """
+        Set the button color.
+
+        Args:
+            color: Color as hex string or None for no color
+        """
         if color != self._color:
             self._color = color
             self.colorChanged.emit(color)
 
         if self._color:
-            self.setStyleSheet("background-color: %s;" % self._color)
+            self.setStyleSheet(f"background-color: {self._color};")
         else:
             self.setStyleSheet("")
 
-    def color(self):
+    def color(self) -> Optional[str]:
+        """Get the current color."""
         return self._color
 
-    def onColorPicker(self):
-        '''
-        Show color-picker dialog to select color.
+    def _on_color_picker(self) -> None:
+        """Show color picker dialog."""
+        try:
+            from qtpy.QtWidgets import QColorDialog
 
-        Qt will use the native dialog by default.
+            dlg = QColorDialog(self)
+            if self._color:
+                dlg.setCurrentColor(QColor(self._color))
 
-        '''
-        dlg = QColorDialog(self)
-        if self._color:
-            dlg.setCurrentColor(QColor(self._color))
+            if dlg.exec_():
+                self.setColor(dlg.currentColor().name())
+                logger.debug(f"Color selected: {self._color}")
+        except Exception as e:
+            logger.error(f"Error in color picker: {e}")
 
-        if dlg.exec_():
-            self.setColor(dlg.currentColor().name())
-
-    def mousePressEvent(self, e):
-        if e.button() == Qt.RightButton:
+    def mousePressEvent(self, event) -> None:
+        """Handle mouse press events."""
+        if event.button() == Qt.RightButton:
             self.setColor(self._default)
+            logger.debug("Color reset to default")
+        return super().mousePressEvent(event)
 
-        return super(ColorButton, self).mousePressEvent(e)
 
-class FilterOptions():
+class FilterOptions:
     """
-    A class for a GUI setting filter options for points and tracks.
+    GUI for setting filter options for points and tracks.
+
+    Provides controls for filtering data based on various criteria
+    with support for sequential filtering operations.
     """
-    def __init__(self, mainGUI):
+
+    def __init__(self, mainGUI: 'LocsAndTracksPlotter'):
+        """
+        Initialize filter options GUI.
+
+        Args:
+            mainGUI: Reference to main GUI instance
+        """
         super().__init__()
-
-        # Initialize the main GUI instance
         self.mainGUI = mainGUI
+        self._setup_ui()
+        logger.debug("FilterOptions initialized")
 
-        # Create a dock window and add a dock
-        self.win = QMainWindow()
-        self.area = DockArea()
-        self.win.setCentralWidget(self.area)
-        self.win.resize(550,100)
-        self.win.setWindowTitle('Filter')
-        self.d1 = Dock("Filter Options", size=(550, 100))
-        self.area.addDock(self.d1)
+    def _setup_ui(self) -> None:
+        """Set up the user interface."""
+        try:
+            # Create main window and layout
+            self.win = QMainWindow()
+            from pyqtgraph.dockarea import DockArea, Dock
 
-        # Create a layout widget
-        self.w1 = pg.LayoutWidget()
+            self.area = DockArea()
+            self.win.setCentralWidget(self.area)
+            self.win.resize(550, 100)
+            self.win.setWindowTitle('Filter')
 
-        # Create widgets for filter column, operator, and value selection
+            self.d1 = Dock("Filter Options", size=(550, 100))
+            self.area.addDock(self.d1)
+
+            # Create layout widget
+            self.w1 = pg.LayoutWidget()
+
+            # Filter controls
+            self._create_filter_controls()
+            self._create_buttons()
+            self._layout_widgets()
+
+            # Add to dock
+            self.d1.addWidget(self.w1)
+
+        except Exception as e:
+            logger.error(f"Error setting up FilterOptions UI: {e}")
+
+    def _create_filter_controls(self) -> None:
+        """Create filter control widgets."""
+        # Filter column selector
         self.filterCol_Box = pg.ComboBox()
-        self.filtercols = {'None':'None'}
+        self.filtercols = {'None': 'None'}
         self.filterCol_Box.setItems(self.filtercols)
+
+        # Filter operator selector
         self.filterOp_Box = pg.ComboBox()
-        self.filterOps = {'=':'==', '<':'<', '>':'>', '!=':'!='}
+        self.filterOps = {'=': '==', '<': '<', '>': '>', '!=': '!='}
         self.filterOp_Box.setItems(self.filterOps)
+
+        # Filter value input
         self.filterValue_Box = QLineEdit()
 
-        # Create a checkbox for enabling/disabling sequential filtering
-        self.sequentialFlter_checkbox = CheckBox()
-        self.sequentialFlter_checkbox.setChecked(False)
-        self.sequentialFlter_checkbox.stateChanged.connect(self.setSequentialFilter)
+        # Sequential filtering checkbox
+        self.sequentialFilter_checkbox = CheckBox()
+        self.sequentialFilter_checkbox.setChecked(False)
+        self.sequentialFilter_checkbox.stateChanged.connect(self._set_sequential_filter)
 
-        # Create labels for filter column, operator, and value selection, as well as for the sequential filtering checkbox
+        # Labels
         self.filterCol_label = QLabel('Filter column')
         self.filterVal_label = QLabel('Value')
         self.filterOp_label = QLabel('Operator')
         self.sequentialFilter_label = QLabel('Allow sequential filtering')
 
-        #buttons
+    def _create_buttons(self) -> None:
+        """Create action buttons."""
         self.filterData_button = QPushButton('Filter')
         self.filterData_button.pressed.connect(self.mainGUI.filterData)
+
         self.clearFilterData_button = QPushButton('Clear Filter')
         self.clearFilterData_button.pressed.connect(self.mainGUI.clearFilterData)
-        self.ROIFilterData_button = QPushButton(' Filter by ROI(s)')
+
+        self.ROIFilterData_button = QPushButton('Filter by ROI(s)')
         self.ROIFilterData_button.pressed.connect(self.mainGUI.ROIFilterData)
+
         self.clearROIFilterData_button = QPushButton('Clear ROI Filter')
         self.clearROIFilterData_button.pressed.connect(self.mainGUI.clearROIFilterData)
 
-        ## Add widgets to layout
-        #row0
-        self.w1.addWidget(self.filterCol_label, row=0,col=0)
-        self.w1.addWidget(self.filterCol_Box, row=0,col=1)
-        self.w1.addWidget(self.filterOp_label, row=0,col=2)
-        self.w1.addWidget(self.filterOp_Box, row=0,col=3)
-        self.w1.addWidget(self.filterVal_label, row=0,col=4)
-        self.w1.addWidget(self.filterValue_Box, row=0,col=5)
-        #row1
-        self.w1.addWidget(self.filterData_button, row=1,col=0)
-        self.w1.addWidget(self.clearFilterData_button, row=1,col=1)
-        self.w1.addWidget(self.sequentialFilter_label, row=1,col=2)
-        self.w1.addWidget(self.sequentialFlter_checkbox, row=1,col=3)
-        #row3
-        self.w1.addWidget(self.ROIFilterData_button, row=3,col=0)
-        self.w1.addWidget(self.clearROIFilterData_button, row=3,col=1)
+    def _layout_widgets(self) -> None:
+        """Arrange widgets in layout."""
+        # Row 0
+        self.w1.addWidget(self.filterCol_label, row=0, col=0)
+        self.w1.addWidget(self.filterCol_Box, row=0, col=1)
+        self.w1.addWidget(self.filterOp_label, row=0, col=2)
+        self.w1.addWidget(self.filterOp_Box, row=0, col=3)
+        self.w1.addWidget(self.filterVal_label, row=0, col=4)
+        self.w1.addWidget(self.filterValue_Box, row=0, col=5)
 
-        #add layout to dock
-        self.d1.addWidget(self.w1)
+        # Row 1
+        self.w1.addWidget(self.filterData_button, row=1, col=0)
+        self.w1.addWidget(self.clearFilterData_button, row=1, col=1)
+        self.w1.addWidget(self.sequentialFilter_label, row=1, col=2)
+        self.w1.addWidget(self.sequentialFilter_checkbox, row=1, col=3)
 
+        # Row 3
+        self.w1.addWidget(self.ROIFilterData_button, row=3, col=0)
+        self.w1.addWidget(self.clearROIFilterData_button, row=3, col=1)
 
-    def setSequentialFilter(self):
-        if self.sequentialFlter_checkbox.isChecked():
-            self.mainGUI.sequentialFiltering = True
-        else:
-            self.mainGUI.sequentialFiltering = False
+    def _set_sequential_filter(self) -> None:
+        """Handle sequential filter checkbox change."""
+        self.mainGUI.sequentialFiltering = self.sequentialFilter_checkbox.isChecked()
+        logger.debug(f"Sequential filtering set to: {self.mainGUI.sequentialFiltering}")
 
-    def show(self):
+    def show(self) -> None:
+        """Show the filter options window."""
         self.win.show()
 
-    def close(self):
+    def close(self) -> None:
+        """Close the filter options window."""
         self.win.close()
 
-    def hide(self):
+    def hide(self) -> None:
+        """Hide the filter options window."""
         self.win.hide()
 
 
-class TrackPlotOptions():
-    '''
-    Choose colours etc for track plots
-    '''
-    def __init__(self, mainGUI):
+class TrackPlotOptions:
+    """
+    GUI for configuring track and point display options.
+
+    Provides comprehensive controls for customizing the appearance
+    of tracks and points in the visualization.
+    """
+
+    def __init__(self, mainGUI: 'LocsAndTracksPlotter'):
+        """
+        Initialize track plot options GUI.
+
+        Args:
+            mainGUI: Reference to main GUI instance
+        """
         super().__init__()
         self.mainGUI = mainGUI
+        self._setup_ui()
+        logger.debug("TrackPlotOptions initialized")
 
-        # Set up main window
-        self.win = QMainWindow()
-        self.area = DockArea()
-        self.win.setCentralWidget(self.area)
-        #self.win.resize(250, 200)
-        self.win.setWindowTitle('Display Options')
+    def _setup_ui(self) -> None:
+        """Set up the user interface."""
+        try:
+            # Create main window
+            self.win = QMainWindow()
+            from pyqtgraph.dockarea import DockArea, Dock
 
-        ## Create docks
+            self.area = DockArea()
+            self.win.setCentralWidget(self.area)
+            self.win.setWindowTitle('Display Options')
+
+            # Create docks
+            self._create_docks()
+            self._create_point_options()
+            self._create_track_options()
+            self._create_recording_options()
+            self._create_background_options()
+
+        except Exception as e:
+            logger.error(f"Error setting up TrackPlotOptions UI: {e}")
+
+    def _create_docks(self) -> None:
+        """Create dock widgets."""
+        from pyqtgraph.dockarea import Dock
+
         self.d0 = Dock("Point Options")
         self.d1 = Dock("Track Options")
         self.d2 = Dock("Recording Parameters")
         self.d3 = Dock("Background subtraction")
+
         self.area.addDock(self.d0)
         self.area.addDock(self.d1)
         self.area.addDock(self.d2)
         self.area.addDock(self.d3)
 
-        #point options widget
+    def _create_point_options(self) -> None:
+        """Create point display options."""
         self.w0 = pg.LayoutWidget()
 
+        # Point color selector
         self.pointColour_Box = pg.ComboBox()
-        self.pointColours = {'green': QColor(Qt.green), 'red': QColor(Qt.red), 'blue': QColor(Qt.blue)}
+        self.pointColours = {
+            'green': QColor(Qt.green),
+            'red': QColor(Qt.red),
+            'blue': QColor(Qt.blue)
+        }
         self.pointColour_Box.setItems(self.pointColours)
         self.pointColour_Box_label = QLabel('Point Colour')
 
+        # Point size selector
         self.pointSize_selector = pg.SpinBox(value=5, int=True)
         self.pointSize_selector.setSingleStep(1)
         self.pointSize_selector.setMinimum(0)
         self.pointSize_selector.setMaximum(100)
         self.pointSize_selector_label = QLabel('Point Size')
 
+        # Unlinked point color
         self.unlinkedpointColour_Box = pg.ComboBox()
-        self.unlinkedpointColours = {'blue': QColor(Qt.blue), 'green': QColor(Qt.green), 'red': QColor(Qt.red)}
+        self.unlinkedpointColours = {
+            'blue': QColor(Qt.blue),
+            'green': QColor(Qt.green),
+            'red': QColor(Qt.red)
+        }
         self.unlinkedpointColour_Box.setItems(self.unlinkedpointColours)
         self.unlinkedpointColour_Box_label = QLabel('Unlinked Point Colour')
 
+        # Layout point options
+        self.w0.addWidget(self.unlinkedpointColour_Box_label, row=0, col=0)
+        self.w0.addWidget(self.unlinkedpointColour_Box, row=0, col=1)
+        self.w0.addWidget(self.pointColour_Box_label, row=1, col=0)
+        self.w0.addWidget(self.pointColour_Box, row=1, col=1)
+        self.w0.addWidget(self.pointSize_selector_label, row=2, col=0)
+        self.w0.addWidget(self.pointSize_selector, row=2, col=1)
 
-        #layout
-        self.w0.addWidget(self.unlinkedpointColour_Box_label , row=0,col=0)
-        self.w0.addWidget(self.unlinkedpointColour_Box, row=0,col=1)
-
-        self.w0.addWidget(self.pointColour_Box_label , row=1,col=0)
-        self.w0.addWidget(self.pointColour_Box, row=1,col=1)
-
-        self.w0.addWidget(self.pointSize_selector_label , row=2,col=0)
-        self.w0.addWidget(self.pointSize_selector , row=2,col=1)
-
-        #add layout widget to dock
         self.d0.addWidget(self.w0)
 
-        #track options widget
+    def _create_track_options(self) -> None:
+        """Create track display options."""
         self.w1 = pg.LayoutWidget()
 
-        #combo boxes
+        # Track color controls
         self.trackColourCol_Box = pg.ComboBox()
-        self.trackcolourcols = {'None':'None'}
+        self.trackcolourcols = {'None': 'None'}
         self.trackColourCol_Box.setItems(self.trackcolourcols)
         self.trackColourCol_Box_label = QLabel('Colour By')
         self.trackColourCol_Box.currentIndexChanged.connect(self.update)
 
+        # Color map controls
         self.colourMap_Box = pg.ComboBox()
         self.colourMaps = dictFromList(pg.colormap.listMaps())
         self.colourMap_Box.setItems(self.colourMaps)
         self.colourMap_Box_label = QLabel('Colour Map')
 
+        # Default track color
         self.trackDefaultColour_Box = pg.ComboBox()
-        self.trackdefaultcolours = {'green': Qt.green, 'red': Qt.red, 'blue': Qt.blue}
+        self.trackdefaultcolours = {
+            'green': Qt.green,
+            'red': Qt.red,
+            'blue': Qt.blue
+        }
         self.trackDefaultColour_Box.setItems(self.trackdefaultcolours)
         self.trackDefaultColour_Box_label = QLabel('Track Default Colour')
 
+        # Line size
         self.lineSize_selector = pg.SpinBox(value=2, int=True)
         self.lineSize_selector.setSingleStep(1)
         self.lineSize_selector.setMinimum(0)
         self.lineSize_selector.setMaximum(100)
         self.lineSize_selector_label = QLabel('Line Size')
 
-        #check boxes
+        # Checkboxes
         self.trackColour_checkbox = CheckBox()
         self.trackColour_checkbox.setChecked(False)
         self.trackColour_checkbox_label = QLabel('Set Track Colour')
@@ -325,8 +414,9 @@ class TrackPlotOptions():
         self.matplotCM_checkbox = CheckBox()
         self.matplotCM_checkbox.stateChanged.connect(self.mainGUI.setColourMap)
         self.matplotCM_checkbox.setChecked(False)
-        self.matplotCM_checkbox_label = QLabel('Use Matplot Colour Map')
+        self.matplotCM_checkbox_label = QLabel('Use Matplotlib Colour Map')
 
+        # Threshold options
         self.threshold_checkbox = CheckBox()
         self.threshold_checkbox.setChecked(False)
         self.threshold_checkbox_label = QLabel('Colour By Threshold (overrides above)')
@@ -339,89 +429,87 @@ class TrackPlotOptions():
         self.threshValue_selector_label = QLabel('Threshold Value')
         self.threshValue_selector.valueChanged.connect(self.update)
 
+        # Color buttons for threshold
         self.aboveColour_button = ColorButton(color='#00fdff')
         self.aboveColour_button_label = QLabel('Above Colour (click to set)')
-        self.aboveColour_button.pressed.connect(self.setAboveColour)
+        self.aboveColour_button.pressed.connect(self._set_above_colour)
 
         self.belowColour_button = ColorButton(color='#ff40ff')
         self.belowColour_button_label = QLabel('Below Colour (click to set)')
-        self.belowColour_button.pressed.connect(self.setBelowColour)
+        self.belowColour_button.pressed.connect(self._set_below_colour)
 
-        #layout
-        self.w1.addWidget(self.trackColour_checkbox_label , row=1,col=0)
-        self.w1.addWidget(self.trackColour_checkbox, row=1,col=1)
-
-        self.w1.addWidget(self.trackColourCol_Box_label , row=2,col=0)
-        self.w1.addWidget(self.trackColourCol_Box , row=2,col=1)
-
-        self.w1.addWidget(self.colourMap_Box_label , row=3,col=0)
-        self.w1.addWidget(self.colourMap_Box , row=3,col=1)
-
-        self.w1.addWidget(self.matplotCM_checkbox_label , row=4,col=0)
-        self.w1.addWidget(self.matplotCM_checkbox , row=4,col=1)
-
-        self.w1.addWidget(self.trackDefaultColour_Box_label , row=5,col=0)
-        self.w1.addWidget(self.trackDefaultColour_Box , row=5,col=1)
-
-        self.w1.addWidget(self.lineSize_selector_label, row=6,col=0)
-        self.w1.addWidget(self.lineSize_selector, row=6,col=1)
-
-
-        self.w1.addWidget(self.threshold_checkbox_label, row=7,col=0)
-        self.w1.addWidget(self.threshold_checkbox, row=7,col=1)
-
-        self.w1.addWidget(self.threshValue_selector_label, row=8,col=0)
-        self.w1.addWidget(self.threshValue_selector, row=8,col=1)
-
-        self.w1.addWidget(self.aboveColour_button_label, row=9,col=0)
-        self.w1.addWidget(self.aboveColour_button, row=9,col=1)
-
-        self.w1.addWidget(self.belowColour_button_label, row=10,col=0)
-        self.w1.addWidget(self.belowColour_button, row=10,col=1)
-
-        #add layout widget to dock
+        # Layout track options
+        self._layout_track_widgets()
         self.d1.addWidget(self.w1)
 
-        #recording options widget
+    def _layout_track_widgets(self) -> None:
+        """Layout track option widgets."""
+        self.w1.addWidget(self.trackColour_checkbox_label, row=1, col=0)
+        self.w1.addWidget(self.trackColour_checkbox, row=1, col=1)
+        self.w1.addWidget(self.trackColourCol_Box_label, row=2, col=0)
+        self.w1.addWidget(self.trackColourCol_Box, row=2, col=1)
+        self.w1.addWidget(self.colourMap_Box_label, row=3, col=0)
+        self.w1.addWidget(self.colourMap_Box, row=3, col=1)
+        self.w1.addWidget(self.matplotCM_checkbox_label, row=4, col=0)
+        self.w1.addWidget(self.matplotCM_checkbox, row=4, col=1)
+        self.w1.addWidget(self.trackDefaultColour_Box_label, row=5, col=0)
+        self.w1.addWidget(self.trackDefaultColour_Box, row=5, col=1)
+        self.w1.addWidget(self.lineSize_selector_label, row=6, col=0)
+        self.w1.addWidget(self.lineSize_selector, row=6, col=1)
+        self.w1.addWidget(self.threshold_checkbox_label, row=7, col=0)
+        self.w1.addWidget(self.threshold_checkbox, row=7, col=1)
+        self.w1.addWidget(self.threshValue_selector_label, row=8, col=0)
+        self.w1.addWidget(self.threshValue_selector, row=8, col=1)
+        self.w1.addWidget(self.aboveColour_button_label, row=9, col=0)
+        self.w1.addWidget(self.aboveColour_button, row=9, col=1)
+        self.w1.addWidget(self.belowColour_button_label, row=10, col=0)
+        self.w1.addWidget(self.belowColour_button, row=10, col=1)
+
+    def _create_recording_options(self) -> None:
+        """Create recording parameter options."""
         self.w2 = pg.LayoutWidget()
 
-        #spinbox
+        # Frame length
         self.frameLength_selector = pg.SpinBox(value=10, int=True)
         self.frameLength_selector.setSingleStep(10)
         self.frameLength_selector.setMinimum(1)
         self.frameLength_selector.setMaximum(100000)
         self.frameLength_selector_label = QLabel('milliseconds per frame')
 
+        # Pixel size
         self.pixelSize_selector = pg.SpinBox(value=108, int=True)
         self.pixelSize_selector.setSingleStep(1)
         self.pixelSize_selector.setMinimum(1)
         self.pixelSize_selector.setMaximum(10000)
         self.pixelSize_selector_label = QLabel('nanometers per pixel')
 
-        #layout
-        self.w2.addWidget(self.frameLength_selector_label , row=1,col=0)
-        self.w2.addWidget(self.frameLength_selector, row=1,col=1)
+        # Layout recording options
+        self.w2.addWidget(self.frameLength_selector_label, row=1, col=0)
+        self.w2.addWidget(self.frameLength_selector, row=1, col=1)
+        self.w2.addWidget(self.pixelSize_selector_label, row=2, col=0)
+        self.w2.addWidget(self.pixelSize_selector, row=2, col=1)
 
-        self.w2.addWidget(self.pixelSize_selector_label, row=2,col=0)
-        self.w2.addWidget(self.pixelSize_selector, row=2,col=1)
-
-        #add layout widget to dock
         self.d2.addWidget(self.w2)
 
-        #background options widget
+    def _create_background_options(self) -> None:
+        """Create background subtraction options."""
         self.w3 = pg.LayoutWidget()
 
+        # Intensity choice
         self.intensityChoice_Box = pg.ComboBox()
-        self.intensityChoice = {'intensity':'intensity',
-                                'intensity - mean roi1':'intensity - mean roi1',
-                                'intensity_roiOnMeanXY': 'intensity_roiOnMeanXY',
-                                'intensity_roiOnMeanXY - mean roi1': 'intensity_roiOnMeanXY - mean roi1',
-                                'intensity_roiOnMeanXY - mean roi1 and black': 'intensity_roiOnMeanXY - mean roi1 and black',
-                                'intensity_roiOnMeanXY - smoothed roi_1': 'intensity_roiOnMeanXY - smoothed roi_1',
-                                'intensity - smoothed roi_1': 'intensity - smoothed roi_1'}
+        self.intensityChoice = {
+            'intensity': 'intensity',
+            'intensity - mean roi1': 'intensity - mean roi1',
+            'intensity_roiOnMeanXY': 'intensity_roiOnMeanXY',
+            'intensity_roiOnMeanXY - mean roi1': 'intensity_roiOnMeanXY - mean roi1',
+            'intensity_roiOnMeanXY - mean roi1 and black': 'intensity_roiOnMeanXY - mean roi1 and black',
+            'intensity_roiOnMeanXY - smoothed roi_1': 'intensity_roiOnMeanXY - smoothed roi_1',
+            'intensity - smoothed roi_1': 'intensity - smoothed roi_1'
+        }
         self.intensityChoice_Box.setItems(self.intensityChoice)
         self.intensityChoice_Box_label = QLabel('Intensity plot data')
 
+        # Background subtraction
         self.backgroundSubtract_checkbox = CheckBox()
         self.backgroundSubtract_checkbox.setChecked(False)
         self.backgroundSubtract_label = QLabel('Subtract Background')
@@ -435,187 +523,306 @@ class TrackPlotOptions():
         self.estimatedCameraBlack = QLabel('')
         self.estimatedCameraBlack_label = QLabel('estimated camera black')
 
-        self.w3.addWidget(self.intensityChoice_Box, row=0,col=1)
-        self.w3.addWidget(self.intensityChoice_Box_label, row=0,col=0)
+        # Layout background options
+        self.w3.addWidget(self.intensityChoice_Box_label, row=0, col=0)
+        self.w3.addWidget(self.intensityChoice_Box, row=0, col=1)
+        self.w3.addWidget(self.backgroundSubtract_label, row=1, col=0)
+        self.w3.addWidget(self.backgroundSubtract_checkbox, row=1, col=1)
+        self.w3.addWidget(self.background_selector_label, row=2, col=0)
+        self.w3.addWidget(self.background_selector, row=2, col=1)
+        self.w3.addWidget(self.estimatedCameraBlack_label, row=3, col=0)
+        self.w3.addWidget(self.estimatedCameraBlack, row=3, col=1)
 
-        self.w3.addWidget(self.backgroundSubtract_checkbox, row=1,col=1)
-        self.w3.addWidget(self.backgroundSubtract_label, row=1,col=0)
-
-        self.w3.addWidget(self.background_selector, row=2,col=1)
-        self.w3.addWidget(self.background_selector_label, row=2,col=0)
-
-        self.w3.addWidget(self.estimatedCameraBlack, row=3,col=1)
-        self.w3.addWidget(self.estimatedCameraBlack_label, row=3,col=0)
-
-        #add layout widget to dock
         self.d3.addWidget(self.w3)
 
-    def setAboveColour(self):
+    def _set_above_colour(self) -> None:
+        """Handle above threshold color setting."""
         self.update()
-        print('Above threshold {} colour set to {}'.format(self.threshValue_selector.value(), self.aboveColour_button.color()))
+        threshold = self.threshValue_selector.value()
+        color = self.aboveColour_button.color()
+        logger.info(f'Above threshold {threshold} colour set to {color}')
 
-    def setBelowColour(self):
+    def _set_below_colour(self) -> None:
+        """Handle below threshold color setting."""
         self.update()
-        print('Below threshold {} colour set to {}'.format(self.threshValue_selector.value(), self.belowColour_button.color()))
+        threshold = self.threshValue_selector.value()
+        color = self.belowColour_button.color()
+        logger.info(f'Below threshold {threshold} colour set to {color}')
 
-    def update(self):
-        colName = self.trackColourCol_Box.value()
-        thresh = self.threshValue_selector.value()
-        belowColour = QColor(self.belowColour_button.color())
-        aboveColour = QColor(self.aboveColour_button.color())
-        self.mainGUI.data['threshColour'] = np.where(self.mainGUI.data[colName] > thresh, aboveColour ,belowColour)
+    def update(self) -> None:
+        """Update threshold colors based on current settings."""
+        try:
+            if not hasattr(self.mainGUI, 'data') or self.mainGUI.data is None:
+                return
 
+            col_name = self.trackColourCol_Box.value()
+            if col_name == 'None' or col_name not in self.mainGUI.data.columns:
+                return
 
-    def show(self):
-        """
-        Shows the main window.
-        """
+            thresh = self.threshValue_selector.value()
+            below_colour = QColor(self.belowColour_button.color())
+            above_colour = QColor(self.aboveColour_button.color())
+
+            self.mainGUI.data['threshColour'] = np.where(
+                self.mainGUI.data[col_name] > thresh,
+                above_colour,
+                below_colour
+            )
+            logger.debug(f"Threshold colors updated for column {col_name}")
+
+        except Exception as e:
+            logger.error(f"Error updating threshold colors: {e}")
+
+    def show(self) -> None:
+        """Show the track plot options window."""
         self.win.show()
 
-    def close(self):
-        """
-        Closes the main window.
-        """
+    def close(self) -> None:
+        """Close the track plot options window."""
         self.win.close()
 
-    def hide(self):
-        """
-        Hides the main window.
-        """
+    def hide(self) -> None:
+        """Hide the track plot options window."""
         self.win.hide()
 
 
-
-
-'''
-#####################################################################################################################################
-######################################   Main LOCSANDTRACKSPLOTTER CLASS   ##########################################################
-#####################################################################################################################################
-'''
-
 class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
     """
-    plots loc and track data onto current window
-    """
-    def __init__(self):
-        # Initialize settings for locs and tracks plotter
-        if g.settings['locsAndTracksPlotter'] is None or 'set_track_colour' not in g.settings['locsAndTracksPlotter']:
-            s = dict()
-            s['filename'] = ''
-            s['filetype'] = 'flika'
-            s['pixelSize'] = 108
-            s['set_track_colour'] = False
-            g.settings['locsAndTracksPlotter'] = s
+    Main plugin class for plotting localization and track data.
 
-        # Call the initialization function for the BaseProcess_noPriorWindow class
+    This class provides the primary interface for loading, visualizing,
+    and analyzing single-particle tracking data in FLIKA.
+
+    Features:
+    - Multiple file format support (CSV, JSON, ThunderSTORM)
+    - Interactive track visualization
+    - Comprehensive filtering and analysis tools
+    - Export capabilities
+    - Integration with various analysis modules
+    """
+
+    def __init__(self):
+        """Initialize the plugin with default settings."""
+        logger.info("Initializing LocsAndTracksPlotter")
+
+        # Initialize settings
+        self._initialize_settings()
+
+        # Call parent initialization
         BaseProcess_noPriorWindow.__init__(self)
 
+        logger.debug("LocsAndTracksPlotter initialization complete")
 
-    def __call__(self, filename, filetype, pixelSize, set_track_colour,  keepSourceWindow=False):
-        '''
-        Plots loc and track data onto the current window.
+    def _initialize_settings(self) -> None:
+        """Initialize or verify plugin settings."""
+        try:
+            if (g.settings.get('locsAndTracksPlotter') is None or
+                'set_track_colour' not in g.settings.get('locsAndTracksPlotter', {})):
 
-        Parameters:
-        filename: str - path to file
-        filetype: str - file type (flika or thunderstorm)
-        pixelSize: int - pixel size of image data
-        set_track_colour: bool - whether to set track colour based on track ID
+                default_settings = {
+                    'filename': '',
+                    'filetype': 'flika',
+                    'pixelSize': 108,
+                    'set_track_colour': False,
+                }
+                g.settings['locsAndTracksPlotter'] = default_settings
+                logger.debug("Default settings initialized")
+            else:
+                logger.debug("Using existing settings")
 
-        Returns: None
-        '''
+        except Exception as e:
+            logger.error(f"Error initializing settings: {e}")
 
-        # Save the input parameters to the locs and tracks plotter settings
-        g.settings['locsAndTracksPlotter']['filename'] = filename
-        g.settings['locsAndTracksPlotter']['filetype'] = filetype
-        g.settings['locsAndTracksPlotter']['pixelSize'] = pixelSize
-        g.settings['locsAndTracksPlotter']['set_track_colour'] = set_track_colour
+    def __call__(self, filename: str, filetype: str, pixelSize: int,
+                 set_track_colour: bool, keepSourceWindow: bool = False) -> None:
+        """
+        Main entry point for the plugin.
 
-        # Show a message in the status bar that plotting data is in progress
-        g.m.statusBar().showMessage("plotting data...")
-        return
+        Args:
+            filename: Path to the data file
+            filetype: Type of file ('flika', 'thunderstorm', 'xy', 'json')
+            pixelSize: Pixel size in nanometers
+            set_track_colour: Whether to color tracks by ID
+            keepSourceWindow: Whether to keep the source window open
+        """
+        try:
+            logger.info(f"Loading data from {filename} (type: {filetype})")
 
+            # Save parameters to settings
+            settings = g.settings['locsAndTracksPlotter']
+            settings.update({
+                'filename': filename,
+                'filetype': filetype,
+                'pixelSize': pixelSize,
+                'set_track_colour': set_track_colour
+            })
 
-    def closeEvent(self, event):
-        '''
-        This function is called when the user closes the locs and tracks plotter window. It clears any plots that have been
-        generated and calls the closeEvent function for the BaseProcess_noPriorWindow class.
+            # Show status message
+            if hasattr(g, 'm') and hasattr(g.m, 'statusBar'):
+                g.m.statusBar().showMessage("Plotting data...")
 
-        Parameters:
-        event: object - object representing the close event
+            logger.debug("Plugin call completed successfully")
 
-        Returns: None
-        '''
-        # Clear any plots that have been generated
-        self.clearPlots()
+        except Exception as e:
+            logger.error(f"Error in plugin call: {e}")
+            if hasattr(g, 'm') and hasattr(g.m, 'statusBar'):
+                g.m.statusBar().showMessage(f"Error: {str(e)}")
 
-        # Call the closeEvent function for the BaseProcess_noPriorWindow class
-        BaseProcess_noPriorWindow.closeEvent(self, event)
-        return
+    def closeEvent(self, event) -> None:
+        """
+        Handle window close event.
 
+        Args:
+            event: Close event object
+        """
+        try:
+            logger.info("Closing LocsAndTracksPlotter")
+            self.clearPlots()
+            BaseProcess_noPriorWindow.closeEvent(self, event)
+        except Exception as e:
+            logger.error(f"Error during close event: {e}")
 
-    def gui(self):
-        # Initialize class variables
-        self.filename = ''
-        self.filetype = 'flika'
-        self.pixelSize= None
-        self.plotWindow = None
-        self.pathitems = []
-        self.useFilteredData = False
-        self.useFilteredTracks = False
-        self.filteredData = None
-        self.useMatplotCM = False
-        self.selectedTrack = None
-        self.displayTrack = None
-        self.chartWindow = None
-        self.displayCharts = False
-        self.diffusionWindow = None
-        self.displayDiffusionPlot = False
-        self.unlinkedPoints = None
-        self.displayUnlinkedPoints = False
-        self.estimatedCameraBlackLevel = 0
-        self.displayROIplot = False
+    def gui(self) -> None:
+        """Set up the graphical user interface."""
+        try:
+            logger.debug("Setting up GUI")
 
-        #initialize track plot options window and hide it
-        self.trackPlotOptions = TrackPlotOptions(self)
-        self.trackPlotOptions.hide()
-        self.displayTrackPlotOptions = False
+            # Initialize instance variables
+            self._initialize_variables()
 
-        # Initialize overlay window and hide it
-        self.overlayWindow = Overlay(self)
-        self.overlayWindow.hide()
-        self.displayOverlay = False
+            # Initialize sub-windows
+            self._initialize_windows()
 
-        # Initialize filter options window and hide it
-        self.filterOptionsWindow = FilterOptions(self)
-        self.filterOptionsWindow.hide()
-        self.sequentialFiltering = False
+            # Set up main GUI
+            self._setup_main_gui()
 
-        # Initialize track plot window and hide it
-        self.trackWindow = TrackWindow(self)
-        self.trackWindow.hide()
+            # Call parent GUI setup
+            super().gui()
 
-        # Initialize flower plot window and hide it
-        self.flowerPlotWindow = FlowerPlotWindow(self)
-        self.flowerPlotWindow.hide()
+            logger.debug("GUI setup completed")
 
-        # Initialize single track plot window and hide it
-        self.singleTrackPlot= TrackPlot(self)
-        self.singleTrackPlot.hide()
+        except Exception as e:
+            logger.error(f"Error setting up GUI: {e}")
 
-        # Initialize all-tracks plot window and hide it
-        self.allTracksPlot = AllTracksPlot(self)
-        self.allTracksPlot.hide()
+    def _initialize_variables(self) -> None:
+        """Initialize instance variables."""
+        # File and data variables
+        self.filename: str = ''
+        self.filetype: str = 'flika'
+        self.pixelSize: Optional[int] = None
+        self.data: Optional[pd.DataFrame] = None
+        self.data_unlinked: Optional[pd.DataFrame] = None
+        self.filteredData: Optional[pd.DataFrame] = None
 
-        # Initialize all-tracks plot window and hide it
-        self.ROIplot = ROIPLOT(self)
-        self.ROIplot.hide()
+        # Plot and display variables
+        self.plotWindow: Optional[Window] = None
+        self.pathitems: List = []
+        self.useFilteredData: bool = False
+        self.useFilteredTracks: bool = False
+        self.useMatplotCM: bool = False
+        self.selectedTrack: Optional[int] = None
+        self.displayTrack: Optional[int] = None
+        self.unlinkedPoints: Optional[pd.DataFrame] = None
+        self.displayUnlinkedPoints: bool = False
+        self.estimatedCameraBlackLevel: int = 0
 
-        # Call gui_reset function
-        self.gui_reset()
-        # Get settings for locsAndTracksPlotter
-        s=g.settings['locsAndTracksPlotter']
+        # Window display flags
+        self.displayCharts: bool = False
+        self.displayDiffusionPlot: bool = False
+        self.displayROIplot: bool = False
+        self.displayTrackPlotOptions: bool = False
+        self.displayOverlay: bool = False
 
-        #buttons
+        # Sub-window references
+        self.chartWindow: Optional[ChartDock] = None
+        self.diffusionWindow: Optional[DiffusionPlotWindow] = None
+
+        # Filter settings
+        self.sequentialFiltering: bool = False
+
+        # Expected columns for data validation
+        self.expectedColumns = [
+            'frame', 'track_number', 'x', 'y', 'intensity', 'zeroed_X', 'zeroed_Y',
+            'lagNumber', 'distanceFromOrigin', 'dy-dt: distance', 'radius_gyration',
+            'asymmetry', 'skewness', 'kurtosis', 'fracDimension', 'netDispl',
+            'Straight', 'Experiment', 'SVM', 'nnDist_inFrame', 'n_segments', 'lag',
+            'meanLag', 'track_length', 'radius_gyration_scaled',
+            'radius_gyration_scaled_nSegments', 'radius_gyration_scaled_trackLength',
+            'roi_1', 'camera black estimate', 'd_squared', 'lag_squared', 'dt',
+            'velocity', 'direction_Relative_To_Origin', 'meanVelocity',
+            'intensity - mean roi1', 'intensity - mean roi1 and black',
+            'nnCountInFrame_within_3_pixels', 'nnCountInFrame_within_5_pixels',
+            'nnCountInFrame_within_10_pixels', 'nnCountInFrame_within_20_pixels',
+            'nnCountInFrame_within_30_pixels', 'intensity_roiOnMeanXY',
+            'intensity_roiOnMeanXY - mean roi1', 'intensity_roiOnMeanXY - mean roi1 and black',
+            'roi_1 smoothed', 'intensity_roiOnMeanXY - smoothed roi_1',
+            'intensity - smoothed roi_1'
+        ]
+
+    def _initialize_windows(self) -> None:
+        """Initialize sub-windows."""
+        try:
+            # Track plot options window
+            self.trackPlotOptions = TrackPlotOptions(self)
+            self.trackPlotOptions.hide()
+
+            # Overlay window
+            self.overlayWindow = Overlay(self)
+            self.overlayWindow.hide()
+
+            # Filter options window
+            self.filterOptionsWindow = FilterOptions(self)
+            self.filterOptionsWindow.hide()
+
+            # Track window
+            self.trackWindow = TrackWindow(self)
+            self.trackWindow.hide()
+
+            # Flower plot window
+            self.flowerPlotWindow = FlowerPlotWindow(self)
+            self.flowerPlotWindow.hide()
+
+            # Single track plot window
+            self.singleTrackPlot = TrackPlot(self)
+            self.singleTrackPlot.hide()
+
+            # All tracks plot window
+            self.allTracksPlot = AllTracksPlot(self)
+            self.allTracksPlot.hide()
+
+            # ROI plot window
+            self.ROIplot = ROIPLOT(self)
+            self.ROIplot.hide()
+
+            logger.debug("Sub-windows initialized")
+
+        except Exception as e:
+            logger.error(f"Error initializing windows: {e}")
+
+    def _setup_main_gui(self) -> None:
+        """Set up the main GUI elements."""
+        try:
+            # Reset GUI
+            self.gui_reset()
+
+            # Get current settings
+            s = g.settings['locsAndTracksPlotter']
+
+            # Create control widgets
+            self._create_buttons()
+            self._create_checkboxes()
+            self._create_comboboxes()
+            self._create_file_selector()
+
+            # Define GUI items
+            self._define_gui_items()
+
+        except Exception as e:
+            logger.error(f"Error setting up main GUI: {e}")
+
+    def _create_buttons(self) -> None:
+        """Create button widgets."""
+        # Plot control buttons
         self.plotPointData_button = QPushButton('Plot Points')
         self.plotPointData_button.pressed.connect(self.plotPointData)
 
@@ -625,14 +832,13 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.toggleUnlinkedPointData_button = QPushButton('Show Unlinked')
         self.toggleUnlinkedPointData_button.pressed.connect(self.toggleUnlinkedPointData)
 
-
         self.plotTrackData_button = QPushButton('Plot Tracks')
         self.plotTrackData_button.pressed.connect(self.plotTrackData)
 
         self.clearTrackData_button = QPushButton('Clear Tracks')
         self.clearTrackData_button.pressed.connect(self.clearTracks)
 
-
+        # Analysis buttons
         self.saveData_button = QPushButton('Save Tracks')
         self.saveData_button.pressed.connect(self.saveData)
 
@@ -648,7 +854,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.overlayOption_button = QPushButton('Overlay')
         self.overlayOption_button.pressed.connect(self.displayOverlayOptions)
 
-        #checkbox
+    def _create_checkboxes(self) -> None:
+        """Create checkbox widgets."""
+        # Display option checkboxes
         self.displayFlowPlot_checkbox = CheckBox()
         self.displayFlowPlot_checkbox.stateChanged.connect(self.toggleFlowerPlot)
         self.displayFlowPlot_checkbox.setChecked(False)
@@ -673,657 +881,1203 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
         self.displayROIplot_checkbox.stateChanged.connect(self.toggleROIplot)
         self.displayROIplot_checkbox.setChecked(False)
 
-
-        #comboboxes
+    def _create_comboboxes(self) -> None:
+        """Create combobox widgets."""
+        # File type selector
         self.filetype_Box = pg.ComboBox()
-        filetypes = {'flika' : 'flika', 'thunderstorm':'thunderstorm', 'xy':'xy'}
+        filetypes = {
+            'flika': 'flika',
+            'thunderstorm': 'thunderstorm',
+            'xy': 'xy',
+            'json': 'json'
+        }
         self.filetype_Box.setItems(filetypes)
 
+        # Column selectors
+        self._create_column_selectors()
+
+    def _create_column_selectors(self) -> None:
+        """Create column selector comboboxes."""
+        default_cols = {'None': 'None'}
+
         self.xCol_Box = pg.ComboBox()
-        self.xcols = {'None':'None'}
-        self.xCol_Box.setItems(self.xcols)
+        self.xCol_Box.setItems(default_cols)
 
         self.yCol_Box = pg.ComboBox()
-        self.ycols = {'None':'None'}
-        self.yCol_Box.setItems(self.ycols)
+        self.yCol_Box.setItems(default_cols)
 
         self.frameCol_Box = pg.ComboBox()
-        self.framecols = {'None':'None'}
-        self.frameCol_Box.setItems(self.framecols)
+        self.frameCol_Box.setItems(default_cols)
 
         self.trackCol_Box = pg.ComboBox()
-        self.trackcols = {'None':'None'}
-        self.trackCol_Box.setItems(self.trackcols)
+        self.trackCol_Box.setItems(default_cols)
 
-        #data file selector
-        self.getFile = FileSelector(filetypes='*.csv', mainGUI=self)
-
-        #connections
+    def _create_file_selector(self) -> None:
+        """Create file selector widget."""
+        self.getFile = FileSelector(filetypes='*.csv *.json', mainGUI=self)
         self.getFile.valueChanged.connect(self.loadData)
 
-        #add blank columns for missing analysis steps to prevent crashes
-        self.expectedColumns = ['frame', 'track_number', 'x', 'y', 'intensity', 'zeroed_X', 'zeroed_Y',
-       'lagNumber', 'distanceFromOrigin', 'dy-dt: distance', 'radius_gyration',
-       'asymmetry', 'skewness', 'kurtosis', 'fracDimension', 'netDispl',
-       'Straight', 'Experiment', 'SVM', 'nnDist_inFrame', 'n_segments', 'lag',
-       'meanLag', 'track_length', 'radius_gyration_scaled',
-       'radius_gyration_scaled_nSegments',
-       'radius_gyration_scaled_trackLength', 'roi_1', 'camera black estimate',
-       'd_squared', 'lag_squared', 'dt', 'velocity',
-       'direction_Relative_To_Origin', 'meanVelocity', 'intensity - mean roi1',
-       'intensity - mean roi1 and black', 'nnCountInFrame_within_3_pixels',
-       'nnCountInFrame_within_5_pixels', 'nnCountInFrame_within_10_pixels',
-       'nnCountInFrame_within_20_pixels', 'nnCountInFrame_within_30_pixels',
-        'intensity_roiOnMeanXY','intensity_roiOnMeanXY - mean roi1',
-        'intensity_roiOnMeanXY - mean roi1 and black','roi_1 smoothed',
-        'intensity_roiOnMeanXY - smoothed roi_1',
-        'intensity - smoothed roi_1']
+    def _define_gui_items(self) -> None:
+        """Define GUI items for the interface."""
+        self.items.extend([
+            {'name': 'filename', 'string': '', 'object': self.getFile},
+            {'name': 'filetype', 'string': 'filetype', 'object': self.filetype_Box},
+            {'name': 'hidePoints', 'string': 'PLOT --------------------', 'object': self.hidePointData_button},
+            {'name': 'plotPointMap', 'string': '', 'object': self.togglePointMap_button},
+            {'name': 'plotUnlinkedPoints', 'string': '', 'object': self.toggleUnlinkedPointData_button},
+            {'name': 'trackPlotOptions', 'string': 'Display Options', 'object': self.displayTrackPlotOptions_checkbox},
+            {'name': 'displayFlowerPlot', 'string': 'Flower Plot', 'object': self.displayFlowPlot_checkbox},
+            {'name': 'displaySingleTrackPlot', 'string': 'Track Plot', 'object': self.displaySingleTrackPlot_checkbox},
+            {'name': 'displayAllTracksPlot', 'string': 'All Tracks Plot', 'object': self.displayAllTracksPlot_checkbox},
+            {'name': 'displayROIplot', 'string': 'ROI Plot', 'object': self.displayROIplot_checkbox},
+            {'name': 'displayFilterOptions', 'string': 'Filter Window', 'object': self.displayFilterOptions_checkbox},
+            {'name': 'plotTracks', 'string': '', 'object': self.plotTrackData_button},
+            {'name': 'clearTracks', 'string': '', 'object': self.clearTrackData_button},
+            {'name': 'saveTracks', 'string': '', 'object': self.saveData_button},
+            {'name': 'showCharts', 'string': '', 'object': self.showCharts_button},
+            {'name': 'showDiffusion', 'string': '', 'object': self.showDiffusion_button},
+            {'name': 'overlayOptions', 'string': '', 'object': self.overlayOption_button},
+        ])
 
+    # Data loading and processing methods
 
-        #################################################################
-        # Define the items that will appear in the GUI, and associate them with the appropriate functions.
-        #self.exportFolder = FolderSelector('*.txt')
+    def loadData(self) -> None:
+        """Load data from the selected file."""
+        try:
+            logger.info("Loading data file")
 
-        self.items.append({'name': 'filename ', 'string': '', 'object': self.getFile})
-        self.items.append({'name': 'filetype', 'string': 'filetype', 'object': self.filetype_Box})
-        self.items.append({'name': 'hidePoints', 'string': 'PLOT    --------------------', 'object': self.hidePointData_button })
-        self.items.append({'name': 'plotPointMap', 'string': '', 'object': self.togglePointMap_button })
-        self.items.append({'name': 'plotUnlinkedPoints', 'string': '', 'object': self.toggleUnlinkedPointData_button })
-        self.items.append({'name': 'trackPlotOptions', 'string': 'Display Options', 'object': self.displayTrackPlotOptions_checkbox })
-        self.items.append({'name': 'displayFlowerPlot', 'string': 'Flower Plot', 'object': self.displayFlowPlot_checkbox})
-        self.items.append({'name': 'displaySingleTrackPlot', 'string': 'Track Plot', 'object': self.displaySingleTrackPlot_checkbox})
-        self.items.append({'name': 'displayAllTracksPlot', 'string': 'All Tracks Plot', 'object': self.displayAllTracksPlot_checkbox})
-        self.items.append({'name': 'displayROIplot', 'string': 'ROI Plot', 'object': self.displayROIplot_checkbox})
-        self.items.append({'name': 'displayFilterOptions', 'string': 'Filter Window', 'object': self.displayFilterOptions_checkbox})
-        self.items.append({'name': 'plotTracks', 'string': '', 'object': self.plotTrackData_button })
-        self.items.append({'name': 'clearTracks', 'string': '', 'object': self.clearTrackData_button })
-        self.items.append({'name': 'saveTracks', 'string': '', 'object': self.saveData_button })
-        self.items.append({'name': 'showCharts', 'string': '', 'object': self.showCharts_button })
-        self.items.append({'name': 'showDiffusion', 'string': '', 'object': self.showDiffusion_button })
-        self.items.append({'name': 'overlayOptions', 'string': '', 'object': self.overlayOption_button })
+            # Set the plot window to the global window instance
+            if not hasattr(g, 'win') or g.win is None:
+                logger.error("No active window found")
+                return
 
+            self.plotWindow = g.win
+            self.filename = self.getFile.value()
 
-        super().gui()
-        ######################################################################
-        return
+            if not self.filename:
+                logger.warning("No filename provided")
+                return
 
-    def loadData(self):
-        # Set the plot window to the global window instance
-        self.plotWindow = g.win
-
-        # Get the filename from the GUI
-        self.filename = self.getFile.value()
-
-        # Load the data from the selected file using Pandas
-        self.data = pd.read_csv(self.filename)
-
-        ### TODO! #Check if analysed columns are in df - if missing add and display error message
-        #g.m.statusBar().showMessage('{} columns missing - blanks aded'.format())
-        #print('{} columns missing - blanks aded'.format())
-
-        #make sure track number and frame are int
-        self.data['frame'] = self.data['frame'].astype(int)
-
-        if 'track_number' in self.data.columns:
-            # filter any points that dont have track_numbers to seperate df
-            self.data_unlinked = self.data[self.data['track_number'].isna()]
-            self.data  = self.data[~self.data['track_number'].isna()]
-
-            self.data['track_number'] = self.data['track_number'].astype(int)
-
-        else:
-            self.data['track_number'] = None
-            self.data_unlinked = self.data
-
-        # Check that there are enough frames in the stack to plot all data points
-        if np.max(self.data['frame']) > g.win.mt:
-            g.alert("Selected window doesn't have enough frames to plot all data points")
-            self.plotWindow = None
-            self.filename = None
-            self.data = None
-            return
-
-        # Print a message to the console indicating that the data has been loaded
-        # and display the first 5 rows of the data
-        print('-------------------------------------')
-        print('Data loaded (first 5 rows displayed):')
-        print(self.data.head())
-        print('-------------------------------------')
-
-        #add background subtracted intensity column
-        if 'intensity - background' in self.data.columns:
-            self.data['intensity - background'] = self.data['intensity']
-
-        # Create a dictionary from the column names of the data
-        self.columns = self.data.columns
-        self.colDict= dictFromList(self.columns)
-
-        # Set the options for the various dropdown menus in the GUI based on the column names
-        self.xCol_Box.setItems(self.colDict)
-        self.yCol_Box.setItems(self.colDict)
-        self.frameCol_Box.setItems(self.colDict)
-        self.trackCol_Box.setItems(self.colDict)
-        self.filterOptionsWindow.filterCol_Box.setItems(self.colDict)
-        self.trackPlotOptions.trackColourCol_Box.setItems(self.colDict)
-
-        self.xCol_Box.setItems(self.colDict)
-        self.yCol_Box.setItems(self.colDict)
-
-        # Format the points and add them to the image window
-        self.plotPointData()
-
-        # Update the track plot track selector and set the options for the color dropdowns
-        self.singleTrackPlot.updateTrackList()
-        self.singleTrackPlot.pointCol_Box.setItems(self.colDict)
-        self.singleTrackPlot.lineCol_Box.setItems(self.colDict)
-
-        # Set the padding array for the single track plot based on the image array
-        self.singleTrackPlot.setPadArray(self.plotWindow.imageArray())
-
-        # Update the all-tracks plot track selector
-        self.allTracksPlot.updateTrackList()
-        self.ROIplot.updateTrackList()
-
-
-        # add image data to overlay
-        self.overlayWindow.loadData()
-
-        # set estimated camera black level
-        self.estimatedCameraBlackLevel = np.min(self.plotWindow.image)
-        self.trackPlotOptions.estimatedCameraBlack.setText(str(self.estimatedCameraBlackLevel))
-
-        for col in self.expectedColumns:
-            if col not in self.columns:
-                self.data[col] = np.nan
-                self.data_unlinked[col] = np.nan
-
-
-    def makePointDataDF(self, data):
-        # Check the filetype selected in the GUI
-        if self.filetype_Box.value() == 'thunderstorm':
-            # Load thunderstorm data into a pandas dataframe
-            df = pd.DataFrame()
-            # Convert frame data from float to int and adjust by -1 (since ThunderSTORM starts counting from 1)
-            df['frame'] = data['frame'].astype(int)-1
-            # Convert x data from nanometers to pixels
-            df['x'] = data['x [nm]'] / self.trackPlotOptions.pixelSize_selector.value()
-            # Convert y data from nanometers to pixels
-            df['y'] = data['y [nm]'] / self.trackPlotOptions.pixelSize_selector.value()
-
-        elif self.filetype_Box.value() == 'flika':
-            # Load FLIKA pyinsight data into a pandas dataframe
-            df = pd.DataFrame()
-            # Convert frame data from float to int and adjust by -1 (since FLIKA starts counting from 1)
-            df['frame'] = data['frame'].astype(int)-1
-            # Use x data as-is (FLIKA data is already in pixel units)
-            df['x'] = data['x']
-            # Use y data as-is (FLIKA data is already in pixel units)
-            df['y'] = data['y']
-
-
-        # Return the completed pandas dataframe
-        return df
-
-    def plotPointsOnStack(self, points, pointColor, unlinkedPoints=None, unlinkedColour=QColor(Qt.blue)):
-        points_byFrame = points[['frame','x','y']]
-        #align frames with display
-        if self.filetype_Box.value() == 'thunderstorm':
-            points_byFrame['frame'] =  points_byFrame['frame']
-        else:
-            points_byFrame['frame'] =  points_byFrame['frame']+1
-        # Convert the points DataFrame into a numpy array
-        pointArray = points_byFrame.to_numpy()
-        # Create an empty list for each frame in the stack
-        self.plotWindow.scatterPoints = [[] for _ in np.arange(self.plotWindow.mt)]
-        #set pointsize
-        pointSize = self.trackPlotOptions.pointSize_selector.value()
-
-
-        # Iterate through each point in the point array and add it to the appropriate frame's list
-        for pt in pointArray:
-            t = int(pt[0])
-            if self.plotWindow.mt == 1:
-                t = 0
-            #pointSize = g.m.settings['point_size']
-            #position = [pt[1]+(.5* (1/pixelSize)), pt[2]+(.5* (1/pixelSize)), pointColor, pointSize]
-            position = [pt[1], pt[2], pointColor, pointSize]
-
-            self.plotWindow.scatterPoints[t].append(position)
-
-
-        if self.displayUnlinkedPoints:
-            unlinkedPoints_byFrame = unlinkedPoints[['frame','x','y']]
-            if self.filetype_Box.value() == 'thunderstorm':
-                unlinkedPoints_byFrame['frame'] =  unlinkedPoints_byFrame['frame']
+            # Load data based on file type
+            if self.filetype_Box.value() == 'json':
+                self.data = self.loadJSONTracks(self.filename)
             else:
-                points_byFrame['frame'] =  points_byFrame['frame']+1
-            # Convert the points DataFrame into a numpy array
-            unlinkedPointArray = unlinkedPoints_byFrame.to_numpy()
+                self.data = pd.read_csv(self.filename)
 
+            if self.data is None or self.data.empty:
+                logger.error("Failed to load data or data is empty")
+                return
 
-            # Iterate through each point in the point array and add it to the appropriate frame's list
-            for pt in unlinkedPointArray:
-                t = int(pt[0])
-                if self.plotWindow.mt == 1:
-                    t = 0
-                #pointSize = g.m.settings['point_size']
-                #position = [pt[1]+(.5* (1/pixelSize)), pt[2]+(.5* (1/pixelSize)), pointColor, pointSize]
-                position = [pt[1], pt[2], unlinkedColour, pointSize]
+            # Process loaded data
+            self._process_loaded_data()
 
-                self.plotWindow.scatterPoints[t].append(position)
+            logger.info(f"Data loaded successfully: {len(self.data)} rows")
 
+        except Exception as e:
+            logger.error(f"Error loading data: {e}")
+            if hasattr(g, 'm') and hasattr(g.m, 'statusBar'):
+                g.m.statusBar().showMessage(f"Error loading data: {str(e)}")
 
+    def _process_loaded_data(self) -> None:
+        """Process the loaded data."""
+        try:
+            # Ensure frame and track_number are integers
+            self.data['frame'] = self.data['frame'].astype(int)
 
-        # Update the index of the image stack to include the new points
-        self.plotWindow.updateindex()
+            if 'track_number' in self.data.columns:
+                # Separate unlinked points
+                self.data_unlinked = self.data[self.data['track_number'].isna()].copy()
+                self.data = self.data[~self.data['track_number'].isna()].copy()
+                self.data['track_number'] = self.data['track_number'].astype(int)
+            else:
+                self.data['track_number'] = None
+                self.data_unlinked = self.data.copy()
 
+            # Validate frame count
+            max_frame = np.max(self.data['frame'])
+            if max_frame > g.win.mt:
+                error_msg = "Selected window doesn't have enough frames to plot all data points"
+                logger.error(error_msg)
+                if hasattr(g, 'alert'):
+                    g.alert(error_msg)
+                self._reset_data()
+                return
 
-    def hidePointData(self):
-        if self.plotWindow.scatterPlot in self.plotWindow.imageview.ui.graphicsView.items():
-            # If the scatter plot is currently in the graphics view, remove it
-            self.plotWindow.imageview.ui.graphicsView.removeItem(self.plotWindow.scatterPlot)
-        else:
-            # Otherwise, add it back to the graphics view
-            self.plotWindow.imageview.addItem(self.plotWindow.scatterPlot)
+            # Display data info
+            logger.info("Data processing completed")
+            logger.debug("Data preview:")
+            logger.debug(f"\n{self.data.head()}")
 
+            # Add missing columns
+            self._add_missing_columns()
 
-    def plotPointData(self):
-        ### plot point data to current window
-        # Create a pandas DataFrame containing the point data
-        if self.useFilteredData == False:
-            self.points = self.makePointDataDF(self.data)
-        else:
-            self.points = self.makePointDataDF(self.filteredData)
+            # Setup GUI elements
+            self._setup_data_dependent_gui()
 
-        if self.displayUnlinkedPoints:
-            # Create a pandas DataFrame containing the point data
-            self.unlinkedPoints = self.makePointDataDF(self.data_unlinked)
-        else:
-            self.unlinkedPoints = None
-
-        # Plot the points on the image stack using the plotPointsOnStack() method
-        self.plotPointsOnStack(self.points, self.trackPlotOptions.pointColour_Box.value(), unlinkedPoints=self.unlinkedPoints, unlinkedColour=self.trackPlotOptions.unlinkedpointColour_Box.value())
-
-        # Display a message in the status bar indicating that the point data has been plotted
-        g.m.statusBar().showMessage('point data plotted to current window')
-        print('point data plotted to current window')
-
-        return
-
-
-    def toggleUnlinkedPointData(self):
-        if self.displayUnlinkedPoints == False:
-            ### plot unlinked point data to current window
-            self.displayUnlinkedPoints = True
+            # Plot initial data
             self.plotPointData()
-            self.toggleUnlinkedPointData_button.setText('Hide Unlinked')
-            # Display a message in the status bar indicating that the point data has been plotted
-            g.m.statusBar().showMessage('unlinked point data plotted to current window')
-            print('unlinked point data plotted to current window')
 
-        else:
-            self.displayUnlinkedPoints = False
-            self.plotPointData()
-            self.toggleUnlinkedPointData_button.setText('Show Unlinked')
-        return
+        except Exception as e:
+            logger.error(f"Error processing data: {e}")
+            self._reset_data()
 
+    def _reset_data(self) -> None:
+        """Reset data variables to None."""
+        self.plotWindow = None
+        self.filename = None
+        self.data = None
+        self.data_unlinked = None
 
-    def makeTrackDF(self, data):
-        if self.filetype_Box.value() == 'thunderstorm':
-            ######### load FLIKA pyinsight data into DF ############
-            df = pd.DataFrame()
-            df['frame'] = data['frame'].astype(int)-1
-            df['x'] = data['x [nm]']/self.trackPlotOptions.pixelSize_selector.value()
-            df['y'] = data['y [nm]']/self.trackPlotOptions.pixelSize_selector.value()
-            df['track_number'] = data['track_number']
-
-            colsPresent = df.columns
-
+    def _add_missing_columns(self) -> None:
+        """Add any missing expected columns to the data."""
+        try:
             for col in self.expectedColumns:
-                if col not in colsPresent:
-                    df[col] = np.nan
+                if col not in self.data.columns:
+                    self.data[col] = np.nan
+                if hasattr(self, 'data_unlinked') and col not in self.data_unlinked.columns:
+                    self.data_unlinked[col] = np.nan
+            logger.debug("Missing columns added")
+        except Exception as e:
+            logger.error(f"Error adding missing columns: {e}")
 
+    def _setup_data_dependent_gui(self) -> None:
+        """Set up GUI elements that depend on loaded data."""
+        try:
+            # Create column dictionary
+            self.columns = self.data.columns
+            self.colDict = dictFromList(self.columns)
 
-        elif self.filetype_Box.value() == 'flika':
-            ######### load FLIKA pyinsight data into DF ############
+            # Update combobox items
+            self._update_column_selectors()
+
+            # Update sub-windows
+            self._update_subwindows()
+
+            # Set estimated camera black level
+            self.estimatedCameraBlackLevel = np.min(self.plotWindow.image)
+            self.trackPlotOptions.estimatedCameraBlack.setText(str(self.estimatedCameraBlackLevel))
+
+            logger.debug("Data-dependent GUI setup completed")
+
+        except Exception as e:
+            logger.error(f"Error setting up data-dependent GUI: {e}")
+
+    def _update_column_selectors(self) -> None:
+        """Update column selector comboboxes with data columns."""
+        selectors = [
+            self.xCol_Box, self.yCol_Box, self.frameCol_Box, self.trackCol_Box,
+            self.filterOptionsWindow.filterCol_Box,
+            self.trackPlotOptions.trackColourCol_Box
+        ]
+
+        for selector in selectors:
+            selector.setItems(self.colDict)
+
+    def _update_subwindows(self) -> None:
+        """Update sub-windows with loaded data."""
+        try:
+            # Update track selectors
+            self.singleTrackPlot.updateTrackList()
+            self.singleTrackPlot.pointCol_Box.setItems(self.colDict)
+            self.singleTrackPlot.lineCol_Box.setItems(self.colDict)
+            self.singleTrackPlot.setPadArray(self.plotWindow.imageArray())
+
+            self.allTracksPlot.updateTrackList()
+            self.ROIplot.updateTrackList()
+
+            # Update track window column selector
+            self.trackWindow.update_column_selector()
+
+            # Load data to overlay
+            self.overlayWindow.loadData()
+
+        except Exception as e:
+            self.logger.error(f"Error updating sub-windows: {e}")
+
+    def loadJSONTracks(self, json_file: str) -> Optional[pd.DataFrame]:
+        """
+        Import track data from a JSON file format and calculate track metrics.
+
+        Args:
+            json_file: Path to JSON file containing track data
+
+        Returns:
+            DataFrame containing the track data with calculated metrics
+        """
+        try:
+            logger.info(f"Loading JSON track data from {json_file}")
+
+            with open(json_file, 'r') as f:
+                data = json.load(f)
+
+            # Initialize data lists
+            frames, track_numbers, x_coords, y_coords = [], [], [], []
+
+            # Convert txy_pts to numpy array
+            txy_pts = np.array(data['txy_pts'])
+
+            # Parse tracks from JSON
+            for track_idx, track in enumerate(data['tracks']):
+                for point_id in track:
+                    point_data = txy_pts[point_id]
+                    frames.append(point_data[0])
+                    x_coords.append(point_data[1])
+                    y_coords.append(point_data[2])
+                    track_numbers.append(track_idx)
+
+            # Create DataFrame
+            df = pd.DataFrame({
+                'frame': frames,
+                'track_number': track_numbers,
+                'x': x_coords,
+                'y': y_coords
+            })
+
+            # Sort by track number and frame
+            df = df.sort_values(['track_number', 'frame'])
+
+            # Calculate track metrics
+            df = df.groupby('track_number').apply(self._calculate_track_metrics)
+
+            # Add remaining columns with NaN values
+            remaining_cols = ['intensity', 'lagNumber', 'fracDimension', 'Experiment', 'SVM', 'nnDist_inFrame']
+            for col in remaining_cols:
+                df[col] = np.nan
+
+            logger.info(f"JSON data loaded successfully: {len(df)} points, {df['track_number'].nunique()} tracks")
+            return df
+
+        except Exception as e:
+            logger.error(f"Error loading JSON tracks: {e}")
+            return None
+
+    def _calculate_track_metrics(self, group: pd.DataFrame) -> pd.DataFrame:
+        """Calculate various metrics for each track."""
+        try:
+            # Zero coordinates (relative to track start)
+            start_x, start_y = group['x'].iloc[0], group['y'].iloc[0]
+            group['zeroed_X'] = group['x'] - start_x
+            group['zeroed_Y'] = group['y'] - start_y
+
+            # Calculate time steps and displacements
+            group['dt'] = group['frame'].diff()
+            group['dx'] = group['x'].diff()
+            group['dy'] = group['y'].diff()
+            group['d_squared'] = group['dx']**2 + group['dy']**2
+
+            # Distance from origin
+            group['distanceFromOrigin'] = np.sqrt(
+                (group['x'] - start_x)**2 + (group['y'] - start_y)**2
+            )
+
+            # Velocity and direction
+            group['velocity'] = np.sqrt(group['d_squared']) / group['dt']
+            group['direction_Relative_To_Origin'] = (
+                np.arctan2(group['dy'], group['dx']) * 180 / np.pi
+            )
+
+            # Track statistics
+            group['meanVelocity'] = group['velocity'].mean()
+            group['track_length'] = len(group)
+            group['lag'] = group.index - group.index[0]
+            group['meanLag'] = group['lag'].mean()
+
+            # Net displacement
+            end_x, end_y = group['x'].iloc[-1], group['y'].iloc[-1]
+            net_displacement = np.sqrt((end_x - start_x)**2 + (end_y - start_y)**2)
+            group['netDispl'] = net_displacement
+
+            # Radius of gyration
+            mean_x, mean_y = group['x'].mean(), group['y'].mean()
+            group['radius_gyration'] = np.sqrt(
+                ((group['x'] - mean_x)**2 + (group['y'] - mean_y)**2).mean()
+            )
+
+            # Shape metrics
+            dx_squared = (group['x'] - mean_x)**2
+            dy_squared = (group['y'] - mean_y)**2
+            group['asymmetry'] = (
+                abs(dx_squared.mean() - dy_squared.mean()) /
+                (dx_squared.mean() + dy_squared.mean())
+            )
+
+            # Statistical moments
+            if len(group['d_squared'].dropna()) > 0:
+                group['skewness'] = skew(group['d_squared'].dropna())
+                group['kurtosis'] = kurtosis(group['d_squared'].dropna())
+            else:
+                group['skewness'] = np.nan
+                group['kurtosis'] = np.nan
+
+            # Straightness
+            total_path_length = np.sqrt(group['d_squared']).sum()
+            group['Straight'] = (
+                net_displacement / total_path_length if total_path_length > 0 else 0
+            )
+
+            # Distance over time metric
+            group['dy-dt: distance'] = group['distanceFromOrigin'].diff() / group['dt']
+
+            return group
+
+        except Exception as e:
+            logger.error(f"Error calculating track metrics: {e}")
+            return group
+
+    # Plotting and visualization methods
+
+    def makePointDataDF(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Prepare point data for plotting based on the file type.
+
+        Args:
+            data: Input DataFrame with tracking data
+
+        Returns:
+            DataFrame with frame, x, y columns in correct format
+        """
+        try:
             df = pd.DataFrame()
-            df['frame'] = data['frame'].astype(int)-1
-            df['x'] = data['x']
-            df['y'] = data['y']
-            df['track_number'] = data['track_number']
+            filetype = self.filetype_Box.value()
 
-            df['zeroed_X'] = data['zeroed_X']
-            df['zeroed_Y'] = data['zeroed_Y']
+            if filetype == 'thunderstorm':
+                # ThunderSTORM format (frames start from 1, coordinates in nm)
+                df['frame'] = data['frame'].astype(int) - 1
+                df['x'] = data['x [nm]'] / self.trackPlotOptions.pixelSize_selector.value()
+                df['y'] = data['y [nm]'] / self.trackPlotOptions.pixelSize_selector.value()
 
-            # Add a color column to the DataFrame based on the selected color map and column
-            if self.trackPlotOptions.trackColour_checkbox.isChecked():
+            elif filetype == 'flika':
+                # FLIKA format (frames start from 1, coordinates in pixels)
+                df['frame'] = data['frame'].astype(int) - 1
+                df['x'] = data['x']
+                df['y'] = data['y']
 
-                if self.useMatplotCM:
-                    cm = pg.colormap.getFromMatplotlib(self.trackPlotOptions.colourMap_Box.value()) # Get the colormap from Matplotlib and convert it to a PyqtGraph colormap
+            elif filetype == 'json':
+                # JSON format (frames as-is, coordinates in pixels)
+                df['frame'] = data['frame'].astype(int)
+                df['x'] = data['x']
+                df['y'] = data['y']
+
+            else:
+                logger.warning(f"Unknown filetype: {filetype}, using default format")
+                df['frame'] = data['frame'].astype(int)
+                df['x'] = data['x']
+                df['y'] = data['y']
+
+            logger.debug(f"Point data prepared: {len(df)} points")
+            return df
+
+        except Exception as e:
+            logger.error(f"Error preparing point data: {e}")
+            return pd.DataFrame()
+
+    def plotPointsOnStack(self, points: pd.DataFrame, pointColor: QColor,
+                         unlinkedPoints: Optional[pd.DataFrame] = None,
+                         unlinkedColour: QColor = QColor(Qt.blue)) -> None:
+        """
+        Plot points on the image stack.
+
+        Args:
+            points: DataFrame with point coordinates
+            pointColor: Color for linked points
+            unlinkedPoints: Optional DataFrame with unlinked points
+            unlinkedColour: Color for unlinked points
+        """
+        try:
+            if self.plotWindow is None:
+                logger.error("No plot window available")
+                return
+
+            points_byFrame = points[['frame', 'x', 'y']].copy()
+
+            # Debug information
+            max_frame = points_byFrame['frame'].max()
+            logger.debug(f"Maximum frame in data: {max_frame}")
+            logger.debug(f"Number of frames in window: {self.plotWindow.mt}")
+
+            # Align frames with display
+            if self.filetype_Box.value() in ['thunderstorm', 'json']:
+                # These formats use 0-based indexing
+                pass
+            else:
+                # FLIKA uses 1-based indexing
+                points_byFrame['frame'] = points_byFrame['frame'] + 1
+
+            # Convert to numpy array
+            pointArray = points_byFrame.to_numpy()
+
+            # Initialize scatter points for each frame
+            self.plotWindow.scatterPoints = [[] for _ in range(self.plotWindow.mt)]
+            pointSize = self.trackPlotOptions.pointSize_selector.value()
+
+            # Add linked points
+            for pt in pointArray:
+                frame_idx = int(pt[0])
+                if self.plotWindow.mt == 1:
+                    frame_idx = 0
+                elif frame_idx >= self.plotWindow.mt:
+                    continue
+
+                position = [pt[1], pt[2], pointColor, pointSize]
+                self.plotWindow.scatterPoints[frame_idx].append(position)
+
+            # Add unlinked points if requested
+            if self.displayUnlinkedPoints and unlinkedPoints is not None:
+                unlinkedPoints_byFrame = unlinkedPoints[['frame', 'x', 'y']].copy()
+
+                if self.filetype_Box.value() in ['thunderstorm', 'json']:
+                    pass
                 else:
-                    cm = pg.colormap.get(self.trackPlotOptions.colourMap_Box.value()) # Get the PyqtGraph colormap
+                    unlinkedPoints_byFrame['frame'] = unlinkedPoints_byFrame['frame'] + 1
 
-                # Map the values from the selected color column to a QColor using the selected colormap
-                df['colour'] = cm.mapToQColor(data[self.trackPlotOptions.trackColourCol_Box.value()].to_numpy()/max(data[self.trackPlotOptions.trackColourCol_Box.value()]))
-                df['threshColour'] = data['threshColour']
+                unlinkedPointArray = unlinkedPoints_byFrame.to_numpy()
 
+                for pt in unlinkedPointArray:
+                    frame_idx = int(pt[0])
+                    if self.plotWindow.mt == 1:
+                        frame_idx = 0
+                    elif frame_idx >= self.plotWindow.mt:
+                        continue
 
-        # Group the data by track number
-        return df.groupby(['track_number'])
+                    position = [pt[1], pt[2], unlinkedColour, pointSize]
+                    self.plotWindow.scatterPoints[frame_idx].append(position)
 
+            # Update the display
+            self.plotWindow.updateindex()
+            logger.debug("Points plotted on stack successfully")
 
-    def clearTracks(self):
-        # Check that there is an open plot window
-        if self.plotWindow is not None and not self.plotWindow.closed:
-            # Remove each path item from the plot window
-            for pathitem in self.pathitems:
-                self.plotWindow.imageview.view.removeItem(pathitem)
+        except Exception as e:
+            logger.error(f"Error plotting points on stack: {e}")
 
-            for pathitem in self.overlayWindow.pathitems:
-                self.overlayWindow.overlayWindow.view.removeItem(pathitem)
-        # Reset the path items list to an empty list
-        self.pathitems = []
-        self.overlayWindow.pathitems=[]
+    def plotPointData(self) -> None:
+        """Plot point data to current window."""
+        try:
+            if self.data is None:
+                logger.warning("No data available to plot")
+                return
 
+            # Determine which data to use
+            if self.useFilteredData and self.filteredData is not None:
+                points_data = self.filteredData
+            else:
+                points_data = self.data
 
-    def showTracks(self):
-        '''Updates track paths in main view and Flower Plot'''
+            # Create point data DataFrame
+            self.points = self.makePointDataDF(points_data)
 
-        # clear self.pathitems
-        self.clearTracks()
+            # Handle unlinked points
+            unlinked_points = None
+            if self.displayUnlinkedPoints and hasattr(self, 'data_unlinked'):
+                unlinked_points = self.makePointDataDF(self.data_unlinked)
 
-        self.overlayWindow.clearTracks()
+            # Plot points
+            point_color = self.trackPlotOptions.pointColour_Box.value()
+            unlinked_color = self.trackPlotOptions.unlinkedpointColour_Box.value()
 
-        # clear track paths in Flower Plot window if displayFlowPlot_checkbox is checked
-        if self.displayFlowPlot_checkbox.isChecked():
-            self.flowerPlotWindow.clearTracks()
+            self.plotPointsOnStack(
+                self.points,
+                point_color,
+                unlinkedPoints=unlinked_points,
+                unlinkedColour=unlinked_color
+            )
 
-        # setup pens
-        pen = QPen(self.trackPlotOptions.trackDefaultColour_Box.value(), .4)
-        pen.setCosmetic(True)
-        pen.setWidth(self.trackPlotOptions.lineSize_selector.value())
+            # Update status
+            message = 'Point data plotted to current window'
+            if hasattr(g, 'm') and hasattr(g.m, 'statusBar'):
+                g.m.statusBar().showMessage(message)
+            logger.info(message)
 
-        pen_FP = QPen(self.trackPlotOptions.trackDefaultColour_Box.value(), .4)
-        pen_FP.setCosmetic(True)
-        pen_FP.setWidth(self.trackPlotOptions.lineSize_selector.value())
+        except Exception as e:
+            logger.error(f"Error plotting point data: {e}")
 
-        pen_overlay = QPen(self.trackPlotOptions.trackDefaultColour_Box.value(), .4)
-        pen_overlay.setCosmetic(True)
-        pen_overlay.setWidth(self.trackPlotOptions.lineSize_selector.value())
+    def hidePointData(self) -> None:
+        """Toggle visibility of point data."""
+        try:
+            if (hasattr(self.plotWindow, 'scatterPlot') and
+                hasattr(self.plotWindow, 'imageview') and
+                self.plotWindow.scatterPlot in self.plotWindow.imageview.ui.graphicsView.items()):
 
-        # determine which track IDs to plot based on whether filtered tracks are being used
-        if self.useFilteredTracks:
-            trackIDs = self.filteredTrackIds
-        else:
-            trackIDs = self.trackIDs
+                self.plotWindow.imageview.ui.graphicsView.removeItem(self.plotWindow.scatterPlot)
+                logger.debug("Points hidden")
+            else:
+                self.plotWindow.imageview.addItem(self.plotWindow.scatterPlot)
+                logger.debug("Points shown")
 
-        print('tracks to plot {}'.format(trackIDs))
+        except Exception as e:
+            logger.error(f"Error toggling point visibility: {e}")
 
-        for track_idx in trackIDs:
-            tracks = self.tracks.get_group(track_idx)
+    def toggleUnlinkedPointData(self) -> None:
+        """Toggle display of unlinked point data."""
+        try:
+            if not self.displayUnlinkedPoints:
+                self.displayUnlinkedPoints = True
+                self.plotPointData()
+                self.toggleUnlinkedPointData_button.setText('Hide Unlinked')
+                message = 'Unlinked point data plotted to current window'
+            else:
+                self.displayUnlinkedPoints = False
+                self.plotPointData()
+                self.toggleUnlinkedPointData_button.setText('Show Unlinked')
+                message = 'Unlinked point data hidden'
+
+            if hasattr(g, 'm') and hasattr(g.m, 'statusBar'):
+                g.m.statusBar().showMessage(message)
+            logger.info(message)
+
+        except Exception as e:
+            logger.error(f"Error toggling unlinked points: {e}")
+
+    def makeTrackDF(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Prepare track data for plotting based on the file type.
+
+        Args:
+            data: Input DataFrame with track data
+
+        Returns:
+            Grouped DataFrame by track_number
+        """
+        try:
+            df = pd.DataFrame()
+            filetype = self.filetype_Box.value()
+
+            if filetype == 'thunderstorm':
+                df['frame'] = data['frame'].astype(int) - 1
+                df['x'] = data['x [nm]'] / self.trackPlotOptions.pixelSize_selector.value()
+                df['y'] = data['y [nm]'] / self.trackPlotOptions.pixelSize_selector.value()
+                df['track_number'] = data['track_number']
+
+            elif filetype == 'flika':
+                df['frame'] = data['frame'].astype(int) - 1
+                df['x'] = data['x']
+                df['y'] = data['y']
+                df['track_number'] = data['track_number']
+                df['zeroed_X'] = data['zeroed_X']
+                df['zeroed_Y'] = data['zeroed_Y']
+
+            elif filetype == 'json':
+                df['frame'] = data['frame'].astype(int) - 1
+                df['x'] = data['x']
+                df['y'] = data['y']
+                df['track_number'] = data['track_number']
+                df['zeroed_X'] = data['zeroed_X']
+                df['zeroed_Y'] = data['zeroed_Y']
+
+            # Add colors if track coloring is enabled
+            if self.trackPlotOptions.trackColour_checkbox.isChecked():
+                self._add_track_colors(df, data)
+
+            # Reset index for JSON format
+            if filetype == 'json':
+                df = df.reset_index(drop=True)
+
+            # Group by track number
+            grouped = df.groupby(['track_number'])
+            logger.debug(f"Track data prepared: {len(df)} points in {len(grouped)} tracks")
+            return grouped
+
+        except Exception as e:
+            logger.error(f"Error preparing track data: {e}")
+            return pd.DataFrame().groupby(['track_number'])
+
+    def _add_track_colors(self, df: pd.DataFrame, data: pd.DataFrame) -> None:
+        """Add color information to track DataFrame."""
+        try:
+            color_column = self.trackPlotOptions.trackColourCol_Box.value()
+
+            if color_column == 'None' or color_column not in data.columns:
+                return
+
+            # Get colormap
+            if self.useMatplotCM:
+                cm = pg.colormap.getFromMatplotlib(self.trackPlotOptions.colourMap_Box.value())
+            else:
+                cm = pg.colormap.get(self.trackPlotOptions.colourMap_Box.value())
+
+            # Map colors
+            color_values = data[color_column].to_numpy()
+            max_value = np.max(color_values)
+            if max_value > 0:
+                normalized_values = color_values / max_value
+                df['colour'] = cm.mapToQColor(normalized_values)
+                df['threshColour'] = data.get('threshColour', df['colour'])
+
+        except Exception as e:
+            logger.error(f"Error adding track colors: {e}")
+
+    def clearTracks(self) -> None:
+        """Clear track visualization from all windows."""
+        try:
+            # Clear from main plot window
+            if self.plotWindow is not None and not self.plotWindow.closed:
+                for pathitem in self.pathitems:
+                    self.plotWindow.imageview.view.removeItem(pathitem)
+
+            # Clear from overlay window
+            if hasattr(self, 'overlayWindow'):
+                for pathitem in self.overlayWindow.pathitems:
+                    self.overlayWindow.overlayWindow.view.removeItem(pathitem)
+                self.overlayWindow.pathitems = []
+
+            # Reset path items
+            self.pathitems = []
+            logger.debug("Tracks cleared from all windows")
+
+        except Exception as e:
+            logger.error(f"Error clearing tracks: {e}")
+
+    def plotTrackData(self) -> None:
+        """Plot track data to current window."""
+        try:
+            if self.data is None:
+                logger.warning("No data available to plot tracks")
+                return
+
+            # Determine which data to use
+            if self.useFilteredData and self.filteredData is not None:
+                track_data = self.filteredData
+                self.trackIDs = np.unique(self.filteredData['track_number']).astype(int)
+            else:
+                track_data = self.data
+                self.trackIDs = np.unique(self.data['track_number']).astype(int)
+
+            # Create track DataFrame
+            self.tracks = self.makeTrackDF(track_data)
+
+            # Show tracks
+            self.showTracks()
+
+            # Connect mouse and keyboard events
+            if hasattr(self.plotWindow, 'imageview'):
+                self.plotWindow.imageview.scene.sigMouseMoved.connect(self.updateTrackSelector)
+            if hasattr(self.plotWindow, 'keyPressSignal'):
+                self.plotWindow.keyPressSignal.connect(self.selectTrack)
+
+            # Show track window
+            self.trackWindow.show()
+
+            # Show flower plot if enabled
+            if self.displayFlowPlot_checkbox.isChecked():
+                self.flowerPlotWindow.show()
+
+            # Show single track plot if enabled
+            if self.displaySingleTrackPlot_checkbox.isChecked():
+                self.singleTrackPlot.show()
+
+            # Update status
+            message = 'Track data plotted to current window'
+            if hasattr(g, 'm') and hasattr(g.m, 'statusBar'):
+                g.m.statusBar().showMessage(message)
+            logger.info(f"{message}: {len(self.trackIDs)} tracks")
+
+        except Exception as e:
+            logger.error(f"Error plotting track data: {e}")
+
+    def showTracks(self) -> None:
+        """Update track paths in main view and other windows."""
+        try:
+            # Clear existing tracks
+            self.clearTracks()
+
+            # Clear flower plot tracks if enabled
+            if self.displayFlowPlot_checkbox.isChecked():
+                self.flowerPlotWindow.clearTracks()
+
+            # Set up pens for drawing
+            pen = QPen(self.trackPlotOptions.trackDefaultColour_Box.value(), 0.4)
+            pen.setCosmetic(True)
+            pen.setWidth(self.trackPlotOptions.lineSize_selector.value())
+
+            # Determine which tracks to plot
+            if self.useFilteredTracks and hasattr(self, 'filteredTrackIds'):
+                tracks_to_plot = self.filteredTrackIds
+            else:
+                tracks_to_plot = self.trackIDs
+
+            logger.debug(f"Plotting {len(tracks_to_plot)} tracks")
+
+            # Plot each track
+            for track_idx in tracks_to_plot:
+                if track_idx not in self.tracks.groups:
+                    continue
+
+                track = self.tracks.get_group(track_idx)
+                self._plot_single_track(track, pen)
+
+            # Plot tracks in flower plot if enabled
+            if self.displayFlowPlot_checkbox.isChecked():
+                # Determine which data to use
+                if self.useFilteredData and self.filteredData is not None:
+                    flower_data = self.filteredData
+                else:
+                    flower_data = self.data
+                self.flowerPlotWindow.plotTracks(flower_data)
+
+                print(f"DEBUG: Calling flowerPlotWindow.plotTracks with {len(flower_data)} rows")
+                self.flowerPlotWindow.plotTracks(flower_data)
+                print("DEBUG: flowerPlotWindow.plotTracks completed")
+
+            logger.debug("Track visualization completed")
+
+        except Exception as e:
+            logger.error(f"Error showing tracks: {e}")
+
+    def _plot_single_track(self, track: pd.DataFrame, pen: QPen) -> None:
+        """Plot a single track path."""
+        try:
+            # Create path item for main window
             pathitem = QGraphicsPathItem(self.plotWindow.imageview.view)
 
-            pathitem_overlay = QGraphicsPathItem(self.overlayWindow.overlayWindow.view)
-
-            if self.displayFlowPlot_checkbox.isChecked():
-                pathitem_FP = QGraphicsPathItem(self.flowerPlotWindow.plt)
-
-            # set the color of the pen based on the track color
-
-
-            if self.trackPlotOptions.threshold_checkbox.isChecked():
-                cmChoice ='threshColour'
-            else:
-                cmChoice ='colour'
-
+            # Set color based on track coloring options
             if self.trackPlotOptions.trackColour_checkbox.isChecked():
-                pen.setColor(tracks[cmChoice].to_list()[0])
-                pen_overlay.setColor(tracks[cmChoice].to_list()[0])
-                pen_FP.setColor(tracks[cmChoice].to_list()[0])
+                color_mode = 'threshColour' if self.trackPlotOptions.threshold_checkbox.isChecked() else 'colour'
+                if color_mode in track.columns:
+                    pen.setColor(track[color_mode].iloc[0])
 
-
-
-            # set the pen for the path items
             pathitem.setPen(pen)
-
-            pathitem_overlay.setPen(pen_overlay)
-
-            if self.displayFlowPlot_checkbox.isChecked():
-                pathitem_FP.setPen(pen_FP)
-
-            # add the path items to the view(s)
             self.plotWindow.imageview.view.addItem(pathitem)
-
-            self.overlayWindow.overlayWindow.view.addItem(pathitem_overlay)
-
-            if self.displayFlowPlot_checkbox.isChecked():
-                self.flowerPlotWindow.plt.addItem(pathitem_FP)
-
-            # keep track of the path items
             self.pathitems.append(pathitem)
 
-            self.overlayWindow.pathitems.append(pathitem_overlay)
+            # Create overlay path if overlay window exists
+            if hasattr(self, 'overlayWindow'):
+                pathitem_overlay = QGraphicsPathItem(self.overlayWindow.overlayWindow.view)
+                pen_overlay = QPen(pen)
+                pathitem_overlay.setPen(pen_overlay)
+                self.overlayWindow.overlayWindow.view.addItem(pathitem_overlay)
+                self.overlayWindow.pathitems.append(pathitem_overlay)
 
+            # Create flower plot path if enabled
             if self.displayFlowPlot_checkbox.isChecked():
-                self.flowerPlotWindow.pathitems.append(pathitem_FP)
+                pathitem_fp = QGraphicsPathItem(self.flowerPlotWindow.plt)
+                pen_fp = QPen(pen)
+                pathitem_fp.setPen(pen_fp)
+                self.flowerPlotWindow.plt.addItem(pathitem_fp)
+                self.flowerPlotWindow.pathitems.append(pathitem_fp)
 
-            # extract the x and y coordinates for the track
-            x = tracks['x'].to_numpy()
-            y = tracks['y'].to_numpy()
+            # Extract coordinates
+            x = track['x'].to_numpy()
+            y = track['y'].to_numpy()
 
-            # extract the zeroed x and y coordinates for the track, if displayed
-            if self.displayFlowPlot_checkbox.isChecked():
-                zeroed_X = tracks['zeroed_X'].to_numpy()
-                zeroed_Y = tracks['zeroed_Y'].to_numpy()
+            if len(x) < 2:
+                return  # Need at least 2 points for a path
 
-            # create a QPainterPath for the track and set the path for the path item
-            path = QPainterPath(QPointF(x[0],y[0]))
-
-            path_overlay = QPainterPath(QPointF(x[0],y[0]))
-
-            if self.displayFlowPlot_checkbox.isChecked():
-                path_FP = QPainterPath(QPointF(zeroed_X[0],zeroed_Y[0]))
-            for i in np.arange(1, len(x)):
-                path.lineTo(QPointF(x[i],y[i]))
-
-                path_overlay.lineTo(QPointF(x[i],y[i]))
-
-                if self.displayFlowPlot_checkbox.isChecked():
-                    path_FP.lineTo(QPointF(zeroed_X[i],zeroed_Y[i]))
+            # Create painter path
+            path = QPainterPath(QPointF(x[0], y[0]))
+            for i in range(1, len(x)):
+                path.lineTo(QPointF(x[i], y[i]))
 
             pathitem.setPath(path)
 
-            pathitem_overlay.setPath(path_overlay)
+            # Set overlay path
+            if hasattr(self, 'overlayWindow'):
+                pathitem_overlay.setPath(path)
 
+            # Set flower plot path with zeroed coordinates
+            if self.displayFlowPlot_checkbox.isChecked() and 'zeroed_X' in track.columns:
+                zeroed_x = track['zeroed_X'].to_numpy()
+                zeroed_y = track['zeroed_Y'].to_numpy()
+                if len(zeroed_x) >= 2:
+                    path_fp = QPainterPath(QPointF(zeroed_x[0], zeroed_y[0]))
+                    for i in range(1, len(zeroed_x)):
+                        path_fp.lineTo(QPointF(zeroed_x[i], zeroed_y[i]))
+                    pathitem_fp.setPath(path_fp)
+
+        except Exception as e:
+            logger.error(f"Error plotting single track: {e}")
+
+    # Filter and analysis methods
+
+    def filterData(self) -> None:
+        """Apply data filtering based on user criteria."""
+        try:
+            if self.data is None:
+                logger.warning("No data available to filter")
+                return
+
+            # Get filter parameters
+            op = self.filterOptionsWindow.filterOp_Box.value()
+            filter_col = self.filterOptionsWindow.filterCol_Box.value()
+
+            if filter_col == 'None' or filter_col not in self.data.columns:
+                logger.warning(f"Invalid filter column: {filter_col}")
+                return
+
+            try:
+                value = float(self.filterOptionsWindow.filterValue_Box.text())
+            except ValueError:
+                logger.error("Invalid filter value - must be numeric")
+                return
+
+            # Determine source data
+            if self.sequentialFiltering and self.useFilteredData and self.filteredData is not None:
+                source_data = self.filteredData
+            else:
+                source_data = self.data
+
+            # Apply filter operation
+            if op == '==':
+                self.filteredData = source_data[source_data[filter_col] == value]
+            elif op == '<':
+                self.filteredData = source_data[source_data[filter_col] < value]
+            elif op == '>':
+                self.filteredData = source_data[source_data[filter_col] > value]
+            elif op == '!=':
+                self.filteredData = source_data[source_data[filter_col] != value]
+            else:
+                logger.error(f"Unknown filter operation: {op}")
+                return
+
+            # Update state
+            self.useFilteredData = True
+
+            # Update display
+            self.plotPointData()
+            if hasattr(self, 'allTracksPlot'):
+                self.allTracksPlot.updateTrackList()
+
+            # Update status
+            message = f'Filter applied: {len(self.filteredData)} points remaining'
+            if hasattr(g, 'm') and hasattr(g.m, 'statusBar'):
+                g.m.statusBar().showMessage(message)
+            logger.info(message)
+
+        except Exception as e:
+            logger.error(f"Error filtering data: {e}")
+
+    def clearFilterData(self) -> None:
+        """Clear data filtering."""
+        try:
+            self.useFilteredData = False
+            self.filteredData = None
+
+            # Update display
+            self.plotPointData()
+            if hasattr(self, 'allTracksPlot'):
+                self.allTracksPlot.updateTrackList()
+
+            message = 'Data filter cleared'
+            if hasattr(g, 'm') and hasattr(g.m, 'statusBar'):
+                g.m.statusBar().showMessage(message)
+            logger.info(message)
+
+        except Exception as e:
+            logger.error(f"Error clearing filter: {e}")
+
+    def saveData(self) -> None:
+        """Save filtered data to file."""
+        try:
+            if not self.useFilteredData or self.filteredData is None:
+                if hasattr(g, 'alert'):
+                    g.alert('Filter data first')
+                logger.warning("No filtered data available to save")
+                return
+
+            # Get save path
+            save_path, _ = QFileDialog.getSaveFileName(
+                None, "Save file", "", "CSV Files (*.csv)"
+            )
+
+            if not save_path:
+                return
+
+            # Save data
+            self.filteredData.to_csv(save_path, index=False)
+
+            message = f'Filtered data saved to: {save_path}'
+            logger.info(message)
+
+        except Exception as e:
+            logger.error(f"Error saving data: {e}")
+
+    # Window management methods
+
+    def toggleFlowerPlot(self) -> None:
+        """Toggle flower plot window visibility."""
+        try:
             if self.displayFlowPlot_checkbox.isChecked():
-                pathitem_FP.setPath(path_FP)
+                self.flowerPlotWindow.show()
+            else:
+                self.flowerPlotWindow.hide()
+        except Exception as e:
+            logger.error(f"Error toggling flower plot: {e}")
 
+    def toggleSingleTrackPlot(self) -> None:
+        """Toggle single track plot window visibility."""
+        try:
+            if self.displaySingleTrackPlot_checkbox.isChecked():
+                self.singleTrackPlot.show()
+            else:
+                self.singleTrackPlot.hide()
+        except Exception as e:
+            logger.error(f"Error toggling single track plot: {e}")
 
-    def plotTrackData(self):
-        ### plot track data to current window
+    def toggleAllTracksPlot(self) -> None:
+        """Toggle all tracks plot window visibility."""
+        try:
+            if self.displayAllTracksPlot_checkbox.isChecked():
+                self.allTracksPlot.show()
+            else:
+                self.allTracksPlot.hide()
+        except Exception as e:
+            logger.error(f"Error toggling all tracks plot: {e}")
 
-        # check whether to use filtered data or not, get unique track IDs and create DataFrame of tracks
-        if self.useFilteredData == False:
-            self.trackIDs = np.unique(self.data['track_number']).astype(int)
-            self.tracks = self.makeTrackDF(self.data)
-        else:
-            self.trackIDs = np.unique(self.filteredData['track_number']).astype(int)
-            self.tracks = self.makeTrackDF(self.filteredData)
+    def toggleFilterOptions(self) -> None:
+        """Toggle filter options window visibility."""
+        try:
+            if self.displayFilterOptions_checkbox.isChecked():
+                self.filterOptionsWindow.show()
+            else:
+                self.filterOptionsWindow.hide()
+        except Exception as e:
+            logger.error(f"Error toggling filter options: {e}")
 
-        # show tracks in main view and flower plot
-        self.showTracks()
+    def toggleTrackPlotOptions(self) -> None:
+        """Toggle track plot options window visibility."""
+        try:
+            if not self.displayTrackPlotOptions:
+                self.trackPlotOptions.show()
+                self.displayTrackPlotOptions = True
+            else:
+                self.trackPlotOptions.hide()
+                self.displayTrackPlotOptions = False
+        except Exception as e:
+            logger.error(f"Error toggling track plot options: {e}")
 
-        # connect to mouse and key press events in the main view
-        self.plotWindow.imageview.scene.sigMouseMoved.connect(self.updateTrackSelector)
-        self.plotWindow.keyPressSignal.connect(self.selectTrack)
+    def toggleROIplot(self) -> None:
+        """Toggle ROI plot window visibility."""
+        try:
+            if not self.displayROIplot:
+                self.ROIplot.show()
+                self.displayROIplot = True
+            else:
+                self.ROIplot.hide()
+                self.displayROIplot = False
+        except Exception as e:
+            logger.error(f"Error toggling ROI plot: {e}")
 
-        # display track window with plots for individual tracks
-        self.trackWindow.show()
+    def toggleCharts(self) -> None:
+        """Toggle charts window visibility."""
+        try:
+            if self.chartWindow is None:
+                self.chartWindow = ChartDock(self)
+                self.chartWindow.xColSelector.setItems(self.colDict)
+                self.chartWindow.yColSelector.setItems(self.colDict)
+                self.chartWindow.colSelector.setItems(self.colDict)
 
-        # display flower plot with all tracks origins set to 0,0
-        if self.displayFlowPlot_checkbox.isChecked():
-            self.flowerPlotWindow.show()
+            if not self.displayCharts:
+                self.chartWindow.show()
+                self.displayCharts = True
+                self.showCharts_button.setText('Hide Charts')
+            else:
+                self.chartWindow.hide()
+                self.displayCharts = False
+                self.showCharts_button.setText('Show Charts')
 
-        # display plot for a single selected track
-        if self.displaySingleTrackPlot_checkbox.isChecked():
-            self.singleTrackPlot.show()
+        except Exception as e:
+            logger.error(f"Error toggling charts: {e}")
 
-        # update status bar message and print confirmation
-        g.m.statusBar().showMessage('track data plotted to current window')
-        print('track data plotted to current window')
-        return
+    def toggleDiffusionPlot(self) -> None:
+        """Toggle diffusion plot window visibility."""
+        try:
+            if self.diffusionWindow is None:
+                self.diffusionWindow = DiffusionPlotWindow(self)
 
-    def updateTrackSelector(self, point):
-        pos =  self.plotWindow.imageview.getImageItem().mapFromScene(point)
+            if not self.displayDiffusionPlot:
+                self.diffusionWindow.show()
+                self.displayDiffusionPlot = True
+                self.showDiffusion_button.setText('Hide Diffusion')
+            else:
+                self.diffusionWindow.hide()
+                self.displayDiffusionPlot = False
+                self.showDiffusion_button.setText('Show Diffusion')
 
-        # Map mouse position to image coordinates and check which track the mouse is hovering over
-        for i, path in enumerate(self.pathitems):
-            if path.contains(pos):
-                self.selectedTrack = self.trackIDs[i]
+        except Exception as e:
+            logger.error(f"Error toggling diffusion plot: {e}")
 
+    def displayOverlayOptions(self) -> None:
+        """Toggle overlay options window visibility."""
+        try:
+            if not self.displayOverlay:
+                self.overlayWindow.show()
+                self.displayOverlay = True
+                self.overlayOption_button.setText('Hide Overlay')
+            else:
+                self.overlayWindow.hide()
+                self.displayOverlay = False
+                self.overlayOption_button.setText('Show Overlay')
 
-    def selectTrack(self,ev):
-        # Listen for key press events and select track when the "T" key is pressed
-        if ev.key() == Qt.Key_T:
-            # Check if the selected track is different from the current display track
-            if self.selectedTrack != self.displayTrack:
-                self.displayTrack = self.selectedTrack
+        except Exception as e:
+            logger.error(f"Error toggling overlay options: {e}")
 
-                # Extract track data for the selected track
-                trackData = self.data[self.data['track_number'] == int(self.displayTrack)]
-                frame = trackData['frame'].to_numpy()
+    def togglePointMap(self) -> None:
+        """Toggle point map visualization."""
+        try:
+            if self.togglePointMap_button.text() == 'Plot Point Map':
+                # Determine data source
+                if self.useFilteredData and self.filteredData is not None:
+                    df = self.filteredData
+                else:
+                    df = self.data
 
-                #intensity trace choice from trackPlot options
-                intensity = trackData[self.trackPlotOptions.intensityChoice_Box.value()].to_numpy()
-                #use background subtracted intensity if option selected
-                if self.trackPlotOptions.backgroundSubtract_checkbox.isChecked():
-                    intensity = intensity - self.trackPlotOptions.background_selector.value()
+                # Add unlinked points if displayed
+                if self.displayUnlinkedPoints and hasattr(self, 'data_unlinked'):
+                    df = pd.concat([df, self.data_unlinked])
 
-                distance = trackData['distanceFromOrigin'].to_numpy()
-                zeroed_X = trackData['zeroed_X'].to_numpy()
-                zeroed_Y = trackData['zeroed_Y'].to_numpy()
-                dydt =  trackData['dy-dt: distance'].to_numpy()
-                direction = trackData['direction_Relative_To_Origin'].to_numpy()
-                velocity =  trackData['velocity'].to_numpy()
-                svm = trackData['SVM'].iloc[0]
-                length = trackData['n_segments'].iloc[0]
+                # Create scatter plot
+                self.pointMapScatter = pg.ScatterPlotItem(
+                    size=2, pen=None, brush=pg.mkBrush(30, 255, 35, 255)
+                )
+                self.pointMapScatter.setSize(2, update=False)
+                self.pointMapScatter.setData(df['x'], df['y'])
+                self.plotWindow.imageview.view.addItem(self.pointMapScatter)
+                self.togglePointMap_button.setText('Hide Point Map')
 
+            else:
+                # Remove scatter plot
+                if hasattr(self, 'pointMapScatter'):
+                    self.plotWindow.imageview.view.removeItem(self.pointMapScatter)
+                self.togglePointMap_button.setText('Plot Point Map')
 
-                count_3 = trackData['nnCountInFrame_within_3_pixels'].to_numpy()
-                count_5 = trackData['nnCountInFrame_within_5_pixels'].to_numpy()
-                count_10 = trackData['nnCountInFrame_within_10_pixels'].to_numpy()
-                count_20 = trackData['nnCountInFrame_within_20_pixels'].to_numpy()
-                count_30 = trackData['nnCountInFrame_within_30_pixels'].to_numpy()
+        except Exception as e:
+            logger.error(f"Error toggling point map: {e}")
 
+    def setColourMap(self) -> None:
+        """Set color map type (matplotlib vs pyqtgraph)."""
+        try:
+            if self.trackPlotOptions.matplotCM_checkbox.isChecked():
+                # Use matplotlib color maps
+                self.colourMaps = dictFromList(pg.colormap.listMaps('matplotlib'))
+                self.trackPlotOptions.colourMap_Box.setItems(self.colourMaps)
+                self.useMatplotCM = True
+            else:
+                # Use pyqtgraph color maps
+                self.colourMaps = dictFromList(pg.colormap.listMaps())
+                self.trackPlotOptions.colourMap_Box.setItems(self.colourMaps)
+                self.useMatplotCM = False
 
-                # Update plots in the track display window
-                self.trackWindow.update(frame, intensity, distance,
-                                        zeroed_X, zeroed_Y, dydt,
-                                        direction, velocity, self.displayTrack,
-                                        count_3, count_5, count_10, count_20, count_30,
-                                        svm, length)
+            logger.debug(f"Color map type set to: {'matplotlib' if self.useMatplotCM else 'pyqtgraph'}")
 
-                # Update the individual track display
+        except Exception as e:
+            logger.error(f"Error setting color map: {e}")
+
+    def clearPlots(self) -> None:
+        """Clear all matplotlib plots."""
+        try:
+            import matplotlib.pyplot as plt
+            plt.close('all')
+            logger.debug("All plots cleared")
+        except Exception as e:
+            logger.debug(f"Could not clear plots: {e}")
+
+    # Additional utility methods for track selection and interaction
+
+    def updateTrackSelector(self, point: QPointF) -> None:
+        """Update selected track based on mouse position."""
+        try:
+            if not hasattr(self.plotWindow, 'imageview'):
+                return
+
+            pos = self.plotWindow.imageview.getImageItem().mapFromScene(point)
+
+            # Check which track the mouse is hovering over
+            for i, path in enumerate(self.pathitems):
+                if path.contains(pos):
+                    if i < len(self.trackIDs):
+                        self.selectedTrack = self.trackIDs[i]
+                        break
+
+        except Exception as e:
+            logger.debug(f"Error updating track selector: {e}")
+
+    def selectTrack(self, event) -> None:
+        """Handle track selection via keyboard."""
+        try:
+            if event.key() == Qt.Key_T and self.selectedTrack is not None:
+                # Update display track
+                if self.selectedTrack != self.displayTrack:
+                    self.displayTrack = self.selectedTrack
+                    print(f"DEBUG: Selected track {self.displayTrack}")  # Debug line
+                    self._update_track_displays()
+
+        except Exception as e:
+            logger.error(f"Error in track selection: {e}")
+
+    def _update_track_displays(self) -> None:
+        """Update all track-related displays with current track."""
+        try:
+            if self.displayTrack is None or self.data is None:
+                return
+
+            # Get track data
+            track_data = self.data[self.data['track_number'] == int(self.displayTrack)]
+
+            if track_data.empty:
+                return
+
+            # Extract track information
+            frame = track_data['frame'].to_numpy()
+            intensity_col = self.trackPlotOptions.intensityChoice_Box.value()
+            intensity = track_data[intensity_col].to_numpy()
+
+            # Apply background subtraction if enabled
+            if self.trackPlotOptions.backgroundSubtract_checkbox.isChecked():
+                intensity = intensity - self.trackPlotOptions.background_selector.value()
+
+            # Get other track metrics
+            track_metrics = self._extract_track_metrics(track_data)
+
+            # Update track window
+            self.trackWindow.update(
+                frame, intensity,
+                track_metrics['distance'],
+                track_metrics['zeroed_X'],
+                track_metrics['zeroed_Y'],
+                track_metrics['dydt'],
+                track_metrics['direction'],
+                track_metrics['velocity'],
+                self.displayTrack,
+                *track_metrics['nn_counts'],
+                track_metrics['svm'],
+                track_metrics['length']
+            )
+
+            # Explicitly update the column value display
+            self.trackWindow._update_column_value(self.displayTrack)
+
+            # Update single track plot
+            if hasattr(self, 'singleTrackPlot'):
                 self.singleTrackPlot.plotTracks()
 
+            logger.debug(f"Track displays updated for track {self.displayTrack}")
 
-        if ev.key() == Qt.Key_R:
+        except Exception as e:
+            logger.error(f"Error updating track displays: {e}")
 
-            roiFilterPoints = []
-            roi = self.plotWindow.currentROI
+    def _extract_track_metrics(self, track_data: pd.DataFrame) -> Dict[str, Any]:
+        """Extract metrics from track data."""
+        try:
+            metrics = {
+                'distance': track_data.get('distanceFromOrigin', np.zeros(len(track_data))).to_numpy(),
+                'zeroed_X': track_data.get('zeroed_X', np.zeros(len(track_data))).to_numpy(),
+                'zeroed_Y': track_data.get('zeroed_Y', np.zeros(len(track_data))).to_numpy(),
+                'dydt': track_data.get('dy-dt: distance', np.zeros(len(track_data))).to_numpy(),
+                'direction': track_data.get('direction_Relative_To_Origin', np.zeros(len(track_data))).to_numpy(),
+                'velocity': track_data.get('velocity', np.zeros(len(track_data))).to_numpy(),
+                'nn_counts': [
+                    track_data.get('nnCountInFrame_within_3_pixels', np.zeros(len(track_data))).to_numpy(),
+                    track_data.get('nnCountInFrame_within_5_pixels', np.zeros(len(track_data))).to_numpy(),
+                    track_data.get('nnCountInFrame_within_10_pixels', np.zeros(len(track_data))).to_numpy(),
+                    track_data.get('nnCountInFrame_within_20_pixels', np.zeros(len(track_data))).to_numpy(),
+                    track_data.get('nnCountInFrame_within_30_pixels', np.zeros(len(track_data))).to_numpy(),
+                ],
+                'svm': track_data.get('SVM', [0]).iloc[0] if not track_data.empty else 0,
+                'length': track_data.get('n_segments', [0]).iloc[0] if not track_data.empty else 0,
+            }
+            return metrics
 
-            currentFrame = self.plotWindow.currentIndex
-
-            for i in range(0,self.plotWindow.mt):
-                # get ROI shape in coordinate system of the scatter plot
-                self.plotWindow.setIndex(i)
-                roiShape = roi.mapToItem(self.plotWindow.scatterPlot, roi.shape())
-                # Get list of all points inside shape
-                selected = [[i, pt.x(), pt.y()] for pt in self.getScatterPointsAsQPoints() if roiShape.contains(pt)]
-                roiFilterPoints.extend((selected))
-
-            self.plotWindow.setIndex(currentFrame)
-
-            trackIDs = []
-
-            for pt in roiFilterPoints:
-                # filter data by point coordinates
-                ptFilterDF = self.data[(self.data['x']==pt[1]) & (self.data['y']==pt[2])]
-                trackIDs.extend(ptFilterDF['track_number'])
-
-            # get unique track IDs for tracks that pass through the ROI
-            selectedTracks = np.unique(trackIDs)
-
-            # join data for selected tracks
-            self.joinROItracks(selectedTracks)
-
-            # display message in status bar to indicate completion
-            g.m.statusBar().showMessage('Track join complete')
-
-
-    def joinROItracks(self, selectedTracks):
-        # create an instance of the JoinTracks class
-        joinTracks = JoinTracks()
-        # create a list of selected tracks
-        IDlist = [selectedTracks]
-        # display the number of tracks to be joined in the status bar
-        g.m.statusBar().showMessage('Tracks to join: {}'.format(IDlist))
-        # use the joinTracks object to join the selected tracks
-        newDF = joinTracks.join(self.data, IDlist)
-        # replace the track data with the updated DataFrame that includes the joined track
-        self.data = newDF
-        # print the new DataFrame to the console (for debugging purposes)
-        print(newDF)
-        # display a message in the status bar to indicate that the track join is complete
-        g.m.statusBar().showMessage('track join complete')
-
-    def filterData(self):
-        # get the filter options from the filterOptionsWindow
-        op = self.filterOptionsWindow.filterOp_Box.value()
-        filterCol = self.filterOptionsWindow.filterCol_Box.value()
-        dtype = self.data[filterCol].dtype
-        value = float(self.filterOptionsWindow.filterValue_Box.text())
-
-        # if sequential filtering is enabled and filtered data is being used
-        if self.sequentialFiltering and self.useFilteredData:
-            data = self.filteredData
-        else:
-            data = self.data
-
-        # apply the selected filter operation to the selected column
-        if op == '==':
-            self.filteredData = data[data[filterCol] == value]
-        elif op == '<':
-            self.filteredData = data[data[filterCol] < value]
-        elif op == '>':
-            self.filteredData = data[data[filterCol] > value]
-        elif op == '!=':
-            self.filteredData = data[data[filterCol] != value]
-
-        # display a message in the status bar to indicate that the filter is complete
-        g.m.statusBar().showMessage('filter complete')
-        # set useFilteredData to True
-        self.useFilteredData = True
-
-        # update the point data plot with the filtered data
-        self.plotPointData()
-
-        #update allTracks track list
-        self.allTracksPlot.updateTrackList()
-
-        return
-
-    def clearFilterData(self):
-        # Set variables to default values to clear filtered data
-        self.useFilteredData = False
-        self.filteredData = None
-
-        # Update point data plot
-        self.plotPointData()
-
-        #update allTracks track list
-        self.allTracksPlot.updateTrackList()
-        return
+        except Exception as e:
+            logger.error(f"Error extracting track metrics: {e}")
+            return {}
 
     def getScatterPointsAsQPoints(self):
         # Get scatter plot data as numpy array
@@ -1419,215 +2173,9 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
         return
 
-    def setColourMap(self):
-        # If the matplotCM_checkbox is checked, use matplotlib color maps
-        if self.trackPlotOptions.matplotCM_checkbox.isChecked():
-            # Create a dictionary of matplotlib color maps
-            self.colourMaps = dictFromList(pg.colormap.listMaps('matplotlib'))
-            # Set the color map options in the dropdown box to the matplotlib color maps
-            self.trackPlotOptions.colourMap_Box.setItems(self.colourMaps)
-            self.useMatplotCM = True
-        else:
-            # If the matplotCM_checkbox is unchecked, use pyqtgraph color maps
-            # Create a dictionary of pyqtgraph color maps
-            self.colourMaps = dictFromList(pg.colormap.listMaps())
-            # Set the color map options in the dropdown box to the pyqtgraph color maps
-            self.trackPlotOptions.colourMap_Box.setItems(self.colourMaps)
-            self.useMatplotCM = False
 
-    def toggleFlowerPlot(self):
-        # If the displayFlowPlot_checkbox is checked, show the flower plot window
-        if self.displayFlowPlot_checkbox.isChecked():
-            self.flowerPlotWindow.show()
-        else:
-            # If the displayFlowPlot_checkbox is unchecked, hide the flower plot window
-            self.flowerPlotWindow.hide()
-
-
-    def toggleSingleTrackPlot(self):
-        if self.displaySingleTrackPlot_checkbox.isChecked():
-            # show the single track plot if checkbox is checked
-            self.singleTrackPlot.show()
-        else:
-            # hide the single track plot if checkbox is unchecked
-            self.singleTrackPlot.hide()
-
-    def toggleAllTracksPlot(self):
-        if self.displayAllTracksPlot_checkbox.isChecked():
-            # show the single track plot if checkbox is checked
-            self.allTracksPlot.show()
-        else:
-            # hide the single track plot if checkbox is unchecked
-            self.allTracksPlot.hide()
-
-    def toggleFilterOptions(self):
-        if self.displayFilterOptions_checkbox.isChecked():
-            # show the filter options window if checkbox is checked
-            self.filterOptionsWindow.show()
-        else:
-            # hide the filter options window if checkbox is unchecked
-            self.filterOptionsWindow.hide()
-
-    def toggleCharts(self):
-        if self.chartWindow == None:
-            # create chart plot window and set items for column selectors
-            self.chartWindow = ChartDock(self)
-            self.chartWindow.xColSelector.setItems(self.colDict)
-            self.chartWindow.yColSelector.setItems(self.colDict)
-            self.chartWindow.colSelector.setItems(self.colDict)
-
-            self.chartWindow.xcols = self.colDict
-            self.chartWindow.ycols = self.colDict
-            self.chartWindow.cols = self.colDict
-
-        if self.displayCharts == False:
-            # show the chart plot window if not currently displayed
-            self.chartWindow.show()
-            self.displayCharts = True
-            self.showCharts_button.setText('Hide Charts')
-        else:
-            # hide the chart plot window if currently displayed
-            self.chartWindow.hide()
-            self.displayCharts = False
-            self.showCharts_button.setText('Show Charts')
-
-    def toggleDiffusionPlot(self):
-        if self.diffusionWindow == None:
-            # Create a new instance of the DiffusionPlotWindow class
-            self.diffusionWindow = DiffusionPlotWindow(self)
-
-        if self.displayDiffusionPlot == False:
-            # Show the window if it is not already displayed
-            self.diffusionWindow.show()
-            self.displayDiffusionPlot = True
-            self.showDiffusion_button.setText('Hide Diffusion')
-        else:
-            # Hide the window if it is already displayed
-            self.diffusionWindow.hide()
-            self.displayDiffusionPlot = False
-            self.showDiffusion_button.setText('Show Diffusion')
-
-
-    def toggleTrackPlotOptions(self):
-        if self.trackPlotOptions == None:
-            # Create a new instance of the DiffusionPlotWindow class
-            self.trackPlotOptions = TrackPlotOptions(self)
-
-        if self.displayTrackPlotOptions == False:
-            # Show the window if it is not already displayed
-            self.trackPlotOptions.show()
-            self.displayTrackPlotOptions = True
-
-        else:
-            # Hide the window if it is already displayed
-            self.trackPlotOptions.hide()
-            self.displayTrackPlotOptions = False
-
-    def toggleROIplot(self):
-        if self.ROIplot == None:
-            # Create a new instance of the DiffusionPlotWindow class
-            self.ROIplot = ROIPLOT(self)
-
-        if self.displayROIplot == False:
-            # Show the window if it is not already displayed
-            self.ROIplot.show()
-            self.displayROIplot= True
-
-        else:
-            # Hide the window if it is already displayed
-            self.ROIplot.hide()
-            self.displayROIplot= False
-
-
-    def togglePointMap(self):
-        if self.togglePointMap_button.text() == 'Plot Point Map':
-            # Check if filtered data is being used, if not use the original data
-            if self.useFilteredData == False:
-                df = self.data
-            else:
-                df = self.filteredData
-
-            #add in unlinked points if displayed
-            if self.displayUnlinkedPoints:
-                df = df.append(self.data_unlinked)
-
-            # Create a ScatterPlotItem and add it to the ImageView
-            self.pointMapScatter = pg.ScatterPlotItem(size=2, pen=None, brush=pg.mkBrush(30, 255, 35, 255))
-            self.pointMapScatter.setSize(2, update=False)
-            self.pointMapScatter.setData(df['x'], df['y'])
-            self.plotWindow.imageview.view.addItem(self.pointMapScatter)
-            self.togglePointMap_button.setText('Hide Point Map')
-        else:
-            # Remove the ScatterPlotItem from the ImageView
-            self.plotWindow.imageview.view.removeItem(self.pointMapScatter)
-            self.togglePointMap_button.setText('Plot Point Map')
-
-
-    def createStatsDFs(self):
-            # Calculate mean and standard deviation for each track in the original data
-            self.meanDF = self.data.groupby('track_number', as_index=False).mean()
-            self.stdDF = self.data.groupby('track_number', as_index=False).std()
-
-    def createStatsDFs_filtered(self):
-            # Calculate mean and standard deviation for each track in the filtered data
-            self.meanDF_filtered = self.filteredData.groupby('track_number', as_index=False).mean()
-            self.stdDF_filtered = self.filteredData.groupby('track_number', as_index=False).std()
-
-    def clearPlots(self):
-        try:
-            plt.close('all')
-        except:
-            pass
-        return
-
-
-    def displayOverlayOptions(self):
-        if self.overlayWindow  == None:
-            # Create a new instance of the DiffusionPlotWindow class
-            self.overlayWindow = Overlay(self)
-
-        if self.displayOverlay == False:
-            # Show the window if it is not already displayed
-            self.overlayWindow.show()
-            self.displayOverlay = True
-            self.overlayOption_button.setText('Hide Overlay')
-        else:
-            # Hide the window if it is already displayed
-            self.overlayWindow.hide()
-            self.displayOverlay = False
-            self.overlayOption_button.setText('Show Overlay')
-
-    def saveData(self):
-        if self.useFilteredData == False:
-            print('filter data first')
-            g.alert('Filter data first')
-            return
-
-        # Prompt user to select a save path
-        savePath, _ = QFileDialog.getSaveFileName(None, "Save file","","Text Files (*.csv)")
-
-        # Write the filtered data to a CSV file
-        try:
-            self.filteredData.to_csv(savePath)
-            print('Filtered data saved to: {}'.format(savePath))
-        except BaseException as e:
-            print(e)
-            print('Export of filtered data failed')
-
-# Instantiate the LocsAndTracksPlotter class
+# Create plugin instance
 locsAndTracksPlotter = LocsAndTracksPlotter()
 
-# Check if this script is being run as the main program
 if __name__ == "__main__":
-    pass
-
-
-
-
-
-
-
-
-
-
-
+    logger.info("LocsAndTracksPlotter module loaded")

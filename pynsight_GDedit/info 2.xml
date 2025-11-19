@@ -1,0 +1,21 @@
+<plugin name="Pynsight_GDedit">
+    <directory>
+        pynsight_GDedit
+    </directory>
+	<version>
+		2017.09.25
+	</version>
+	<author>
+		Kyle Ellefsen
+	</author>
+	<url>
+		https://github.com/kyleellefsen/pynsight/archive/master.zip
+	</url>
+	<dependencies>
+	</dependencies>
+	<menu_layout>
+		<action location="pynsight" function="pynsight.gui">Pynsight_GDedit</action>
+		<action location="particle_simulator" function="particle_simulator.gui">Simulate Particles</action>
+		<action location="pynsight" function="launch_docs">Docs</action>
+	</menu_layout>
+</plugin>

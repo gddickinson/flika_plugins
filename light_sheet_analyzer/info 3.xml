@@ -1,0 +1,18 @@
+<plugin name="Light Sheet Analyzer">
+	<author>
+		Kyle Ellefsen
+	</author>
+	<directory>
+		light_sheet_analyzer
+	</directory>
+	<version>
+		2017.07.21
+	</version>
+	<url>
+		http://github.com/kyleellefsen/light_sheet_analyzer/archive/master.zip
+	</url>
+	<menu_layout>
+		<action location="light_sheet_analyzer" function="light_sheet_analyzer.gui">Light Sheet Analyzer Dialog</action>
+		<action location="light_sheet_analyzer" function="ratio_by_baseline.gui">Ratio by Baseline</action>
+	</menu_layout>
+</plugin>

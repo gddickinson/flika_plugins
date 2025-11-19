@@ -1,0 +1,4 @@
+2025-06-02 16:55:46,561 - __main__ - INFO - Logging initialized
+2025-06-02 16:55:46,699 - __main__ - INFO - Main window initialized
+2025-06-02 16:55:46,793 - __main__ - INFO - Application started
+2025-06-02 16:56:20,062 - __main__ - INFO - Data loaded: 82526 rows, 52 columns

@@ -1,0 +1,24 @@
+<plugin name="Rodent Tracker">
+	<directory>
+        rodentTracker
+    </directory>
+	<version>
+		2018.04.20
+	</version>
+	<author>
+		Kyle Ellefsen
+	</author>
+	<url>
+		https://github.com/kyleellefsen/rodentTracker/archive/master.zip
+	</url>
+	<dependencies>
+		<dependency name='skimage'></dependency>
+		<dependency name='leastsqbound'></dependency>
+		<dependency name='shapely'></dependency>
+	</dependencies>
+	<menu_layout>
+		<action location="rodentTracker" function="launchRodentTracker">Launch Rodent Tracker</action>
+		<action location="rodentTracker" function="watch_video">Watch Video</action>
+        <action location="rodentTracker" function="run_demo">Run Demo</action>
+	</menu_layout>
+</plugin>

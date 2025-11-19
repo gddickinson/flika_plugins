@@ -1,0 +1,18 @@
+<plugin name="frame_remover">
+	<directory>
+		frame_remover
+	</directory>
+	<version>
+		2021.04.03
+	</version>
+	<author>
+		George Dickinson
+	</author>
+	<url>
+	</url>
+	<dependencies>
+	</dependencies>
+	<menu_layout>
+		<action location="frame_remover" function="frame_remover.gui">frame_remover</action>
+	</menu_layout>
+</plugin>

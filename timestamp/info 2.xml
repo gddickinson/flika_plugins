@@ -1,0 +1,18 @@
+<plugin name="Timestamp">
+	<directory>
+		timestamp
+	</directory>
+	<version>
+		2019.01.25
+	</version>
+	<author>
+		George Dickinson
+	</author>
+	<url>
+	</url>
+	<dependencies>
+	</dependencies>
+	<menu_layout>
+		<action location="timestamp" function="timestamp.gui">timestamp</action>
+	</menu_layout>
+</plugin>
