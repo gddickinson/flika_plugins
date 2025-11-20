@@ -1,0 +1,17 @@
+<plugin name="Advanced Beam Splitter">
+	<author>
+		Claude (based on BeamSplitter by Brett Settle)
+	</author>
+	<directory>
+		advanced_beam_splitter
+	</directory>
+	<version>
+		1.0.0
+	</version>
+	<url>
+
+	</url>
+	<menu_layout>
+		<action location="advanced_beam_splitter" function="advanced_beam_splitter.gui">Advanced Beam Splitter</action>
+	</menu_layout>
+</plugin>

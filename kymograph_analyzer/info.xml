@@ -1,0 +1,17 @@
+<plugin name="Kymograph Analyzer">
+	<author>
+		Claude (for Medha Pathak Lab, UCI)
+	</author>
+	<directory>
+		kymograph_analyzer
+	</directory>
+	<version>
+		1.0.0
+	</version>
+	<url>
+		
+	</url>
+	<menu_layout>
+		<action location="kymograph_analyzer" function="kymograph_analyzer.gui">Kymograph Analyzer</action>
+	</menu_layout>
+</plugin>

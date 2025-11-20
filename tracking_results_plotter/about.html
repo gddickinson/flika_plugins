@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Tracking Results Plotter - Comprehensive Visualization Plugin</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        h1 { color: #2E86AB; margin-bottom: 5px; }
+        h2 { color: #A23B72; margin-top: 25px; }
+        h3 { color: #F18F01; margin-top: 20px; }
+        .version { color: #666; font-style: italic; font-size: 0.9em; }
+        .author { margin-top: 10px; color: #555; }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        .feature-highlight {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 15px 0;
+            text-align: center;
+        }
+        .feature-list {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-left: 4px solid #2E86AB;
+            margin: 10px 0;
+        }
+        .workflow-step {
+            background-color: #fff8e1;
+            padding: 10px;
+            margin: 5px 0;
+            border-left: 3px solid #F18F01;
+        }
+        .data-format {
+            background-color: #e8f5e8;
+            padding: 10px;
+            margin: 5px 0;
+            border-left: 3px solid #4CAF50;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        .tab-description {
+            background-color: #e3f2fd;
+            padding: 8px;
+            margin: 3px 0;
+            border-left: 3px solid #2196F3;
+        }
+        .parameter-table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 10px 0;
+            font-size: 0.9em;
+        }
+        .parameter-table th, .parameter-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .parameter-table th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .tip {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .screenshot-placeholder {
+            background-color: #f0f0f0;
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            margin: 10px 0;
+            color: #666;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎯 Tracking Results Plotter</h1>
+    <p class="version">Version 1.0.0 - Professional Visualization Suite</p>
+    <p class="author">Developed by Assistant</p>
+
+    <div class="feature-highlight">
+        <h2 style="color: white; margin-top: 0;">📊 Complete Particle Tracking Visualization</h2>
+        <h3 style="color: white;">Overlay • Filter • Analyze • Visualize</h3>
+        <p style="margin-bottom: 0; font-size: 1.1em;">Professional-grade visualization and analysis tools for particle tracking results with comprehensive filtering, statistical analysis, and publication-ready plots</p>
+    </div>
+
+    <h2>🔬 Overview</h2>
+    <p>
+        The <strong>Tracking Results Plotter</strong> is a comprehensive FLIKA plugin designed for visualizing and analyzing 
+        particle tracking results. It serves as the perfect complement to analysis plugins like SPT Batch Analysis, 
+        focusing exclusively on data visualization, manipulation, and interpretation rather than primary analysis.
+    </p>
+
+    <div class="feature-list">
+        <h3>🚀 Key Capabilities:</h3>
+        <ul>
+            <li><strong>📍 Interactive Overlays:</strong> Overlay tracks and particles onto TIFF stacks with real-time updates</li>
+            <li><strong>🎨 Smart Coloring:</strong> Color-code tracks and points by any numerical property with customizable colormaps</li>
+            <li><strong>🔍 Advanced Filtering:</strong> Multi-condition filtering with real-time preview and easy management</li>
+            <li><strong>📈 Comprehensive Plotting:</strong> Time traces, flower plots, histograms, scatter plots, and statistical analysis</li>
+            <li><strong>📊 Track Statistics:</strong> Automatic calculation and export of track summary statistics</li>
+            <li><strong>🔄 Flexible Data Handling:</strong> Automatic column detection and support for various CSV formats</li>
+            <li><strong>⚡ Professional Architecture:</strong> Modular design, robust error handling, and extensible structure</li>
+        </ul>
+    </div>
+
+    <h2>📋 Supported Data Formats</h2>
+    <p>The plugin automatically detects and handles common particle tracking result formats:</p>
+
+    <div class="data-format">
+<strong>Required Columns (automatically detected):</strong>
+• Track ID: track_number, track_id, id, particle
+• Frame: frame, Frame, t, time  
+• X Coordinate: x, X, x_coord, position_x
+• Y Coordinate: y, Y, y_coord, position_y
+
+<strong>Optional Columns (enhances functionality):</strong>
+• Intensity: intensity, Intensity, signal, amp, amplitude
+• Experiment: Experiment, experiment, condition, sample
+• Any numerical properties for filtering/coloring
+    </div>
+
+    <div class="tip">
+        <strong>💡 Tip:</strong> The plugin works with your existing CSV format! It automatically detects common column names and provides comprehensive error messages if required columns are missing.
+    </div>
+
+    <h2>🖥️ User Interface</h2>
+    <p>Access through: <strong>Plugins → Tracking Analysis → Launch Results Plotter</strong></p>
+
+    <p>The plugin features a modern tabbed interface for organized workflow:</p>
+
+    <div class="tab-description">
+        <strong>📁 Data Tab:</strong> Load CSV files, view data information, set target FLIKA window, preview data in table format
+    </div>
+
+    <div class="tab-description">
+        <strong>🎨 Display Tab:</strong> Configure track/point appearance, set colors, enable color coding by properties, adjust size and style parameters
+    </div>
+
+    <div class="tab-description">
+        <strong>🔍 Filters Tab:</strong> Create multi-condition filters, view active filter conditions, apply/clear filters with real-time preview
+    </div>
+
+    <div class="tab-description">
+        <strong>📊 Analysis Tab:</strong> Calculate track statistics, export results, manage track selection, view summary tables
+    </div>
+
+    <div class="tab-description">
+        <strong>📈 Plots Tab:</strong> Generate time traces, flower plots, histograms, scatter plots with property selection and statistical overlays
+    </div>
+
+    <h2>⚙️ Workflow Guide</h2>
+
+    <div class="workflow-step">
+        <strong>Step 1: Data Loading</strong><br>
+        • Click "Load CSV File" in the Data tab<br>
+        • Plugin automatically detects column mappings<br>
+        • Review data information and preview
+    </div>
+
+    <div class="workflow-step">
+        <strong>Step 2: Window Setup</strong><br>
+        • Open your TIFF stack in FLIKA<br>
+        • Select target window in Window Selector<br>
+        • Click "Set Active Window"
+    </div>
+
+    <div class="workflow-step">
+        <strong>Step 3: Configure Display</strong><br>
+        • Adjust track/point appearance in Display tab<br>
+        • Enable color coding by selecting properties<br>
+        • Set colormaps and size parameters
+    </div>
+
+    <div class="workflow-step">
+        <strong>Step 4: Apply Filters (Optional)</strong><br>
+        • Add filter conditions in Filters tab<br>
+        • Preview filtered data<br>
+        • Apply filters to focus on specific tracks
+    </div>
+
+    <div class="workflow-step">
+        <strong>Step 5: Visualize Results</strong><br>
+        • Click "Plot Overlays" to display tracks/points<br>
+        • Use auto-update for real-time changes<br>
+        • Generate additional plots in Plots tab
+    </div>
+
+    <h2>🎨 Visualization Features</h2>
+
+    <h3>Track Overlays</h3>
+    <ul>
+        <li><strong>Connected Trajectories:</strong> Tracks displayed as connected line segments</li>
+        <li><strong>Customizable Appearance:</strong> Adjustable line width, color, and style</li>
+        <li><strong>Property-Based Coloring:</strong> Color tracks by velocity, intensity, or any numerical property</li>
+        <li><strong>Frame Navigation:</strong> Overlays update automatically as you navigate through frames</li>
+    </ul>
+
+    <h3>Point Overlays</h3>
+    <ul>
+        <li><strong>Frame-Specific Display:</strong> Show particles for current or specific frames</li>
+        <li><strong>Size and Color Control:</strong> Customizable point size and color schemes</li>
+        <li><strong>Property Visualization:</strong> Point color reflects intensity or other properties</li>
+        <li><strong>Interactive Selection:</strong> Click points for detailed information</li>
+    </ul>
+
+    <h3>Advanced Plotting</h3>
+    <table class="parameter-table">
+        <tr>
+            <th>Plot Type</th>
+            <th>Description</th>
+            <th>Use Cases</th>
+        </tr>
+        <tr>
+            <td><strong>Intensity Traces</strong></td>
+            <td>Time series of particle intensity</td>
+            <td>Photobleaching analysis, signal quality assessment</td>
+        </tr>
+        <tr>
+            <td><strong>Position Traces</strong></td>
+            <td>X/Y coordinates over time</td>
+            <td>Drift analysis, motion pattern visualization</td>
+        </tr>
+        <tr>
+            <td><strong>Flower Plots</strong></td>
+            <td>Centered trajectory plots</td>
+            <td>Diffusion analysis, confinement visualization</td>
+        </tr>
+        <tr>
+            <td><strong>Histograms</strong></td>
+            <td>Property distribution analysis</td>
+            <td>Population analysis, quality control</td>
+        </tr>
+        <tr>
+            <td><strong>Scatter Plots</strong></td>
+            <td>Correlation between properties</td>
+            <td>Multi-parameter analysis, classification</td>
+        </tr>
+    </table>
+
+    <h2>🔍 Filtering System</h2>
+    <p>The powerful filtering system allows precise data selection:</p>
+
+    <div class="feature-list">
+        <h3>🎯 Filter Capabilities:</h3>
+        <ul>
+            <li><strong>Multi-Condition Filtering:</strong> Combine multiple filter conditions with AND logic</li>
+            <li><strong>Flexible Operators:</strong> Support for >, >=, <, <=, ==, != operations</li>
+            <li><strong>Auto-Type Detection:</strong> Automatic handling of numeric vs. text comparisons</li>
+            <li><strong>Real-Time Preview:</strong> See filter effects immediately on display</li>
+            <li><strong>Easy Management:</strong> Add, remove, and modify filters with simple interface</li>
+            <li><strong>Filter Persistence:</strong> Filters remain active across different operations</li>
+        </ul>
+    </div>
+
+    <h3>Example Filter Applications:</h3>
+    <ul>
+        <li><code>track_length > 50</code> - Show only long tracks</li>
+        <li><code>intensity >= 1000</code> - Filter bright particles</li>
+        <li><code>velocity < 5.0</code> - Focus on slow-moving particles</li>
+        <li><code>SVM == Mobile</code> - Show only mobile population</li>
+    </ul>
+
+    <h2>📊 Statistical Analysis</h2>
+    <p>Comprehensive statistical tools for track characterization:</p>
+
+    <div class="feature-list">
+        <h3>📈 Statistical Features:</h3>
+        <ul>
+            <li><strong>Track Summary Statistics:</strong> Length, position variance, intensity statistics</li>
+            <li><strong>Property Distributions:</strong> Histograms with mean, std, and count overlays</li>
+            <li><strong>Correlation Analysis:</strong> Pearson correlation coefficients for scatter plots</li>
+            <li><strong>Derived Properties:</strong> Automatic calculation of displacement and track metrics</li>
+            <li><strong>Export Capabilities:</strong> Save statistics to CSV for further analysis</li>
+            <li><strong>Quality Metrics:</strong> Track length, completeness, and temporal coverage</li>
+        </ul>
+    </div>
+
+    <h2>🛠️ Technical Features</h2>
+
+    <h3>Data Management</h3>
+    <ul>
+        <li><strong>Automatic Column Detection:</strong> Smart mapping of common column names</li>
+        <li><strong>Data Validation:</strong> Comprehensive error checking and user feedback</li>
+        <li><strong>Memory Efficient:</strong> Optimized for large datasets with thousands of tracks</li>
+        <li><strong>Format Flexibility:</strong> Works with various CSV formats and column names</li>
+    </ul>
+
+    <h3>Integration</h3>
+    <ul>
+        <li><strong>FLIKA Integration:</strong> Seamless integration with FLIKA's ROI and window system</li>
+        <li><strong>BaseProcess Architecture:</strong> Built on FLIKA's standard plugin framework</li>
+        <li><strong>Window Management:</strong> Automatic window detection and selection</li>
+        <li><strong>ROI Creation:</strong> Uses FLIKA's native ROI system for overlays</li>
+    </ul>
+
+    <h3>Performance</h3>
+    <ul>
+        <li><strong>Real-Time Updates:</strong> Efficient overlay updates during parameter changes</li>
+        <li><strong>Scalable Plotting:</strong> Handles large datasets with smart sampling</li>
+        <li><strong>Memory Management:</strong> Optimized data structures and garbage collection</li>
+        <li><strong>Background Processing:</strong> Non-blocking operations for smooth user experience</li>
+    </ul>
+
+    <h2>🧬 Research Applications</h2>
+
+    <div class="feature-list">
+        <h3>🔬 Ideal For:</h3>
+        <ul>
+            <li><strong>Single Particle Tracking:</strong> Comprehensive visualization of SPT results</li>
+            <li><strong>Protein Dynamics:</strong> Analysis of membrane protein mobility and interactions</li>
+            <li><strong>Diffusion Studies:</strong> Flower plots and statistical analysis of particle diffusion</li>
+            <li><strong>Quality Control:</strong> Track validation and data quality assessment</li>
+            <li><strong>Publication Figures:</strong> High-quality plots for manuscripts and presentations</li>
+            <li><strong>Comparative Analysis:</strong> Side-by-side comparison of different experimental conditions</li>
+            <li><strong>Educational Demonstrations:</strong> Clear visualization for teaching particle tracking concepts</li>
+        </ul>
+    </div>
+
+    <h2>⚡ Performance Specifications</h2>
+
+    <table class="parameter-table">
+        <tr>
+            <th>Feature</th>
+            <th>Capacity</th>
+            <th>Performance</th>
+        </tr>
+        <tr>
+            <td>Track Count</td>
+            <td>10,000+ tracks</td>
+            <td>Real-time filtering and display</td>
+        </tr>
+        <tr>
+            <td>Data Points</td>
+            <td>1M+ localizations</td>
+            <td>Sub-second loading and processing</td>
+        </tr>
+        <tr>
+            <td>Overlay Updates</td>
+            <td>Hundreds of ROIs</td>
+            <td>Smooth real-time updates</td>
+        </tr>
+        <tr>
+            <td>Plot Generation</td>
+            <td>Publication quality</td>
+            <td>Matplotlib integration</td>
+        </tr>
+    </table>
+
+    <h2>📦 Dependencies & Requirements</h2>
+
+    <div class="warning">
+        <strong>⚠️ Required Dependencies:</strong> NumPy, Pandas, QtPy (automatically available with FLIKA)
+    </div>
+
+    <div class="tip">
+        <strong>🎨 Optional Dependencies:</strong> Matplotlib (for advanced plotting), SciPy (for statistical functions), Seaborn (for enhanced visualizations)
+    </div>
+
+    <h3>System Requirements:</h3>
+    <ul>
+        <li><strong>FLIKA:</strong> Version 0.2.25 or higher</li>
+        <li><strong>Python:</strong> 3.7+ (included with FLIKA)</li>
+        <li><strong>Memory:</strong> 4GB+ RAM (8GB+ recommended for large datasets)</li>
+        <li><strong>Storage:</strong> Minimal additional space required</li>
+    </ul>
+
+    <h2>🚀 Installation & Setup</h2>
+
+    <div class="workflow-step">
+        <strong>1. Download Plugin:</strong> Save the plugin files to your FLIKA plugins directory:<br>
+        <code>~/.FLIKA/plugins/tracking_results_plotter/</code>
+    </div>
+
+    <div class="workflow-step">
+        <strong>2. Install Dependencies:</strong> Optional dependencies can be installed via pip:<br>
+        <code>pip install matplotlib scipy seaborn</code>
+    </div>
+
+    <div class="workflow-step">
+        <strong>3. Restart FLIKA:</strong> The plugin will appear in the Plugins menu automatically
+    </div>
+
+    <div class="workflow-step">
+        <strong>4. Test Installation:</strong> Load sample data to verify all features work correctly
+    </div>
+
+    <h2>📚 Usage Tips & Best Practices</h2>
+
+    <div class="tip">
+        <strong>💡 Data Preparation:</strong>
+        <ul>
+            <li>Ensure consistent track numbering and frame indexing</li>
+            <li>Include experiment/condition labels for comparative analysis</li>
+            <li>Validate data integrity before visualization</li>
+            <li>Use descriptive column names for better auto-detection</li>
+        </ul>
+    </div>
+
+    <div class="tip">
+        <strong>🎨 Visualization Tips:</strong>
+        <ul>
+            <li>Use color coding to reveal patterns in your data</li>
+            <li>Filter data to focus on specific populations</li>
+            <li>Combine multiple plot types for comprehensive analysis</li>
+            <li>Export statistics for quantitative comparisons</li>
+        </ul>
+    </div>
+
+    <div class="tip">
+        <strong>⚡ Performance Tips:</strong>
+        <ul>
+            <li>Use filtering to reduce displayed track count for better performance</li>
+            <li>Clear overlays before applying new settings</li>
+            <li>Close unused plot windows to free memory</li>
+            <li>Save analysis results regularly during long sessions</li>
+        </ul>
+    </div>
+
+    <h2>🔧 Extensibility & Customization</h2>
+    <p>The plugin is designed for easy expansion and customization:</p>
+
+    <ul>
+        <li><strong>Modular Architecture:</strong> Separate classes for data management, overlays, and plotting</li>
+        <li><strong>Custom Plot Types:</strong> Easy to add new visualization methods</li>
+        <li><strong>Filter Extensions:</strong> Simple to implement new filtering criteria</li>
+        <li><strong>Export Formats:</strong> Expandable output options for different research needs</li>
+        <li><strong>Analysis Tools:</strong> Framework for adding new statistical methods</li>
+    </ul>
+
+    <h2>🆘 Troubleshooting</h2>
+
+    <h3>Common Issues & Solutions:</h3>
+    <table class="parameter-table">
+        <tr>
+            <th>Issue</th>
+            <th>Cause</th>
+            <th>Solution</th>
+        </tr>
+        <tr>
+            <td>Data not loading</td>
+            <td>Missing required columns</td>
+            <td>Check column names match expected formats</td>
+        </tr>
+        <tr>
+            <td>Overlays not appearing</td>
+            <td>No active window set</td>
+            <td>Select FLIKA window in Data tab</td>
+        </tr>
+        <tr>
+            <td>Plots not generating</td>
+            <td>Matplotlib not installed</td>
+            <td>Install matplotlib: <code>pip install matplotlib</code></td>
+        </tr>
+        <tr>
+            <td>Performance issues</td>
+            <td>Too many tracks displayed</td>
+            <td>Apply filters to reduce track count</td>
+        </tr>
+    </table>
+
+    <h2>📈 Version History</h2>
+    <ul>
+        <li><strong>v1.0.0:</strong> Initial release with comprehensive visualization and analysis features</li>
+    </ul>
+
+    <h2>🤝 Contributing & Support</h2>
+    <p>
+        This plugin is designed to be extensible and welcomes contributions:<br>
+        • <strong>Bug Reports:</strong> Submit issues with detailed descriptions and sample data<br>
+        • <strong>Feature Requests:</strong> Suggest new visualization or analysis capabilities<br>
+        • <strong>Code Contributions:</strong> Follow the modular architecture for new features<br>
+        • <strong>Documentation:</strong> Help improve user guides and examples
+    </p>
+
+    <h2>📄 Citation</h2>
+    <p>
+        When using this plugin in research, please cite:<br>
+        <em>"Tracking Results Plotter: Comprehensive particle tracking visualization plugin for FLIKA"</em><br><br>
+        And the base FLIKA platform:<br>
+        <em>"FLIKA: A plugin-based image processing and analysis platform for biological research"</em>
+    </p>
+
+    <div class="feature-highlight">
+        <p style="margin-bottom: 0; font-size: 1.1em;"><em><strong>Transform your particle tracking data into insights with professional-grade visualization tools. 
+        The Tracking Results Plotter brings publication-quality analysis capabilities directly into your FLIKA workflow.</strong></em></p>
+    </div>
+
+    <p style="text-align: center; color: #666; font-style: italic; margin-top: 30px;">
+        📊 Visualize • 🔍 Analyze • 🎯 Discover • 📈 Publish
+    </p>
+</body>
+</html>

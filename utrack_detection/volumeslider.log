@@ -1,0 +1,74 @@
+2025-07-19 14:27:42,221 - INFO - Numba acceleration enabled
+2025-07-19 14:27:42,374 - INFO - Initializing LocsAndTracksPlotter
+2025-07-19 14:34:09,450 - INFO - Numba acceleration enabled
+2025-07-19 14:34:09,606 - INFO - Initializing LocsAndTracksPlotter
+2025-07-19 14:40:30,526 - ERROR - Uncaught exception
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/flika/lib/python3.11/site-packages/flika/process/file_.py", line 443, in open_points
+    g.win.scatterPlot.setPoints(pos=g.win.scatterPoints[t])
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'ScatterPlotItem' object has no attribute 'setPoints'
+2025-07-19 14:43:22,787 - INFO - Numba acceleration enabled
+2025-07-19 14:43:22,947 - INFO - Initializing LocsAndTracksPlotter
+2025-07-19 14:48:26,609 - INFO - Numba acceleration enabled
+2025-07-19 14:48:26,755 - INFO - Initializing LocsAndTracksPlotter
+2025-07-19 14:51:45,012 - ERROR - Uncaught exception
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/flika/lib/python3.11/site-packages/flika/process/file_.py", line 443, in open_points
+    g.win.scatterPlot.setPoints(pos=g.win.scatterPoints[t])
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'ScatterPlotItem' object has no attribute 'setPoints'
+2025-07-19 14:58:03,383 - INFO - Numba acceleration enabled
+2025-07-19 14:58:03,538 - INFO - Initializing LocsAndTracksPlotter
+2025-07-19 15:01:23,619 - ERROR - Uncaught exception
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/flika/lib/python3.11/site-packages/flika/process/file_.py", line 443, in open_points
+    g.win.scatterPlot.setPoints(pos=g.win.scatterPoints[t])
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'ScatterPlotItem' object has no attribute 'setPoints'
+2025-07-19 15:02:07,143 - ERROR - Uncaught exception
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/flika/lib/python3.11/site-packages/flika/process/file_.py", line 443, in open_points
+    g.win.scatterPlot.setPoints(pos=g.win.scatterPoints[t])
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'ScatterPlotItem' object has no attribute 'setPoints'
+2025-07-19 15:05:59,135 - INFO - Numba acceleration enabled
+2025-07-19 15:05:59,280 - INFO - Initializing LocsAndTracksPlotter
+2025-07-19 15:06:43,129 - INFO - Starting particle tracking with gap closing...
+2025-07-19 15:06:43,132 - INFO - Performing frame-to-frame linking...
+2025-07-19 15:06:43,132 - INFO - Linking features across 100 frames
+2025-07-19 15:06:43,167 - INFO - Closing gaps and handling merges/splits...
+2025-07-19 15:06:43,167 - INFO - Starting gap closing process...
+2025-07-19 15:06:43,168 - INFO - Calculating gap closing cost matrix...
+2025-07-19 15:06:43,216 - INFO - Solving gap closing assignment problem...
+2025-07-19 15:06:43,216 - INFO - Building compound tracks...
+2025-07-19 15:06:43,216 - INFO - Building compound tracks...
+2025-07-19 15:06:43,217 - INFO - Processing 214 links from assignment
+2025-07-19 15:06:43,217 - INFO - Found 0 track connections
+2025-07-19 15:06:43,224 - INFO - Built 214 compound tracks
+2025-07-19 15:06:43,224 - INFO - Gap closing completed. 214 final tracks.
+2025-07-19 15:06:43,224 - INFO - Tracking completed successfully
+2025-07-19 16:10:26,144 - INFO - Numba acceleration enabled
+2025-07-19 16:10:26,300 - INFO - Initializing LocsAndTracksPlotter
+2025-07-19 16:11:20,496 - INFO - Numba acceleration enabled
+2025-07-19 16:11:20,639 - INFO - Initializing LocsAndTracksPlotter
+2025-07-19 16:11:20,644 - ERROR - Could not load plugin /Users/george/.FLIKA/plugins/tirf_analysis_suite
+2025-07-19 16:11:20,655 - ERROR - Uncaught exception
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/flika/lib/python3.11/site-packages/flika/app/plugin_manager.py", line 513, in run
+    p.bind_menu_and_methods()
+  File "/opt/anaconda3/envs/flika/lib/python3.11/site-packages/flika/app/plugin_manager.py", line 174, in bind_menu_and_methods
+    build_submenu(self.directory, self.menu, self.menu_layout)
+  File "/opt/anaconda3/envs/flika/lib/python3.11/site-packages/flika/app/plugin_manager.py", line 118, in build_submenu
+    method = str2func(module_name, od['@location'], od['@function'])
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/flika/lib/python3.11/site-packages/flika/app/plugin_manager.py", line 98, in str2func
+    module = __import__(plugin_dir, fromlist=[levels[0]]).__dict__[levels[0]]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'plugins.tirf_analysis_suite.__init__'
+2025-07-19 16:12:18,635 - INFO - Numba acceleration enabled
+2025-07-19 16:12:18,777 - INFO - Initializing LocsAndTracksPlotter
+2025-07-19 16:16:07,142 - INFO - Numba acceleration enabled
+2025-07-19 16:16:07,298 - INFO - Initializing LocsAndTracksPlotter
+2025-07-19 16:17:26,077 - INFO - Numba acceleration enabled
+2025-07-19 16:17:26,220 - INFO - Initializing LocsAndTracksPlotter

@@ -1,0 +1,4 @@
+11:00:37.299 |     INFO |           get_logger | === TRACK_GENERAL MODULE LOGGING STARTED ===
+11:00:37.299 |     INFO |           get_logger | Log file: /Users/george/.FLIKA/plugins/utrack_tracking/logs/utrack_track_general_20251120_110037.log
+11:00:37.299 |     INFO |           get_logger | Log level: DEBUG
+11:00:37.299 |     INFO |           get_logger | Session ID: 20251120_110037

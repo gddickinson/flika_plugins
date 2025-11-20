@@ -1,0 +1,8 @@
+20:47:32.103 |     INFO |           get_logger | === ENHANCED_KALMAN_FILTERS MODULE LOGGING STARTED ===
+20:47:32.103 |     INFO |           get_logger | Log file: /Users/george/.FLIKA/plugins/utrack_tracking/logs/utrack_enhanced_kalman_filters_20250727_204732.log
+20:47:32.103 |     INFO |           get_logger | Log level: DEBUG
+20:47:32.103 |     INFO |           get_logger | Session ID: 20250727_204732
+20:47:32.103 |     INFO |             <module> | === ENHANCED KALMAN FILTERS MODULE LOADED ===
+20:47:32.103 |     INFO |             <module> | Enhanced classes: KalmanFilterLinearMotion
+20:47:32.103 |     INFO |             <module> | Enhanced functions: kalman_init_linear_motion, kalman_gain_linear_motion, kalman_predict_multiple_models, kalman_predict_linear_motion, kalman_update_linear_motion, kalman_res_mem_lm, kalman_reverse_linear_motion, extract_kalman_state_fixed
+20:47:32.103 |     INFO |             <module> | Motion model types: RANDOM, RANDOM_DIRECTED, SWITCHING, RADIAL

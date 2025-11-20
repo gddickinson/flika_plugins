@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>U-Track Particle Detection Plugin</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            line-height: 1.6;
+            color: #333;
+        }
+        h1 { 
+            color: #2E86AB; 
+            border-bottom: 2px solid #2E86AB;
+            padding-bottom: 10px;
+        }
+        h2 { 
+            color: #A23B72; 
+            margin-top: 25px;
+        }
+        h3 {
+            color: #F18F01;
+            margin-top: 20px;
+        }
+        .version { 
+            color: #666; 
+            font-style: italic; 
+            font-size: 0.9em;
+        }
+        .author { 
+            margin-top: 10px; 
+            color: #666;
+        }
+        code { 
+            background-color: #f4f4f4; 
+            padding: 2px 6px; 
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        .parameter-table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 15px 0;
+        }
+        .parameter-table th, .parameter-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .parameter-table th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .highlight {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .step-list {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .step-list ol {
+            margin: 0;
+            padding-left: 20px;
+        }
+        ul li {
+            margin-bottom: 5px;
+        }
+        .citation {
+            background-color: #f8f9fa;
+            border-left: 4px solid #6c757d;
+            padding: 15px;
+            margin: 20px 0;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <h1>U-Track Particle Detection Plugin</h1>
+    <p class="version">Version 1.0.0</p>
+    <p class="author">for FLIKA - Fluorescence Image Analysis</p>
+    
+    <h2>Description</h2>
+    <p>
+        This plugin integrates the powerful <strong>u-track</strong> subresolution particle detection 
+        algorithm into FLIKA, enabling precise detection and localization of fluorescent particles 
+        in microscopy images. The algorithm achieves subpixel accuracy using mixture model fitting (MMF) 
+        and rigorous statistical testing.
+    </p>
+    
+    <div class="highlight">
+        <strong>Key Features:</strong>
+        <ul>
+            <li>Subpixel accuracy particle localization</li>
+            <li>Mixture model fitting for overlapping particles</li>
+            <li>Statistical significance testing</li>
+            <li>Automatic ROI creation in FLIKA</li>
+            <li>Multiple calculation methods (Gaussian MMF, Variable Sigma, Centroid)</li>
+            <li>Batch processing of multiple windows</li>
+            <li>Export results to CSV or MATLAB formats</li>
+        </ul>
+    </div>
+
+    <h2>Usage</h2>
+    
+    <div class="step-list">
+        <strong>Basic Usage:</strong>
+        <ol>
+            <li>Open your fluorescence microscopy image in FLIKA</li>
+            <li>Navigate to <strong>Plugins → Particle Detection → U-Track Detection</strong></li>
+            <li>Adjust detection parameters in the GUI</li>
+            <li>Click "Apply" to run detection</li>
+            <li>ROIs will be automatically created for detected particles</li>
+        </ol>
+    </div>
+
+    <h3>Quick Start with Presets</h3>
+    <p>
+        For convenience, use predefined parameter sets:<br>
+        <strong>Plugins → Particle Detection → Apply Detection Presets</strong>
+    </p>
+    <ul>
+        <li><code>Strict</code>: High precision, fewer false positives</li>
+        <li><code>Balanced</code>: Good balance of sensitivity and specificity</li>
+        <li><code>Lenient</code>: Higher sensitivity, may include weaker signals</li>
+    </ul>
+
+    <h2>Parameters</h2>
+    
+    <h3>Core Detection Parameters</h3>
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>PSF Sigma</td>
+            <td>1.0</td>
+            <td>Point spread function width in pixels</td>
+        </tr>
+        <tr>
+            <td>Calculation Method</td>
+            <td>Gaussian MMF</td>
+            <td>Detection method: Gaussian MMF, Variable Sigma MMF, or Centroid</td>
+        </tr>
+        <tr>
+            <td>Alpha Local Max</td>
+            <td>0.01</td>
+            <td>Significance level for local maxima detection</td>
+        </tr>
+        <tr>
+            <td>Use MMF</td>
+            <td>True</td>
+            <td>Enable mixture model fitting for overlapping particles</td>
+        </tr>
+    </table>
+
+    <h3>Statistical Test Parameters</h3>
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>Alpha R</td>
+            <td>0.05</td>
+            <td>F-test significance level for model improvement</td>
+        </tr>
+        <tr>
+            <td>Alpha A</td>
+            <td>0.05</td>
+            <td>Amplitude significance test level</td>
+        </tr>
+        <tr>
+            <td>Alpha D</td>
+            <td>0.005</td>
+            <td>Distance significance test level</td>
+        </tr>
+    </table>
+
+    <h3>Output Options</h3>
+    <ul>
+        <li><strong>Create ROIs</strong>: Automatically create FLIKA ROIs for detected particles</li>
+        <li><strong>Show Results Window</strong>: Create new window with detection overlay</li>
+        <li><strong>Save to File</strong>: Export results to CSV or MATLAB format</li>
+        <li><strong>Show Statistics</strong>: Print detection statistics to console</li>
+    </ul>
+
+    <h2>Advanced Features</h2>
+    
+    <h3>Batch Analysis</h3>
+    <p>
+        Process multiple open windows simultaneously:<br>
+        <strong>Plugins → Particle Detection → Batch Analysis</strong>
+    </p>
+    
+    <h3>Parameter Optimization</h3>
+    <p>Key parameters to adjust based on your data:</p>
+    <ul>
+        <li><strong>PSF Sigma</strong>: Should match your microscope's PSF width</li>
+        <li><strong>Alpha Local Max</strong>: Lower values = more stringent detection</li>
+        <li><strong>Alpha D</strong>: Controls separation of nearby particles</li>
+        <li><strong>Min Amplitude</strong>: Filter out weak detections</li>
+    </ul>
+
+    <h2>Output Formats</h2>
+    
+    <h3>CSV Export</h3>
+    <p>Includes columns: Frame, Detection_ID, X, Y, Amplitude, X_Std, Y_Std</p>
+    
+    <h3>MATLAB Export</h3>
+    <p>Compatible with original u-track MATLAB format for further analysis</p>
+    
+    <h3>FLIKA ROIs</h3>
+    <p>Rectangular ROIs centered on detected particles, integrated with FLIKA's ROI system</p>
+
+    <h2>Requirements</h2>
+    <p>This plugin requires the following Python packages:</p>
+    <ul>
+        <li>NumPy (array operations)</li>
+        <li>SciPy (statistical functions and optimization)</li>
+        <li>scikit-image (image I/O and processing)</li>
+    </ul>
+    
+    <div class="highlight">
+        <strong>Installation:</strong><br>
+        <code>pip install numpy scipy scikit-image</code>
+    </div>
+
+    <h2>Citation</h2>
+    <div class="citation">
+        When using this plugin, please cite the original u-track paper:<br><br>
+        
+        <strong>Ellefsen, K., Settle, B., Parker, I. & Smith, I.</strong> 
+        An algorithm for automated detection, localization and measurement of local calcium signals from camera-based imaging. 
+        <em>Cell Calcium</em> 56:147-156, 2014.
+        <br><br>
+        
+        DOI: <a href="https://doi.org/10.1016/j.ceca.2014.06.003">10.1016/j.ceca.2014.06.003</a>
+    </div>
+
+    <h2>Troubleshooting</h2>
+    
+    <h3>No Particles Detected</h3>
+    <ul>
+        <li>Try increasing <code>Alpha Local Max</code> (more lenient)</li>
+        <li>Adjust <code>PSF Sigma</code> to match your imaging system</li>
+        <li>Check image contrast and signal-to-noise ratio</li>
+        <li>Use "Lenient" preset for initial testing</li>
+    </ul>
+    
+    <h3>Too Many False Positives</h3>
+    <ul>
+        <li>Decrease <code>Alpha Local Max</code> (more stringent)</li>
+        <li>Increase <code>Min Amplitude</code> threshold</li>
+        <li>Use "Strict" preset</li>
+        <li>Ensure proper background subtraction</li>
+    </ul>
+    
+    <h3>Performance Issues</h3>
+    <ul>
+        <li>Disable <code>Sigma Estimation Iterations</code> for faster processing</li>
+        <li>Process smaller image regions or fewer frames</li>
+        <li>Use "Centroid" method for faster (but less accurate) detection</li>
+    </ul>
+
+    <h2>Contact & Support</h2>
+    <p>
+        For questions, issues, or contributions:<br>
+        Email: <a href="mailto:your.email@example.com">your.email@example.com</a><br>
+        GitHub: <a href="https://github.com/yourusername/flika-utrack-plugin">flika-utrack-plugin</a>
+    </p>
+    
+    <h2>License</h2>
+    <p>
+        This plugin is distributed under the MIT License. The original u-track algorithm 
+        is developed by the Danuser Lab at UT Southwestern.
+    </p>
+
+    <hr>
+    <p style="text-align: center; color: #666; font-size: 0.9em;">
+        U-Track Particle Detection Plugin v1.0.0 for FLIKA<br>
+        Integrating state-of-the-art particle detection with FLIKA's powerful visualization
+    </p>
+</body>
+</html>

@@ -1,0 +1,11 @@
+20:47:32.103 |     INFO |           get_logger | === KALMAN_FILTERS MODULE LOGGING STARTED ===
+20:47:32.104 |     INFO |           get_logger | Log file: /Users/george/.FLIKA/plugins/utrack_tracking/logs/utrack_kalman_filters_20250727_204732.log
+20:47:32.104 |     INFO |           get_logger | Log level: DEBUG
+20:47:32.104 |     INFO |           get_logger | Session ID: 20250727_204732
+20:47:32.104 |    DEBUG |             __init__ | Initialized KalmanFilterLinearMotion
+20:47:32.104 |    DEBUG |            log_debug | Setup 4 motion models
+20:47:32.104 |    DEBUG |            log_debug |   0: random (Pure Brownian motion)
+20:47:32.104 |    DEBUG |            log_debug |   1: random_directed (Brownian + directed motion)
+20:47:32.104 |    DEBUG |            log_debug |   2: switching (Brownian + forward/backward directed)
+20:47:32.104 |    DEBUG |            log_debug |   3: radial (Radial motion toward/away from convergence point)
+20:47:32.104 |     INFO |             log_info | Enhanced Kalman filter initialized with dt=1.0
