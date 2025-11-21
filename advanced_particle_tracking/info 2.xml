@@ -1,0 +1,26 @@
+<plugin name="Advanced Particle Tracking">
+	<directory>
+		advanced_particle_tracking
+	</directory>
+	<version>
+		1.0.0
+	</version>
+	<author>
+		Advanced Particle Tracking Team
+	</author>
+	<url>
+		https://github.com/advanced-particle-tracking/flika-plugin/archive/master.zip
+	</url>
+	<dependencies>
+		<dependency name='numpy'></dependency>
+		<dependency name='scipy'></dependency>
+		<dependency name='scikit-image'></dependency>
+		<dependency name='scikit-learn'></dependency>
+		<dependency name='pandas'></dependency>
+		<dependency name='matplotlib'></dependency>
+	</dependencies>
+	<menu_layout>
+		<action location="__init__" function="advanced_tracker.gui">Track and Classify Particles</action>
+		<action location="__init__" function="launch_docs">Documentation</action>
+	</menu_layout>
+</plugin>
