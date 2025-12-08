@@ -12,7 +12,7 @@ from . import filters, detection, fitting, postprocessing, visualization, utils
 
 class ThunderSTORM:
     """Main ThunderSTORM analysis pipeline.
-    
+
     Parameters
     ----------
     filter_type : str
@@ -38,8 +38,8 @@ class ThunderSTORM:
     em_gain : float
         EM gain (for EMCCD cameras)
     """
-    
-    def __init__(self, 
+
+    def __init__(self,
                  filter_type='wavelet',
                  filter_params=None,
                  detector_type='local_maximum',
@@ -51,25 +51,25 @@ class ThunderSTORM:
                  photons_per_adu=1.0,
                  baseline=100.0,
                  em_gain=1.0):
-        
+
         # Create components
         self.filter = filters.create_filter(
             filter_type,
             **(filter_params if filter_params else {})
         )
-        
+
         self.detector = detection.create_detector(
             detector_type,
             **(detector_params if detector_params else {})
         )
-        
+
         self.fitter = fitting.create_fitter(
             fitter_type,
             **(fitter_params if fitter_params else {})
         )
-        
+
         self.threshold_expression = threshold_expression
-        
+
         # Camera parameters
         self.pixel_size = pixel_size
         self.fitter.set_camera_params(
@@ -78,20 +78,20 @@ class ThunderSTORM:
             baseline=baseline,
             em_gain=em_gain
         )
-        
+
         # Post-processing components (optional)
         self.drift_corrector = None
         self.merger = None
         self.localization_filter = None
         self.density_filter = None
-        
+
         # Results
         self.localizations = None
         self.images = None
-        
+
     def analyze_frame(self, image, frame_number=0, fit_radius=3):
         """Analyze single frame.
-        
+
         Parameters
         ----------
         image : ndarray
@@ -100,7 +100,7 @@ class ThunderSTORM:
             Frame number
         fit_radius : int
             Fitting radius in pixels
-            
+
         Returns
         -------
         result : dict
@@ -108,22 +108,34 @@ class ThunderSTORM:
         """
         # Step 1: Filter image
         filtered = self.filter.apply(image)
-        
+
         # Step 2: Compute threshold
         threshold = filters.compute_threshold_expression(
             image, filtered, self.threshold_expression
         )
-        
+
         # Step 3: Detect molecules
         positions = self.detector.detect(filtered, threshold)
-        
+
         # Step 4: Fit PSF
         if len(positions) > 0:
             fit_result = self.fitter.fit(image, positions, fit_radius=fit_radius)
-            
+
             # Convert to dict format
             result = fit_result.to_array()
             result['frame'] = np.full(len(fit_result), frame_number)
+
+            # Convert from pixels to nanometers
+            result['x'] = result['x'] * self.pixel_size
+            result['y'] = result['y'] * self.pixel_size
+
+            # Also convert sigma and uncertainty to nm
+            if 'sigma_x' in result and result['sigma_x'] is not None:
+                result['sigma_x'] = result['sigma_x'] * self.pixel_size
+            if 'sigma_y' in result and result['sigma_y'] is not None:
+                result['sigma_y'] = result['sigma_y'] * self.pixel_size
+            if 'uncertainty' in result and result['uncertainty'] is not None:
+                result['uncertainty'] = result['uncertainty'] * self.pixel_size
         else:
             # No detections
             result = {
@@ -137,12 +149,12 @@ class ThunderSTORM:
                 'uncertainty': np.array([]),
                 'chi_squared': np.array([])
             }
-        
+
         return result
-        
+
     def analyze_stack(self, images, fit_radius=3, show_progress=True):
         """Analyze image stack.
-        
+
         Parameters
         ----------
         images : ndarray
@@ -151,7 +163,7 @@ class ThunderSTORM:
             Fitting radius in pixels
         show_progress : bool
             Show progress bar
-            
+
         Returns
         -------
         localizations : dict
@@ -160,13 +172,13 @@ class ThunderSTORM:
         # Ensure 3D
         if images.ndim == 2:
             images = images[np.newaxis, ...]
-            
+
         self.images = images
         n_frames = images.shape[0]
-        
+
         # Analyze each frame
         all_results = []
-        
+
         if show_progress:
             try:
                 from tqdm import tqdm
@@ -176,25 +188,25 @@ class ThunderSTORM:
                 print(f"Analyzing {n_frames} frames...")
         else:
             frame_iter = range(n_frames)
-        
+
         for i in frame_iter:
             result = self.analyze_frame(images[i], frame_number=i, fit_radius=fit_radius)
             all_results.append(result)
-        
+
         # Combine results
         self.localizations = self._combine_results(all_results)
-        
+
         return self.localizations
-        
+
     def _combine_results(self, results):
         """Combine results from multiple frames."""
         combined = {}
-        
+
         # Get all keys
         all_keys = set()
         for r in results:
             all_keys.update(r.keys())
-        
+
         # Concatenate arrays
         for key in all_keys:
             arrays = [r[key] for r in results if key in r]
@@ -202,19 +214,19 @@ class ThunderSTORM:
                 combined[key] = np.concatenate(arrays)
             else:
                 combined[key] = None
-        
+
         return combined
-        
+
     def apply_drift_correction(self, method='cross_correlation', **kwargs):
         """Apply drift correction to localizations.
-        
+
         Parameters
         ----------
         method : str
             'cross_correlation' or 'fiducial'
         **kwargs : dict
             Method-specific parameters
-            
+
         Returns
         -------
         corrected : dict
@@ -222,12 +234,12 @@ class ThunderSTORM:
         """
         if self.localizations is None:
             raise ValueError("Must analyze images first")
-        
+
         self.drift_corrector = postprocessing.DriftCorrector(method=method, **kwargs)
-        
+
         # Compute drift
         frames = np.arange(self.images.shape[0])
-        
+
         if method == 'cross_correlation':
             self.drift_corrector.compute_drift_xcorr(
                 self.localizations, frames, **kwargs
@@ -238,24 +250,24 @@ class ThunderSTORM:
             )
         else:
             raise ValueError(f"Unknown drift correction method: {method}")
-        
+
         # Apply correction
         self.localizations = self.drift_corrector.apply_drift_correction(
             self.localizations
         )
-        
+
         return self.localizations
-        
+
     def merge_molecules(self, max_distance=50, max_frame_gap=1):
         """Merge reappearing molecules.
-        
+
         Parameters
         ----------
         max_distance : float
             Maximum distance in nm
         max_frame_gap : int
             Maximum frame gap
-            
+
         Returns
         -------
         merged : dict
@@ -263,24 +275,24 @@ class ThunderSTORM:
         """
         if self.localizations is None:
             raise ValueError("Must analyze images first")
-        
+
         self.merger = postprocessing.MolecularMerger(
             max_distance=max_distance,
             max_frame_gap=max_frame_gap
         )
-        
+
         self.localizations = self.merger.merge(self.localizations)
-        
+
         return self.localizations
-        
+
     def filter_localizations(self, **filter_params):
         """Filter localizations by quality.
-        
+
         Parameters
         ----------
         **filter_params : dict
             Filter parameters (min_intensity, max_intensity, etc.)
-            
+
         Returns
         -------
         filtered : dict
@@ -288,23 +300,23 @@ class ThunderSTORM:
         """
         if self.localizations is None:
             raise ValueError("Must analyze images first")
-        
+
         self.localization_filter = postprocessing.LocalizationFilter(**filter_params)
-        
+
         self.localizations = self.localization_filter.filter(self.localizations)
-        
+
         return self.localizations
-        
+
     def filter_by_density(self, radius=50, min_neighbors=3):
         """Filter by local density.
-        
+
         Parameters
         ----------
         radius : float
             Search radius in nm
         min_neighbors : int
             Minimum number of neighbors
-            
+
         Returns
         -------
         filtered : dict
@@ -312,19 +324,19 @@ class ThunderSTORM:
         """
         if self.localizations is None:
             raise ValueError("Must analyze images first")
-        
+
         self.density_filter = postprocessing.LocalDensityFilter(
             radius=radius,
             min_neighbors=min_neighbors
         )
-        
+
         self.localizations = self.density_filter.filter(self.localizations)
-        
+
         return self.localizations
-        
+
     def render(self, renderer_type='gaussian', pixel_size=10, **renderer_params):
         """Render super-resolution image.
-        
+
         Parameters
         ----------
         renderer_type : str
@@ -333,7 +345,7 @@ class ThunderSTORM:
             Rendering pixel size in nm
         **renderer_params : dict
             Renderer-specific parameters
-            
+
         Returns
         -------
         image : ndarray
@@ -341,16 +353,16 @@ class ThunderSTORM:
         """
         if self.localizations is None:
             raise ValueError("Must analyze images first")
-        
+
         renderer = visualization.create_renderer(renderer_type, **renderer_params)
-        
+
         image = renderer.render(self.localizations, pixel_size=pixel_size)
-        
+
         return image
-        
+
     def get_statistics(self):
         """Get summary statistics of localizations.
-        
+
         Returns
         -------
         stats : dict
@@ -358,12 +370,12 @@ class ThunderSTORM:
         """
         if self.localizations is None:
             raise ValueError("Must analyze images first")
-        
+
         return utils.compute_statistics(self.localizations)
-        
+
     def save(self, filepath, format='csv'):
         """Save localizations to file.
-        
+
         Parameters
         ----------
         filepath : str
@@ -373,15 +385,15 @@ class ThunderSTORM:
         """
         if self.localizations is None:
             raise ValueError("Must analyze images first")
-        
+
         if format == 'csv':
             utils.save_localizations_csv(self.localizations, filepath)
         else:
             raise ValueError(f"Unsupported format: {format}")
-            
+
     def load(self, filepath, format='csv'):
         """Load localizations from file.
-        
+
         Parameters
         ----------
         filepath : str
@@ -393,15 +405,15 @@ class ThunderSTORM:
             self.localizations = utils.load_localizations_csv(filepath)
         else:
             raise ValueError(f"Unsupported format: {format}")
-            
+
         return self.localizations
 
 
 def create_default_pipeline():
     """Create ThunderSTORM pipeline with default settings.
-    
+
     These are the default settings that work well on many datasets.
-    
+
     Returns
     -------
     pipeline : ThunderSTORM
@@ -424,14 +436,14 @@ def create_default_pipeline():
 
 def quick_analysis(images, **kwargs):
     """Quick analysis with default parameters.
-    
+
     Parameters
     ----------
     images : ndarray
         Image stack to analyze
     **kwargs : dict
         Additional parameters for pipeline
-        
+
     Returns
     -------
     localizations : dict
@@ -441,16 +453,16 @@ def quick_analysis(images, **kwargs):
     """
     # Create pipeline
     pipeline = create_default_pipeline()
-    
+
     # Update any custom parameters
     for key, value in kwargs.items():
         if hasattr(pipeline, key):
             setattr(pipeline, key, value)
-    
+
     # Analyze
     localizations = pipeline.analyze_stack(images)
-    
+
     # Render
     rendered = pipeline.render(renderer_type='gaussian', pixel_size=10)
-    
+
     return localizations, rendered, pipeline

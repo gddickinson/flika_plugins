@@ -72,7 +72,7 @@ class GaussianRenderer(BaseRenderer):
             elif self.sigma == 'auto':
                 # Use median sigma from fitted PSF
                 if 'sigma_x' in localizations:
-                    median_sigma_nm = np.median(localizations['sigma_x']) * 100  # Assume 100nm pixels
+                    median_sigma_nm = np.median(localizations['sigma_x'])  # Already in nm
                     sigmas = np.full(len(localizations['x']), median_sigma_nm / pixel_size)
                 else:
                     sigmas = np.full(len(localizations['x']), 2.0)  # Default to 2 pixels

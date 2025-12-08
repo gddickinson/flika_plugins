@@ -2,3 +2,5 @@
 BeamSplitter/
 NanotubeDetection/
 .DS_Store
+/thunderstorm_flika/thunderstorm_python/__pycache__
+/thunderstorm_flika/__pycache__
