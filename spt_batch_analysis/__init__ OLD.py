@@ -4868,6 +4868,7 @@ These files are automatically used by the tracking pipeline.
             (self, 'diffusion_checkbox', "Diffusion Analysis", 'enable_diffusion_analysis'),
             (self, 'loc_error_checkbox', "Localization Error Analysis", 'enable_localization_error'),
             (self, 'straightness_checkbox', "Straightness Analysis", 'enable_straightness_analysis'),
+            (self, 'missing_points_checkbox', "Missing Points Integration", 'enable_missing_points_integration'),
         ]
 
         for obj, attr_name, label, param_name in checkboxes:
@@ -4901,7 +4902,6 @@ These files are automatically used by the tracking pipeline.
         enhanced_checkboxes = [
             (self, 'direction_checkbox', "Direction of Travel Analysis", 'enable_direction_analysis'),
             (self, 'distance_diff_checkbox', "Distance Differential Analysis", 'enable_distance_differential'),
-            (self, 'missing_points_checkbox', "Missing Points Integration", 'enable_missing_points_integration'),
             (self, 'interpolation_checkbox', "Enhanced Interpolation (Advanced)", 'enable_enhanced_interpolation'),
             (self, 'full_interpolation_checkbox', "Full Track Interpolation (All Tracks)", 'enable_full_track_interpolation'),  # NEW: Add this line
         ]
@@ -6451,6 +6451,12 @@ directional persistence is important for understanding underlying mechanisms.
                 self.log_message("  🎯 Calculating localization errors...")
                 tracks_df = self.add_localization_error(tracks_df)
 
+            # Missing points integration (Core Analysis Step)
+            if self.parameters.enable_missing_points_integration:
+                self.log_message("  🔄 Integrating missing points...")
+                tracks_df = MissingPointsIntegrator.add_missing_localizations(
+                    tracks_df, file_path, self.parameters.pixel_size)
+
             # Direction of travel analysis
             if self.parameters.enable_direction_analysis:
                 self.log_message("  🧭 Performing direction analysis...")
@@ -6479,13 +6485,6 @@ directional persistence is important for understanding underlying mechanisms.
                 if 'is_interpolated' not in tracks_df.columns:
                     tracks_df['is_interpolated'] = 0
                 tracks_df = EnhancedInterpolator.interpolate_trapped_sites(tracks_df, file_path)
-
-
-            # Missing points integration (should be near the end)
-            if self.parameters.enable_missing_points_integration:
-                self.log_message("  🔄 Integrating missing points...")
-                tracks_df = MissingPointsIntegrator.add_missing_localizations(
-                    tracks_df, file_path, self.parameters.pixel_size)
 
             # Add motion model information to tracks if using U-Track
             if self.parameters.linking_method == 'utrack':

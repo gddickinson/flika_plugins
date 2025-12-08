@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import os, glob, sys
+import subprocess  # Added for thunderSTORM execution
 import json
 import math
 from pathlib import Path
@@ -55,7 +56,8 @@ from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
                            QCheckBox, QComboBox, QTextEdit, QProgressBar,
                            QGroupBox, QGridLayout, QFormLayout, QFileDialog,
                            QListWidget, QFrame, QApplication, QSplitter,
-                           QScrollArea, QSlider, QButtonGroup, QRadioButton)
+                           QScrollArea, QSlider, QButtonGroup, QRadioButton,
+                           QLineEdit, QMessageBox)
 from qtpy.QtCore import Qt, QThread, Signal
 from qtpy.QtGui import QFont
 
@@ -3690,12 +3692,16 @@ class SPTBatchAnalysis(QWidget):
         self.create_autocorrelation_tab()
         self.create_progress_tab()
         self.create_export_control_tab()
+        self.create_thunderstorm_tab()  # NEW: ThunderSTORM macro generation
 
         # Add this connection to update availability when tab is selected
         self.tab_widget.currentChanged.connect(self.on_tab_changed)
 
         # Control buttons
         self.create_control_buttons(main_layout)
+
+        # Initialize thunderSTORM attributes
+        self.add_thunderstorm_attributes_to_init()
 
     def on_tab_changed(self, index):
         """Handle tab changes to update export control availability"""
@@ -7889,6 +7895,805 @@ directional persistence is important for understanding underlying mechanisms.
 
         except Exception as e:
             self.log_message(f"    ⚠️ Could not log mixed motion stats: {e}")
+
+    # ==================== THUNDERSTORM TAB IMPLEMENTATION ====================
+
+    def create_thunderstorm_tab(self):
+        """Create thunderSTORM macro generation and execution tab"""
+        tab = QWidget()
+        main_layout = QVBoxLayout(tab)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        main_layout.setSpacing(5)
+
+        # Header (stays at top, not scrollable)
+        header = QLabel("ThunderSTORM Macro Generator for ImageJ/Fiji")
+        header.setStyleSheet("font-size: 14pt; font-weight: bold; color: #2c5aa0;")
+        main_layout.addWidget(header)
+
+        desc = QLabel(
+            "Generate ImageJ macros for batch processing STORM/PALM data with ThunderSTORM plugin.\n"
+            "ThunderSTORM is a comprehensive ImageJ plugin for single-molecule localization microscopy."
+        )
+        desc.setWordWrap(True)
+        main_layout.addWidget(desc)
+
+        # Create scrollable area for all parameters
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+        # Scrollable content widget
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout(scroll_widget)
+        scroll_layout.setContentsMargins(10, 10, 10, 10)
+        scroll_layout.setSpacing(15)  # Space between groups
+
+        # === FILE SELECTION ===
+        file_group = QGroupBox("File Selection for ThunderSTORM")
+        file_layout = QGridLayout(file_group)
+        file_layout.setSpacing(8)
+        file_layout.setContentsMargins(10, 15, 10, 10)
+
+        # Input directory
+        file_layout.addWidget(QLabel("Input Directory:"), 0, 0)
+        self.ts_input_dir_label = QLabel("No directory selected")
+        self.ts_input_dir_label.setFrameStyle(QFrame.Panel | QFrame.Sunken)
+        file_layout.addWidget(self.ts_input_dir_label, 0, 1)
+
+        self.ts_select_input_btn = QPushButton("Browse...")
+        self.ts_select_input_btn.clicked.connect(self.select_thunderstorm_input_dir)
+        file_layout.addWidget(self.ts_select_input_btn, 0, 2)
+
+        # File pattern
+        file_layout.addWidget(QLabel("File Pattern:"), 1, 0)
+        self.ts_file_pattern = QComboBox()
+        self.ts_file_pattern.setEditable(True)
+        self.ts_file_pattern.addItems(['**/*_crop.tif', '**/*_bin10.tif', '**/*_piezo1.tif', '**/*.tif'])
+        file_layout.addWidget(self.ts_file_pattern, 1, 1, 1, 2)
+
+        # Output directory
+        file_layout.addWidget(QLabel("Macro Save Path:"), 2, 0)
+        self.ts_output_macro_label = QLabel("Will be saved in input directory")
+        self.ts_output_macro_label.setFrameStyle(QFrame.Panel | QFrame.Sunken)
+        file_layout.addWidget(self.ts_output_macro_label, 2, 1, 1, 2)
+
+        scroll_layout.addWidget(file_group)
+
+        # === FILTER SETTINGS ===
+        filter_group = QGroupBox("Image Filtering")
+        filter_layout = QFormLayout(filter_group)
+        filter_layout.setSpacing(8)
+        filter_layout.setContentsMargins(10, 15, 10, 10)
+
+        # Filter type
+        self.ts_filter_type = QComboBox()
+        self.ts_filter_type.addItems([
+            'Wavelet filter (B-Spline)',
+            'Gaussian filter',
+            'Difference of Gaussians',
+            'Lowpass filter',
+            'No filter'
+        ])
+        filter_layout.addRow("Filter Type:", self.ts_filter_type)
+
+        # Wavelet scale
+        self.ts_wavelet_scale = QDoubleSpinBox()
+        self.ts_wavelet_scale.setRange(1.0, 5.0)
+        self.ts_wavelet_scale.setValue(2.0)
+        self.ts_wavelet_scale.setSingleStep(0.5)
+        filter_layout.addRow("Wavelet Scale:", self.ts_wavelet_scale)
+
+        # Wavelet order
+        self.ts_wavelet_order = QSpinBox()
+        self.ts_wavelet_order.setRange(1, 5)
+        self.ts_wavelet_order.setValue(3)
+        filter_layout.addRow("Wavelet Order:", self.ts_wavelet_order)
+
+        scroll_layout.addWidget(filter_group)
+
+        # === DETECTION SETTINGS ===
+        detection_group = QGroupBox("Molecular Detection")
+        detection_layout = QFormLayout(detection_group)
+        detection_layout.setSpacing(8)
+        detection_layout.setContentsMargins(10, 15, 10, 10)
+
+        # Detector
+        self.ts_detector = QComboBox()
+        self.ts_detector.addItems(['Local maximum', 'Centroid of local neighborhood', 'Non-maximum suppression'])
+        detection_layout.addRow("Detector:", self.ts_detector)
+
+        # Connectivity
+        self.ts_connectivity = QComboBox()
+        self.ts_connectivity.addItems(['4-neighbourhood', '8-neighbourhood'])
+        detection_layout.addRow("Connectivity:", self.ts_connectivity)
+
+        # Threshold
+        self.ts_threshold = QLineEdit("std(Wave.F1)")
+        detection_layout.addRow("Threshold Formula:", self.ts_threshold)
+
+        scroll_layout.addWidget(detection_group)
+
+        # === LOCALIZATION SETTINGS ===
+        localization_group = QGroupBox("Sub-pixel Localization")
+        localization_layout = QFormLayout(localization_group)
+        localization_layout.setSpacing(8)
+        localization_layout.setContentsMargins(10, 15, 10, 10)
+
+        # Estimator (PSF model)
+        self.ts_estimator = QComboBox()
+        self.ts_estimator.addItems([
+            'PSF: Integrated Gaussian',
+            'PSF: Gaussian',
+            'PSF: Elliptical Gaussian',
+            'PSF: Elliptical Gaussian (3D astigmatism)',
+            'Centroid of local neighborhood',
+            'Radial symmetry'
+        ])
+        localization_layout.addRow("Estimator (PSF):", self.ts_estimator)
+
+        # Sigma (PSF width)
+        self.ts_sigma = QDoubleSpinBox()
+        self.ts_sigma.setRange(0.5, 5.0)
+        self.ts_sigma.setValue(1.6)
+        self.ts_sigma.setSingleStep(0.1)
+        self.ts_sigma.setDecimals(2)
+        localization_layout.addRow("Sigma (PSF width):", self.ts_sigma)
+
+        # Fit radius
+        self.ts_fit_radius = QSpinBox()
+        self.ts_fit_radius.setRange(1, 10)
+        self.ts_fit_radius.setValue(3)
+        localization_layout.addRow("Fit Radius (pixels):", self.ts_fit_radius)
+
+        # Fitting method
+        self.ts_fitting_method = QComboBox()
+        self.ts_fitting_method.addItems([
+            'Weighted Least squares',
+            'Least squares',
+            'Maximum likelihood'
+        ])
+        localization_layout.addRow("Fitting Method:", self.ts_fitting_method)
+
+        # Full image fitting
+        self.ts_full_image_fitting = QCheckBox("Full image fitting")
+        self.ts_full_image_fitting.setChecked(False)
+        localization_layout.addRow("", self.ts_full_image_fitting)
+
+        scroll_layout.addWidget(localization_group)
+
+        # === MULTI-EMITTER ANALYSIS ===
+        mfa_group = QGroupBox("Multi-emitter Analysis (MFA)")
+        mfa_layout = QFormLayout(mfa_group)
+        mfa_layout.setSpacing(8)
+        mfa_layout.setContentsMargins(10, 15, 10, 10)
+
+        # Enable MFA
+        self.ts_mfa_enabled = QCheckBox("Enable multi-emitter fitting")
+        self.ts_mfa_enabled.setChecked(False)
+        self.ts_mfa_enabled.toggled.connect(self.on_ts_mfa_toggled)
+        mfa_layout.addRow("", self.ts_mfa_enabled)
+
+        # MFA parameters
+        self.ts_mfa_keep_same_intensity = QCheckBox("Keep same intensity")
+        self.ts_mfa_keep_same_intensity.setChecked(False)
+        mfa_layout.addRow("", self.ts_mfa_keep_same_intensity)
+
+        self.ts_mfa_nmax = QSpinBox()
+        self.ts_mfa_nmax.setRange(2, 10)
+        self.ts_mfa_nmax.setValue(5)
+        mfa_layout.addRow("Max emitters (nmax):", self.ts_mfa_nmax)
+
+        self.ts_mfa_fixed_intensity = QCheckBox("Fixed intensity")
+        self.ts_mfa_fixed_intensity.setChecked(True)
+        mfa_layout.addRow("", self.ts_mfa_fixed_intensity)
+
+        # Expected intensity range
+        intensity_layout = QHBoxLayout()
+        self.ts_mfa_intensity_min = QSpinBox()
+        self.ts_mfa_intensity_min.setRange(10, 10000)
+        self.ts_mfa_intensity_min.setValue(100)
+        self.ts_mfa_intensity_max = QSpinBox()
+        self.ts_mfa_intensity_max.setRange(10, 10000)
+        self.ts_mfa_intensity_max.setValue(500)
+        intensity_layout.addWidget(self.ts_mfa_intensity_min)
+        intensity_layout.addWidget(QLabel(" to "))
+        intensity_layout.addWidget(self.ts_mfa_intensity_max)
+        mfa_layout.addRow("Expected Intensity:", intensity_layout)
+
+        # P-value
+        self.ts_mfa_pvalue = QComboBox()
+        self.ts_mfa_pvalue.setEditable(True)
+        self.ts_mfa_pvalue.addItems(['1.0E-6', '1.0E-5', '1.0E-4', '1.0E-3'])
+        mfa_layout.addRow("P-value:", self.ts_mfa_pvalue)
+
+        scroll_layout.addWidget(mfa_group)
+
+        # === RENDERING/EXPORT SETTINGS ===
+        export_group = QGroupBox("Export Settings")
+        export_layout = QFormLayout(export_group)
+        export_layout.setSpacing(8)
+        export_layout.setContentsMargins(10, 15, 10, 10)
+
+        # Renderer
+        self.ts_renderer = QComboBox()
+        self.ts_renderer.addItems([
+            'No Renderer',
+            'Averaged shifted histograms',
+            'Normalized Gaussian',
+            'Histogram'
+        ])
+        export_layout.addRow("Renderer:", self.ts_renderer)
+
+        # Magnification
+        self.ts_magnification = QDoubleSpinBox()
+        self.ts_magnification.setRange(1.0, 20.0)
+        self.ts_magnification.setValue(5.0)
+        self.ts_magnification.setSingleStep(1.0)
+        export_layout.addRow("Magnification:", self.ts_magnification)
+
+        # Colorize z-stack
+        self.ts_colorize_z = QCheckBox("Colorize z-stack")
+        self.ts_colorize_z.setChecked(False)
+        export_layout.addRow("", self.ts_colorize_z)
+
+        # 3D mode
+        self.ts_3d_mode = QCheckBox("3D imaging mode")
+        self.ts_3d_mode.setChecked(False)
+        export_layout.addRow("", self.ts_3d_mode)
+
+        # Export columns
+        export_cols_label = QLabel("Export columns (all selected by default):")
+        export_layout.addRow(export_cols_label)
+
+        export_cols_layout = QGridLayout()
+        export_cols_layout.setSpacing(5)
+
+        self.ts_export_sigma = QCheckBox("sigma")
+        self.ts_export_sigma.setChecked(True)
+        export_cols_layout.addWidget(self.ts_export_sigma, 0, 0)
+
+        self.ts_export_intensity = QCheckBox("intensity")
+        self.ts_export_intensity.setChecked(True)
+        export_cols_layout.addWidget(self.ts_export_intensity, 0, 1)
+
+        self.ts_export_chi2 = QCheckBox("chi2")
+        self.ts_export_chi2.setChecked(True)
+        export_cols_layout.addWidget(self.ts_export_chi2, 0, 2)
+
+        self.ts_export_offset = QCheckBox("offset")
+        self.ts_export_offset.setChecked(True)
+        export_cols_layout.addWidget(self.ts_export_offset, 1, 0)
+
+        self.ts_export_x = QCheckBox("x")
+        self.ts_export_x.setChecked(True)
+        export_cols_layout.addWidget(self.ts_export_x, 1, 1)
+
+        self.ts_export_y = QCheckBox("y")
+        self.ts_export_y.setChecked(True)
+        export_cols_layout.addWidget(self.ts_export_y, 1, 2)
+
+        self.ts_export_bkgstd = QCheckBox("bkgstd")
+        self.ts_export_bkgstd.setChecked(True)
+        export_cols_layout.addWidget(self.ts_export_bkgstd, 2, 0)
+
+        self.ts_export_uncertainty = QCheckBox("uncertainty")
+        self.ts_export_uncertainty.setChecked(True)
+        export_cols_layout.addWidget(self.ts_export_uncertainty, 2, 1)
+
+        self.ts_export_frame = QCheckBox("frame")
+        self.ts_export_frame.setChecked(True)
+        export_cols_layout.addWidget(self.ts_export_frame, 2, 2)
+
+        self.ts_export_protocol = QCheckBox("save protocol")
+        self.ts_export_protocol.setChecked(True)
+        export_cols_layout.addWidget(self.ts_export_protocol, 3, 0)
+
+        export_layout.addRow(export_cols_layout)
+
+        scroll_layout.addWidget(export_group)
+
+        # === PYIMAGEJ SETTINGS ===
+        pyimagej_group = QGroupBox("Automatic Execution (Optional)")
+        pyimagej_layout = QVBoxLayout(pyimagej_group)
+        pyimagej_layout.setSpacing(8)
+        pyimagej_layout.setContentsMargins(10, 15, 10, 10)
+
+        self.ts_auto_run = QCheckBox("Automatically run macro in ImageJ after generation")
+        self.ts_auto_run.setChecked(False)
+        self.ts_auto_run.toggled.connect(self.on_ts_auto_run_toggled)
+        pyimagej_layout.addWidget(self.ts_auto_run)
+
+        # ImageJ/Fiji path
+        fiji_layout = QHBoxLayout()
+        fiji_layout.addWidget(QLabel("Fiji/ImageJ Path:"))
+        self.ts_fiji_path = QLabel("Not set (required for auto-run)")
+        self.ts_fiji_path.setFrameStyle(QFrame.Panel | QFrame.Sunken)
+        fiji_layout.addWidget(self.ts_fiji_path, 1)
+
+        self.ts_fiji_browse_btn = QPushButton("Browse...")
+        self.ts_fiji_browse_btn.clicked.connect(self.select_fiji_path)
+        fiji_layout.addWidget(self.ts_fiji_browse_btn)
+        pyimagej_layout.addLayout(fiji_layout)
+
+        # Execution method
+        exec_method_layout = QHBoxLayout()
+        exec_method_layout.addWidget(QLabel("Execution Method:"))
+
+        self.ts_exec_method_group = QButtonGroup()
+        self.ts_exec_pyimagej_radio = QRadioButton("PyImageJ (Python)")
+        self.ts_exec_subprocess_radio = QRadioButton("Subprocess (direct ImageJ)")
+        self.ts_exec_method_group.addButton(self.ts_exec_pyimagej_radio)
+        self.ts_exec_method_group.addButton(self.ts_exec_subprocess_radio)
+        self.ts_exec_subprocess_radio.setChecked(True)
+
+        exec_method_layout.addWidget(self.ts_exec_pyimagej_radio)
+        exec_method_layout.addWidget(self.ts_exec_subprocess_radio)
+        exec_method_layout.addStretch()
+        pyimagej_layout.addLayout(exec_method_layout)
+
+        # Info label
+        info_label = QLabel(
+            "Note: PyImageJ requires 'imagej' package (pip install pyimagej).\n"
+            "Subprocess method calls ImageJ directly and is more reliable."
+        )
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("color: #666; font-size: 9pt;")
+        pyimagej_layout.addWidget(info_label)
+
+        scroll_layout.addWidget(pyimagej_group)
+
+        # === ACTION BUTTONS ===
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(8)
+
+        self.ts_generate_macro_btn = QPushButton("Generate Macro")
+        self.ts_generate_macro_btn.clicked.connect(self.generate_thunderstorm_macro)
+        self.ts_generate_macro_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 8px;")
+        self.ts_generate_macro_btn.setMinimumHeight(35)
+        button_layout.addWidget(self.ts_generate_macro_btn)
+
+        self.ts_view_macro_btn = QPushButton("View Generated Macro")
+        self.ts_view_macro_btn.clicked.connect(self.view_thunderstorm_macro)
+        self.ts_view_macro_btn.setEnabled(False)
+        self.ts_view_macro_btn.setMinimumHeight(35)
+        button_layout.addWidget(self.ts_view_macro_btn)
+
+        scroll_layout.addLayout(button_layout)
+
+        # === MACRO PREVIEW ===
+        preview_group = QGroupBox("Macro Preview")
+        preview_layout = QVBoxLayout(preview_group)
+        preview_layout.setContentsMargins(10, 15, 10, 10)
+
+        self.ts_macro_preview = QTextEdit()
+        self.ts_macro_preview.setReadOnly(True)
+        self.ts_macro_preview.setMinimumHeight(150)
+        self.ts_macro_preview.setMaximumHeight(250)
+        self.ts_macro_preview.setPlaceholderText("Generated macro will appear here...")
+        preview_layout.addWidget(self.ts_macro_preview)
+
+        scroll_layout.addWidget(preview_group)
+
+        # === STATUS ===
+        self.ts_status_label = QLabel("Ready to generate macro")
+        self.ts_status_label.setStyleSheet("color: #666; padding: 5px;")
+        self.ts_status_label.setWordWrap(True)
+        scroll_layout.addWidget(self.ts_status_label)
+
+        # Add stretch at the end of scrollable content
+        scroll_layout.addStretch()
+
+        # Set the scroll widget and add to main layout
+        scroll.setWidget(scroll_widget)
+        main_layout.addWidget(scroll)
+
+        # Initialize UI state
+        self.on_ts_mfa_toggled()
+        self.on_ts_auto_run_toggled()
+
+        # Add tab to widget
+        self.tab_widget.addTab(tab, "ThunderSTORM")
+
+    def on_ts_mfa_toggled(self):
+        """Enable/disable MFA parameters based on checkbox"""
+        enabled = self.ts_mfa_enabled.isChecked()
+        self.ts_mfa_keep_same_intensity.setEnabled(enabled)
+        self.ts_mfa_nmax.setEnabled(enabled)
+        self.ts_mfa_fixed_intensity.setEnabled(enabled)
+        self.ts_mfa_intensity_min.setEnabled(enabled)
+        self.ts_mfa_intensity_max.setEnabled(enabled)
+        self.ts_mfa_pvalue.setEnabled(enabled)
+
+    def on_ts_auto_run_toggled(self):
+        """Enable/disable auto-run parameters"""
+        enabled = self.ts_auto_run.isChecked()
+        self.ts_fiji_browse_btn.setEnabled(enabled)
+        self.ts_exec_pyimagej_radio.setEnabled(enabled)
+        self.ts_exec_subprocess_radio.setEnabled(enabled)
+
+    def select_thunderstorm_input_dir(self):
+        """Select input directory for thunderSTORM processing"""
+        directory = QFileDialog.getExistingDirectory(
+            self,
+            "Select Input Directory for ThunderSTORM",
+            "",
+            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks
+        )
+
+        if directory:
+            self.ts_input_dir = directory
+            self.ts_input_dir_label.setText(directory)
+            self.ts_output_macro_label.setText(os.path.join(directory, "thunderstorm_macro_auto.ijm"))
+            self.ts_status_label.setText(f"Input directory selected: {directory}")
+
+    def select_fiji_path(self):
+        """Select Fiji/ImageJ installation path"""
+        directory = QFileDialog.getExistingDirectory(
+            self,
+            "Select Fiji/ImageJ Installation Directory (e.g., Fiji.app)",
+            "",
+            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks
+        )
+
+        if directory:
+            self.ts_fiji_installation = directory
+            self.ts_fiji_path.setText(directory)
+            self.ts_status_label.setText(f"Fiji path set: {directory}")
+
+    def get_thunderstorm_file_list(self):
+        """Get list of files matching the pattern"""
+        if not hasattr(self, 'ts_input_dir') or not self.ts_input_dir:
+            return [], []
+
+        pattern = self.ts_file_pattern.currentText()
+        files = glob.glob(os.path.join(self.ts_input_dir, pattern), recursive=True)
+
+        # Create result paths
+        result_paths = [f.replace('.tif', '_locs.csv') for f in files]
+
+        return files, result_paths
+
+    def generate_thunderstorm_macro_command(self):
+        """Generate the thunderSTORM macro command string"""
+
+        # Build export columns string
+        export_cols = []
+        if self.ts_export_sigma.isChecked():
+            export_cols.append("sigma=true")
+        if self.ts_export_intensity.isChecked():
+            export_cols.append("intensity=true")
+        if self.ts_export_chi2.isChecked():
+            export_cols.append("chi2=true")
+        if self.ts_export_offset.isChecked():
+            export_cols.append("offset=true")
+        if self.ts_export_protocol.isChecked():
+            export_cols.append("saveprotocol=true")
+        if self.ts_export_x.isChecked():
+            export_cols.append("x=true")
+        if self.ts_export_y.isChecked():
+            export_cols.append("y=true")
+        if self.ts_export_bkgstd.isChecked():
+            export_cols.append("bkgstd=true")
+        if self.ts_export_uncertainty.isChecked():
+            export_cols.append("uncertainty=true")
+        if self.ts_export_frame.isChecked():
+            export_cols.append("frame=true")
+
+        export_string = " ".join(export_cols)
+
+        # Build Run analysis command
+        run_analysis_parts = []
+
+        # Filter
+        filter_type = self.ts_filter_type.currentText()
+        run_analysis_parts.append(f'filter=[{filter_type}]')
+
+        if 'Wavelet' in filter_type:
+            run_analysis_parts.append(f'scale={self.ts_wavelet_scale.value()}')
+            run_analysis_parts.append(f'order={self.ts_wavelet_order.value()}')
+
+        # Detector
+        run_analysis_parts.append(f'detector=[{self.ts_detector.currentText()}]')
+        run_analysis_parts.append(f'connectivity={self.ts_connectivity.currentText()}')
+        run_analysis_parts.append(f'threshold={self.ts_threshold.text()}')
+
+        # Estimator
+        run_analysis_parts.append(f'estimator=[{self.ts_estimator.currentText()}]')
+        run_analysis_parts.append(f'sigma={self.ts_sigma.value()}')
+        run_analysis_parts.append(f'fitradius={self.ts_fit_radius.value()}')
+        run_analysis_parts.append(f'method=[{self.ts_fitting_method.currentText()}]')
+
+        # Full image fitting
+        run_analysis_parts.append(f'full_image_fitting={"true" if self.ts_full_image_fitting.isChecked() else "false"}')
+
+        # MFA
+        run_analysis_parts.append(f'mfaenabled={"true" if self.ts_mfa_enabled.isChecked() else "false"}')
+        if self.ts_mfa_enabled.isChecked():
+            run_analysis_parts.append(f'keep_same_intensity={"true" if self.ts_mfa_keep_same_intensity.isChecked() else "false"}')
+            run_analysis_parts.append(f'nmax={self.ts_mfa_nmax.value()}')
+            run_analysis_parts.append(f'fixed_intensity={"true" if self.ts_mfa_fixed_intensity.isChecked() else "false"}')
+            run_analysis_parts.append(f'expected_intensity={self.ts_mfa_intensity_min.value()}:{self.ts_mfa_intensity_max.value()}')
+            run_analysis_parts.append(f'pvalue={self.ts_mfa_pvalue.currentText()}')
+
+        # Renderer
+        run_analysis_parts.append(f'renderer=[{self.ts_renderer.currentText()}]')
+        run_analysis_parts.append(f'magnification={self.ts_magnification.value()}')
+        run_analysis_parts.append(f'colorizez={"true" if self.ts_colorize_z.isChecked() else "false"}')
+        run_analysis_parts.append(f'threed={"true" if self.ts_3d_mode.isChecked() else "false"}')
+
+        # Additional parameters
+        run_analysis_parts.append('shifts=2')
+        run_analysis_parts.append('repaint=50')
+
+        run_analysis_cmd = " ".join(run_analysis_parts)
+
+        # Build complete macro
+        macro_template = """for (i=0; i  < datapaths.length; i++) {
+    run("Bio-Formats Importer", "open=" + datapaths[i] +" color_mode=Default rois_import=[ROI manager] split_channels view=Hyperstack stack_order=XYCZT");
+    run("Run analysis", "%s");
+    run("Export results", "filepath=["+respaths[i]+"] fileformat=[CSV (comma separated)] %s");
+    while (nImages>0) {
+        selectImage(nImages);
+        close();
+    }
+}"""
+
+        macro_command = macro_template % (run_analysis_cmd, export_string)
+
+        return macro_command
+
+    def generate_thunderstorm_macro(self):
+        """Generate the complete thunderSTORM macro file"""
+        try:
+            # Check if input directory is set
+            if not hasattr(self, 'ts_input_dir') or not self.ts_input_dir:
+                from qtpy.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "No Directory", "Please select an input directory first.")
+                return
+
+            # Get file list
+            data_files, result_files = self.get_thunderstorm_file_list()
+
+            if not data_files:
+                from qtpy.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self,
+                    "No Files Found",
+                    f"No files found matching pattern: {self.ts_file_pattern.currentText()}"
+                )
+                return
+
+            # Convert file lists to ImageJ macro arrays
+            data_files_str = str(data_files).replace('[', '').replace(']', '')
+            result_files_str = str(result_files).replace('[', '').replace(']', '')
+
+            datapaths_line = f'datapaths = newArray({data_files_str});'
+            respaths_line = f'respaths = newArray({result_files_str});'
+
+            # Generate macro command
+            macro_command = self.generate_thunderstorm_macro_command()
+
+            # Combine into full macro
+            full_macro = f"{datapaths_line}\n{respaths_line}\n{macro_command}"
+
+            # Save macro
+            save_path = os.path.join(self.ts_input_dir, 'thunderstorm_macro_auto.ijm')
+            with open(save_path, 'w') as f:
+                f.write(full_macro)
+
+            # Update preview
+            self.ts_macro_preview.setPlainText(full_macro)
+            self.ts_view_macro_btn.setEnabled(True)
+
+            # Update status
+            self.ts_status_label.setText(
+                f"✓ Macro generated successfully: {save_path}\n"
+                f"  Found {len(data_files)} files to process"
+            )
+            self.ts_status_label.setStyleSheet("color: green; padding: 5px;")
+
+            # Show success message
+            from qtpy.QtWidgets import QMessageBox
+            msg = QMessageBox(self)
+            msg.setIcon(QMessageBox.Information)
+            msg.setWindowTitle("Macro Generated")
+            msg.setText(f"ThunderSTORM macro generated successfully!")
+            msg.setInformativeText(
+                f"Macro saved to: {save_path}\n\n"
+                f"Files to process: {len(data_files)}\n\n"
+                "You can now:\n"
+                "1. Run the macro manually in ImageJ/Fiji\n"
+                "2. Enable 'Auto-run' and click 'Generate' again to run automatically"
+            )
+            msg.setStandardButtons(QMessageBox.Ok)
+
+            # Add buttons for additional actions
+            if self.ts_auto_run.isChecked():
+                msg.addButton("Run Now", QMessageBox.ActionRole)
+
+            result = msg.exec_()
+
+            # If auto-run is enabled and user clicked "Run Now", execute the macro
+            if self.ts_auto_run.isChecked() and result == 0:
+                self.run_thunderstorm_macro(save_path)
+
+        except Exception as e:
+            from qtpy.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to generate macro:\n\n{str(e)}"
+            )
+            self.ts_status_label.setText(f"✗ Error: {str(e)}")
+            self.ts_status_label.setStyleSheet("color: red; padding: 5px;")
+
+    def view_thunderstorm_macro(self):
+        """Open the generated macro in a viewer"""
+        macro_path = os.path.join(self.ts_input_dir, 'thunderstorm_macro_auto.ijm')
+
+        if not os.path.exists(macro_path):
+            from qtpy.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self,
+                "File Not Found",
+                "Macro file not found. Please generate the macro first."
+            )
+            return
+
+        # Try to open with system default editor
+        try:
+            if os.name == 'nt':  # Windows
+                os.startfile(macro_path)
+            elif os.name == 'posix':  # macOS and Linux
+                subprocess.call(['open' if sys.platform == 'darwin' else 'xdg-open', macro_path])
+        except Exception as e:
+            from qtpy.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self,
+                "Cannot Open File",
+                f"Could not open macro file with system editor:\n{str(e)}\n\n"
+                f"File location: {macro_path}"
+            )
+
+    def run_thunderstorm_macro(self, macro_path):
+        """Run the generated macro in ImageJ"""
+        try:
+            if not hasattr(self, 'ts_fiji_installation') or not self.ts_fiji_installation:
+                from qtpy.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self,
+                    "Fiji Path Not Set",
+                    "Please set the Fiji/ImageJ installation path first."
+                )
+                return
+
+            # Check which execution method to use
+            use_pyimagej = self.ts_exec_pyimagej_radio.isChecked()
+
+            if use_pyimagej:
+                self.run_with_pyimagej(macro_path)
+            else:
+                self.run_with_subprocess(macro_path)
+
+        except Exception as e:
+            from qtpy.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self,
+                "Execution Error",
+                f"Failed to run macro:\n\n{str(e)}"
+            )
+
+    def run_with_pyimagej(self, macro_path):
+        """Run macro using PyImageJ"""
+        try:
+            import imagej
+
+            self.ts_status_label.setText("Initializing ImageJ via PyImageJ...")
+            QApplication.processEvents()
+
+            # Initialize ImageJ
+            ij = imagej.init(self.ts_fiji_installation, headless=False)
+
+            self.ts_status_label.setText("Loading macro...")
+            QApplication.processEvents()
+
+            # Read macro content
+            with open(macro_path, 'r') as f:
+                macro_content = f.read()
+
+            self.ts_status_label.setText("Running macro in ImageJ...")
+            QApplication.processEvents()
+
+            # Run macro
+            ij.py.run_macro(macro_content)
+
+            self.ts_status_label.setText("✓ Macro execution completed via PyImageJ")
+            self.ts_status_label.setStyleSheet("color: green; padding: 5px;")
+
+            from qtpy.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self,
+                "Success",
+                "Macro executed successfully via PyImageJ!\n\n"
+                "Check the output directory for results."
+            )
+
+        except ImportError:
+            from qtpy.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self,
+                "PyImageJ Not Found",
+                "PyImageJ is not installed.\n\n"
+                "Install it using: pip install pyimagej\n\n"
+                "Alternatively, use the 'Subprocess' execution method."
+            )
+        except Exception as e:
+            raise
+
+    def run_with_subprocess(self, macro_path):
+        """Run macro by calling ImageJ as subprocess"""
+        try:
+            # Find ImageJ executable
+            if sys.platform == 'darwin':  # macOS
+                imagej_exe = os.path.join(self.ts_fiji_installation, 'Contents', 'MacOS', 'ImageJ-macosx')
+            elif sys.platform.startswith('win'):  # Windows
+                imagej_exe = os.path.join(self.ts_fiji_installation, 'ImageJ-win64.exe')
+            else:  # Linux
+                imagej_exe = os.path.join(self.ts_fiji_installation, 'ImageJ-linux64')
+
+            if not os.path.exists(imagej_exe):
+                # Try alternative names
+                possible_names = ['fiji', 'ImageJ', 'imagej']
+                for name in possible_names:
+                    test_path = os.path.join(self.ts_fiji_installation, name)
+                    if os.path.exists(test_path):
+                        imagej_exe = test_path
+                        break
+                else:
+                    raise FileNotFoundError(
+                        f"ImageJ executable not found in {self.ts_fiji_installation}\n"
+                        f"Looked for: {imagej_exe}"
+                    )
+
+            self.ts_status_label.setText("Launching ImageJ...")
+            QApplication.processEvents()
+
+            # Run ImageJ with macro
+            cmd = [imagej_exe, '-macro', macro_path]
+
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=self.ts_input_dir
+            )
+
+            self.ts_status_label.setText("ImageJ is running... (this may take a while)")
+            self.ts_status_label.setStyleSheet("color: blue; padding: 5px;")
+
+            # Show dialog that processing is happening
+            from qtpy.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self,
+                "ImageJ Launched",
+                f"ImageJ has been launched with the macro.\n\n"
+                f"The processing will continue in ImageJ.\n"
+                f"Results will be saved to: {self.ts_input_dir}\n\n"
+                f"You can continue using FLIKA while ImageJ runs."
+            )
+
+            self.ts_status_label.setText("ImageJ is processing in the background...")
+
+        except FileNotFoundError as e:
+            raise FileNotFoundError(str(e))
+        except Exception as e:
+            raise
+
+    def add_thunderstorm_attributes_to_init(self):
+        """Initialize thunderSTORM-specific attributes"""
+        self.ts_input_dir = None
+        self.ts_fiji_installation = None
 
     def close(self):
         """Enhanced close method that properly closes file logging"""
