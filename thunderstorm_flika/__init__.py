@@ -34,6 +34,22 @@ import numpy as np
 import os
 from pathlib import Path
 
+
+# Create a LineEdit wrapper class that works with BaseProcess
+class LineEdit(QLineEdit):
+    """Wrapper for QLineEdit that adds setValue() and value() methods for BaseProcess compatibility"""
+
+    def __init__(self, parent=None):
+        QLineEdit.__init__(self, parent)
+
+    def setValue(self, value):
+        """Set the text value"""
+        self.setText(str(value))
+
+    def value(self):
+        """Get the text value"""
+        return self.text()
+
 # Import thunderSTORM modules
 # We'll assume the thunderstorm_python package is in the plugin directory
 import sys
@@ -155,7 +171,9 @@ class ThunderSTORM_RunAnalysis(BaseProcess):
         connectivity.addItem('8-neighbourhood')
         connectivity.addItem('4-neighbourhood')
 
-        threshold_expr = QLineEdit()
+        threshold_expr = LineEdit()
+        threshold_expr.setPlaceholderText('std(Wave.F1)')  # Show default as placeholder
+        threshold_expr.setText('std(Wave.F1)')  # Set initial value directly
 
         self.items.append({'name': 'detector_type', 'string': 'Detector Type', 'object': detector_type})
         self.items.append({'name': 'connectivity', 'string': 'Connectivity', 'object': connectivity})
@@ -236,73 +254,63 @@ class ThunderSTORM_RunAnalysis(BaseProcess):
 
             print(f"Processing {image_stack.shape[0]} frames...")
 
-            # Create pipeline components
-            # 1. Filter
+            # Validate threshold expression - use default if empty
+            if not threshold_expr or threshold_expr.strip() == '':
+                threshold_expr = 'std(Wave.F1)'
+                print(f"Using default threshold expression: {threshold_expr}")
+
+            # Create pipeline using factory pattern
+            filter_params = {}
             if filter_type == 'wavelet':
-                image_filter = filters.WaveletFilter(scale=int(wavelet_scale), order=int(wavelet_order))
-            elif filter_type == 'gaussian':
-                image_filter = filters.GaussianFilter(sigma=float(gaussian_sigma))
+                filter_params = {'scale': int(wavelet_scale), 'order': int(wavelet_order)}
+            elif filter_type in ['gaussian', 'lowered_gaussian']:
+                filter_params = {'sigma': float(gaussian_sigma)}
             elif filter_type == 'dog':
-                image_filter = filters.DoGFilter(sigma1=float(gaussian_sigma), sigma2=float(gaussian_sigma)*1.6)
-            elif filter_type == 'lowered_gaussian':
-                image_filter = filters.LoweredGaussianFilter(sigma=float(gaussian_sigma))
+                filter_params = {'sigma1': float(gaussian_sigma), 'sigma2': float(gaussian_sigma)*1.6}
             elif filter_type == 'median':
-                image_filter = filters.MedianFilter(kernel_size=3)
-            else:
-                image_filter = None
+                filter_params = {'size': 3}
 
-            # 2. Detector
-            conn = 8 if connectivity == '8-neighbourhood' else 4
+            # Detector parameters
+            conn_value = 8 if connectivity == '8-neighbourhood' else 4
+            detector_params = {}
             if detector_type == 'local_maximum':
-                detector = detection.LocalMaximumDetector(connectivity=conn)
+                detector_params = {'connectivity': connectivity, 'min_distance': 1}
             elif detector_type == 'non_maximum_suppression':
-                detector = detection.NonMaximumSuppression(connectivity=conn)
-            else:
-                detector = detection.CentroidDetector(connectivity=conn)
+                detector_params = {'connectivity': conn_value}
+            elif detector_type == 'centroid':
+                detector_params = {'connectivity': conn_value}
 
-            # 3. Fitter
-            if fitter_type == 'gaussian_lsq':
-                fitter = fitting.GaussianLSQFitter(
-                    fit_radius=int(fit_radius),
-                    initial_sigma=float(initial_sigma),
-                    integrated=bool(integrated),
-                    elliptical=bool(elliptical)
-                )
-            elif fitter_type == 'gaussian_wlsq':
-                fitter = fitting.GaussianWLSQFitter(
-                    fit_radius=int(fit_radius),
-                    initial_sigma=float(initial_sigma),
-                    integrated=bool(integrated),
-                    elliptical=bool(elliptical)
-                )
+            # Fitter parameters
+            fitter_params = {}
+            if fitter_type in ['gaussian_lsq', 'gaussian_wlsq']:
+                fitter_params = {
+                    'initial_sigma': float(initial_sigma),
+                    'integrated': bool(integrated),
+                    'elliptical': bool(elliptical)
+                }
             elif fitter_type == 'gaussian_mle':
-                fitter = fitting.GaussianMLEFitter(
-                    fit_radius=int(fit_radius),
-                    initial_sigma=float(initial_sigma)
-                )
-            elif fitter_type == 'radial_symmetry':
-                fitter = fitting.RadialSymmetryFitter(fit_radius=int(fit_radius))
-            else:
-                fitter = fitting.CentroidFitter(fit_radius=int(fit_radius))
+                fitter_params = {'initial_sigma': float(initial_sigma)}
 
-            # 4. Create pipeline
+            # Create pipeline
             self.pipeline = ThunderSTORM(
-                filter=image_filter,
-                detector=detector,
-                fitter=fitter,
+                filter_type=filter_type,
+                filter_params=filter_params,
+                detector_type=detector_type,
+                detector_params=detector_params,
+                fitter_type=fitter_type,
+                fitter_params=fitter_params,
+                threshold_expression=threshold_expr,
                 pixel_size=float(pixel_size),
                 photons_per_adu=float(photons_per_adu),
                 baseline=float(baseline),
                 em_gain=float(em_gain)
             )
 
-            # Parse threshold
-            threshold_val = self.pipeline._parse_threshold(threshold_expr, image_stack[0])
-
-            # Process all frames
-            self.localizations = self.pipeline.process_movie(
+            # Process all frames (pass fit_radius to the analysis)
+            self.localizations = self.pipeline.analyze_stack(
                 image_stack,
-                threshold=threshold_val
+                fit_radius=int(fit_radius),
+                show_progress=True
             )
 
             n_locs = len(self.localizations['x'])
@@ -417,24 +425,24 @@ class ThunderSTORM_PostProcessing(BaseProcess):
         try:
             g.m.statusBar().showMessage("Running post-processing...")
 
-            # Quality filtering
-            filtered = postprocessing.filter_localizations(
-                self.localizations,
+            # Quality filtering using LocalizationFilter class
+            loc_filter = postprocessing.LocalizationFilter(
                 max_uncertainty=float(max_uncertainty),
                 min_intensity=float(min_intensity)
             )
+            filtered = loc_filter.filter(self.localizations)
 
             n_before = len(self.localizations['x'])
             n_after = len(filtered['x'])
             print(f"Filtering: {n_before} -> {n_after} localizations")
 
-            # Merging
+            # Merging using MolecularMerger class
             if float(merge_radius) > 0:
-                merged = postprocessing.merge_localizations(
-                    filtered,
-                    distance_threshold=float(merge_radius),
-                    frame_threshold=int(merge_frames)
+                merger = postprocessing.MolecularMerger(
+                    max_distance=float(merge_radius),
+                    max_frame_gap=int(merge_frames)
                 )
+                merged = merger.merge(filtered)
                 n_merged = len(merged['x'])
                 print(f"Merging: {n_after} -> {n_merged} localizations")
                 self.localizations = merged
@@ -528,17 +536,25 @@ class ThunderSTORM_DriftCorrection(BaseProcess):
         try:
             g.m.statusBar().showMessage("Running drift correction...")
 
-            # Run drift correction
-            corrected, drift = postprocessing.drift_correction(
-                self.localizations,
-                magnification=int(magnification),
-                n_bins=int(n_bins),
-                smoothing_bandwidth=float(smoothing_bandwidth)
+            # Create DriftCorrector with smoothing parameter
+            drift_corrector = postprocessing.DriftCorrector(
+                method='cross_correlation',
+                smoothing=float(smoothing_bandwidth)
             )
 
-            self.localizations = corrected
+            # Compute drift
+            frames = np.unique(self.localizations['frame'])
+            drift_x, drift_y = drift_corrector.compute_drift_xcorr(
+                self.localizations,
+                frames,
+                pixel_size=100.0 / int(magnification),  # Adjust pixel size by magnification
+                segment_frames=max(50, len(frames) // int(n_bins))  # Use n_bins to determine segment size
+            )
 
-            max_drift = np.sqrt(drift['x']**2 + drift['y']**2).max()
+            # Apply drift correction
+            self.localizations = drift_corrector.apply_drift_correction(self.localizations)
+
+            max_drift = np.sqrt(drift_x**2 + drift_y**2).max()
             print(f"Drift correction complete. Max drift: {max_drift:.2f} nm")
             g.m.statusBar().showMessage(f"Drift correction complete. Max drift: {max_drift:.2f} nm", 3000)
 
