@@ -122,11 +122,7 @@ class ThunderSTORM_RunAnalysis(BaseProcess):
 
             # Rendering
             'render_pixel_size': 10.0,
-            'renderer_type': 'gaussian',
-
-            # Performance
-            'use_parallel': True,  # Enable parallel processing
-            'n_jobs': -2  # Use all cores except one
+            'renderer_type': 'gaussian'
         }
 
     def gui(self):
@@ -237,54 +233,13 @@ class ThunderSTORM_RunAnalysis(BaseProcess):
         self.items.append({'name': 'render_pixel_size', 'string': 'Render Pixel Size (nm)', 'object': render_pixel_size})
         self.items.append({'name': 'renderer_type', 'string': 'Renderer Type', 'object': renderer_type})
 
-        # ===== Tab 6: Performance =====
-        performance_tab = QWidget()
-        performance_layout = QVBoxLayout()
-
-        performance_group = QGroupBox("Parallel Processing")
-        performance_group_layout = QVBoxLayout()
-
-        use_parallel = CheckBox()
-        use_parallel.setChecked(True)
-
-        n_jobs = SliderLabel(0)
-        n_jobs.setRange(-2, 16)  # -2 = all but one, -1 = all, 1-16 = specific count
-        n_jobs.setValue(-2)  # Set default value to -2 (all cores except one)
-
-        self.items.append({'name': 'use_parallel', 'string': 'Enable Parallel Processing', 'object': use_parallel})
-        self.items.append({'name': 'n_jobs', 'string': 'Number of Jobs (-2=all but one)', 'object': n_jobs})
-
-        performance_group_layout.addWidget(QLabel("Enable Parallel Processing:"))
-        performance_group_layout.addWidget(use_parallel)
-        performance_group_layout.addWidget(QLabel("Number of Jobs:"))
-        performance_group_layout.addWidget(n_jobs)
-
-        # Add helpful explanation
-        help_label = QLabel(
-            "<b>Valid values:</b><br>"
-            "• -2: All cores except one (RECOMMENDED)<br>"
-            "• -1: All cores (maximum speed)<br>"
-            "• 1: Sequential (no parallelization)<br>"
-            "• 2-16: Specific number of cores<br>"
-            "<b>Note:</b> 0 is invalid!"
-        )
-        help_label.setWordWrap(True)
-        performance_group_layout.addWidget(help_label)
-        performance_group.setLayout(performance_group_layout)
-
-        performance_layout.addWidget(performance_group)
-        performance_layout.addStretch()
-        performance_tab.setLayout(performance_layout)
-        tabs.addTab(performance_tab, "Performance")
-
         super().gui()
 
     def __call__(self, filter_type='wavelet', wavelet_scale=2, wavelet_order=3, gaussian_sigma=1.6,
                  detector_type='local_maximum', connectivity='8-neighbourhood', threshold_expr='std(Wave.F1)',
                  fitter_type='gaussian_lsq', fit_radius=3, initial_sigma=1.3, integrated=True, elliptical=False,
                  pixel_size=100.0, photons_per_adu=1.0, baseline=100.0, em_gain=1.0,
-                 render_pixel_size=10.0, renderer_type='gaussian',
-                 use_parallel=True, n_jobs=-2, keepSourceWindow=False):
+                 render_pixel_size=10.0, renderer_type='gaussian', keepSourceWindow=False):
         """Run the complete analysis pipeline"""
 
         self.start(keepSourceWindow)
@@ -351,66 +306,15 @@ class ThunderSTORM_RunAnalysis(BaseProcess):
                 em_gain=float(em_gain)
             )
 
-            # Process all frames - use parallel processing if enabled
-            import time
-            start_time = time.time()
-
-            if use_parallel:
-                try:
-                    # Import parallel processing module
-                    import sys
-                    import os
-                    plugin_dir = os.path.dirname(__file__)
-                    if plugin_dir not in sys.path:
-                        sys.path.insert(0, plugin_dir)
-
-                    from parallel_processing import analyze_stack_parallel_joblib
-
-                    # Validate n_jobs (cannot be 0)
-                    n_jobs_val = int(n_jobs)
-                    if n_jobs_val == 0:
-                        print("Warning: n_jobs=0 is invalid, using n_jobs=-2 (all cores except one)")
-                        n_jobs_val = -2
-
-                    print(f"Using parallel processing with n_jobs={n_jobs_val}")
-                    self.localizations = analyze_stack_parallel_joblib(
-                        self.pipeline,
-                        image_stack,
-                        fit_radius=int(fit_radius),
-                        show_progress=True,
-                        n_jobs=n_jobs_val
-                    )
-                except ImportError as e:
-                    print(f"Parallel processing not available: {e}")
-                    print("Falling back to sequential processing...")
-                    print("To enable parallel processing: pip install joblib")
-                    self.localizations = self.pipeline.analyze_stack(
-                        image_stack,
-                        fit_radius=int(fit_radius),
-                        show_progress=True
-                    )
-                except ValueError as e:
-                    if "n_jobs == 0" in str(e):
-                        print(f"Error: Invalid n_jobs value ({n_jobs}). Falling back to sequential processing.")
-                        self.localizations = self.pipeline.analyze_stack(
-                            image_stack,
-                            fit_radius=int(fit_radius),
-                            show_progress=True
-                        )
-                    else:
-                        raise
-            else:
-                print("Using sequential processing")
-                self.localizations = self.pipeline.analyze_stack(
-                    image_stack,
-                    fit_radius=int(fit_radius),
-                    show_progress=True
-                )
-
-            elapsed = time.time() - start_time
+            # Process all frames (pass fit_radius to the analysis)
+            self.localizations = self.pipeline.analyze_stack(
+                image_stack,
+                fit_radius=int(fit_radius),
+                show_progress=True
+            )
 
             n_locs = len(self.localizations['x'])
-            print(f"Analysis complete: {n_locs} molecules detected in {elapsed:.1f}s")
+            print(f"Analysis complete: {n_locs} molecules detected")
 
             # Render super-resolution image
             if renderer_type == 'gaussian':
