@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin name="ThunderSTORM">
+	<directory>
+		thunderstorm_flika
+	</directory>
+	<version>
+		1.0.0
+	</version>
+	<author>
+		George
+	</author>
+	<email>
+		george@lab.edu
+	</email>
+	<url>
+		https://github.com/yourusername/thunderstorm_flika
+	</url>
+	<description>
+		Comprehensive ThunderSTORM implementation for FLIKA providing Single Molecule
+		Localization Microscopy (SMLM) analysis with advanced detection, fitting, and
+		super-resolution rendering capabilities.
+	</description>
+	<long_description>
+		ThunderSTORM for FLIKA brings comprehensive SMLM analysis to the FLIKA platform.
+		Features include multiple image filtering methods (wavelet, Gaussian, DoG),
+		advanced molecule detection algorithms, PSF fitting with LSQ/WLSQ/MLE/Radial Symmetry
+		methods, post-processing tools for quality filtering and drift correction,
+		multiple super-resolution rendering techniques, and simulation tools for testing
+		and validation. Perfect for PALM, STORM, and other single-molecule imaging modalities.
+	</long_description>
+	<dependencies>
+		<dependency name='numpy'></dependency>
+		<dependency name='scipy'></dependency>
+	</dependencies>
+	<tags>
+		<tag>SMLM</tag>
+		<tag>super-resolution</tag>
+		<tag>PALM</tag>
+		<tag>STORM</tag>
+		<tag>localization</tag>
+		<tag>microscopy</tag>
+	</tags>
+	<menu_layout>
+		<action location="__init__" function="thunderstorm_run_analysis.gui">Run Analysis</action>
+		<action location="__init__" function="thunderstorm_quick_analysis.gui">Quick Analysis</action>
+		<action location="__init__" function="thunderstorm_post_processing.gui">Post-Processing</action>
+		<action location="__init__" function="thunderstorm_drift_correction.gui">Drift Correction</action>
+		<action location="__init__" function="thunderstorm_rendering.gui">Rendering</action>
+		<action location="__init__" function="thunderstorm_simulate_data.gui">Simulate Data</action>
+	</menu_layout>
+</plugin>

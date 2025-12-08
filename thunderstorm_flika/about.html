@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ThunderSTORM for FLIKA</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        h1 {
+            color: #2E86AB;
+            border-bottom: 3px solid #2E86AB;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #A23B72;
+            margin-top: 25px;
+            border-bottom: 2px solid #A23B72;
+            padding-bottom: 5px;
+        }
+        h3 {
+            color: #F18F01;
+            margin-top: 20px;
+        }
+        .version {
+            color: #666;
+            font-style: italic;
+            font-size: 0.9em;
+        }
+        .author {
+            margin-top: 10px;
+            color: #555;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            color: #c7254e;
+        }
+        .highlight {
+            background-color: #fff3cd;
+            padding: 10px;
+            border-left: 4px solid #ffc107;
+            margin: 15px 0;
+        }
+        .feature-box {
+            background-color: #e8f4f8;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        ul {
+            margin-left: 20px;
+        }
+        li {
+            margin: 5px 0;
+        }
+        .menu-path {
+            background-color: #e9ecef;
+            padding: 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            margin: 10px 0;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 15px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #2E86AB;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <h1>ThunderSTORM for FLIKA</h1>
+    <p class="version">Version 1.0.0</p>
+    <p class="author">By George</p>
+    
+    <div class="highlight">
+        <strong>⚡ ThunderSTORM for FLIKA</strong> brings comprehensive Single Molecule Localization Microscopy 
+        (SMLM) analysis capabilities to FLIKA, implementing the complete functionality of the popular 
+        ImageJ thunderSTORM plugin in Python.
+    </div>
+    
+    <h2>📋 Overview</h2>
+    <p>
+        This plugin provides a complete Python implementation of thunderSTORM for analyzing PALM, STORM, 
+        and other SMLM data. It offers a full suite of tools for detecting, localizing, and visualizing 
+        single molecules with sub-diffraction precision.
+    </p>
+    
+    <div class="feature-box">
+        <h3>Key Features</h3>
+        <ul>
+            <li><strong>Complete Analysis Pipeline:</strong> From raw images to super-resolution reconstruction</li>
+            <li><strong>Multiple Algorithms:</strong> Choose from various filtering, detection, and fitting methods</li>
+            <li><strong>Advanced PSF Fitting:</strong> LSQ, WLSQ, MLE, Radial Symmetry, and Centroid methods</li>
+            <li><strong>Post-Processing Suite:</strong> Quality filtering, merging, drift correction</li>
+            <li><strong>Flexible Rendering:</strong> Gaussian, Histogram, ASH, and Scatter visualization</li>
+            <li><strong>Simulation Tools:</strong> Generate test data with known ground truth</li>
+            <li><strong>User-Friendly GUI:</strong> Intuitive interface with real-time parameter adjustment</li>
+        </ul>
+    </div>
+    
+    <h2>🚀 Getting Started</h2>
+    
+    <h3>Quick Start</h3>
+    <ol>
+        <li>Open your SMLM movie in FLIKA</li>
+        <li>Go to: <code class="menu-path">Plugins → ThunderSTORM → Quick Analysis</code></li>
+        <li>View the super-resolution image!</li>
+    </ol>
+    
+    <h3>Custom Analysis</h3>
+    <ol>
+        <li>Open your SMLM data</li>
+        <li>Go to: <code class="menu-path">Plugins → ThunderSTORM → Run Analysis</code></li>
+        <li>Configure parameters in the tabs:
+            <ul>
+                <li><strong>Filtering:</strong> Choose image enhancement method</li>
+                <li><strong>Detection:</strong> Set molecule detection parameters</li>
+                <li><strong>Fitting:</strong> Configure PSF fitting algorithm</li>
+                <li><strong>Camera/Render:</strong> Set camera parameters and rendering options</li>
+            </ul>
+        </li>
+        <li>Click <strong>Preview</strong> to test or <strong>Run</strong> to analyze entire stack</li>
+        <li>Save localizations as CSV for further analysis</li>
+    </ol>
+    
+    <h2>🔧 Available Tools</h2>
+    
+    <h3>1. Run Analysis</h3>
+    <p class="menu-path">Plugins → ThunderSTORM → Run Analysis</p>
+    <p>
+        Complete SMLM analysis pipeline with full control over all parameters. Features tabbed interface 
+        for easy parameter configuration.
+    </p>
+    
+    <table>
+        <tr>
+            <th>Parameter Category</th>
+            <th>Options</th>
+        </tr>
+        <tr>
+            <td><strong>Filtering</strong></td>
+            <td>Wavelet, Gaussian, DoG, Lowered Gaussian, Median, None</td>
+        </tr>
+        <tr>
+            <td><strong>Detection</strong></td>
+            <td>Local Maximum, Non-Maximum Suppression, Centroid</td>
+        </tr>
+        <tr>
+            <td><strong>PSF Fitting</strong></td>
+            <td>Gaussian LSQ, WLSQ, MLE, Radial Symmetry, Centroid</td>
+        </tr>
+        <tr>
+            <td><strong>Rendering</strong></td>
+            <td>Gaussian, Histogram, ASH, Scatter</td>
+        </tr>
+    </table>
+    
+    <h3>2. Quick Analysis</h3>
+    <p class="menu-path">Plugins → ThunderSTORM → Quick Analysis</p>
+    <p>
+        Fast analysis with optimized default parameters. Great for quick inspection and testing.
+    </p>
+    
+    <h3>3. Post-Processing</h3>
+    <p class="menu-path">Plugins → ThunderSTORM → Post-Processing</p>
+    <p>
+        Refine localization data with multiple filtering and merging options:
+    </p>
+    <ul>
+        <li><strong>Quality Filtering:</strong> Filter by intensity, uncertainty, and sigma ranges</li>
+        <li><strong>Density Filtering:</strong> Remove isolated localizations based on local density</li>
+        <li><strong>Molecule Merging:</strong> Combine reappearing molecules (blinking correction)</li>
+    </ul>
+    
+    <h3>4. Drift Correction</h3>
+    <p class="menu-path">Plugins → ThunderSTORM → Drift Correction</p>
+    <p>
+        Correct sample drift using:
+    </p>
+    <ul>
+        <li><strong>Cross-Correlation:</strong> Estimate drift from super-resolution reconstructions</li>
+        <li><strong>Fiducial Markers:</strong> Track fiducial markers for drift estimation</li>
+    </ul>
+    
+    <h3>5. Rendering</h3>
+    <p class="menu-path">Plugins → ThunderSTORM → Rendering</p>
+    <p>
+        Create super-resolution images from localization data using various rendering methods:
+    </p>
+    <ul>
+        <li><strong>Gaussian:</strong> Render each molecule as 2D Gaussian (high quality)</li>
+        <li><strong>Histogram:</strong> Fast rendering with optional jittering</li>
+        <li><strong>ASH:</strong> Average Shifted Histogram (fast, good quality)</li>
+        <li><strong>Scatter:</strong> Simple scatter plot of positions</li>
+    </ul>
+    
+    <h3>6. Simulate Data</h3>
+    <p class="menu-path">Plugins → ThunderSTORM → Simulate Data</p>
+    <p>
+        Generate synthetic SMLM data for testing and validation:
+    </p>
+    <ul>
+        <li>Multiple test patterns (Siemens star, grid, circles, random)</li>
+        <li>Realistic photon noise and PSF simulation</li>
+        <li>Blinking dynamics</li>
+        <li>Ground truth localization export for performance evaluation</li>
+    </ul>
+    
+    <h2>⚙️ Detailed Parameters</h2>
+    
+    <h3>Image Filtering</h3>
+    <table>
+        <tr>
+            <th>Filter</th>
+            <th>Description</th>
+            <th>Best For</th>
+        </tr>
+        <tr>
+            <td><code>wavelet</code></td>
+            <td>B-spline wavelet (à trous algorithm)</td>
+            <td>General purpose, recommended default</td>
+        </tr>
+        <tr>
+            <td><code>gaussian</code></td>
+            <td>Gaussian lowpass filter</td>
+            <td>Smooth backgrounds</td>
+        </tr>
+        <tr>
+            <td><code>dog</code></td>
+            <td>Difference of Gaussians</td>
+            <td>Band-pass filtering</td>
+        </tr>
+        <tr>
+            <td><code>median</code></td>
+            <td>Median filter</td>
+            <td>Salt-and-pepper noise</td>
+        </tr>
+    </table>
+    
+    <h3>PSF Fitting Methods</h3>
+    <table>
+        <tr>
+            <th>Method</th>
+            <th>Speed</th>
+            <th>Accuracy</th>
+            <th>Notes</th>
+        </tr>
+        <tr>
+            <td><code>gaussian_lsq</code></td>
+            <td>Fast</td>
+            <td>Good</td>
+            <td>Recommended for most applications</td>
+        </tr>
+        <tr>
+            <td><code>gaussian_wlsq</code></td>
+            <td>Fast</td>
+            <td>Very Good</td>
+            <td>Weighted least squares, better for low SNR</td>
+        </tr>
+        <tr>
+            <td><code>gaussian_mle</code></td>
+            <td>Slow</td>
+            <td>Excellent</td>
+            <td>Most accurate, best for publication quality</td>
+        </tr>
+        <tr>
+            <td><code>radial_symmetry</code></td>
+            <td>Very Fast</td>
+            <td>Good</td>
+            <td>Non-iterative, great for preview</td>
+        </tr>
+        <tr>
+            <td><code>centroid</code></td>
+            <td>Very Fast</td>
+            <td>Fair</td>
+            <td>Simple intensity-weighted centroid</td>
+        </tr>
+    </table>
+    
+    <h3>Threshold Expressions</h3>
+    <p>
+        The detection threshold can be specified using mathematical expressions:
+    </p>
+    <ul>
+        <li><code>std(Wave.F1)</code> - Standard deviation of filtered image (recommended)</li>
+        <li><code>2*std(Wave.F1)</code> - 2× standard deviation (more stringent)</li>
+        <li><code>mean(Wave.F1) + 3*std(Wave.F1)</code> - Mean + 3σ</li>
+        <li><code>100</code> - Fixed threshold value</li>
+    </ul>
+    
+    <h3>Camera Parameters</h3>
+    <ul>
+        <li><code>Pixel Size (nm)</code>: Physical size of camera pixels (typically 100-160 nm)</li>
+        <li><code>Photons per ADU</code>: Photoelectron conversion factor (0.1-10)</li>
+        <li><code>Baseline</code>: Camera baseline offset (ADU)</li>
+        <li><code>EM Gain</code>: EMCCD gain factor (1 for sCMOS)</li>
+    </ul>
+    
+    <h2>💾 Data Format</h2>
+    
+    <h3>Input</h3>
+    <ul>
+        <li>TIFF stacks (single or multi-page)</li>
+        <li>Any format supported by FLIKA</li>
+        <li>CSV localization files for post-processing</li>
+    </ul>
+    
+    <h3>Output</h3>
+    <p>
+        Localization data saved as CSV with columns:
+    </p>
+    <ul>
+        <li><code>x [nm]</code>, <code>y [nm]</code> - Molecular positions</li>
+        <li><code>frame</code> - Frame number</li>
+        <li><code>intensity</code> - Fitted intensity (photons)</li>
+        <li><code>background</code> - Local background</li>
+        <li><code>sigma_x</code>, <code>sigma_y</code> - PSF widths</li>
+        <li><code>uncertainty</code> - Localization precision (nm)</li>
+        <li><code>chi_squared</code> - Goodness of fit</li>
+    </ul>
+    
+    <h2>📊 Typical Workflow</h2>
+    
+    <div class="feature-box">
+        <h3>Standard SMLM Analysis Workflow</h3>
+        <ol>
+            <li><strong>Load Data:</strong> Open your SMLM movie in FLIKA</li>
+            <li><strong>Run Analysis:</strong> Use "Run Analysis" or "Quick Analysis"</li>
+            <li><strong>Inspect Results:</strong> Check the super-resolution image and statistics</li>
+            <li><strong>Apply Drift Correction:</strong> If needed, load localizations and apply drift correction</li>
+            <li><strong>Post-Process:</strong> Filter by quality, merge blinking molecules</li>
+            <li><strong>Re-Render:</strong> Create final super-resolution image with desired rendering method</li>
+            <li><strong>Export:</strong> Save localizations (CSV) and images (TIFF) for publication</li>
+        </ol>
+    </div>
+    
+    <h2>🎯 Tips & Best Practices</h2>
+    
+    <h3>Parameter Selection</h3>
+    <ul>
+        <li><strong>Start with defaults:</strong> The default wavelet filter + local maximum + LSQ fitting works well for most data</li>
+        <li><strong>Tune threshold:</strong> If too many false positives, increase threshold; if missing molecules, decrease</li>
+        <li><strong>Check PSF sigma:</strong> Should be 1.0-1.6 pixels; adjust initial_sigma if fits fail</li>
+        <li><strong>Fit radius:</strong> 3-5 pixels is usually sufficient; larger for very bright spots</li>
+    </ul>
+    
+    <h3>Quality Control</h3>
+    <ul>
+        <li>Check mean intensity - should be reasonable for your fluorophore</li>
+        <li>Mean uncertainty &lt;30 nm indicates good localization precision</li>
+        <li>Inspect sigma distribution - should be narrow and centered around expected PSF width</li>
+        <li>Compare before/after post-processing to ensure you're not over-filtering</li>
+    </ul>
+    
+    <h3>Performance</h3>
+    <ul>
+        <li><strong>Quick preview:</strong> Use radial symmetry fitter for fast preview</li>
+        <li><strong>Final analysis:</strong> Use MLE for highest quality, publication-ready results</li>
+        <li><strong>Large datasets:</strong> Process in smaller chunks or use LSQ for reasonable speed/quality balance</li>
+    </ul>
+    
+    <h2>🔬 Scientific Background</h2>
+    
+    <p>
+        This plugin implements algorithms from the thunderSTORM ImageJ plugin, which has become a 
+        standard tool in the SMLM field. The methods are based on peer-reviewed publications and 
+        have been validated on both simulated and experimental data.
+    </p>
+    
+    <div class="highlight">
+        <strong>Citation:</strong><br>
+        Ovesný, M., Křížek, P., Borkovec, J., Švindrych, Z., & Hagen, G. M. (2014). 
+        ThunderSTORM: a comprehensive ImageJ plugin for PALM and STORM data analysis and 
+        super-resolution imaging. <em>Bioinformatics</em>, 30(16), 2389-2390.
+    </div>
+    
+    <h2>📦 Installation</h2>
+    
+    <h3>Requirements</h3>
+    <ul>
+        <li>FLIKA >= 0.2.25</li>
+        <li>NumPy</li>
+        <li>SciPy</li>
+        <li>scikit-image</li>
+        <li>Matplotlib</li>
+        <li>Pandas</li>
+        <li>PyWavelets</li>
+    </ul>
+    
+    <h3>Installation Steps</h3>
+    <ol>
+        <li>Install dependencies: <code>pip install numpy scipy scikit-image matplotlib pandas pywavelets</code></li>
+        <li>Copy the <code>thunderstorm_flika</code> folder to <code>~/.FLIKA/plugins/</code></li>
+        <li>Copy the <code>thunderstorm_python</code> package to the plugin folder</li>
+        <li>Restart FLIKA</li>
+        <li>Look for ThunderSTORM in the Plugins menu</li>
+    </ol>
+    
+    <h2>🐛 Troubleshooting</h2>
+    
+    <h3>Common Issues</h3>
+    
+    <p><strong>Plugin not loading:</strong></p>
+    <ul>
+        <li>Check that thunderstorm_python package is in the plugin directory</li>
+        <li>Verify all dependencies are installed</li>
+        <li>Check FLIKA console for error messages</li>
+    </ul>
+    
+    <p><strong>No molecules detected:</strong></p>
+    <ul>
+        <li>Lower the detection threshold</li>
+        <li>Try different filter types</li>
+        <li>Check that your data is suitable for SMLM analysis</li>
+    </ul>
+    
+    <p><strong>PSF fitting fails:</strong></p>
+    <ul>
+        <li>Adjust initial_sigma to match your PSF size</li>
+        <li>Increase fit_radius for bright, wide spots</li>
+        <li>Try radial symmetry fitter for difficult data</li>
+    </ul>
+    
+    <h2>📞 Support & Contact</h2>
+    
+    <p>
+        <strong>Developer:</strong> George<br>
+        <strong>Email:</strong> <a href="mailto:george@research.edu">george@research.edu</a><br>
+        <strong>GitHub:</strong> <a href="https://github.com/your_username/thunderstorm_flika">thunderstorm_flika</a>
+    </p>
+    
+    <p>
+        For bug reports and feature requests, please use the GitHub issue tracker.
+    </p>
+    
+    <h2>📄 License</h2>
+    <p>
+        This plugin is distributed under the GNU GPL v3 license, consistent with the original thunderSTORM plugin.
+    </p>
+    
+    <hr>
+    
+    <p style="text-align: center; color: #666; font-size: 0.9em; margin-top: 30px;">
+        <em>ThunderSTORM for FLIKA - Bringing super-resolution to FLIKA</em>
+    </p>
+</body>
+</html>
