@@ -17,8 +17,8 @@
 	</url>
 	<description>
 		Comprehensive ThunderSTORM implementation for FLIKA providing Single Molecule
-		Localization Microscopy (SMLM) analysis with advanced detection, fitting, and
-		super-resolution rendering capabilities.
+		Localization Microscopy (SMLM) analysis with advanced detection, fitting,
+		super-resolution rendering, and automated testing capabilities.
 	</description>
 	<long_description>
 		ThunderSTORM for FLIKA brings comprehensive SMLM analysis to the FLIKA platform.
@@ -26,11 +26,14 @@
 		advanced molecule detection algorithms, PSF fitting with LSQ/WLSQ/MLE/Radial Symmetry
 		methods, post-processing tools for quality filtering and drift correction,
 		multiple super-resolution rendering techniques, and simulation tools for testing
-		and validation. Perfect for PALM, STORM, and other single-molecule imaging modalities.
+		and validation. NEW: Includes automated testing framework with ground truth validation
+		for comprehensive system validation. Perfect for PALM, STORM, and other single-molecule
+		imaging modalities.
 	</long_description>
 	<dependencies>
 		<dependency name='numpy'></dependency>
 		<dependency name='scipy'></dependency>
+		<dependency name='joblib' optional='true'></dependency>
 	</dependencies>
 	<tags>
 		<tag>SMLM</tag>
@@ -39,6 +42,7 @@
 		<tag>STORM</tag>
 		<tag>localization</tag>
 		<tag>microscopy</tag>
+		<tag>testing</tag>
 	</tags>
 	<menu_layout>
 		<action location="__init__" function="thunderstorm_run_analysis.gui">Run Analysis</action>
@@ -47,5 +51,6 @@
 		<action location="__init__" function="thunderstorm_drift_correction.gui">Drift Correction</action>
 		<action location="__init__" function="thunderstorm_rendering.gui">Rendering</action>
 		<action location="__init__" function="thunderstorm_simulate_data.gui">Simulate Data</action>
+		<action location="__init__" function="thunderstorm_autotest.gui">Automated Testing</action>
 	</menu_layout>
 </plugin>

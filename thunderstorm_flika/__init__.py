@@ -67,6 +67,14 @@ except ImportError as e:
     print("Please ensure the thunderstorm_python package is in the plugin directory")
     THUNDERSTORM_AVAILABLE = False
 
+# Import testing framework
+try:
+    from .thunderstorm_testing import ThunderSTORM_AutoTest
+    TESTING_AVAILABLE = True
+except ImportError:
+    TESTING_AVAILABLE = False
+    print("Warning: Testing framework not available")
+
 
 # ============================================================================
 # Main Analysis Pipeline
@@ -121,6 +129,7 @@ class ThunderSTORM_RunAnalysis(BaseProcess):
             'em_gain': 1.0,
 
             # Rendering
+            'create_rendered_image': True,  # NEW: Control automatic rendering
             'render_pixel_size': 10.0,
             'renderer_type': 'gaussian',
 
@@ -225,6 +234,9 @@ class ThunderSTORM_RunAnalysis(BaseProcess):
         self.items.append({'name': 'em_gain', 'string': 'EM Gain', 'object': em_gain})
 
         # ===== Tab 5: Rendering =====
+        create_rendered_image = CheckBox()
+        create_rendered_image.setChecked(True)  # Default: enabled
+
         render_pixel_size = SliderLabel(3)
         render_pixel_size.setRange(1.0, 50.0)
 
@@ -234,6 +246,7 @@ class ThunderSTORM_RunAnalysis(BaseProcess):
         renderer_type.addItem('ash')
         renderer_type.addItem('scatter')
 
+        self.items.append({'name': 'create_rendered_image', 'string': 'Create Rendered Image After Analysis', 'object': create_rendered_image})
         self.items.append({'name': 'render_pixel_size', 'string': 'Render Pixel Size (nm)', 'object': render_pixel_size})
         self.items.append({'name': 'renderer_type', 'string': 'Renderer Type', 'object': renderer_type})
 
@@ -283,7 +296,7 @@ class ThunderSTORM_RunAnalysis(BaseProcess):
                  detector_type='local_maximum', connectivity='8-neighbourhood', threshold_expr='std(Wave.F1)',
                  fitter_type='gaussian_lsq', fit_radius=3, initial_sigma=1.3, integrated=True, elliptical=False,
                  pixel_size=100.0, photons_per_adu=1.0, baseline=100.0, em_gain=1.0,
-                 render_pixel_size=10.0, renderer_type='gaussian',
+                 create_rendered_image=True, render_pixel_size=10.0, renderer_type='gaussian',
                  use_parallel=True, n_jobs=-2, keepSourceWindow=False):
         """Run the complete analysis pipeline"""
 
@@ -316,7 +329,9 @@ class ThunderSTORM_RunAnalysis(BaseProcess):
                 filter_params = {'size': 3}
 
             # Detector parameters
-            conn_value = 8 if connectivity == '8-neighbourhood' else 4
+            # Note: scikit-image connectivity: 1=4-connected, 2=8-connected
+            ##conn_value = 8 if connectivity == '8-neighbourhood' else 4 # OLD
+            conn_value = 2 if connectivity == '8-neighbourhood' else 1  # ← NEW convention!
             detector_params = {}
             if detector_type == 'local_maximum':
                 detector_params = {'connectivity': connectivity, 'min_distance': 1}
@@ -412,19 +427,24 @@ class ThunderSTORM_RunAnalysis(BaseProcess):
             n_locs = len(self.localizations['x'])
             print(f"Analysis complete: {n_locs} molecules detected in {elapsed:.1f}s")
 
-            # Render super-resolution image
-            if renderer_type == 'gaussian':
-                renderer = visualization.GaussianRenderer(sigma=1.5)
-            elif renderer_type == 'histogram':
-                renderer = visualization.HistogramRenderer()
-            elif renderer_type == 'ash':
-                renderer = visualization.AverageShiftedHistogram()
+            # Conditionally render super-resolution image
+            if create_rendered_image:
+                print("Creating rendered super-resolution image...")
+                if renderer_type == 'gaussian':
+                    renderer = visualization.GaussianRenderer(sigma=1.5)
+                elif renderer_type == 'histogram':
+                    renderer = visualization.HistogramRenderer()
+                elif renderer_type == 'ash':
+                    renderer = visualization.AverageShiftedHistogram()
+                else:
+                    renderer = visualization.ScatterRenderer()
+
+                sr_image = renderer.render(self.localizations, pixel_size=float(render_pixel_size))
+                g.m.statusBar().showMessage(f"Analysis complete: {n_locs} molecules detected", 3000)
             else:
-                renderer = visualization.ScatterRenderer()
-
-            sr_image = renderer.render(self.localizations, pixel_size=float(render_pixel_size))
-
-            g.m.statusBar().showMessage(f"Analysis complete: {n_locs} molecules detected", 3000)
+                print("Skipping rendered image creation (disabled in settings)")
+                sr_image = None
+                g.m.statusBar().showMessage(f"Analysis complete: {n_locs} molecules detected (rendering skipped)", 3000)
 
             # Save localizations option
             save_locs = QMessageBox.question(
@@ -439,9 +459,19 @@ class ThunderSTORM_RunAnalysis(BaseProcess):
                     utils.save_localizations_csv(self.localizations, filename)
                     g.m.statusBar().showMessage(f"Localizations saved to {filename}", 3000)
 
-            self.newtif = sr_image
-            self.newname = f"{self.oldname}_ThunderSTORM_SR"
-            return self.end()
+            # Return appropriate result based on whether rendering was done
+            if create_rendered_image and sr_image is not None:
+                self.newtif = sr_image
+                self.newname = f"{self.oldname}_ThunderSTORM_SR"
+                return self.end()
+            else:
+                # No rendered image - just keep the source window
+                if not keepSourceWindow:
+                    # User chose not to keep source, but we have no new image
+                    # Keep the source anyway and inform them
+                    g.m.statusBar().showMessage("Analysis complete. Source window kept (no rendered image created).", 4000)
+                self.oldwindow.reset()
+                return None
 
         except Exception as e:
             g.alert(f"Error in analysis: {str(e)}")
@@ -993,6 +1023,12 @@ thunderstorm_rendering = ThunderSTORM_Rendering()
 thunderstorm_quick_analysis = ThunderSTORM_QuickAnalysis()
 thunderstorm_simulate_data = ThunderSTORM_SimulateData()
 
+# Testing framework
+if TESTING_AVAILABLE:
+    from .thunderstorm_testing import thunderstorm_autotest
+else:
+    thunderstorm_autotest = None
+
 
 # ============================================================================
 # Plugin Initialization
@@ -1012,6 +1048,8 @@ def initialize_plugin():
         print("  - Drift Correction: Cross-correlation based drift correction")
         print("  - Rendering: Multiple super-resolution rendering methods")
         print("  - Simulate Data: Generate test datasets")
+        if TESTING_AVAILABLE:
+            print("  - Automated Testing: Comprehensive system tests")
         print("\nAccess via: Plugins > ThunderSTORM")
         print("="*60)
     else:
