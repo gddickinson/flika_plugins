@@ -492,8 +492,10 @@ class GaussianLSQFitter(BaseFitter):
             )
 
             # Extract results
-            x = results[:, 1]  # Note: swapped from [row, col] to [x, y]
-            y = results[:, 0]
+            # CRITICAL: Numba function returns [x, y, ...] in results[:, 0:2]
+            # where x is column coordinate and y is row coordinate
+            x = results[:, 0]  # Index 0 is x coordinate (col)
+            y = results[:, 1]  # Index 1 is y coordinate (row)
             intensity = results[:, 2]
             sigma_x = results[:, 3]
             sigma_y = results[:, 4]
@@ -508,8 +510,10 @@ class GaussianLSQFitter(BaseFitter):
             )
 
             # Extract results
-            x = results[:, 1]  # Note: swapped from [row, col] to [x, y]
-            y = results[:, 0]
+            # CRITICAL: Numba function returns [x, y, ...] in results[:, 0:2]
+            # where x is column coordinate and y is row coordinate
+            x = results[:, 0]  # Index 0 is x coordinate (col)
+            y = results[:, 1]  # Index 1 is y coordinate (row)
             intensity = results[:, 2]
             sigma_x = results[:, 3]
             sigma_y = results[:, 4]

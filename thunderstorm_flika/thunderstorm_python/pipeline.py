@@ -4,6 +4,8 @@ ThunderSTORM Pipeline
 
 Main analysis pipeline integrating all components.
 Provides high-level interface similar to thunderSTORM's "Run Analysis".
+
+Updated with comprehensive edge/border handling to prevent artifacts.
 """
 
 import numpy as np
@@ -37,6 +39,8 @@ class ThunderSTORM:
         Camera baseline offset
     em_gain : float
         EM gain (for EMCCD cameras)
+    border_exclusion : int or None
+        Border exclusion width (if None, computed automatically)
     """
 
     def __init__(self,
@@ -50,7 +54,8 @@ class ThunderSTORM:
                  pixel_size=100.0,
                  photons_per_adu=1.0,
                  baseline=100.0,
-                 em_gain=1.0):
+                 em_gain=1.0,
+                 border_exclusion=None):
 
         # Create components
         self.filter = filters.create_filter(
@@ -79,6 +84,9 @@ class ThunderSTORM:
             em_gain=em_gain
         )
 
+        # Border handling
+        self.border_exclusion = border_exclusion
+
         # Post-processing components (optional)
         self.drift_corrector = None
         self.merger = None
@@ -89,8 +97,147 @@ class ThunderSTORM:
         self.localizations = None
         self.images = None
 
-    def analyze_frame(self, image, frame_number=0, fit_radius=3):
-        """Analyze single frame.
+    def _get_border_width(self, fit_radius):
+        """Determine border exclusion width.
+
+        Parameters
+        ----------
+        fit_radius : int
+            Fitting radius in pixels
+
+        Returns
+        -------
+        border_width : int
+            Border exclusion width
+        """
+        if self.border_exclusion is not None:
+            return self.border_exclusion
+        else:
+            return detection.safe_border_width(fit_radius)
+
+    def _diagnose_dimensions(self, image, positions, result, stage=""):
+        """Diagnostic function to help identify dimension issues.
+
+        Parameters
+        ----------
+        image : ndarray
+            Current image
+        positions : ndarray, optional
+            Detection positions in (row, col) format
+        result : dict, optional
+            Localization results with 'x', 'y' keys
+        stage : str
+            Description of current processing stage
+        """
+        print(f"\n=== Dimension Diagnostic: {stage} ===")
+        print(f"Image shape: {image.shape} (rows/height, cols/width)")
+
+        if positions is not None and len(positions) > 0:
+            print(f"Positions shape: {positions.shape}")
+            print(f"Position range: row=[{positions[:, 0].min():.1f}, {positions[:, 0].max():.1f}], " +
+                  f"col=[{positions[:, 1].min():.1f}, {positions[:, 1].max():.1f}]")
+
+        if result is not None and len(result.get('x', [])) > 0:
+            print(f"Result count: {len(result['x'])}")
+            print(f"Result range (pixels): x=[{result['x'].min():.1f}, {result['x'].max():.1f}], " +
+                  f"y=[{result['y'].min():.1f}, {result['y'].max():.1f}]")
+
+            # Check if results are within bounds
+            height, width = image.shape
+            x_out = np.sum((result['x'] < 0) | (result['x'] >= width))
+            y_out = np.sum((result['y'] < 0) | (result['y'] >= height))
+            if x_out > 0 or y_out > 0:
+                print(f"WARNING: Out of bounds detections: x={x_out}, y={y_out}")
+
+        print("=" * 50)
+
+    def _empty_result(self, frame_number):
+        """Create empty result dictionary for frames with no detections.
+
+        Parameters
+        ----------
+        frame_number : int
+            Frame number
+
+        Returns
+        -------
+        result : dict
+            Empty result dictionary
+        """
+        return {
+            'x': np.array([]),
+            'y': np.array([]),
+            'intensity': np.array([]),
+            'background': np.array([]),
+            'sigma_x': np.array([]),
+            'sigma_y': np.array([]),
+            'frame': np.array([]),
+            'uncertainty': np.array([]),
+            'chi_squared': np.array([])
+        }
+
+    def _validate_localizations(self, localizations, image_shape):
+        """Remove localizations outside valid image area.
+
+        This is a critical safety check to ensure no particles are
+        reported outside the actual image bounds, which can occur
+        due to edge effects or fitting errors.
+
+        CRITICAL: Coordinate system conventions:
+        - image_shape is (rows, cols) = (height, width)
+        - localizations['x'] corresponds to column/width dimension
+        - localizations['y'] corresponds to row/height dimension
+        - Therefore: x should be checked against cols, y against rows
+
+        Parameters
+        ----------
+        localizations : dict
+            Localization results with 'x', 'y' in pixels
+        image_shape : tuple
+            (rows, cols) = (height, width) of image
+
+        Returns
+        -------
+        filtered : dict
+            Validated localizations
+        """
+        if len(localizations['x']) == 0:
+            return localizations
+
+        # Unpack dimensions explicitly for clarity
+        # image_shape is (rows, cols) = (height, width)
+        height, width = image_shape
+
+        # Validation bounds:
+        # - x (column coordinate) must be in [0, width)
+        # - y (row coordinate) must be in [0, height)
+        valid = ((localizations['x'] >= 0) &
+                 (localizations['x'] < width) &
+                 (localizations['y'] >= 0) &
+                 (localizations['y'] < height))
+
+        # Count rejected localizations for diagnostics
+        n_rejected = np.sum(~valid)
+        if n_rejected > 0:
+            # Diagnostic info about rejected localizations
+            x_out = np.sum((localizations['x'] < 0) | (localizations['x'] >= width))
+            y_out = np.sum((localizations['y'] < 0) | (localizations['y'] >= height))
+            if n_rejected > 10:  # Only warn if significant number
+                print(f"Warning: Rejected {n_rejected} out-of-bounds localizations " +
+                      f"({x_out} in x, {y_out} in y)")
+
+        # Apply mask to all arrays
+        filtered = {}
+        for key, value in localizations.items():
+            if isinstance(value, np.ndarray) and len(value) == len(valid):
+                filtered[key] = value[valid]
+            else:
+                filtered[key] = value
+
+        return filtered
+
+    def analyze_frame(self, image, frame_number=0, fit_radius=3, debug=False):
+        """Analyze single frame with comprehensive edge handling.
 
         Parameters
         ----------
@@ -100,12 +247,23 @@ class ThunderSTORM:
             Frame number
         fit_radius : int
             Fitting radius in pixels
+        debug : bool
+            Enable diagnostic output for debugging dimension issues
 
         Returns
         -------
         result : dict
             Localization results for this frame
         """
+        if debug:
+            print(f"\n{'='*60}")
+            print(f"Analyzing frame {frame_number}")
+            print(f"{'='*60}")
+            print(f"Image shape: {image.shape} (height, width) = ({image.shape[0]}, {image.shape[1]})")
+            print(f"Fit radius: {fit_radius}")
+            border_width = self._get_border_width(fit_radius)
+            print(f"Border exclusion: {border_width} pixels")
+
         # Step 1: Filter image
         filtered = self.filter.apply(image)
 
@@ -117,38 +275,78 @@ class ThunderSTORM:
         # Step 3: Detect molecules
         positions = self.detector.detect(filtered, threshold)
 
-        # Step 4: Fit PSF
+        if debug and len(positions) > 0:
+            print(f"\nAfter detection: {len(positions)} positions")
+            print(f"Position range: row=[{positions[:, 0].min():.1f}, {positions[:, 0].max():.1f}], " +
+                  f"col=[{positions[:, 1].min():.1f}, {positions[:, 1].max():.1f}]")
+
+        # Step 4: Remove border detections BEFORE fitting
+        # This prevents trying to fit PSFs that extend beyond image bounds
         if len(positions) > 0:
+            border_width = self._get_border_width(fit_radius)
+            positions = detection.remove_border_detections(
+                positions,
+                image.shape,
+                border=border_width
+            )
+
+            if debug:
+                print(f"\nAfter border removal: {len(positions)} positions")
+                if len(positions) > 0:
+                    print(f"Position range: row=[{positions[:, 0].min():.1f}, {positions[:, 0].max():.1f}], " +
+                          f"col=[{positions[:, 1].min():.1f}, {positions[:, 1].max():.1f}]")
+
+        # Check if any detections remain
+        if len(positions) == 0:
+            return self._empty_result(frame_number)
+
+        # Step 5: Fit PSF
+        try:
             fit_result = self.fitter.fit(image, positions, fit_radius=fit_radius)
+        except Exception as e:
+            print(f"Warning: Fitting failed for frame {frame_number}: {e}")
+            return self._empty_result(frame_number)
 
-            # Convert to dict format
-            result = fit_result.to_array()
-            result['frame'] = np.full(len(fit_result), frame_number)
+        # Step 6: Convert to dict format
+        result = fit_result.to_array()
 
-            # Convert from pixels to nanometers
-            result['x'] = result['x'] * self.pixel_size
-            result['y'] = result['y'] * self.pixel_size
+        if debug and len(result['x']) > 0:
+            print(f"\nAfter fitting: {len(result['x'])} localizations")
+            print(f"Localization range (pixels): x=[{result['x'].min():.1f}, {result['x'].max():.1f}], " +
+                  f"y=[{result['y'].min():.1f}, {result['y'].max():.1f}]")
 
-            # Also convert sigma and uncertainty to nm
-            if 'sigma_x' in result and result['sigma_x'] is not None:
-                result['sigma_x'] = result['sigma_x'] * self.pixel_size
-            if 'sigma_y' in result and result['sigma_y'] is not None:
-                result['sigma_y'] = result['sigma_y'] * self.pixel_size
-            if 'uncertainty' in result and result['uncertainty'] is not None:
-                result['uncertainty'] = result['uncertainty'] * self.pixel_size
-        else:
-            # No detections
-            result = {
-                'x': np.array([]),
-                'y': np.array([]),
-                'intensity': np.array([]),
-                'background': np.array([]),
-                'sigma_x': np.array([]),
-                'sigma_y': np.array([]),
-                'frame': np.array([]),
-                'uncertainty': np.array([]),
-                'chi_squared': np.array([])
-            }
+        # Step 7: Validate localizations are within image bounds (in pixels)
+        # This catches any edge cases from the fitting process
+        result = self._validate_localizations(result, image.shape)
+
+        # Check if any localizations remain after validation
+        if len(result['x']) == 0:
+            return self._empty_result(frame_number)
+
+        if debug and len(result['x']) > 0:
+            print(f"\nAfter validation: {len(result['x'])} localizations")
+            print(f"Localization range (pixels): x=[{result['x'].min():.1f}, {result['x'].max():.1f}], " +
+                  f"y=[{result['y'].min():.1f}, {result['y'].max():.1f}]")
+
+        # Step 8: Add frame number
+        result['frame'] = np.full(len(result['x']), frame_number)
+
+        # Step 9: Convert from pixels to nanometers
+        result['x'] = result['x'] * self.pixel_size
+        result['y'] = result['y'] * self.pixel_size
+
+        # Also convert sigma and uncertainty to nm
+        if 'sigma_x' in result and result['sigma_x'] is not None:
+            result['sigma_x'] = result['sigma_x'] * self.pixel_size
+        if 'sigma_y' in result and result['sigma_y'] is not None:
+            result['sigma_y'] = result['sigma_y'] * self.pixel_size
+        if 'uncertainty' in result and result['uncertainty'] is not None:
+            result['uncertainty'] = result['uncertainty'] * self.pixel_size
+
+        if debug:
+            print(f"\nFinal result in nm: x=[{result['x'].min():.1f}, {result['x'].max():.1f}], " +
+                  f"y=[{result['y'].min():.1f}, {result['y'].max():.1f}]")
+            print(f"{'='*60}\n")
 
         return result
 
@@ -409,10 +607,15 @@ class ThunderSTORM:
         return self.localizations
 
 
-def create_default_pipeline():
+def create_default_pipeline(border_exclusion=None):
     """Create ThunderSTORM pipeline with default settings.
 
     These are the default settings that work well on many datasets.
+
+    Parameters
+    ----------
+    border_exclusion : int, optional
+        Border exclusion width in pixels (auto-computed if None)
 
     Returns
     -------
@@ -423,24 +626,27 @@ def create_default_pipeline():
         filter_type='wavelet',
         filter_params={'scale': 2, 'order': 3},
         detector_type='local_maximum',
-        detector_params={'connectivity': '8-neighbourhood', 'min_distance': 1},
+        detector_params={'connectivity': '8-neighbourhood', 'min_distance': 1, 'exclude_border': True},
         fitter_type='gaussian_lsq',
         fitter_params={'integrated': True, 'elliptical': False, 'initial_sigma': 1.3},
         threshold_expression='std(Wave.F1)',
         pixel_size=100.0,  # nm
         photons_per_adu=1.0,
         baseline=100.0,
-        em_gain=1.0
+        em_gain=1.0,
+        border_exclusion=border_exclusion
     )
 
 
-def quick_analysis(images, **kwargs):
+def quick_analysis(images, border_exclusion=None, **kwargs):
     """Quick analysis with default parameters.
 
     Parameters
     ----------
     images : ndarray
         Image stack to analyze
+    border_exclusion : int, optional
+        Border exclusion width
     **kwargs : dict
         Additional parameters for pipeline
 
@@ -450,9 +656,11 @@ def quick_analysis(images, **kwargs):
         Detected localizations
     rendered : ndarray
         Rendered super-resolution image
+    pipeline : ThunderSTORM
+        Pipeline object
     """
     # Create pipeline
-    pipeline = create_default_pipeline()
+    pipeline = create_default_pipeline(border_exclusion=border_exclusion)
 
     # Update any custom parameters
     for key, value in kwargs.items():
