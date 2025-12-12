@@ -76,6 +76,12 @@ except ImportError:
     print("Warning: Testing framework not available")
 
 
+from .localization_display import (LocalizationDisplay,
+                                   thunderstorm_display_localizations)
+from .thunderstorm_flika_integration import (thunderstorm_run_analysis,
+                                             thunderstorm_quick_analysis,
+                                             thunderstorm_toggle_display)
+
 # ============================================================================
 # Main Analysis Pipeline
 # ============================================================================

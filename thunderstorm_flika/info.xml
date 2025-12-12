@@ -51,6 +51,8 @@
 		<action location="__init__" function="thunderstorm_drift_correction.gui">Drift Correction</action>
 		<action location="__init__" function="thunderstorm_rendering.gui">Rendering</action>
 		<action location="__init__" function="thunderstorm_simulate_data.gui">Simulate Data</action>
+        <action location="__init__" function="thunderstorm_toggle_display.gui">Toggle Display</action>
+        <action location="__init__" function="thunderstorm_display_localizations.gui">Display Localizations</action>
 		<action location="__init__" function="thunderstorm_autotest.gui">Automated Testing</action>
 	</menu_layout>
 </plugin>
