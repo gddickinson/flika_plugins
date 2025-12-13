@@ -80,7 +80,9 @@ from .localization_display import (LocalizationDisplay,
                                    thunderstorm_display_localizations)
 from .thunderstorm_flika_integration import (thunderstorm_run_analysis,
                                              thunderstorm_quick_analysis,
-                                             thunderstorm_toggle_display)
+                                             thunderstorm_toggle_display,
+                                             thunderstorm_view_results,
+                                             thunderstorm_export_results)
 
 # ============================================================================
 # Main Analysis Pipeline

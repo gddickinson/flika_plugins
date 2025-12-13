@@ -53,6 +53,8 @@
 		<action location="__init__" function="thunderstorm_simulate_data.gui">Simulate Data</action>
         <action location="__init__" function="thunderstorm_toggle_display.gui">Toggle Display</action>
         <action location="__init__" function="thunderstorm_display_localizations.gui">Display Localizations</action>
+        <action location="__init__" function="thunderstorm_view_results.gui">View Results Spreadsheet</action>
+        <action location="__init__" function="thunderstorm_export_results.gui">Export Results CSV</action>
 		<action location="__init__" function="thunderstorm_autotest.gui">Automated Testing</action>
 	</menu_layout>
 </plugin>
