@@ -1,0 +1,17 @@
+<plugin name="PIEZO1 Cluster Analyzer">
+	<author>
+		Claude (for Medha Pathak Lab, UCI)
+	</author>
+	<directory>
+		piezo1_cluster_analyzer
+	</directory>
+	<version>
+		1.0.0
+	</version>
+	<url>
+		
+	</url>
+	<menu_layout>
+		<action location="piezo1_cluster_analyzer" function="piezo1_cluster_analyzer.gui">PIEZO1 Cluster Analyzer</action>
+	</menu_layout>
+</plugin>

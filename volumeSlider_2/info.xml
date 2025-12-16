@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin name="Volume Slider Professional">
+	<directory>
+		volumeSlider_2
+	</directory>
+	<version>
+		2.0.0
+	</version>
+	<author>
+		Professional Refactor Team
+	</author>
+	<url>
+		https://github.com/flika-org/volume-slider-professional
+	</url>
+	<dependencies>
+		<dependency name="numpy" version=">=1.20.0" />
+		<dependency name="scipy" version=">=1.7.0" />
+		<dependency name="scikit-image" version=">=0.18.0" />
+		<dependency name="pyqtgraph" version=">=0.12.0" />
+		<dependency name="qtpy" version=">=1.9.0" />
+	</dependencies>
+	<flika_version_required>
+		0.2.23
+	</flika_version_required>
+	<python_version_required>
+		3.7
+	</python_version_required>
+	<license>
+		GPL v3
+	</license>
+	<description>
+		Professional 3D/4D lightsheet microscopy analysis plugin with advanced visualization,
+		synthetic data generation, and comprehensive image processing capabilities.
+	</description>
+	<keywords>
+		<keyword>lightsheet</keyword>
+		<keyword>3D</keyword>
+		<keyword>volume</keyword>
+		<keyword>calcium</keyword>
+		<keyword>microscopy</keyword>
+		<keyword>analysis</keyword>
+		<keyword>visualization</keyword>
+		<keyword>processing</keyword>
+	</keywords>
+	<menu_layout>
+		<action location="volumeSlider_Start" function="volumeSliderBase">
+			Volume Slider Professional
+		</action>
+	</menu_layout>
+	<toolbar_layout>
+		<action location="volumeSlider_Start" function="volumeSliderBase" icon="volume_icon.png">
+			Volume Slider
+		</action>
+	</toolbar_layout>
+	<features>
+		<feature name="3D Visualization">Real-time OpenGL-based 3D volume rendering</feature>
+		<feature name="Test Data Generation">Comprehensive synthetic microscopy data generation</feature>
+		<feature name="Advanced Processing">Motion correction, deconvolution, and filtering</feature>
+		<feature name="Analysis Pipeline">Event detection, ROI analysis, and statistics</feature>
+		<feature name="Batch Processing">Automated processing of large datasets</feature>
+		<feature name="Multiple Formats">Support for TIFF, NumPy, HDF5, and Imaris export</feature>
+		<feature name="Professional GUI">Dockable panels and customizable interface</feature>
+		<feature name="Error Handling">Comprehensive error reporting and logging</feature>
+	</features>
+	<supported_formats>
+		<format type="input">
+			<extension>.tif</extension>
+			<extension>.tiff</extension>
+			<extension>.npy</extension>
+			<extension>.h5</extension>
+			<extension>.hdf5</extension>
+			<description>TIFF stacks, NumPy arrays, HDF5 datasets</description>
+		</format>
+		<format type="output">
+			<extension>.tif</extension>
+			<extension>.tiff</extension>
+			<extension>.npy</extension>
+			<extension>.h5</extension>
+			<extension>.ims</extension>
+			<extension>.csv</extension>
+			<extension>.xlsx</extension>
+			<description>TIFF stacks, NumPy arrays, Imaris files, analysis results</description>
+		</format>
+	</supported_formats>
+	<system_requirements>
+		<requirement type="memory">4GB RAM minimum, 8GB+ recommended for large datasets</requirement>
+		<requirement type="graphics">OpenGL 3.3+ compatible graphics card recommended</requirement>
+		<requirement type="storage">1GB available disk space</requirement>
+		<requirement type="processor">Multi-core processor recommended for batch processing</requirement>
+	</system_requirements>
+	<changelog>
+		<version number="2.0.0" date="2024-12-19">
+			<change type="major">Complete architectural refactor for professional use</change>
+			<change type="feature">Added comprehensive synthetic data generation</change>
+			<change type="feature">New dockable panel-based GUI interface</change>
+			<change type="feature">Enhanced 3D visualization engine</change>
+			<change type="feature">Improved error handling and logging</change>
+			<change type="feature">Added batch processing capabilities</change>
+			<change type="feature">Support for multiple file formats</change>
+			<change type="improvement">Performance optimization for large datasets</change>
+			<change type="improvement">Memory management improvements</change>
+			<change type="improvement">Better FLIKA integration</change>
+		</version>
+		<version number="1.0.0" date="2019-01-11">
+			<change type="initial">Initial release with basic 3D volume viewing</change>
+			<change type="feature">Basic lightsheet data processing</change>
+			<change type="feature">Simple 3D visualization</change>
+		</version>
+	</changelog>
+	<documentation>
+		<user_guide>docs/user_guide.md</user_guide>
+		<developer_guide>docs/developer_guide.md</developer_guide>
+		<api_reference>docs/api_reference.md</api_reference>
+		<examples>docs/examples/</examples>
+	</documentation>
+	<contact>
+		<email>support@flika-plugins.org</email>
+		<issues>https://github.com/flika-org/volume-slider-professional/issues</issues>
+		<discussions>https://github.com/flika-org/volume-slider-professional/discussions</discussions>
+	</contact>
+	<installation>
+		<method type="flika_manager">
+			<description>Install through FLIKA's built-in Plugin Manager</description>
+			<steps>
+				<step>Open FLIKA</step>
+				<step>Go to Plugins → Plugin Manager</step>
+				<step>Search for "Volume Slider Professional"</step>
+				<step>Click Install</step>
+				<step>Restart FLIKA</step>
+			</steps>
+		</method>
+		<method type="pip">
+			<description>Install via pip package manager</description>
+			<command>pip install volume-slider-professional</command>
+		</method>
+		<method type="source">
+			<description>Install from source code</description>
+			<steps>
+				<step>Clone repository: git clone https://github.com/flika-org/volume-slider-professional</step>
+				<step>Navigate to directory: cd volume-slider-professional</step>
+				<step>Install: pip install -e .</step>
+			</steps>
+		</method>
+	</installation>
+	<testing>
+		<test_data_available>true</test_data_available>
+		<unit_tests>tests/</unit_tests>
+		<integration_tests>tests/integration/</integration_tests>
+		<performance_tests>tests/performance/</performance_tests>
+	</testing>
+</plugin>

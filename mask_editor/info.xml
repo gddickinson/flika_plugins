@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin name="Mask Editor">
+    <directory>
+        mask_editor
+    </directory>
+    <version>
+        1.0.1
+    </version>
+    <author>
+        George Dickinson
+    </author>
+    <description>
+        Interactive mask editor for drawing, erasing, and modifying binary mask stacks.
+        Features draw/erase tools with adjustable brush size, undo/redo functionality,
+        frame operations, and mask saving. Perfect for editing cell masks and manual segmentation.
+        Uses BaseProcess framework for proper FLIKA integration.
+    </description>
+    <dependencies>
+        <dependency name='numpy'></dependency>
+        <dependency name='qtpy'></dependency>
+        <dependency name='scikit-image'></dependency>
+        <dependency name='tifffile'></dependency>
+    </dependencies>
+    <menu_layout>
+        <action location="__init__" function="launch_mask_editor">Mask Editor</action>
+    </menu_layout>
+</plugin>

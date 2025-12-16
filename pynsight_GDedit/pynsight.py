@@ -32,12 +32,25 @@ if StrictVersion(flika_version) < StrictVersion('0.2.23'):
 else:
     from flika.utils.BaseProcess import BaseProcess, WindowSelector, SliderLabel, CheckBox
 
-from .insight_writer import write_insight_bin
-from .gaussianFitting import fitGaussian, gaussian, generate_gaussian
-from .SLD_histogram import SLD_Histogram
-from .MSD_Plot import MSD_Plot
+try:
+    from .insight_writer import write_insight_bin
+    from .gaussianFitting import fitGaussian, gaussian, generate_gaussian
+    from .SLD_histogram import SLD_Histogram
+    from .MSD_Plot import MSD_Plot
+except:
+    import sys
+    sys.path.append(r'/Users/george/.FLIKA/plugins/pynsight_GDedit')
+    from insight_writer import write_insight_bin
+    from gaussianFitting import fitGaussian, gaussian, generate_gaussian
+    from SLD_histogram import SLD_Histogram
+    from MSD_Plot import MSD_Plot
+
+
 
 import pandas as pd
+
+import sys
+sys.setrecursionlimit(10000)
 
 halt_current_computation = False
 
@@ -107,6 +120,25 @@ def get_points(I):
     return all_pts
 
 
+def load_points():
+    filename = open_file_gui("Open points from thunderstorm csv, filetypes='*.csv")
+    if filename is None:
+        return None
+    import pandas as pd
+    pointsDF = pd.read_csv(filename)
+    pointsDF['frame'] = pointsDF['frame'].astype(int) -1
+    pixelsize = 108
+    pointsDF['x'] = pointsDF['x [nm]'] / pixelsize
+    pointsDF['y'] = pointsDF['y [nm]'] / pixelsize
+    pointsDF = pointsDF[['frame','x','y']]
+    all_pts = pointsDF.to_numpy()
+
+    print('--- Point Data loaded ---')
+    print(pointsDF)
+
+    return all_pts
+
+
 def cutout(pt, Movie, width):
     assert width % 2 == 1  # mx must be odd
     t, x, y = pt
@@ -160,7 +192,7 @@ def refine_pts(pts, blur_window, sigma, amplitude):
 
 class Points(object):
     def __init__(self, txy_pts):
-        self.frames = np.unique(txy_pts[:, 0]).astype(np.int)
+        self.frames = np.unique(txy_pts[:, 0]).astype(int)
         self.txy_pts = txy_pts
         self.window = None
         self.pathitems = []
@@ -216,7 +248,7 @@ class Points(object):
     def get_tracks_by_frame(self):
         tracks_by_frame = [[] for frame in np.arange(np.max(self.frames)+1)]
         for i, track in enumerate(self.tracks):
-            frames = self.txy_pts[track][:,0].astype(np.int)
+            frames = self.txy_pts[track][:,0].astype(int)
             for frame in frames:
                 tracks_by_frame[frame].append(i)
         self.tracks_by_frame = tracks_by_frame
@@ -277,6 +309,7 @@ class Pynsight():
         self.binary_window_selector = WindowSelector()
         gui.gridLayout_11.addWidget(self.binary_window_selector)
         gui.getPointsButton.pressed.connect(self.getPoints)
+        gui.loadPointsButton.pressed.connect(self.loadPoints)
         gui.showPointsButton2.pressed.connect(self.showPoints_refined)
         gui.showPointsButton.pressed.connect(self.showPoints_unrefined)
         self.blurred_window_selector = WindowSelector()
@@ -289,7 +322,7 @@ class Pynsight():
         gui.create_MSD_button.pressed.connect(self.create_MSD)
         gui.save_insight_button.pressed.connect(self.saveInsight)
         gui.savetracksjson_button.pressed.connect(self.savetracksjson)
-        gui.savetracksCSV_button.pressed.connect(self.savetracksCSV)        
+        gui.savetracksCSV_button.pressed.connect(self.savetracksCSV)
         gui.loadtracksjson_button.pressed.connect(self.loadtracksjson)
         gui.microns_per_pixel_SpinBox.valueChanged.connect(self.set_microns_per_pixel)
         gui.seconds_per_frame_SpinBox.valueChanged.connect(self.set_seconds_per_frame)
@@ -299,6 +332,16 @@ class Pynsight():
             g.alert('You must select a Binary Window before using it to determine where the points are.')
         else:
             self.txy_pts = get_points(self.binary_window_selector.window.image)
+            self.algorithm_gui.showPointsButton.setEnabled(True)
+            nPoints = len(self.txy_pts)
+            self.algorithm_gui.num_pts_label.setText(str(nPoints))
+
+    def loadPoints(self):
+        if self.binary_window_selector.window is None:
+            g.alert('You must select a Window before loading points.')
+        else:
+            self.txy_pts = load_points()
+            print(self.txy_pts)
             self.algorithm_gui.showPointsButton.setEnabled(True)
             nPoints = len(self.txy_pts)
             self.algorithm_gui.num_pts_label.setText(str(nPoints))
@@ -394,7 +437,7 @@ class Pynsight():
 
     def create_MSD(self):
         self.MSD_plot = MSD_Plot(self.points, self.microns_per_pixel)
-    
+
     def create_SLD(self):
         self.SLD_histogram = SLD_Histogram(self.points, self.microns_per_pixel, self.seconds_per_frame)
 
@@ -405,7 +448,7 @@ class Pynsight():
 
     def savetracksjson(self):
         tracks = self.points.tracks
-        if isinstance(tracks[0][0], np.int64):
+        if isinstance(tracks[0][0], int64):
             tracks = [[np.asscalar(a) for a in b] for b in tracks]
         txy_pts = self.points.txy_pts.tolist()
         filename = save_file_gui("Save tracks as json", filetypes='*.json')
@@ -415,41 +458,41 @@ class Pynsight():
 
     def getIntensities(self):
         #intensities retrieved from image stack using point data (converted from floats to ints)
-        
+
         n, w, h = self.dataArray.shape
-        
+
         #clear intensity list
         self.intensities = []
-        
+
         for point in self.txy_pts:
             frame = int(round(point[0]))
             x = int(round(point[1]))
             y = int(round(point[2]))
-            
+
             #set x,y bounds for 3x3 pixel square
             xMin = x - 1
             xMax = x + 2
-            
+
             yMin = y - 1
             yMax = y + 2
-            
+
             #deal with edge cases
             if xMin < 0:
                 xMin = 0
             if xMax > w:
                 xMax = w
-                
+
             if yMin <0:
                 yMin = 0
             if yMax > h:
                 yMax = h
-            
+
             #get mean pixels values for 3x3 square
             self.intensities.append((np.mean(self.dataArray[frame][xMin:xMax,yMin:yMax])))
-        
+
         #update points instance
         self.points.intensities = self.intensities
-        
+
 
     def savetracksCSV(self):
         self.exportIntensity = True
@@ -462,68 +505,68 @@ class Pynsight():
             self.dataArray = self.blurred_window_selector.window.imageArray()
             #get intensities
             self.getIntensities()
-        
+
         tracks = self.points.tracks
-        if isinstance(tracks[0][0], np.int64):
+        if isinstance(tracks[0][0], int64):
             tracks = [[np.asscalar(a) for a in b] for b in tracks]
         txy_pts = self.points.txy_pts.tolist()
-        
+
         if self.exportIntensity:
             txy_intensities = self.points.intensities
-        
+
         filename = save_file_gui("Save tracks as CSV", filetypes='*.csv')
-        
+
         #filter tracks list to only include linked tracks
         linkedTracks = [item for item in tracks if len(item) > 1]
-        
-        
+
+
         #get xy coordinates and intensities for linked tracks
         trackNumber = []
 
         txy_intensitiesByTrack = []
 
-        
+
         # for i, indices in enumerate(linkedTracks):
         #     trackNumber.append( i )
         #     txy_ptsByTrack.append(list(txy_pts[j] for j in indices))
         #     #txy_intensitiesByTrack.append(list(txy_intensities[k] for k in indices))
 
-        
+
         frameList = []
         xList = []
         yList = []
 
-        for i, indices in enumerate(linkedTracks):            
+        for i, indices in enumerate(linkedTracks):
             ptsList = list(txy_pts[j] for j in indices)
             if self.exportIntensity:
                 intensitiesList =list(txy_intensities[k] for k in indices)
-            
+
             for pts in ptsList:
                 trackNumber.append(i)
                 frameList.append(pts[0])
                 xList.append(pts[1])
                 yList.append(pts[2])
-                
+
             if self.exportIntensity:
                 for intensity in intensitiesList:
                     txy_intensitiesByTrack.append(intensity)
-            
+
 
         #make dataframe of tracks, xy coordianates and intensities for linked tracks
-        
-        if self.exportIntensity:  
-            dict = {'track_number': trackNumber, 'frame':frameList, 'x': xList, 'y':yList, 'intensities': txy_intensitiesByTrack}              
-            
-        else: 
-            dict = {'track_number': trackNumber, 'frame':frameList, 'x': xList, 'y':yList}            
-        
+
+        if self.exportIntensity:
+            dict = {'track_number': trackNumber, 'frame':frameList, 'x': xList, 'y':yList, 'intensities': txy_intensitiesByTrack}
+
+        else:
+            dict = {'track_number': trackNumber, 'frame':frameList, 'x': xList, 'y':yList}
+
         self.linkedtrack_DF = pd.DataFrame(dict)
-        
+
         #save df as csv
         self.linkedtrack_DF.to_csv(filename, index=False)
-        
+
         print('CSV file {} saved'.format(filename))
-        
+
 
 
     def loadtracksjson(self):

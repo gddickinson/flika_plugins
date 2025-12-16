@@ -163,7 +163,7 @@ class UNetClassifier:
     def train_model(self, epochs=50, batch_size=16, validation_split=0.1, save_weights_path=None):
         filepath = "model.keras"
         callbacks_list = [
-            EarlyStopping(patience=5, verbose=1),
+            #EarlyStopping(patience=5, verbose=1),
             ModelCheckpoint(filepath, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
         ]
 

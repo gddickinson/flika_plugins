@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin name="U-Track Particle Tracking - Simplified Enhanced">
+    <directory>
+        utrack_tracking
+    </directory>
+    <version>
+        2.1.0
+    </version>
+    <author>
+        Simplified Enhanced Version
+    </author>
+    <url>
+        https://github.com/yourusername/flika-utrack-tracking
+    </url>
+    <description>
+        Simplified U-Track particle tracking with streamlined enhanced GUI interface,
+        real-time parameter visualization, interactive track viewer, and comprehensive
+        analysis tools. Focused on the enhanced tabbed interface with integrated
+        parameter display and motion analysis capabilities.
+    </description>
+    <dependencies>
+        <dependency name='numpy'></dependency>
+        <dependency name='scipy'></dependency>
+        <dependency name='scikit-image'></dependency>
+        <dependency name='pandas'></dependency>
+        <dependency name='matplotlib'></dependency>
+        <dependency name='pyqtgraph'></dependency>
+        <dependency name='qtpy'></dependency>
+        <dependency name='scikit-learn'></dependency>
+    </dependencies>
+    <menu_layout>
+        <!-- Main Enhanced Interface -->
+        <action location="__init__" function="launch_utrack_gui">Enhanced U-Track GUI</action>
+
+        <!-- Quick Access Functions -->
+        <action location="__init__" function="run_tracking">Run Tracking</action>
+        <action location="__init__" function="show_current_parameters">Show Current Parameters</action>
+
+        <!-- Visualization Tools -->
+        <action location="__init__" function="create_demo_interactive_viewer">Demo Interactive Viewer</action>
+        <action location="__init__" function="clear_all_tracks">Clear Track Overlays</action>
+
+        <!-- Testing and Debug -->
+        <action location="__init__" function="test_tracking_plugin">Test Tracking Plugin</action>
+    </menu_layout>
+</plugin>

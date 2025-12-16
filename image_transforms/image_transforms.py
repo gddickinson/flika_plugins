@@ -93,6 +93,35 @@ class Rotate_Custom(BaseProcess):
     def gui(self):
         self.gui_reset()
 
+        # Handle legacy settings with float angle values
+        # Convert to int before creating GUI
+        try:
+            import os
+            settings_file = os.path.join(os.path.expanduser('~'), '.FLIKA', 'plugins',
+                                        'image_transforms', 'Rotate_Custom_settings.txt')
+            if os.path.exists(settings_file):
+                with open(settings_file, 'r') as f:
+                    content = f.read()
+                # Replace float angle values with integer
+                if 'angle:' in content and '.' in content.split('angle:')[1].split('\n')[0]:
+                    lines = content.split('\n')
+                    new_lines = []
+                    for line in lines:
+                        if line.startswith('angle:'):
+                            # Extract the float value and convert to int
+                            try:
+                                value = float(line.split(':')[1].strip())
+                                new_lines.append(f'angle: {int(value)}')
+                            except:
+                                new_lines.append(line)
+                        else:
+                            new_lines.append(line)
+                    # Write back the corrected settings
+                    with open(settings_file, 'w') as f:
+                        f.write('\n'.join(new_lines))
+        except Exception as e:
+            pass  # If anything fails, just proceed normally
+
         angle = SliderLabel(0)
         angle.setRange(-180, 180)
 
@@ -112,13 +141,16 @@ class Rotate_Custom(BaseProcess):
 
     def get_init_settings_dict(self):
         s = dict()
-        s['angle'] = 0.0
+        s['angle'] = 0
         s['reshape'] = True
         s['order'] = 1
         return s
 
-    def __call__(self, angle=0.0, reshape=True, order=1, keepSourceWindow=False):
+    def __call__(self, angle=0, reshape=True, order=1, keepSourceWindow=False):
         self.start(keepSourceWindow)
+
+        # Convert angle to float for precise rotation
+        angle = float(angle)
 
         # Extract order value if it's a string
         if isinstance(order, str):

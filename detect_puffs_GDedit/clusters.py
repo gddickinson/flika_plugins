@@ -49,7 +49,7 @@ class Point():
         for child in self.children:
             self.descendants.extend(child.getDescendants(N))
         return self.descendants
-        
+
     def getMeanDescendantPathLength(self):
         if len(self.descendants)==0:
             return 0
@@ -84,8 +84,8 @@ class Clusters():
             y = [d[0] for d in higher_pts_tmp]  # smallest distance to higher point
             x = [d[2] for d in higher_pts_tmp]  # density
             pts = np.array([x,np.log(y)]).T
-            self.scatterPlot=pg.ScatterPlotItem(size=5, pen=pg.mkPen([0,0,0,255]), brush=pg.mkBrush([0,0,255,255]))      
-            self.scatterPlot.setPoints(pos=pts)
+            self.scatterPlot=pg.ScatterPlotItem(size=5, pen=pg.mkPen([0,0,0,255]), brush=pg.mkBrush([0,0,255,255]))
+            self.scatterPlot.setData(pos=pts)
             self.pw.addItem(self.scatterPlot)
             self.pw.plotItem.axes['left']['item'].setLabel('Smallest distance to brighter pixel (natural logarithm)')
             self.pw.plotItem.axes['bottom']['item'].setLabel('Pixel Intensity')
@@ -95,14 +95,14 @@ class Clusters():
             layout.addWidget(self.pw)
             self.vb.drawFinishedSignal.connect(self.manuallySelectClusterCenters)
             self.puffAnalyzer.algorithm_gui.fitGaussianButton.pressed.connect(self.finished)
-        
+
     def getPuffs(self):
         if self.persistentInfo is None:
             cluster_sizes=np.array([len(cluster) for cluster in self.clusters])
             for i in np.arange(len(self.clusters),0,-1)-1:
-                if cluster_sizes[i]<self.thresh_line.value(): 
+                if cluster_sizes[i]<self.thresh_line.value():
                     del self.clusters[i]             # This gets rid of clusters that contain very few True pixels
-        
+
         bounds=[]
         standard_deviations=[]
         origins=[]
@@ -125,11 +125,11 @@ class Clusters():
         else:
             self.cluster_im = self.make_cluster_im()
             self.puffAnalyzer.puffs = Puffs(self, self.cluster_im, self.puffAnalyzer, self.persistentInfo)
-        
+
     def finished(self):
         print('Finished with clusters! Getting puffs')
         self.getPuffs()
-        
+
     def manuallySelectClusterCenters(self):
         if self.puffAnalyzer.generatingClusterMovie:
             return
@@ -145,7 +145,7 @@ class Clusters():
                 centers.append(i)
             else:
                 outsideROI.append(i)
-        higher_pts2 = self.higher_pts[:, 1].astype(np.int)
+        higher_pts2 = self.higher_pts[:, 1].astype(int)
         points=[Point(i, self.idxs) for i in np.arange(len(higher_pts2))]
         loop=np.arange(len(higher_pts2))
         loop=np.delete(loop,centers)
@@ -184,11 +184,11 @@ class Clusters():
         for i in np.arange(len(self.clusters), 0, -1)-1:
             if len(self.clusters[i])==0:
                 del self.clusters[i]
-        
+
         self.cluster_im = self.make_cluster_im()
         self.cluster_movie=Window(self.cluster_im, 'Cluster Movie')
         self.cluster_movie.link(self.puffAnalyzer.blurred_window)
-        
+
         sizes=np.array([len(cluster) for cluster in self.clusters])
         sizes_bin=np.histogram(sizes,bins=np.arange(np.max(sizes)+1))
         self.p1=pg.PlotWidget()
@@ -196,22 +196,22 @@ class Clusters():
         self.p1.addItem(self.p1_curve)
         self.thresh_line = pg.InfiniteLine(pos=0,movable=True)         # Add the LinearRegionItem to the ViewBox, but tell the ViewBox to exclude this item when doing auto-range calculations.
         self.p1.addItem(self.thresh_line)
-        
+
         layout=self.puffAnalyzer.algorithm_gui.filter_clusters_layout
         for i in reversed(range(layout.count())):
             layout.itemAt(i).widget().setParent(None)
         layout.addWidget(self.p1)
-        
+
         self.set_thresh_button = self.puffAnalyzer.algorithm_gui.threshold_button_2
         self.set_thresh_button.clicked.connect(self.set_threshold)
         self.puffAnalyzer.algorithm_gui.nClusters.setText('Number of Clusters: {}'.format(len(self.clusters)))
         self.puffAnalyzer.generatingClusterMovie=False
-        
+
     def make_cluster_im(self):
         print('Generating Cluster Movie')
         mt, mx, my=self.movieShape
         try:
-            cluster_im=np.zeros((mt,mx,my,4),dtype=np.float16)
+            cluster_im=np.zeros((mt,mx,my,4),dtype=float)
         except MemoryError:
             g.alert('There is not enough memory to create the image of clusters (error in function clusters.make_cluster_im).')
             return None
@@ -220,7 +220,7 @@ class Clusters():
             pos = self.idxs[cluster]
             cluster_im[pos[:, 0], pos[:, 1], pos[:, 2], :] = color
         return cluster_im
-        
+
     def set_threshold(self):
         threshold = self.thresh_line.value()
         n = 0
@@ -235,7 +235,7 @@ class Clusters():
         self.puffAnalyzer.algorithm_gui.nClusters.setText('Number of Clusters: {}'.format(n))
         self.cluster_movie.setIndex(self.cluster_movie.currentIndex)  # This forces the movie to refresh
         self.puffAnalyzer.algorithm_gui.tabWidget.setCurrentIndex(3)
-                
+
 
 class ClusterViewBox(pg.ViewBox):
     drawFinishedSignal=Signal()
@@ -273,8 +273,8 @@ class ClusterViewBox(pg.ViewBox):
         else:
             g.m.ev=ev
             pg.ViewBox.mouseDragEvent(self, ev)
-            
-            
+
+
 class ROI(QWidget):
     def __init__(self,viewbox,x,y):
         QWidget.__init__(self)
@@ -305,7 +305,7 @@ class ROI(QWidget):
         return self.path.contains(QPointF(x,y))
     def draw_from_points(self,pts):
         self.path=QPainterPath(QPointF(pts[0][0],pts[0][1]))
-        for i in np.arange(len(pts)-1)+1:        
+        for i in np.arange(len(pts)-1)+1:
             self.path.lineTo(QPointF(pts[i][0],pts[i][1]))
         self.pathitem.setPath(self.path)
     def delete(self):

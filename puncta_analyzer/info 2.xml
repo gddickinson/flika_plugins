@@ -1,0 +1,17 @@
+<plugin name="Puncta Analyzer">
+	<author>
+		Claude for Pathak Lab at UCI
+	</author>
+	<directory>
+		puncta_analyzer
+	</directory>
+	<version>
+		1.0.0
+	</version>
+	<url>
+		
+	</url>
+	<menu_layout>
+		<action location="puncta_analyzer" function="puncta_analyzer.gui">Puncta Analyzer</action>
+	</menu_layout>
+</plugin>

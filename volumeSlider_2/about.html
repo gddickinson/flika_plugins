@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volume Slider Professional - FLIKA Plugin</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        
+        .header {
+            text-align: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        
+        .header .version {
+            font-size: 1.2em;
+            opacity: 0.9;
+            margin-top: 10px;
+        }
+        
+        .header .description {
+            font-size: 1.1em;
+            margin-top: 15px;
+            font-weight: 300;
+        }
+        
+        .section {
+            background: white;
+            padding: 25px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .section h2 {
+            color: #4a5568;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .feature-card {
+            background: #f8f9ff;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .feature-card h3 {
+            color: #667eea;
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+        
+        .feature-card p {
+            margin: 0;
+            color: #666;
+        }
+        
+        .screenshot {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .screenshot img {
+            max-width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .screenshot-placeholder {
+            background: #e2e8f0;
+            height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            color: #64748b;
+            font-size: 1.1em;
+            margin: 20px 0;
+        }
+        
+        .install-steps {
+            background: #e8f5e8;
+            border: 1px solid #c6f6c6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 15px;
+        }
+        
+        .install-steps ol {
+            margin: 0;
+            padding-left: 20px;
+        }
+        
+        .install-steps li {
+            margin-bottom: 8px;
+        }
+        
+        .requirements {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 15px;
+        }
+        
+        .requirements ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        
+        .badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            margin: 2px;
+            font-weight: 500;
+        }
+        
+        .badge.new {
+            background: #48bb78;
+        }
+        
+        .badge.improved {
+            background: #ed8936;
+        }
+        
+        .changelog {
+            background: #f7fafc;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin-top: 15px;
+        }
+        
+        .changelog h4 {
+            color: #667eea;
+            margin-top: 0;
+        }
+        
+        .changelog ul {
+            margin-bottom: 0;
+        }
+        
+        .contact-info {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .contact-info a {
+            color: white;
+            text-decoration: underline;
+        }
+        
+        .warning {
+            background: #fed7d7;
+            border: 1px solid #feb2b2;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        
+        .warning strong {
+            color: #c53030;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Volume Slider Professional</h1>
+        <div class="version">Version 2.0.0 - Professional Edition</div>
+        <div class="description">
+            Advanced 3D/4D lightsheet microscopy analysis plugin for FLIKA
+        </div>
+        <div style="margin-top: 20px;">
+            <span class="badge new">New Architecture</span>
+            <span class="badge new">Synthetic Data</span>
+            <span class="badge improved">Enhanced 3D</span>
+            <span class="badge improved">Better Performance</span>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>🚀 What's New in Version 2.0</h2>
+        <p>This is a complete professional refactor of the popular Volume Slider plugin, featuring:</p>
+        
+        <div class="changelog">
+            <h4>Major Improvements</h4>
+            <ul>
+                <li><strong>Professional GUI:</strong> Modern dockable panel interface with customizable layout</li>
+                <li><strong>Synthetic Data Generator:</strong> Create realistic test data for algorithm development</li>
+                <li><strong>Enhanced 3D Visualization:</strong> Improved OpenGL rendering with multiple view modes</li>
+                <li><strong>Comprehensive Error Handling:</strong> Robust error reporting and logging system</li>
+                <li><strong>Batch Processing:</strong> Automated processing of large datasets</li>
+                <li><strong>Memory Optimization:</strong> Efficient handling of large volume datasets</li>
+                <li><strong>Multiple Export Formats:</strong> Support for TIFF, NumPy, HDF5, and Imaris</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>✨ Key Features</h2>
+        
+        <div class="features-grid">
+            <div class="feature-card">
+                <h3>3D Visualization</h3>
+                <p>Real-time OpenGL-based volume rendering with multiple display modes: points, surfaces, and volume rendering.</p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>Test Data Generation</h3>
+                <p>Generate realistic synthetic microscopy data including Ca²⁺ puffs, waves, cell migration, and more.</p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>Advanced Processing</h3>
+                <p>Motion correction, deconvolution, background subtraction, and geometric transformations.</p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>Analysis Pipeline</h3>
+                <p>Event detection, ROI analysis, statistical analysis, and automated reporting.</p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>Professional Interface</h3>
+                <p>Dockable control panels, customizable layouts, comprehensive logging, and error handling.</p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>Batch Processing</h3>
+                <p>Automated processing of large datasets with progress monitoring and error recovery.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>📸 Screenshots</h2>
+        
+        <div class="screenshot-placeholder">
+            <div>
+                <strong>Main Interface Screenshot</strong><br>
+                Professional dockable panel layout with 3D visualization<br>
+                <em>(Screenshot will be added in plugin package)</em>
+            </div>
+        </div>
+        
+        <div class="screenshot-placeholder">
+            <div>
+                <strong>Synthetic Data Generation</strong><br>
+                Realistic test data creation interface<br>
+                <em>(Screenshot will be added in plugin package)</em>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>🔧 Installation</h2>
+        
+        <h3>Method 1: FLIKA Plugin Manager (Recommended)</h3>
+        <div class="install-steps">
+            <ol>
+                <li>Open FLIKA</li>
+                <li>Go to <strong>Plugins → Plugin Manager</strong></li>
+                <li>Search for "Volume Slider Professional"</li>
+                <li>Click <strong>Install</strong></li>
+                <li>Restart FLIKA</li>
+                <li>Find the plugin under <strong>Plugins → Volume Slider Professional</strong></li>
+            </ol>
+        </div>
+        
+        <h3>Method 2: Manual Installation</h3>
+        <div class="install-steps">
+            <ol>
+                <li>Download the plugin package from GitHub</li>
+                <li>Extract to your FLIKA plugins directory: <code>~/.FLIKA/plugins/</code></li>
+                <li>Restart FLIKA</li>
+            </ol>
+        </div>
+        
+        <div class="requirements">
+            <h4>System Requirements</h4>
+            <ul>
+                <li><strong>FLIKA:</strong> Version 0.2.23 or higher</li>
+                <li><strong>Python:</strong> 3.7+ (3.8+ recommended)</li>
+                <li><strong>Memory:</strong> 4GB RAM minimum, 8GB+ for large datasets</li>
+                <li><strong>Graphics:</strong> OpenGL 3.3+ compatible card recommended</li>
+                <li><strong>Storage:</strong> 1GB available disk space</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>📋 Dependencies</h2>
+        <p>The following Python packages are automatically installed:</p>
+        <ul>
+            <li><strong>numpy</strong> ≥ 1.20.0 - Numerical computing</li>
+            <li><strong>scipy</strong> ≥ 1.7.0 - Scientific computing</li>
+            <li><strong>scikit-image</strong> ≥ 0.18.0 - Image processing</li>
+            <li><strong>pyqtgraph</strong> ≥ 0.12.0 - Scientific plotting</li>
+            <li><strong>qtpy</strong> ≥ 1.9.0 - Qt abstraction layer</li>
+        </ul>
+        
+        <p><strong>Optional packages</strong> (for enhanced functionality):</p>
+        <ul>
+            <li><strong>tifffile</strong> - Enhanced TIFF support</li>
+            <li><strong>h5py</strong> - HDF5 file support</li>
+            <li><strong>pandas</strong> - Data analysis and export</li>
+            <li><strong>numba</strong> - Performance acceleration</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>🚀 Quick Start</h2>
+        
+        <h3>Basic Usage</h3>
+        <div class="install-steps">
+            <ol>
+                <li>Load your lightsheet data in FLIKA</li>
+                <li>Launch <strong>Volume Slider Professional</strong> from the Plugins menu</li>
+                <li>The plugin will automatically load your data</li>
+                <li>Use the dockable panels to adjust visualization and processing settings</li>
+                <li>Navigate through volumes using the Volume Control panel</li>
+                <li>Apply processing operations from the Processing panel</li>
+                <li>Analyze data using the Analysis panel</li>
+            </ol>
+        </div>
+        
+        <h3>Generate Test Data</h3>
+        <div class="install-steps">
+            <ol>
+                <li>Launch the plugin (data loading is optional)</li>
+                <li>Go to <strong>Data → Generate Test Data...</strong></li>
+                <li>Choose pattern type (Ca²⁺ puffs, waves, cell migration, etc.)</li>
+                <li>Adjust parameters and click <strong>Generate</strong></li>
+                <li>Explore the generated data with different visualization modes</li>
+            </ol>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>⚠️ Important Notes</h2>
+        
+        <div class="warning">
+            <strong>Memory Usage:</strong> Large datasets (>2GB) may require significant RAM. 
+            The plugin includes memory management features, but ensure adequate system memory 
+            for optimal performance.
+        </div>
+        
+        <div class="warning">
+            <strong>Graphics Requirements:</strong> 3D visualization requires OpenGL 3.3+. 
+            On older systems, some 3D features may be limited or unavailable.
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>🔍 Supported File Formats</h2>
+        
+        <h3>Input Formats</h3>
+        <ul>
+            <li><strong>TIFF/TIF:</strong> Standard microscopy format, multi-page stacks</li>
+            <li><strong>NumPy (.npy):</strong> Python array format for processed data</li>
+            <li><strong>HDF5 (.h5, .hdf5):</strong> Large dataset format</li>
+            <li><strong>FLIKA Windows:</strong> Direct import from FLIKA workspace</li>
+        </ul>
+        
+        <h3>Output Formats</h3>
+        <ul>
+            <li><strong>TIFF/TIF:</strong> Processed image stacks</li>
+            <li><strong>NumPy (.npy):</strong> Numerical data arrays</li>
+            <li><strong>Imaris (.ims):</strong> 3D visualization format</li>
+            <li><strong>CSV/Excel:</strong> Analysis results and statistics</li>
+            <li><strong>HDF5:</strong> Large processed datasets</li>
+        </ul>
+    </div>
+
+    <div class="contact-info">
+        <h2>📞 Support & Contact</h2>
+        <p>
+            <strong>Issues & Bug Reports:</strong> 
+            <a href="https://github.com/flika-org/volume-slider-professional/issues">GitHub Issues</a>
+        </p>
+        <p>
+            <strong>Documentation:</strong> 
+            <a href="https://github.com/flika-org/volume-slider-professional/docs">User Guide</a>
+        </p>
+        <p>
+            <strong>Discussions:</strong> 
+            <a href="https://github.com/flika-org/volume-slider-professional/discussions">GitHub Discussions</a>
+        </p>
+        <p>
+            <strong>Email:</strong> support@flika-plugins.org
+        </p>
+    </div>
+
+    <div class="section">
+        <h2>📄 License & Attribution</h2>
+        <p>
+            Volume Slider Professional is released under the <strong>GNU General Public License v3.0</strong>.
+            This ensures the software remains free and open source.
+        </p>
+        
+        <p>
+            <strong>Original Author:</strong> George Dickinson<br>
+            <strong>Professional Refactor:</strong> Professional Refactor Team<br>
+            <strong>FLIKA Integration:</strong> FLIKA Development Team
+        </p>
+        
+        <p>
+            If you use this plugin in your research, please cite:<br>
+            <em>"Volume Slider Professional: A comprehensive 3D/4D lightsheet microscopy analysis plugin for FLIKA. Version 2.0.0. https://github.com/flika-org/volume-slider-professional"</em>
+        </p>
+    </div>
+
+    <footer style="text-align: center; margin-top: 40px; padding: 20px; color: #666;">
+        <p>Volume Slider Professional v2.0.0 | Built for FLIKA | © 2024 Professional Refactor Team</p>
+        <p><em>Making lightsheet microscopy analysis accessible to everyone</em></p>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,17 @@
+<plugin name="Flicker Transient Detector">
+	<author>
+		Claude (for Medha Pathak Lab, UCI)
+	</author>
+	<directory>
+		flicker_detector
+	</directory>
+	<version>
+		1.0.0
+	</version>
+	<url>
+
+	</url>
+	<menu_layout>
+		<action location="flicker_transient_detector" function="flicker_transient_detector.gui">Flicker/Transient Detector</action>
+	</menu_layout>
+</plugin>

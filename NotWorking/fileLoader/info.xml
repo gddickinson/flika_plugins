@@ -1,0 +1,18 @@
+<plugin name="File Loader">
+    <directory>
+        fileLoader
+    </directory>
+	<version>
+		2020.06.20
+	</version>
+	<author>
+		George Dickinson
+	</author>
+	<url>
+	</url>
+	<dependencies>
+	</dependencies>
+	<menu_layout>
+		<action location="file_load" function="load_file_gui">Load file</action>
+	</menu_layout>
+</plugin>

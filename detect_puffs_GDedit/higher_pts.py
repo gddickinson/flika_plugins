@@ -28,7 +28,7 @@ else:
 
 def getMask(nt=5,nx=5,ny=5):
     mask=np.zeros((nt,nx,ny))
-    center=np.array([(nt-1)/2, (nx-1)/2, (ny-1)/2]).astype(np.int)
+    center=np.array([(nt-1)/2, (nx-1)/2, (ny-1)/2]).astype(int)
     t0,x0,y0=center
     for t in np.arange(nt):
         for x in np.arange(nx):
@@ -57,18 +57,18 @@ def getHigherPoints(blurred, udc):
     nCores = g.settings['nCores']
     idxs=np.where(blurred>blur_thresh)
     densities=blurred[idxs]
-    densities_jittered=densities+np.arange(len(densities))/(2*np.float(len(densities))) #I do this so no two densities are the same, so each cluster has a peak.
+    densities_jittered=densities+np.arange(len(densities))/(2*float(len(densities))) #I do this so no two densities are the same, so each cluster has a peak.
     C = np.zeros(blurred.shape )
-    C_idx=np.zeros(blurred.shape, dtype=np.int)
+    C_idx=np.zeros(blurred.shape, dtype=int)
     idxs=np.vstack((idxs[0],idxs[1],idxs[2])).T
     C[idxs[:, 0], idxs[:, 1], idxs[:, 2]] = densities_jittered
     C_idx[idxs[:, 0], idxs[:,1], idxs[:,2]] = np.arange(len(idxs))
     print("Number of pixels to analyze: {}".format(len(idxs)))
     remander=np.arange(len(idxs))
     nTotal_pts = len(idxs)
-    block_ends = np.linspace(0, len(remander), nCores+1, dtype=np.int)
+    block_ends = np.linspace(0, len(remander), nCores+1, dtype=int)
     data_blocks = [remander[block_ends[i]:block_ends[i+1]] for i in np.arange(nCores)]
-    
+
 
     if g.settings['multiprocessing']:
         # create the ProgressBar object
@@ -82,8 +82,8 @@ def getHigherPoints(blurred, udc):
         args=(nTotal_pts, C, idxs, densities_jittered, C_idx, time_factor)
         remander=np.arange(len(idxs))
         higher_pts=getHigherPointSingleProcess(args,remander)
-        
-        
+
+
     mt,mx,my = blurred.shape
     maxDistance = np.sqrt((mt/time_factor)**2 + mx**2 + my**2)
     remander = np.argwhere(higher_pts[:,0] == 0)
@@ -96,9 +96,9 @@ def getHigherPoints(blurred, udc):
             dens2 = densities_jittered[remander]
             possible_higher_pts = np.where(densities_jittered>np.min(dens2))[0]
             dens3 = densities_jittered[possible_higher_pts]
-            pos1=idxs[remander].astype(np.float)
+            pos1=idxs[remander].astype(float)
             pos1[:,0]=pos1[:,0]/time_factor
-            pos2=idxs[possible_higher_pts].astype(np.float)
+            pos2=idxs[possible_higher_pts].astype(float)
             pos2[:,0]=pos2[:,0]/time_factor
             try:
                 print('Constructing {}x{} distance matrix'.format(len(pos1), len(pos2)))
@@ -129,14 +129,14 @@ def getHigherPoints(blurred, udc):
 
 
         elif False:
-            idxs_time_adjusted=idxs[:].astype(np.float)
+            idxs_time_adjusted=idxs[:].astype(float)
             idxs_time_adjusted[:,0]=idxs_time_adjusted[:,0]/time_factor
             while len(remander)>1:
                 print(len(remander))
                 dens2=densities_jittered[remander]
                 density=np.min(dens2)
                 current_pt=remander[np.argmin(dens2)]
-                possible_higher_pts=np.where(densities_jittered>density)[0]            
+                possible_higher_pts=np.where(densities_jittered>density)[0]
                 pos1=idxs_time_adjusted[current_pt]
                 pos2=idxs_time_adjusted[possible_higher_pts]
                 Dsq=np.sum((pos2-pos1)**2, 1)
@@ -149,17 +149,17 @@ def getHigherPoints(blurred, udc):
             higher_pts[highest_pt]=[maxDistance, highest_pt, density]
         else:
             blockFrames=200
-            block_ends=np.arange(0,mt,blockFrames).astype(np.int)
+            block_ends=np.arange(0,mt,blockFrames).astype(int)
             block_ends=np.append(block_ends, mt)
             times_remander=idxs[remander][:,0]
             times_remander_blocks=[np.where(np.logical_and(times_remander>block_ends[i], times_remander<=block_ends[i+1]))[0] for i in np.arange(nCores)]
-            idxs_time_adjusted=idxs[:].astype(np.float)
+            idxs_time_adjusted=idxs[:].astype(float)
             idxs_time_adjusted[:,0]=idxs_time_adjusted[:,0]/time_factor
-            for times_remander_block in times_remander_blocks:   # times_remander_block is the 
+            for times_remander_block in times_remander_blocks:   # times_remander_block is the
                 density_block=densities_jittered[times_remander_block]
                 possible_higher_pts=np.where(densities_jittered>np.min(density_block))[0]
-                
-                
+
+
     return higher_pts, idxs
 
 
@@ -216,13 +216,13 @@ def getHigherPoint(q_results, q_progress, q_status, child_conn, args):
             if yf>my-1:
                 mask2=mask2[:,:,:-(yf-my+1)]
                 yf=my-1
-                
+
             positions=np.array(np.where(mask2*C[t0:tf,x0:xf,y0:yf]>density)).astype(float).T-center2
             if len(positions)==0:
                 remander.append(ii)
             else:
                 distances=np.sqrt((positions[:,0]/time_factor)**2+positions[:,1]**2+positions[:,2]**2)
-                higher_pt=positions[np.argmin(distances)].astype(np.int)+np.array([t0,x0,y0])+center2
+                higher_pt=positions[np.argmin(distances)].astype(int)+np.array([t0,x0,y0])+center2
                 higher_pt=C_idx[higher_pt[0],higher_pt[1],higher_pt[2]]
                 higher_pt=[np.min(distances), higher_pt, density]
                 higher_pts[ii]=higher_pt
@@ -297,12 +297,12 @@ def getHigherPointSingleProcess(args, remander):
                 positions=np.array(np.where(mask2*C[t0:tf,x0:xf,y0:yf]>density)).astype(float).T-center2
                 posi=np.array([t0,x0,y0])
                 offset=posi+center2
-            
+
             if len(positions)==0:
                 remander.append(ii)
             else:
                 distances=np.sqrt((positions[:,0]/time_factor)**2+positions[:,1]**2+positions[:,2]**2)
-                higher_pt=positions[np.argmin(distances)].astype(np.int)+offset
+                higher_pt=positions[np.argmin(distances)].astype(int)+offset
                 higher_pt=C_idx[higher_pt[0],higher_pt[1],higher_pt[2]]
                 higher_pt=[np.min(distances), higher_pt, density]
                 higher_pts[ii]=higher_pt

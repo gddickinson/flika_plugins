@@ -1,0 +1,1 @@
+# gui/__init__.py#!/usr/bin/env python3"""GUI Module==========GUI components for the Volume Slider plugin."""try:    from .control_panels import ControlPanelManager    __all__ = ['ControlPanelManager']except ImportError as e:    print(f"Warning: Could not import GUI modules: {e}")    __all__ = []

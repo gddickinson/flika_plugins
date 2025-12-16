@@ -1,0 +1,1 @@
+# utils/__init__.py#!/usr/bin/env python3"""Utils Module============Utility functions and classes for the Volume Slider plugin."""try:    from .error_handler import ErrorHandler    from .logger_config import setup_logging    __all__ = ['ErrorHandler', 'setup_logging']except ImportError as e:    print(f"Warning: Could not import utils modules: {e}")    __all__ = []

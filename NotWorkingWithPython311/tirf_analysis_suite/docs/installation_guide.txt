@@ -1,0 +1,392 @@
+# 🚀 TIRF Analysis Suite - Complete Installation Guide
+
+This guide will walk you through installing and setting up the complete TIRF Analysis Suite for FLIKA.
+
+## 📋 Pre-Installation Checklist
+
+### System Requirements
+- ✅ **Operating System**: Windows 10+, macOS 10.14+, or Linux Ubuntu 18.04+
+- ✅ **Python**: Version 3.7 or higher
+- ✅ **FLIKA**: Version 0.2.25 or higher
+- ✅ **Memory**: 8GB+ RAM recommended (4GB minimum)
+- ✅ **Storage**: 1GB free space for installation
+
+### Check Your Current Setup
+```python
+# In Python, check your versions:
+import sys
+print(f"Python version: {sys.version}")
+
+import flika
+print(f"FLIKA version: {flika.__version__}")
+```
+
+## 📦 Installation Methods
+
+### Method 1: Direct Download (Recommended)
+
+1. **Download the Suite**
+   ```bash
+   # Option A: Direct download
+   wget https://github.com/flika-org/tirf_analysis_suite/archive/main.zip
+   unzip main.zip
+   
+   # Option B: Git clone
+   git clone https://github.com/flika-org/tirf_analysis_suite.git
+   ```
+
+2. **Locate FLIKA Plugins Directory**
+   ```python
+   # Find your FLIKA plugins directory
+   import os
+   home_dir = os.path.expanduser("~")
+   plugins_dir = os.path.join(home_dir, ".FLIKA", "plugins")
+   print(f"FLIKA plugins directory: {plugins_dir}")
+   
+   # Create directory if it doesn't exist
+   os.makedirs(plugins_dir, exist_ok=True)
+   ```
+
+3. **Install the Suite**
+   ```bash
+   # Move the entire suite to FLIKA plugins directory
+   mv tirf_analysis_suite ~/.FLIKA/plugins/
+   
+   # On Windows (PowerShell):
+   # Move-Item tirf_analysis_suite $env:USERPROFILE\.FLIKA\plugins\
+   
+   # On Windows (Command Prompt):
+   # move tirf_analysis_suite %USERPROFILE%\.FLIKA\plugins\
+   ```
+
+### Method 2: Manual File Setup
+
+If you prefer to set up files manually:
+
+1. **Create Plugin Directory**
+   ```bash
+   mkdir -p ~/.FLIKA/plugins/tirf_analysis_suite
+   cd ~/.FLIKA/plugins/tirf_analysis_suite
+   ```
+
+2. **Copy Plugin Files**
+   - Copy all the provided plugin files into subdirectories
+   - Ensure the main `__init__.py`, `info.xml`, and `about.html` are in the root
+   - Each plugin component goes in its own subdirectory
+
+## 🔧 Dependency Installation
+
+### Core Dependencies
+```bash
+# Install all required packages
+pip install numpy>=1.19.0 scipy>=1.6.0 scikit-image>=0.18.0 scikit-learn>=0.24.0 pandas>=1.2.0 matplotlib>=3.3.0 qtpy>=1.9.0
+
+# Alternative: Use requirements file (if provided)
+pip install -r requirements.txt
+```
+
+### Optional Performance Dependencies
+```bash
+# For enhanced performance (optional)
+pip install numba psutil joblib opencv-python
+
+# For 3D analysis (future features)
+pip install napari
+```
+
+### Platform-Specific Notes
+
+**Windows:**
+```powershell
+# If using Anaconda
+conda install numpy scipy scikit-image scikit-learn pandas matplotlib qtpy
+
+# Ensure Visual C++ Redistributable is installed for compiled packages
+```
+
+**macOS:**
+```bash
+# If using Homebrew Python
+brew install python
+pip3 install --upgrade pip
+
+# Install dependencies
+pip3 install numpy scipy scikit-image scikit-learn pandas matplotlib qtpy
+```
+
+**Linux (Ubuntu/Debian):**
+```bash
+# Install system dependencies
+sudo apt-get update
+sudo apt-get install python3-dev python3-pip
+
+# Install Python packages
+pip3 install numpy scipy scikit-image scikit-learn pandas matplotlib qtpy
+```
+
+## ✅ Verification Steps
+
+### 1. Restart FLIKA
+```python
+# Completely restart FLIKA
+import flika
+flika.start_flika()
+```
+
+### 2. Check Plugin Menu
+- Look for `Plugins > TIRF Analysis` in the menu
+- The menu should contain all plugin categories:
+  - Single Molecule Analysis
+  - Image Processing
+  - Multi-Channel Analysis
+  - Membrane Dynamics
+  - Cluster Analysis
+  - Utilities
+
+### 3. Run Validation Tool
+```python
+# Go to: Plugins > TIRF Analysis > Utilities > Validate Installation
+# This will check all components and dependencies
+```
+
+### 4. Test with Synthetic Data
+```python
+# Generate test data: Plugins > TIRF Analysis > Utilities > Generate Test Data > Complete Test Suite
+# This creates synthetic datasets for testing all plugins
+```
+
+## 🚨 Troubleshooting Installation Issues
+
+### Issue: Plugins Don't Appear in Menu
+
+**Solution 1: Check File Structure**
+```bash
+# Verify directory structure
+ls -la ~/.FLIKA/plugins/tirf_analysis_suite/
+# Should show: __init__.py, info.xml, about.html, and plugin subdirectories
+```
+
+**Solution 2: Check Permissions**
+```bash
+# Fix permissions (Linux/macOS)
+chmod -R 755 ~/.FLIKA/plugins/tirf_analysis_suite/
+```
+
+**Solution 3: FLIKA Console Check**
+```python
+# Check FLIKA console for error messages
+# Look for import errors or plugin loading issues
+```
+
+### Issue: Import Errors
+
+**Solution: Verify Dependencies**
+```python
+# Test each dependency
+try:
+    import numpy
+    print("✅ NumPy OK")
+except ImportError as e:
+    print(f"❌ NumPy Error: {e}")
+
+try:
+    import scipy
+    print("✅ SciPy OK")
+except ImportError as e:
+    print(f"❌ SciPy Error: {e}")
+
+# Continue for all dependencies...
+```
+
+### Issue: Memory Errors
+
+**Solution: Check System Resources**
+```python
+import psutil
+memory_gb = psutil.virtual_memory().total / (1024**3)
+print(f"Total RAM: {memory_gb:.1f} GB")
+
+if memory_gb < 4:
+    print("⚠️ Warning: Low memory. Consider upgrading RAM for large datasets.")
+```
+
+### Issue: Performance Issues
+
+**Solution: Optimize Settings**
+```python
+# Use smaller test datasets first
+# Process in chunks for large data
+# Close unnecessary applications
+# Use preview functions before full processing
+```
+
+## 🔄 Update Procedure
+
+### Updating the Suite
+```bash
+# Backup current installation
+cp -r ~/.FLIKA/plugins/tirf_analysis_suite ~/.FLIKA/plugins/tirf_analysis_suite_backup
+
+# Download new version
+wget https://github.com/flika-org/tirf_analysis_suite/archive/main.zip
+unzip main.zip
+
+# Replace old version
+rm -rf ~/.FLIKA/plugins/tirf_analysis_suite
+mv tirf_analysis_suite ~/.FLIKA/plugins/
+
+# Restart FLIKA
+```
+
+### Checking Version
+```python
+# Check current version
+# Plugins > TIRF Analysis > Utilities > Plugin Suite Help
+# Version information is displayed in the help dialog
+```
+
+## 📱 Platform-Specific Installation
+
+### Windows Installation Script
+```batch
+@echo off
+echo Installing TIRF Analysis Suite for FLIKA...
+
+REM Create plugins directory
+if not exist "%USERPROFILE%\.FLIKA\plugins" mkdir "%USERPROFILE%\.FLIKA\plugins"
+
+REM Download and extract (requires wget or manual download)
+echo Please download the suite manually and extract to %USERPROFILE%\.FLIKA\plugins\
+
+REM Install dependencies
+pip install numpy>=1.19.0 scipy>=1.6.0 scikit-image>=0.18.0 scikit-learn>=0.24.0 pandas>=1.2.0 matplotlib>=3.3.0 qtpy>=1.9.0
+
+echo Installation complete! Please restart FLIKA.
+pause
+```
+
+### macOS Installation Script
+```bash
+#!/bin/bash
+echo "Installing TIRF Analysis Suite for FLIKA..."
+
+# Create plugins directory
+mkdir -p ~/.FLIKA/plugins
+
+# Download and extract
+curl -L https://github.com/flika-org/tirf_analysis_suite/archive/main.zip -o tirf_suite.zip
+unzip tirf_suite.zip
+mv tirf_analysis_suite-main ~/.FLIKA/plugins/tirf_analysis_suite
+
+# Install dependencies
+pip3 install numpy>=1.19.0 scipy>=1.6.0 scikit-image>=0.18.0 scikit-learn>=0.24.0 pandas>=1.2.0 matplotlib>=3.3.0 qtpy>=1.9.0
+
+# Clean up
+rm tirf_suite.zip
+
+echo "Installation complete! Please restart FLIKA."
+```
+
+### Linux Installation Script
+```bash
+#!/bin/bash
+echo "Installing TIRF Analysis Suite for FLIKA..."
+
+# Update system
+sudo apt-get update
+
+# Install system dependencies
+sudo apt-get install -y python3-dev python3-pip wget unzip
+
+# Create plugins directory
+mkdir -p ~/.FLIKA/plugins
+
+# Download and extract
+wget https://github.com/flika-org/tirf_analysis_suite/archive/main.zip
+unzip main.zip
+mv tirf_analysis_suite-main ~/.FLIKA/plugins/tirf_analysis_suite
+
+# Install Python dependencies
+pip3 install numpy>=1.19.0 scipy>=1.6.0 scikit-image>=0.18.0 scikit-learn>=0.24.0 pandas>=1.2.0 matplotlib>=3.3.0 qtpy>=1.9.0
+
+# Clean up
+rm main.zip
+
+echo "Installation complete! Please restart FLIKA."
+echo "Run the validation tool: Plugins > TIRF Analysis > Utilities > Validate Installation"
+```
+
+## 🎯 Post-Installation Setup
+
+### 1. Configure Default Parameters
+```python
+# Access: Plugins > TIRF Analysis > Utilities > Plugin Suite Help
+# Review recommended parameter sets for different imaging conditions
+```
+
+### 2. Test All Components
+```python
+# Generate synthetic data for each plugin
+# Plugins > TIRF Analysis > Utilities > Generate Test Data > Complete Test Suite
+
+# Test each plugin with synthetic data:
+# 1. Background Corrector with any synthetic dataset
+# 2. Single Molecule Tracker with single molecule data
+# 3. Photobleaching Analyzer with photobleaching data
+# 4. Colocalization Analyzer with two-channel data
+# 5. Membrane Dynamics with membrane data
+# 6. FRAP Analyzer with FRAP data
+# 7. Cluster Analyzer with cluster data
+```
+
+### 3. Optimize for Your System
+```python
+# Run performance benchmark
+# Test with your typical dataset sizes
+# Adjust parameters for optimal performance vs. accuracy trade-off
+```
+
+## 📞 Getting Help
+
+### If Installation Fails:
+
+1. **Check System Requirements**
+   - Verify Python and FLIKA versions
+   - Ensure sufficient disk space and memory
+
+2. **Run Validation Tool**
+   - Use built-in diagnostic: `Plugins > TIRF Analysis > Utilities > Validate Installation`
+
+3. **Check Documentation**
+   - Visit: https://flika-org.github.io/tirf_analysis_suite
+   - Review troubleshooting guide
+
+4. **Contact Support**
+   - GitHub Issues: https://github.com/flika-org/tirf_analysis_suite/issues
+   - Email: support@flika-plugins.org
+
+### Reporting Installation Issues
+
+When reporting issues, please include:
+- Operating system and version
+- Python version (`python --version`)
+- FLIKA version
+- Complete error messages
+- Output from validation tool
+
+## ✅ Installation Success Checklist
+
+- [ ] FLIKA plugins directory exists
+- [ ] All plugin files copied correctly
+- [ ] Dependencies installed successfully
+- [ ] FLIKA restarted
+- [ ] "TIRF Analysis" appears in Plugins menu
+- [ ] Validation tool reports "PASSED"
+- [ ] Synthetic data generation works
+- [ ] At least one plugin tested successfully
+
+**Congratulations! Your TIRF Analysis Suite is ready to use! 🎉**
+
+---
+
+*For additional help and tutorials, visit the complete documentation at: https://flika-org.github.io/tirf_analysis_suite*

@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Image Transforms Plugin</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        h1 {
+            color: #2E86AB;
+            border-bottom: 3px solid #2E86AB;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #A23B72;
+            margin-top: 25px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+        }
+        h3 {
+            color: #555;
+            margin-top: 15px;
+        }
+        .version {
+            color: #666;
+            font-style: italic;
+            margin-bottom: 5px;
+        }
+        .author {
+            margin-top: 5px;
+            color: #666;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            color: #c7254e;
+        }
+        .feature-list {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        .feature-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .feature-list li:before {
+            content: "✓ ";
+            color: #2E86AB;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        .note {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 12px;
+            margin: 15px 0;
+        }
+        .tip {
+            background-color: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            padding: 12px;
+            margin: 15px 0;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 15px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #2E86AB;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <h1>Image Transforms Plugin</h1>
+    <p class="version">Version 1.0.0</p>
+    <p class="author">By George</p>
+    
+    <h2>Description</h2>
+    <p>
+        The <strong>Image Transforms</strong> plugin provides a comprehensive suite of geometric and 
+        intensity transformation operations for FLIKA image stacks. Designed with TIRF microscopy 
+        and experimental imaging in mind, it offers professional-grade tools for manipulating your 
+        image data while preserving data integrity and offering intuitive parameter controls.
+    </p>
+    
+    <h2>Key Features</h2>
+    <ul class="feature-list">
+        <li><strong>Quick 90° Rotations:</strong> Fast clockwise/counterclockwise rotations</li>
+        <li><strong>Custom Angle Rotation:</strong> Rotate by any angle with interpolation control</li>
+        <li><strong>Flip Operations:</strong> Horizontal and vertical image flipping</li>
+        <li><strong>Transpose:</strong> Swap X and Y dimensions</li>
+        <li><strong>Intensity Inversion:</strong> Create negative images</li>
+        <li><strong>Intensity Normalization:</strong> Min-max, z-score, and percentile-based normalization</li>
+        <li><strong>Pixel Binning:</strong> Downsample images to reduce noise or file size</li>
+        <li><strong>Image Padding:</strong> Add borders with various padding modes</li>
+        <li><strong>Crop to Square:</strong> Extract centered square regions</li>
+    </ul>
+    
+    <h2>Usage</h2>
+    <p>
+        Access the plugin through the FLIKA menu: <br>
+        <strong>Plugins → Image Transforms → [Select Operation]</strong>
+    </p>
+    
+    <p>The plugin is organized into logical categories:</p>
+    <ul>
+        <li><strong>Rotation:</strong> 90° and custom angle rotations</li>
+        <li><strong>Flip &amp; Transpose:</strong> Mirror and axis-swap operations</li>
+        <li><strong>Intensity:</strong> Inversion and normalization</li>
+        <li><strong>Spatial:</strong> Cropping, binning, and padding</li>
+    </ul>
+    
+    <h2>Detailed Operations</h2>
+    
+    <h3>Rotation Operations</h3>
+    
+    <h4>Rotate 90°</h4>
+    <p>
+        Quickly rotate images by 90 degrees clockwise or counterclockwise. Perfect for correcting 
+        camera orientation or preparing images for specific analysis pipelines.
+    </p>
+    <table>
+        <tr>
+            <th>Parameter</th>
+            <th>Description</th>
+            <th>Values</th>
+        </tr>
+        <tr>
+            <td><code>direction</code></td>
+            <td>Rotation direction</td>
+            <td>clockwise, counterclockwise</td>
+        </tr>
+    </table>
+    
+    <h4>Rotate Custom Angle</h4>
+    <p>
+        Rotate images by any angle (±180°) with configurable interpolation and automatic reshaping 
+        to fit the entire rotated image.
+    </p>
+    <table>
+        <tr>
+            <th>Parameter</th>
+            <th>Description</th>
+            <th>Values</th>
+        </tr>
+        <tr>
+            <td><code>angle</code></td>
+            <td>Rotation angle in degrees</td>
+            <td>-180 to 180 (positive = CCW)</td>
+        </tr>
+        <tr>
+            <td><code>reshape</code></td>
+            <td>Expand output to fit rotated image</td>
+            <td>True/False</td>
+        </tr>
+        <tr>
+            <td><code>order</code></td>
+            <td>Interpolation quality</td>
+            <td>0 (nearest), 1 (linear), 3 (cubic)</td>
+        </tr>
+    </table>
+    
+    <div class="tip">
+        <strong>Tip:</strong> Use linear interpolation (order=1) for most applications. 
+        Cubic (order=3) provides smoother results but takes longer to compute.
+    </div>
+    
+    <h3>Flip & Transpose</h3>
+    
+    <h4>Flip Image</h4>
+    <p>
+        Mirror the image horizontally (left-right) or vertically (up-down). Useful for correcting 
+        mirrored microscope setups or preparing images for comparison.
+    </p>
+    
+    <h4>Transpose</h4>
+    <p>
+        Swap the X and Y dimensions of the image. This is equivalent to rotating 90° and flipping. 
+        Useful for correcting axis orientation in some acquisition systems.
+    </p>
+    
+    <h3>Intensity Operations</h3>
+    
+    <h4>Invert Intensity</h4>
+    <p>
+        Creates a negative of the image by inverting all intensity values. Bright pixels become 
+        dark and vice versa. Useful for visualizing certain features or preparing images for 
+        specific analysis algorithms.
+    </p>
+    
+    <h4>Normalize Intensity</h4>
+    <p>
+        Rescale intensity values using various normalization methods to standardize images or 
+        improve visualization.
+    </p>
+    <table>
+        <tr>
+            <th>Method</th>
+            <th>Description</th>
+            <th>Use Case</th>
+        </tr>
+        <tr>
+            <td><code>minmax</code></td>
+            <td>Scale to [0, 1] range</td>
+            <td>General visualization</td>
+        </tr>
+        <tr>
+            <td><code>zscore</code></td>
+            <td>Standardize to mean=0, std=1</td>
+            <td>Statistical analysis</td>
+        </tr>
+        <tr>
+            <td><code>percentile</code></td>
+            <td>Clip and scale based on percentiles</td>
+            <td>Robust to outliers</td>
+        </tr>
+    </table>
+    
+    <div class="note">
+        <strong>Note:</strong> Percentile normalization is particularly useful for images with 
+        hot pixels or extreme outliers that would otherwise skew the normalization.
+    </div>
+    
+    <h3>Spatial Operations</h3>
+    
+    <h4>Crop to Square</h4>
+    <p>
+        Extracts the largest centered square from the image. Useful for preparing images for 
+        analysis pipelines that require square inputs or for removing empty borders.
+    </p>
+    
+    <h4>Bin Pixels</h4>
+    <p>
+        Combines neighboring pixels into larger "superpixels" to reduce image size and noise. 
+        Choose between averaging (mean) for noise reduction or summing for photon counting 
+        applications.
+    </p>
+    <table>
+        <tr>
+            <th>Parameter</th>
+            <th>Description</th>
+            <th>Typical Values</th>
+        </tr>
+        <tr>
+            <td><code>bin_factor</code></td>
+            <td>Number of pixels to combine</td>
+            <td>2 (2x2), 4 (4x4), 8 (8x8)</td>
+        </tr>
+        <tr>
+            <td><code>method</code></td>
+            <td>Combination method</td>
+            <td>mean (reduce noise), sum (photon counting)</td>
+        </tr>
+    </table>
+    
+    <div class="tip">
+        <strong>Tip for TIRF:</strong> 2x2 binning with mean averaging can significantly improve 
+        signal-to-noise ratio for low-light TIRF recordings while maintaining good spatial resolution.
+    </div>
+    
+    <h4>Pad Image</h4>
+    <p>
+        Adds a border of pixels around the image using various padding strategies. Useful for 
+        preparing images for convolution operations or creating uniform dimensions across datasets.
+    </p>
+    <table>
+        <tr>
+            <th>Mode</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>constant</code></td>
+            <td>Fill with a constant value (default: 0)</td>
+        </tr>
+        <tr>
+            <td><code>edge</code></td>
+            <td>Extend edge pixels</td>
+        </tr>
+        <tr>
+            <td><code>reflect</code></td>
+            <td>Mirror the image at the boundary</td>
+        </tr>
+        <tr>
+            <td><code>symmetric</code></td>
+            <td>Reflect including edge pixels</td>
+        </tr>
+    </table>
+    
+    <h2>TIRF Microscopy Applications</h2>
+    <p>
+        This plugin is particularly useful for TIRF microscopy workflows:
+    </p>
+    <ul>
+        <li><strong>Camera Alignment:</strong> Use rotation and flip to correct camera mounting orientation</li>
+        <li><strong>Signal Enhancement:</strong> Apply pixel binning to improve SNR in low-light conditions</li>
+        <li><strong>Normalization:</strong> Standardize intensity across experimental sessions</li>
+        <li><strong>Data Preparation:</strong> Crop and pad to create uniform datasets for batch analysis</li>
+    </ul>
+    
+    <h2>Technical Notes</h2>
+    <ul>
+        <li>All operations work on both single images and multi-frame stacks</li>
+        <li>Original windows can be preserved using the <code>keepSourceWindow</code> option</li>
+        <li>Operations are performed frame-by-frame to minimize memory usage</li>
+        <li>Data type is preserved where possible to avoid precision loss</li>
+        <li>Custom angle rotation uses scipy's ndimage.rotate for high-quality interpolation</li>
+    </ul>
+    
+    <h2>Requirements</h2>
+    <p>This plugin requires the following dependencies:</p>
+    <ul>
+        <li>FLIKA >= 0.2.25</li>
+        <li>NumPy</li>
+        <li>SciPy</li>
+    </ul>
+    
+    <h2>Tips & Best Practices</h2>
+    <ol>
+        <li><strong>Preview First:</strong> Test operations on a single frame before applying to entire stacks</li>
+        <li><strong>Chain Operations:</strong> Combine transforms (e.g., rotate then crop) for complex manipulations</li>
+        <li><strong>Save Parameters:</strong> Document transformation parameters for reproducible analysis</li>
+        <li><strong>Memory Management:</strong> For very large stacks, consider processing in chunks</li>
+    </ol>
+    
+    <h2>Troubleshooting</h2>
+    <table>
+        <tr>
+            <th>Issue</th>
+            <th>Solution</th>
+        </tr>
+        <tr>
+            <td>Rotation creates black borders</td>
+            <td>Enable "reshape to fit" option in custom rotation</td>
+        </tr>
+        <tr>
+            <td>Binning trims image</td>
+            <td>Normal behavior - dimensions must be divisible by bin factor</td>
+        </tr>
+        <tr>
+            <td>Out of memory with large stacks</td>
+            <td>Process subsets of frames or reduce stack size first</td>
+        </tr>
+    </table>
+    
+    <h2>Contact</h2>
+    <p>
+        Questions, suggestions, or bug reports? <br>
+        GitHub: <a href="https://github.com/flika-org/flika">FLIKA GitHub</a>
+    </p>
+    
+    <h2>License</h2>
+    <p>
+        This plugin is distributed under the MIT license and is free and open source software.
+    </p>
+    
+    <hr>
+    <p style="text-align: center; color: #888; font-size: 0.9em;">
+        Image Transforms Plugin v1.0.0 for FLIKA
+    </p>
+</body>
+</html>

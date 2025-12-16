@@ -4,3 +4,11 @@ NanotubeDetection/
 .DS_Store
 /thunderstorm_flika/thunderstorm_python/__pycache__
 /thunderstorm_flika/__pycache__
+/utrack_tracking/logs
+/volumeSlider_2/analysis
+/volumeSlider_2/gui/__pycache__
+/volumeSlider_2/gui/dialogs/__pycache__
+/volumeSlider_2/core/__pycache__
+/volumeSlider_2/utils/__pycache__
+/volumeSlider_2/io/__pycache__
+*.pyc

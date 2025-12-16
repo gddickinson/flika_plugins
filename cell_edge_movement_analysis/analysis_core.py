@@ -5,6 +5,7 @@ Contains the core analysis functions for detecting cell edges,
 calculating movement, and correlating with PIEZO1 intensity.
 
 Author: George Dickinson
+Version: 1.1.0
 """
 
 import numpy as np
@@ -14,6 +15,14 @@ from scipy import stats, interpolate
 import os
 import datetime
 import json
+
+# FLIKA imports
+try:
+    from flika import global_vars as g
+    from flika.window import Window
+    FLIKA_AVAILABLE = True
+except ImportError:
+    FLIKA_AVAILABLE = False
 
 try:
     import matplotlib
@@ -27,19 +36,19 @@ except ImportError:
 def detect_cell_edge(mask):
     """
     Detect the cell edge from a binary mask.
-    
+
     Parameters
     ----------
     mask : numpy.ndarray
         Binary mask image
-        
+
     Returns
     -------
     contour : numpy.ndarray
         Array of (y, x) coordinates defining the cell edge
     """
     contours = measure.find_contours(mask, 0.5)
-    
+
     if len(contours) > 0:
         contour = max(contours, key=len)
         return contour
@@ -47,12 +56,12 @@ def detect_cell_edge(mask):
         return np.array([])
 
 
-def detect_edge_movement_vertical_xaxis(current_contour, previous_contour, 
+def detect_edge_movement_vertical_xaxis(current_contour, previous_contour,
                                        current_mask, previous_mask, config):
     """
     Detect movement using vertical displacement at every x-position.
     Tracks uppermost (minimum y) point at each x on both frames.
-    
+
     Parameters
     ----------
     current_contour : numpy.ndarray
@@ -65,7 +74,7 @@ def detect_edge_movement_vertical_xaxis(current_contour, previous_contour,
         Mask from previous frame
     config : dict
         Configuration parameters
-        
+
     Returns
     -------
     movement_score : float
@@ -82,11 +91,11 @@ def detect_edge_movement_vertical_xaxis(current_contour, previous_contour,
     # Get x-range spanning both frames
     x_min = int(min(np.min(current_contour[:, 1]), np.min(previous_contour[:, 1])))
     x_max = int(max(np.max(current_contour[:, 1]), np.max(previous_contour[:, 1])))
-    
+
     # Create arrays for every x-position
     x_positions = np.arange(x_min, x_max + 1)
     displacements = np.full(len(x_positions), np.nan, dtype=float)
-    
+
     # For each x position, find uppermost (minimum y) points
     for i, x in enumerate(x_positions):
         # Previous frame: find uppermost point at this x
@@ -95,26 +104,26 @@ def detect_edge_movement_vertical_xaxis(current_contour, previous_contour,
             prev_y = np.min(previous_contour[prev_mask, 0])
         else:
             prev_y = None
-        
+
         # Current frame: find uppermost point at this x
         curr_mask = np.abs(current_contour[:, 1] - x) < 0.5
         if np.any(curr_mask):
             curr_y = np.min(current_contour[curr_mask, 0])
         else:
             curr_y = None
-        
+
         # Calculate displacement if both exist
         if prev_y is not None and curr_y is not None:
             displacements[i] = curr_y - prev_y  # Positive = down, negative = up
-    
+
     # Calculate overall movement score
     valid_displacements = displacements[~np.isnan(displacements)]
-    
+
     if len(valid_displacements) > config['min_movement_pixels']:
         movement_score = np.mean(valid_displacements)
     else:
         movement_score = 0.0
-    
+
     # Classify movement type
     if movement_score < -config['movement_threshold']:
         movement_type = 'extending'
@@ -122,18 +131,18 @@ def detect_edge_movement_vertical_xaxis(current_contour, previous_contour,
         movement_type = 'retracting'
     else:
         movement_type = 'stable'
-    
+
     # Create 2D movement map
     movement_map = create_movement_map_from_xaxis_displacement(
         displacements, x_positions, current_mask.shape)
-    
+
     return movement_score, movement_type, movement_map, displacements, x_positions
 
 
 def create_movement_map_from_xaxis_displacement(displacements, x_positions, image_shape):
     """
     Create 2D movement map where each x-column contains the displacement value.
-    
+
     Parameters
     ----------
     displacements : numpy.ndarray
@@ -142,26 +151,26 @@ def create_movement_map_from_xaxis_displacement(displacements, x_positions, imag
         Array of x-positions
     image_shape : tuple
         Shape of output image (height, width)
-        
+
     Returns
     -------
     movement_map : numpy.ndarray
         2D array with displacement values in corresponding columns
     """
     movement_map = np.full(image_shape, np.nan, dtype=float)
-    
+
     for x, displacement in zip(x_positions, displacements):
         if not np.isnan(displacement) and 0 <= x < image_shape[1]:
             movement_map[:, int(x)] = displacement
-            
+
     return movement_map
 
 
-def sample_along_edge_xaxis(edge_coords, mask, n_points, depth, width, 
+def sample_along_edge_xaxis(edge_coords, mask, n_points, depth, width,
                             min_cell_coverage, try_rotation, exclude_endpoints):
     """
     Sample points along the cell edge at regular x-coordinate intervals.
-    
+
     Parameters
     ----------
     edge_coords : numpy.ndarray
@@ -180,7 +189,7 @@ def sample_along_edge_xaxis(edge_coords, mask, n_points, depth, width,
         Whether to try 180° rotation if initial placement fails
     exclude_endpoints : bool
         Whether to exclude first and last edge points
-        
+
     Returns
     -------
     sampling_points : numpy.ndarray
@@ -194,11 +203,11 @@ def sample_along_edge_xaxis(edge_coords, mask, n_points, depth, width,
     """
     if len(edge_coords) == 0:
         return np.array([]), np.array([]), [], np.array([])
-    
+
     # Get x-range of edge
     x_min = np.min(edge_coords[:, 1])
     x_max = np.max(edge_coords[:, 1])
-    
+
     # Create evenly spaced x-coordinates
     if exclude_endpoints and n_points > 2:
         # Exclude the very edges
@@ -206,42 +215,42 @@ def sample_along_edge_xaxis(edge_coords, mask, n_points, depth, width,
         x_sample = np.linspace(x_min + margin, x_max - margin, n_points)
     else:
         x_sample = np.linspace(x_min, x_max, n_points)
-    
+
     sampling_points = []
     valid_points = []
     sampling_rects = []
     point_status = []
-    
+
     for x_target in x_sample:
         # Find edge point(s) near this x-coordinate
         x_mask = np.abs(edge_coords[:, 1] - x_target) < (x_max - x_min) / (2 * n_points)
-        
+
         if not np.any(x_mask):
             valid_points.append(False)
             point_status.append(0)  # No edge point found
             sampling_points.append((0, 0))
             sampling_rects.append(None)
             continue
-        
+
         # Use uppermost (minimum y) point at this x
         y_edge = np.min(edge_coords[x_mask, 0])
         x_edge = x_target
-        
+
         # Calculate perpendicular direction (pointing into cell)
         # For uppermost edge, perpendicular is downward
         dx, dy = 0, 1  # Point downward into cell
-        
+
         # Try to place sampling rectangle
         rect_params = create_sampling_rectangle(
             x_edge, y_edge, dx, dy, depth, width, mask, min_cell_coverage
         )
-        
+
         if rect_params is None and try_rotation:
             # Try 180° rotation
             rect_params = create_sampling_rectangle(
                 x_edge, y_edge, -dx, -dy, depth, width, mask, min_cell_coverage
             )
-            
+
         if rect_params is not None:
             valid_points.append(True)
             point_status.append(1)  # Valid
@@ -252,15 +261,15 @@ def sample_along_edge_xaxis(edge_coords, mask, n_points, depth, width,
             point_status.append(2)  # Insufficient coverage
             sampling_points.append((y_edge, x_edge))
             sampling_rects.append(None)
-    
-    return (np.array(sampling_points), np.array(valid_points), 
+
+    return (np.array(sampling_points), np.array(valid_points),
             sampling_rects, np.array(point_status))
 
 
 def create_sampling_rectangle(x, y, dx, dy, depth, width, mask, min_coverage):
     """
     Create a sampling rectangle at the specified position and direction.
-    
+
     Parameters
     ----------
     x, y : float
@@ -275,7 +284,7 @@ def create_sampling_rectangle(x, y, dx, dy, depth, width, mask, min_coverage):
         Binary mask
     min_coverage : float
         Minimum fraction of rectangle inside cell
-        
+
     Returns
     -------
     rect_params : dict or None
@@ -285,10 +294,10 @@ def create_sampling_rectangle(x, y, dx, dy, depth, width, mask, min_coverage):
     norm = np.sqrt(dx**2 + dy**2)
     if norm > 0:
         dx, dy = dx / norm, dy / norm
-    
+
     # Perpendicular direction
     px, py = -dy, dx
-    
+
     # Create rectangle corners
     corners = np.array([
         [x - px * width/2, y - py * width/2],  # Start of width
@@ -296,22 +305,22 @@ def create_sampling_rectangle(x, y, dx, dy, depth, width, mask, min_coverage):
         [x + px * width/2 + dx * depth, y + py * width/2 + dy * depth],  # Far corner
         [x - px * width/2 + dx * depth, y - py * width/2 + dy * depth]   # Far corner
     ])
-    
+
     # Check if rectangle is within image bounds
-    if (np.any(corners < 0) or 
-        np.any(corners[:, 0] >= mask.shape[1]) or 
+    if (np.any(corners < 0) or
+        np.any(corners[:, 0] >= mask.shape[1]) or
         np.any(corners[:, 1] >= mask.shape[0])):
         return None
-    
+
     # Create mask for rectangle
     rr, cc = draw.polygon(corners[:, 1], corners[:, 0], mask.shape)
-    
+
     if len(rr) == 0:
         return None
-    
+
     # Check coverage
     coverage = np.sum(mask[rr, cc] > 0) / len(rr)
-    
+
     if coverage >= min_coverage:
         return {
             'center': (x, y),
@@ -321,21 +330,21 @@ def create_sampling_rectangle(x, y, dx, dy, depth, width, mask, min_coverage):
             'cc': cc,
             'coverage': coverage
         }
-    
+
     return None
 
 
 def calculate_local_movement(rect, movement_map):
     """
     Calculate local movement score from movement map within a sampling rectangle.
-    
+
     Parameters
     ----------
     rect : dict
         Sampling rectangle parameters
     movement_map : numpy.ndarray
         2D movement map
-        
+
     Returns
     -------
     local_score : float
@@ -343,11 +352,11 @@ def calculate_local_movement(rect, movement_map):
     """
     if rect is None:
         return np.nan
-    
+
     rr, cc = rect['rr'], rect['cc']
     values = movement_map[rr, cc]
     valid_values = values[~np.isnan(values)]
-    
+
     if len(valid_values) > 0:
         return np.mean(valid_values)
     else:
@@ -357,14 +366,14 @@ def calculate_local_movement(rect, movement_map):
 def calculate_local_intensity(rect, image):
     """
     Calculate average intensity within a sampling rectangle.
-    
+
     Parameters
     ----------
     rect : dict
         Sampling rectangle parameters
     image : numpy.ndarray
         Intensity image
-        
+
     Returns
     -------
     intensity : float
@@ -372,10 +381,10 @@ def calculate_local_intensity(rect, image):
     """
     if rect is None:
         return np.nan
-    
+
     rr, cc = rect['rr'], rect['cc']
     values = image[rr, cc]
-    
+
     if len(values) > 0:
         return np.mean(values)
     else:
@@ -385,7 +394,7 @@ def calculate_local_intensity(rect, image):
 def analyze_frame_pair(current_image, current_mask, comparison_mask, config, temporal_direction):
     """
     Analyze a pair of frames for movement and intensity correlation.
-    
+
     Parameters
     ----------
     current_image : numpy.ndarray
@@ -398,7 +407,7 @@ def analyze_frame_pair(current_image, current_mask, comparison_mask, config, tem
         Analysis configuration
     temporal_direction : str
         'past' or 'future'
-        
+
     Returns
     -------
     results : dict
@@ -407,16 +416,16 @@ def analyze_frame_pair(current_image, current_mask, comparison_mask, config, tem
     # Detect edges
     current_contour = detect_cell_edge(current_mask)
     comparison_contour = detect_cell_edge(comparison_mask)
-    
+
     if len(current_contour) == 0 or len(comparison_contour) == 0:
         return {'error': 'No cell edge detected'}
-    
+
     # Calculate movement
     movement_score, movement_type, movement_map, displacements, x_positions = \
         detect_edge_movement_vertical_xaxis(
             current_contour, comparison_contour, current_mask, comparison_mask, config
         )
-    
+
     # Sample along edge
     sampling_points, valid_points, sampling_rects, point_status = \
         sample_along_edge_xaxis(
@@ -428,18 +437,18 @@ def analyze_frame_pair(current_image, current_mask, comparison_mask, config, tem
             config['try_rotation'],
             config['exclude_endpoints']
         )
-    
+
     # Calculate local movement scores and intensities
     local_movement_scores = []
     intensities = []
-    
+
     for rect in sampling_rects:
         local_score = calculate_local_movement(rect, movement_map)
         intensity = calculate_local_intensity(rect, current_image)
-        
+
         local_movement_scores.append(local_score)
         intensities.append(intensity)
-    
+
     results = {
         'current_contour': current_contour,
         'comparison_contour': comparison_contour,
@@ -455,15 +464,133 @@ def analyze_frame_pair(current_image, current_mask, comparison_mask, config, tem
         'local_movement_scores': np.array(local_movement_scores),
         'intensities': np.array(intensities)
     }
-    
+
     return results
 
 
-def run_analysis(piezo1_window, mask_window, config, output_config, viz_config, 
+def create_visualization_windows(results, frame_idx, original_image, viz_config):
+    """
+    Create FLIKA windows to display analysis stages.
+
+    Parameters
+    ----------
+    results : dict
+        Frame analysis results
+    frame_idx : int
+        Current frame index
+    original_image : numpy.ndarray
+        Original PIEZO1 image for this frame
+    viz_config : dict
+        Visualization configuration
+
+    Returns
+    -------
+    viz_windows : dict
+        Dictionary of created visualization windows
+    """
+    if not FLIKA_AVAILABLE:
+        return {}
+
+    viz_windows = {}
+    display_stages = viz_config.get('display_stages', {})
+
+    # 1. Edge contours visualization
+    if display_stages.get('edge_contours', False):
+        contour = results.get('current_contour', None)
+        if contour is not None and len(contour) > 0:
+            # Create binary image with edge contour
+            edge_image = np.zeros_like(original_image, dtype=np.uint8)
+            for y, x in contour:
+                iy, ix = int(y), int(x)
+                if 0 <= iy < edge_image.shape[0] and 0 <= ix < edge_image.shape[1]:
+                    edge_image[iy, ix] = 255
+
+            try:
+                win = Window(edge_image[np.newaxis, ...],
+                           name=f'Edge_Contour_Frame_{frame_idx}')
+                viz_windows['edge_contours'] = win
+            except Exception as e:
+                print(f"Could not create edge contour window: {e}")
+
+    # 2. Movement map visualization
+    if display_stages.get('movement_map', False):
+        movement_map = results.get('movement_map', None)
+        if movement_map is not None:
+            # Convert movement map to displayable image (handle NaN values)
+            display_map = np.nan_to_num(movement_map, nan=0.0)
+            # Normalize to 0-255 range
+            if np.max(np.abs(display_map)) > 0:
+                display_map = ((display_map + np.max(np.abs(display_map))) /
+                              (2 * np.max(np.abs(display_map))) * 255).astype(np.uint8)
+            else:
+                display_map = np.zeros_like(display_map, dtype=np.uint8)
+
+            try:
+                win = Window(display_map[np.newaxis, ...],
+                           name=f'Movement_Map_Frame_{frame_idx}')
+                viz_windows['movement_map'] = win
+            except Exception as e:
+                print(f"Could not create movement map window: {e}")
+
+    # 3. Sampling regions visualization
+    if display_stages.get('sampling_regions', False):
+        sampling_rects = results.get('sampling_rects', [])
+        valid_points = results.get('valid_points', [])
+
+        if len(sampling_rects) > 0:
+            # Create image with sampling regions drawn
+            regions_image = np.copy(original_image)
+
+            for rect, valid in zip(sampling_rects, valid_points):
+                if rect is not None and valid:
+                    rr, cc = rect['rr'], rect['cc']
+                    # Highlight sampling region
+                    max_val = np.max(regions_image) if np.max(regions_image) > 0 else 255
+                    regions_image[rr, cc] = max_val
+
+            try:
+                win = Window(regions_image[np.newaxis, ...],
+                           name=f'Sampling_Regions_Frame_{frame_idx}')
+                viz_windows['sampling_regions'] = win
+            except Exception as e:
+                print(f"Could not create sampling regions window: {e}")
+
+    # 4. Local intensities visualization
+    if display_stages.get('local_intensities', False):
+        sampling_rects = results.get('sampling_rects', [])
+        intensities = results.get('intensities', [])
+        valid_points = results.get('valid_points', [])
+
+        if len(sampling_rects) > 0:
+            # Create image showing local intensities
+            intensity_image = np.zeros_like(original_image, dtype=np.float32)
+
+            for rect, intensity, valid in zip(sampling_rects, intensities, valid_points):
+                if rect is not None and valid and not np.isnan(intensity):
+                    rr, cc = rect['rr'], rect['cc']
+                    intensity_image[rr, cc] = intensity
+
+            # Normalize to 0-255
+            if np.max(intensity_image) > 0:
+                intensity_image = (intensity_image / np.max(intensity_image) * 255).astype(np.uint8)
+            else:
+                intensity_image = intensity_image.astype(np.uint8)
+
+            try:
+                win = Window(intensity_image[np.newaxis, ...],
+                           name=f'Local_Intensities_Frame_{frame_idx}')
+                viz_windows['local_intensities'] = win
+            except Exception as e:
+                print(f"Could not create local intensities window: {e}")
+
+    return viz_windows
+
+
+def run_analysis(piezo1_window, mask_window, config, output_config, viz_config,
                 progress_callback=None):
     """
     Run the complete cell edge movement analysis.
-    
+
     Parameters
     ----------
     piezo1_window : flika.window.Window
@@ -478,7 +605,7 @@ def run_analysis(piezo1_window, mask_window, config, output_config, viz_config,
         Visualization configuration
     progress_callback : callable, optional
         Function to call with progress updates (percentage, message)
-        
+
     Returns
     -------
     results : dict
@@ -486,26 +613,26 @@ def run_analysis(piezo1_window, mask_window, config, output_config, viz_config,
     """
     if progress_callback:
         progress_callback(0, "Initializing analysis...")
-    
+
     # Get image arrays from windows
     images = piezo1_window.image
     masks = mask_window.image
-    
+
     # Ensure binary masks
     masks = (masks > 0).astype(np.uint8)
-    
+
     # Ensure 3D arrays
     if images.ndim == 2:
         images = images[np.newaxis, ...]
     if masks.ndim == 2:
         masks = masks[np.newaxis, ...]
-    
+
     n_frames = images.shape[0]
     temporal_direction = config['temporal_direction']
-    
+
     if progress_callback:
         progress_callback(5, f"Processing {n_frames} frames...")
-    
+
     # Initialize storage
     all_results = []
     all_movements = []
@@ -513,7 +640,11 @@ def run_analysis(piezo1_window, mask_window, config, output_config, viz_config,
     all_valid_points = []
     movement_scores = []
     movement_types = []
-    
+
+    # NOTE: Visualization windows are NOT created during analysis due to threading issues
+    # on macOS. Instead, use the Results tab overlays to visualize results frame-by-frame.
+    # The visualization stages are stored in results and can be displayed after analysis.
+
     # Process frame pairs
     for i in range(n_frames - 1):
         if temporal_direction == 'past':
@@ -522,16 +653,16 @@ def run_analysis(piezo1_window, mask_window, config, output_config, viz_config,
         else:  # 'future'
             current_idx = i
             comparison_idx = i + 1
-        
+
         current_image = images[current_idx]
         current_mask = masks[current_idx]
         comparison_mask = masks[comparison_idx]
-        
+
         # Analyze frame pair
         results = analyze_frame_pair(
             current_image, current_mask, comparison_mask, config, temporal_direction
         )
-        
+
         if 'error' not in results:
             all_results.append(results)
             all_movements.append(results['local_movement_scores'])
@@ -539,36 +670,40 @@ def run_analysis(piezo1_window, mask_window, config, output_config, viz_config,
             all_valid_points.append(results['valid_points'])
             movement_scores.append(results['movement_score'])
             movement_types.append(results['movement_type'])
-        
+
+            # NOTE: Visualization window creation is disabled during analysis
+            # to avoid threading issues on macOS (NSWindow must be on main thread).
+            # Use Results tab overlays instead for frame-by-frame visualization.
+
         # Update progress
         if progress_callback and (i + 1) % 5 == 0:
             percentage = int((i + 1) / (n_frames - 1) * 80) + 10
             progress_callback(percentage, f"Processed {i+1}/{n_frames-1} transitions...")
-    
+
     if progress_callback:
         progress_callback(90, "Calculating statistics...")
-    
+
     # Calculate statistics
     processed_pairs = len(all_results)
     total_points = sum(len(m) for m in all_movements)
     valid_measurements = sum(np.sum(v) for v in all_valid_points)
-    
+
     extending_count = sum(1 for t in movement_types if t == 'extending')
     retracting_count = sum(1 for t in movement_types if t == 'retracting')
     stable_count = sum(1 for t in movement_types if t == 'stable')
-    
+
     # Correlation analysis
     if len(all_movements) > 0:
         # Flatten arrays for correlation
         all_mov_flat = []
         all_int_flat = []
-        
+
         for movements, intensities, valid in zip(all_movements, all_intensities, all_valid_points):
             for mov, intensity, v in zip(movements, intensities, valid):
                 if v and not np.isnan(mov) and not np.isnan(intensity):
                     all_mov_flat.append(mov)
                     all_int_flat.append(intensity)
-        
+
         if len(all_mov_flat) > 10:
             slope, intercept, r_value, p_value, std_err = stats.linregress(
                 all_int_flat, all_mov_flat
@@ -595,7 +730,7 @@ def run_analysis(piezo1_window, mask_window, config, output_config, viz_config,
             'sample_size': 0,
             'slope': None
         }
-    
+
     # Compile summary statistics
     summary_stats = {
         'total_frames': int(n_frames),
@@ -616,10 +751,10 @@ def run_analysis(piezo1_window, mask_window, config, output_config, viz_config,
         },
         'correlation_analysis': correlation_stats
     }
-    
+
     if progress_callback:
         progress_callback(95, "Analysis complete!")
-    
+
     results_dict = {
         'all_results': all_results,
         'all_movements': all_movements,
@@ -630,8 +765,147 @@ def run_analysis(piezo1_window, mask_window, config, output_config, viz_config,
         'summary_stats': summary_stats,
         'config': config
     }
-    
+
     if progress_callback:
         progress_callback(100, "Done!")
-    
+
     return results_dict
+
+
+def export_results_to_csv(results, output_dir):
+    """
+    Export analysis results to CSV file.
+
+    Parameters
+    ----------
+    results : dict
+        Analysis results dictionary
+    output_dir : str
+        Output directory path
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Prepare data for CSV
+    rows = []
+    all_results = results.get('all_results', [])
+
+    for frame_idx, frame_results in enumerate(all_results):
+        movement_type = frame_results.get('movement_type', 'N/A')
+        movement_score = frame_results.get('movement_score', np.nan)
+
+        local_scores = frame_results.get('local_movement_scores', [])
+        intensities = frame_results.get('intensities', [])
+        valid_points = frame_results.get('valid_points', [])
+        sampling_points = frame_results.get('sampling_points', [])
+
+        for pt_idx, (point, local_score, intensity, valid) in enumerate(
+                zip(sampling_points, local_scores, intensities, valid_points)):
+            y, x = point if len(point) == 2 else (np.nan, np.nan)
+
+            rows.append({
+                'frame': frame_idx,
+                'point_index': pt_idx,
+                'x': x,
+                'y': y,
+                'valid': valid,
+                'local_movement_score': local_score,
+                'intensity': intensity,
+                'global_movement_score': movement_score,
+                'movement_type': movement_type
+            })
+
+    df = pd.DataFrame(rows)
+    csv_path = os.path.join(output_dir, 'detailed_movement_results.csv')
+    df.to_csv(csv_path, index=False)
+
+    # Also save summary JSON
+    summary_path = os.path.join(output_dir, 'movement_summary_statistics.json')
+    with open(summary_path, 'w') as f:
+        json.dump(results['summary_stats'], f, indent=2)
+
+    return csv_path, summary_path
+
+
+def generate_summary_plots(results, output_dir):
+    """
+    Generate summary plots for the analysis.
+
+    Parameters
+    ----------
+    results : dict
+        Analysis results dictionary
+    output_dir : str
+        Output directory path
+    """
+    if not MATPLOTLIB_AVAILABLE:
+        print("Matplotlib not available - cannot generate plots")
+        return
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    # 1. Movement-Intensity Correlation Plot
+    all_movements = []
+    all_intensities = []
+
+    for movements, intensities, valid in zip(
+            results['all_movements'],
+            results['all_intensities'],
+            results['all_valid_points']):
+        for mov, intensity, v in zip(movements, intensities, valid):
+            if v and not np.isnan(mov) and not np.isnan(intensity):
+                all_movements.append(mov)
+                all_intensities.append(intensity)
+
+    if len(all_movements) > 10:
+        fig, ax = plt.subplots(figsize=(10, 8))
+        ax.scatter(all_intensities, all_movements, alpha=0.5, s=10)
+        ax.set_xlabel('PIEZO1 Intensity (a.u.)', fontsize=12)
+        ax.set_ylabel('Local Movement Score (pixels)', fontsize=12)
+        ax.set_title('Movement-Intensity Correlation', fontsize=14, fontweight='bold')
+        ax.grid(True, alpha=0.3)
+
+        # Add regression line
+        corr_stats = results['summary_stats']['correlation_analysis']
+        if corr_stats['slope'] is not None:
+            x_line = np.array([min(all_intensities), max(all_intensities)])
+            y_line = corr_stats['slope'] * x_line + corr_stats['intercept']
+            ax.plot(x_line, y_line, 'r-', linewidth=2, label=f'R²={corr_stats["r_squared"]:.3f}')
+            ax.legend()
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, 'movement_intensity_correlation.png'), dpi=150)
+        plt.close()
+
+    # 2. Movement Scores Over Time
+    fig, ax = plt.subplots(figsize=(12, 6))
+    movement_scores = results['movement_scores']
+    ax.plot(movement_scores, linewidth=2)
+    ax.set_xlabel('Frame Index', fontsize=12)
+    ax.set_ylabel('Movement Score (pixels)', fontsize=12)
+    ax.set_title('Cell Edge Movement Over Time', fontsize=14, fontweight='bold')
+    ax.axhline(y=0, color='k', linestyle='--', alpha=0.3)
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'movement_summary.png'), dpi=150)
+    plt.close()
+
+    # 3. Movement Type Distribution
+    fig, ax = plt.subplots(figsize=(8, 6))
+    mvmt_stats = results['summary_stats']['movement_statistics']
+    categories = ['Extending', 'Retracting', 'Stable']
+    values = [
+        mvmt_stats['extending_transitions'],
+        mvmt_stats['retracting_transitions'],
+        mvmt_stats['stable_transitions']
+    ]
+    colors = ['#0000FF', '#FF0000', '#808080']
+
+    ax.bar(categories, values, color=colors, alpha=0.7)
+    ax.set_ylabel('Number of Transitions', fontsize=12)
+    ax.set_title('Movement Type Distribution', fontsize=14, fontweight='bold')
+    ax.grid(True, alpha=0.3, axis='y')
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'movement_type_distribution.png'), dpi=150)
+    plt.close()

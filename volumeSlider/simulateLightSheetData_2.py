@@ -23,14 +23,68 @@ from skimage.feature import blob_log
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
 from scipy.spatial import cKDTree
-from scipy.ndimage import center_of_mass, binary_dilation, gaussian_filter
+
+from scipy.ndimage import distance_transform_edt, center_of_mass, binary_dilation, gaussian_filter
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtCore import pyqtSlot
-
+from scipy.spatial.transform import Rotation
 
 #from data_generator import DataGenerator
 #from volume_processor import VolumeProcessor
 
+def line_3d(x0, y0, z0, x1, y1, z1):
+    """Generate coordinates of a 3D line using Bresenham's algorithm."""
+    dx = abs(x1 - x0)
+    dy = abs(y1 - y0)
+    dz = abs(z1 - z0)
+    sx = 1 if x1 > x0 else -1
+    sy = 1 if y1 > y0 else -1
+    sz = 1 if z1 > z0 else -1
+    dm = max(dx, dy, dz)
+    x, y, z = x0, y0, z0
+
+    x_coords, y_coords, z_coords = [], [], []
+
+    for _ in range(dm + 1):
+        x_coords.append(x)
+        y_coords.append(y)
+        z_coords.append(z)
+
+        if x == x1 and y == y1 and z == z1:
+            break
+
+        if dx >= dy and dx >= dz:
+            x += sx
+            dy += dy
+            dz += dz
+            if dy >= dx:
+                y += sy
+                dy -= dx
+            if dz >= dx:
+                z += sz
+                dz -= dx
+        elif dy >= dx and dy >= dz:
+            y += sy
+            dx += dx
+            dz += dz
+            if dx >= dy:
+                x += sx
+                dx -= dy
+            if dz >= dy:
+                z += sz
+                dz -= dy
+        else:
+            z += sz
+            dx += dx
+            dy += dy
+            if dx >= dz:
+                x += sx
+                dx -= dz
+            if dy >= dz:
+                y += sy
+                dy -= dz
+
+    return np.array(x_coords), np.array(y_coords), np.array(z_coords)
 
 class BiologicalSimulator:
     def __init__(self, size, num_time_points):
@@ -158,129 +212,195 @@ class BiologicalSimulator:
             self.logger.error(f"Error in cell membrane generation: {str(e)}")
             raise
 
-    def generate_nucleus(self, cell_center, cell_radius, nucleus_radius, thickness=1, pixel_size=(1,1,1)):
-        """
-        Generate a hollow cell nucleus inside the cell membrane.
 
-        Args:
-        cell_center (tuple): The (z, y, x) coordinates of the cell center
-        cell_radius (float): The radius of the cell
-        nucleus_radius (float): The outer radius of the nucleus
-        thickness (float): The thickness of the nuclear envelope
-        pixel_size (tuple): The size of a pixel in (z, y, x) dimensions
-
-        Returns:
-        np.ndarray: 3D array representing the cell nucleus
-        """
+    def generate_nucleus(self, cell_interior, soma_center, nucleus_radius, pixel_size=(1,1,1)):
         try:
-            self.logger.info(f"Generating hollow cell nucleus at {cell_center} with radius {nucleus_radius} and thickness {thickness}")
+            self.logger.info(f"Generating cell nucleus at {soma_center} with radius {nucleus_radius}")
 
-            if nucleus_radius >= cell_radius:
-                raise ValueError("Nucleus radius must be smaller than cell radius")
+            # Ensure nucleus_radius is at least 1 pixel and not larger than 1/3 of the soma
+            soma_radius = min(self.size) // 4
+            nucleus_radius = min(max(1, nucleus_radius), soma_radius // 3)
 
+            # Find a suitable center for the nucleus
+            new_center = self.find_suitable_center(cell_interior, soma_center, nucleus_radius)
+
+            if new_center is None:
+                self.logger.warning("Unable to find suitable location for nucleus.")
+                return np.zeros_like(cell_interior), soma_center
+
+            # Create a spherical nucleus
             z, y, x = np.ogrid[:self.size[0], :self.size[1], :self.size[2]]
             dist_from_center = np.sqrt(
-                ((z - cell_center[0]) * pixel_size[0])**2 +
-                ((y - cell_center[1]) * pixel_size[1])**2 +
-                ((x - cell_center[2]) * pixel_size[2])**2
+                ((z - new_center[0]) * pixel_size[0])**2 +
+                ((y - new_center[1]) * pixel_size[1])**2 +
+                ((x - new_center[2]) * pixel_size[2])**2
             )
 
-            outer_nucleus = dist_from_center <= nucleus_radius
-            inner_nucleus = dist_from_center <= (nucleus_radius - thickness)
-            nucleus = outer_nucleus ^ inner_nucleus
+            # Create nucleus only within the cell interior
+            nucleus = (dist_from_center <= nucleus_radius) & (cell_interior > 0)
 
-            self.logger.info("Hollow cell nucleus generated successfully")
-            return nucleus.astype(float)
+            actual_volume = np.sum(nucleus)
+            self.logger.info(f"Cell nucleus generated successfully. Nucleus volume: {actual_volume}")
+            return nucleus.astype(float), new_center
 
         except Exception as e:
             self.logger.error(f"Error in cell nucleus generation: {str(e)}")
             raise
 
+    def find_suitable_center(self, cell_shape, soma_center, nucleus_radius):
+        z, y, x = np.ogrid[:self.size[0], :self.size[1], :self.size[2]]
+        dist_from_center = np.sqrt(
+            (z - soma_center[0])**2 + (y - soma_center[1])**2 + (x - soma_center[2])**2
+        )
 
-    def generate_er(self, cell_shape, nucleus_center, nucleus_radius, er_density=0.1, pixel_size=(1,1,1)):
+        # Create a priority map that favors locations closer to the desired center
+        priority_map = np.where(cell_shape, -dist_from_center, -np.inf)
+
+        search_radius = 0
+        max_search_radius = max(self.size)
+        while search_radius < max_search_radius:
+            potential_centers = np.argwhere(
+                (dist_from_center <= search_radius) & (cell_shape > 0)
+            )
+            if len(potential_centers) > 0:
+                # Sort potential centers by priority
+                priorities = priority_map[tuple(potential_centers.T)]
+                sorted_centers = potential_centers[np.argsort(priorities)]
+
+                for center in sorted_centers:
+                    # Check if the chosen center can accommodate the nucleus
+                    z, y, x = np.ogrid[:self.size[0], :self.size[1], :self.size[2]]
+                    dist_from_center = np.sqrt(
+                        (z - center[0])**2 + (y - center[1])**2 + (x - center[2])**2
+                    )
+                    if np.sum((dist_from_center <= nucleus_radius) & (cell_shape > 0)) >= 7:
+                        return center
+
+            search_radius += 1
+
+        # If no suitable center is found, return the center of mass of the cell shape
+        if np.sum(cell_shape) > 0:
+            return np.array(center_of_mass(cell_shape)).astype(int)
+        else:
+            return None
+
+    def generate_er(self, cell_shape, soma_center, nucleus_radius, er_density=0.1, pixel_size=(1,1,1)):
         try:
             self.logger.info(f"Generating ER with density {er_density}")
 
             z, y, x = np.ogrid[:self.size[0], :self.size[1], :self.size[2]]
             dist_from_center = np.sqrt(
-                ((z - nucleus_center[0]) * pixel_size[0])**2 +
-                ((y - nucleus_center[1]) * pixel_size[1])**2 +
-                ((x - nucleus_center[2]) * pixel_size[2])**2
+                ((z - soma_center[0]) * pixel_size[0])**2 +
+                ((y - soma_center[1]) * pixel_size[1])**2 +
+                ((x - soma_center[2]) * pixel_size[2])**2
             )
 
-            # Convert cell_shape to boolean
-            cytoplasm_mask = cell_shape.astype(bool)
+            # Create a mask for the cell
+            cell_mask = cell_shape > 0
             nucleus_mask = dist_from_center <= nucleus_radius
-            cytoplasm_mask[nucleus_mask] = False
+            cytoplasm_mask = cell_mask & ~nucleus_mask
+
+            self.logger.info(f"Cell volume: {np.sum(cell_mask)}, Nucleus volume: {np.sum(nucleus_mask)}, Cytoplasm volume: {np.sum(cytoplasm_mask)}")
 
             # Initialize ER
             er = np.zeros(self.size, dtype=bool)
 
-            # Start points for ER growth (on nuclear envelope)
-            nuclear_envelope = (dist_from_center >= nucleus_radius) & (dist_from_center <= nucleus_radius + max(pixel_size))
-            start_points = np.argwhere(nuclear_envelope & cytoplasm_mask)
-            num_start_points = min(50, len(start_points))
-            start_points = start_points[np.random.choice(len(start_points), num_start_points, replace=False)]
+            # Generate ER throughout the cytoplasm
+            er = cytoplasm_mask & (np.random.rand(*self.size) < er_density)
 
-            for start in start_points:
-                current_point = start
-                for _ in range(100):  # Grow each branch for 100 steps
-                    er[tuple(current_point)] = True
-                    # Random step
-                    step = np.random.randint(-1, 2, 3)
-                    new_point = current_point + step
-                    new_point = np.clip(new_point, [0, 0, 0], np.array(self.size) - 1)
-                    if cytoplasm_mask[tuple(new_point)]:
-                        current_point = new_point
+            # Ensure higher ER density near the nucleus
+            near_nucleus = (dist_from_center > nucleus_radius) & (dist_from_center <= nucleus_radius * 1.5)
+            er |= near_nucleus & cytoplasm_mask & (np.random.rand(*self.size) < er_density * 2)
 
-            # Add some sheet-like structures near the nucleus
-            sheet_mask = (dist_from_center > nucleus_radius) & (dist_from_center <= nucleus_radius + 5*max(pixel_size))
-            er |= sheet_mask & cytoplasm_mask & (np.random.rand(*self.size) < 0.3)
-
-            # Dilate and smooth to create more continuous structures
-            er = binary_dilation(er, iterations=2)
-            er = gaussian_filter(er.astype(float), sigma=1) > 0.5
-
-            # Ensure ER is only within the cytoplasm
-            er &= cytoplasm_mask
-
-            # Adjust density
-            while np.sum(er) / np.sum(cytoplasm_mask) > er_density:
-                er &= (np.random.rand(*self.size) < 0.9)
-
-            self.logger.info("ER generated successfully")
+            self.logger.info(f"ER generated successfully. ER volume: {np.sum(er)}")
             return er.astype(float)
 
         except Exception as e:
             self.logger.error(f"Error in ER generation: {str(e)}")
             raise
 
-    def generate_cell_shape(self, cell_type, size, pixel_size=(1,1,1), membrane_thickness=1):
+    def generate_cell_shape(self, cell_type, size, pixel_size=(1,1,1), membrane_thickness=1, soma_center=None, **kwargs):
         try:
             self.logger.info(f"Generating {cell_type} cell shape")
 
             z, y, x = np.ogrid[:size[0], :size[1], :size[2]]
-            center = np.array(size) // 2
+            if soma_center is None:
+                soma_center = np.array(size) // 2
 
             if cell_type == 'spherical':
-                radius = min(size) // 2 - 1
+                radius = kwargs.get('cell_radius', min(size) // 4)
+                self.logger.info(f"Generating spherical cell with radius {radius}")
                 dist_from_center = np.sqrt(
-                    ((z - center[0]) * pixel_size[0])**2 +
-                    ((y - center[1]) * pixel_size[1])**2 +
-                    ((x - center[2]) * pixel_size[2])**2
+                    ((z - soma_center[0]) * pixel_size[0])**2 +
+                    ((y - soma_center[1]) * pixel_size[1])**2 +
+                    ((x - soma_center[2]) * pixel_size[2])**2
                 )
-                outer_membrane = dist_from_center <= radius
-                inner_membrane = dist_from_center <= (radius - membrane_thickness)
-                cell_shape = outer_membrane ^ inner_membrane
+                cell_interior = dist_from_center <= (radius - membrane_thickness)
+                cell_membrane = (dist_from_center <= radius) & (dist_from_center > (radius - membrane_thickness))
+                cell_shape = cell_interior | cell_membrane
 
             elif cell_type == 'neuron':
-                cell_body_radius = min(size) // 4
-                cell_body = ((z - center[0])*pixel_size[0])**2 + ((y - center[1])*pixel_size[1])**2 + ((x - center[2])*pixel_size[2])**2 <= cell_body_radius**2
-                axon = (x >= center[2]) & (np.abs(y - center[1]) <= size[1]//10) & (np.abs(z - center[0]) <= size[0]//10)
-                dendrites = np.random.rand(*size) < 0.05
-                dendrites = binary_dilation(dendrites, iterations=3)
-                dendrites = dendrites & ~cell_body & (x < center[2])
-                cell_shape = binary_dilation(cell_body | axon | dendrites, iterations=membrane_thickness) ^ (cell_body | axon | dendrites)
+                soma_radius = kwargs.get('soma_radius', min(size) // 8)
+                axon_length = kwargs.get('axon_length', size[2] // 2)
+                axon_width = kwargs.get('axon_width', size[1] // 20)
+                num_dendrites = kwargs.get('num_dendrites', 5)
+                dendrite_length = kwargs.get('dendrite_length', size[1] // 4)
+
+                self.logger.info(f"Generating neuron with soma radius {soma_radius}")
+
+                # Create soma (cell body)
+                dist_from_soma_center = np.sqrt(
+                    ((z - soma_center[0]) * pixel_size[0])**2 +
+                    ((y - soma_center[1]) * pixel_size[1])**2 +
+                    ((x - soma_center[2]) * pixel_size[2])**2
+                )
+                soma = dist_from_soma_center <= soma_radius
+
+                # Create axon
+                axon_start = soma_center[2] + soma_radius
+                axon = (x >= axon_start) & (x < axon_start + axon_length) & \
+                       (np.abs(y - soma_center[1]) <= axon_width // 2) & \
+                       (np.abs(z - soma_center[0]) <= axon_width // 2)
+
+                # Create axon terminals
+                axon_end = axon_start + axon_length
+                terminals = np.zeros_like(soma, dtype=bool)
+                for _ in range(3):  # Create 3 terminals
+                    terminal_center = (
+                        soma_center[0] + np.random.randint(-axon_width, axon_width),
+                        soma_center[1] + np.random.randint(-axon_width, axon_width),
+                        axon_end + np.random.randint(0, size[2]//10)
+                    )
+                    terminal_radius = axon_width // 2
+                    dist_from_terminal = np.sqrt(
+                        ((z - terminal_center[0]) * pixel_size[0])**2 +
+                        ((y - terminal_center[1]) * pixel_size[1])**2 +
+                        ((x - terminal_center[2]) * pixel_size[2])**2
+                    )
+                    terminals |= dist_from_terminal <= terminal_radius
+
+                # Create dendrites
+                dendrites = np.zeros_like(soma, dtype=bool)
+                for _ in range(num_dendrites):
+                    angle = np.random.uniform(0, 2*np.pi)
+                    end_point = (
+                        int(soma_center[0] + dendrite_length * np.sin(angle) * np.cos(angle)),
+                        int(soma_center[1] + dendrite_length * np.sin(angle)),
+                        int(soma_center[2] - dendrite_length * np.cos(angle))
+                    )
+                    rr, cc, zz = line_3d(soma_center[0], soma_center[1], soma_center[2],
+                                         end_point[0], end_point[1], end_point[2])
+                    dendrites[rr, cc, zz] = True
+
+                dendrites = binary_dilation(dendrites, iterations=2)
+
+                # Combine all parts to create the cell interior
+                cell_interior = soma | axon | terminals | dendrites
+
+                # Create the membrane by dilating the cell interior
+                cell_shape = binary_dilation(cell_interior, iterations=membrane_thickness)
+                cell_membrane = cell_shape & ~cell_interior
+
 
             elif cell_type == 'epithelial':
                 height = size[0] // 3
@@ -289,15 +409,26 @@ class BiologicalSimulator:
                 cell_shape = outer_shape ^ inner_shape
 
             elif cell_type == 'muscle':
-                outer_shape = ((y - center[1])*pixel_size[1])**2 + ((z - center[0])*pixel_size[0])**2 <= (min(size)//4)**2
-                inner_shape = ((y - center[1])*pixel_size[1])**2 + ((z - center[0])*pixel_size[0])**2 <= (min(size)//4 - membrane_thickness)**2
+                outer_shape = ((y - soma_center[1])*pixel_size[1])**2 + ((z - soma_center[0])*pixel_size[0])**2 <= (min(size)//4)**2
+                inner_shape = ((y - soma_center[1])*pixel_size[1])**2 + ((z - soma_center[0])*pixel_size[0])**2 <= (min(size)//4 - membrane_thickness)**2
                 cell_shape = outer_shape ^ inner_shape
 
             else:
                 raise ValueError(f"Unknown cell type: {cell_type}")
 
+            non_zero_coords = np.argwhere(cell_shape > 0)
+            self.logger.info(f"Non-zero cell shape coordinates: min={non_zero_coords.min(axis=0)}, max={non_zero_coords.max(axis=0)}")
+
+            # Visualize the cell shape
+            #plt.imshow(cell_shape[:, :, cell_shape.shape[2]//2])
+            #plt.title("Cell Shape (Middle Slice)")
+            #plt.colorbar()
+            #plt.savefig("cell_shape.png")
+            #plt.close()
+
             self.logger.info(f"{cell_type} cell shape generated successfully")
-            return cell_shape.astype(float)
+            return cell_shape.astype(float), cell_interior.astype(float), cell_membrane.astype(float)
+
 
         except Exception as e:
             self.logger.error(f"Error in cell shape generation: {str(e)}")
@@ -459,8 +590,8 @@ class BiologicalSimulationWidget(QWidget):
         self.nucleus_options = QWidget()
         nucleus_layout = QFormLayout(self.nucleus_options)
         self.nucleus_radius = QSpinBox()
-        self.nucleus_radius.setRange(1, 15)
-        self.nucleus_radius.setValue(5)
+        self.nucleus_radius.setRange(1, 10)
+        self.nucleus_radius.setValue(3)
         nucleus_layout.addRow("Nucleus Radius:", self.nucleus_radius)
         self.nucleus_thickness = QSpinBox()
         self.nucleus_thickness.setRange(1, 3)
@@ -477,8 +608,38 @@ class BiologicalSimulationWidget(QWidget):
         self.er_density.setValue(0.1)
         er_layout.addRow("ER Density:", self.er_density)
         form_layout.addRow(self.er_options)
-
         main_layout.addLayout(form_layout)
+
+        # Neuron-specific options
+        self.neuron_options = QWidget()
+        neuron_layout = QFormLayout(self.neuron_options)
+
+        self.soma_radius = QSpinBox()
+        self.soma_radius.setRange(1, 20)
+        self.soma_radius.setValue(5)
+        neuron_layout.addRow("Soma Radius:", self.soma_radius)
+
+        self.axon_length = QSpinBox()
+        self.axon_length.setRange(10, 100)
+        self.axon_length.setValue(50)
+        neuron_layout.addRow("Axon Length:", self.axon_length)
+
+        self.axon_width = QSpinBox()
+        self.axon_width.setRange(1, 10)
+        self.axon_width.setValue(2)
+        neuron_layout.addRow("Axon Width:", self.axon_width)
+
+        self.num_dendrites = QSpinBox()
+        self.num_dendrites.setRange(1, 10)
+        self.num_dendrites.setValue(5)
+        neuron_layout.addRow("Number of Dendrites:", self.num_dendrites)
+
+        self.dendrite_length = QSpinBox()
+        self.dendrite_length.setRange(5, 50)
+        self.dendrite_length.setValue(25)
+        neuron_layout.addRow("Dendrite Length:", self.dendrite_length)
+
+        form_layout.addRow(self.neuron_options)
 
         self.structure_combo.currentTextChanged.connect(self.toggle_structure_options)
 
@@ -488,6 +649,7 @@ class BiologicalSimulationWidget(QWidget):
         self.membrane_options.setVisible('Cell Membrane' in structure)
         self.nucleus_options.setVisible('Nucleus' in structure)
         self.er_options.setVisible('ER' in structure)
+        self.neuron_options.setVisible('neuron' in structure.lower())
 
     def create_calcium_tab(self):
         calcium_tab = QWidget()
@@ -540,6 +702,11 @@ class BiologicalSimulationWidget(QWidget):
             'er_density': self.er_density.value(),
             'cell_type': self.cell_type_combo.currentText(),
             'pixel_size': (self.pixel_size_x.value(), self.pixel_size_y.value(), self.pixel_size_z.value()),
+            'soma_radius': self.soma_radius.value(),
+            'axon_length': self.axon_length.value(),
+            'axon_width': self.axon_width.value(),
+            'num_dendrites': self.num_dendrites.value(),
+            'dendrite_length': self.dendrite_length.value(),
 
             'calcium_signal': {
                 'type': self.calcium_combo.currentText(),
@@ -1365,12 +1532,6 @@ class LightsheetViewer(QMainWindow):
         self.check_view_state()  # Check the state after initialization
 
 
-
-    # def display_blob_results(self, blobs):
-    #     self.blob_results_dialog.update_results(blobs)
-    #     self.blob_results_dialog.show()
-
-
     def runBiologicalSimulation(self, params):
         try:
             # Run protein diffusion simulation if enabled
@@ -1412,34 +1573,43 @@ class LightsheetViewer(QMainWindow):
 
             # Generate cellular structures
             if params['cellular_structure'] != 'None':
-                center = (self.biological_simulator.size[0] // 2,
-                          self.biological_simulator.size[1] // 2,
-                          self.biological_simulator.size[2] // 2)
+                #center = (self.biological_simulator.size[0] // 2,
+                #          self.biological_simulator.size[1] // 2,
+                #          self.biological_simulator.size[2] // 2)
+
+                # Define soma_center as the center of the volume
+                soma_center = tuple(s // 2 for s in self.biological_simulator.size)
                 pixel_size = params['pixel_size']
-                cell_shape = self.biological_simulator.generate_cell_shape(
+                cell_shape, cell_interior, cell_membrane = self.biological_simulator.generate_cell_shape(
                     params['cell_type'],
                     self.biological_simulator.size,
                     pixel_size,
-                    membrane_thickness=params['membrane_thickness'])
+                    membrane_thickness=params['membrane_thickness'],
+                    cell_radius=params['cell_radius'],
+                    soma_radius=params['soma_radius'],
+                    axon_length=params['axon_length'],
+                    axon_width=params['axon_width'],
+                    num_dendrites=params['num_dendrites'],
+                    dendrite_length=params['dendrite_length']
+                )
 
-                nucleus_center = np.array(self.biological_simulator.size) // 2
-                nucleus_radius = params['nucleus_radius'] * max(pixel_size)
+
+                nucleus_radius = max(5, min(params['nucleus_radius'], params['soma_radius'] // 2))
 
                 if 'Cell Membrane' in params['cellular_structure']:
-                    membrane_data = cell_shape
-                    membrane_timeseries = np.repeat(membrane_data[np.newaxis, np.newaxis, :, :, :], self.biological_simulator.num_time_points, axis=0)
+                    membrane_timeseries = np.repeat(cell_membrane[np.newaxis, np.newaxis, :, :, :], self.biological_simulator.num_time_points, axis=0)
                     self.data = membrane_timeseries
                     self.logger.info(f"Added cell membrane data. Data shape: {self.data.shape}")
 
-
                 if 'Nucleus' in params['cellular_structure']:
-                    nucleus_data = self.biological_simulator.generate_nucleus(
-                        nucleus_center,
-                        cell_radius=min(self.biological_simulator.size) // 2,
-                        nucleus_radius=nucleus_radius,
-                        thickness=params['nucleus_thickness'],
+                    nucleus_data, nucleus_center = self.biological_simulator.generate_nucleus(
+                        cell_interior,
+                        soma_center,
+                        nucleus_radius,
                         pixel_size=pixel_size
                     )
+                    self.logger.info(f"Nucleus data shape: {nucleus_data.shape}, min: {nucleus_data.min()}, max: {nucleus_data.max()}, non-zero elements: {np.count_nonzero(nucleus_data)}")
+                    self.logger.info(f"Nucleus center: {nucleus_center}")
                     nucleus_timeseries = np.repeat(nucleus_data[np.newaxis, np.newaxis, :, :, :], self.biological_simulator.num_time_points, axis=0)
                     if self.data is None:
                         self.data = nucleus_timeseries
@@ -1447,15 +1617,18 @@ class LightsheetViewer(QMainWindow):
                         self.data = np.concatenate((self.data, nucleus_timeseries), axis=1)
                     self.logger.info(f"Added cell nucleus data. New data shape: {self.data.shape}")
 
-
                 if 'ER' in params['cellular_structure']:
+                    self.logger.info("Starting ER generation")
                     er_data = self.biological_simulator.generate_er(
                         cell_shape,
-                        nucleus_center,
+                        soma_center,
                         nucleus_radius,
                         params['er_density'],
                         pixel_size
                     )
+                    self.logger.info(f"ER data shape: {er_data.shape}, min: {er_data.min()}, max: {er_data.max()}, non-zero elements: {np.count_nonzero(er_data)}")
+                    if np.sum(er_data) == 0:
+                        self.logger.warning("Generated ER has zero volume. ER will not be visible.")
                     er_timeseries = np.repeat(er_data[np.newaxis, np.newaxis, :, :, :], self.biological_simulator.num_time_points, axis=0)
                     if self.data is None:
                         self.data = er_timeseries
@@ -2099,7 +2272,11 @@ class LightsheetViewer(QMainWindow):
         combined_yz = np.zeros((height, depth, width, 3))
 
         # Define colors for each channel (RGB)
-        channel_colors = [(1, 0, 0), (0, 1, 0), (0, 0, 1)]  # Red, Green, Blue
+        channel_colors = [
+            (1, 0, 0), (0, 1, 0), (0, 0, 1),  # Red, Green, Blue
+            (1, 1, 0), (1, 0, 1), (0, 1, 1),  # Yellow, Magenta, Cyan
+            (0.5, 0.5, 0.5), (1, 0.5, 0),     # Gray, Orange
+        ]
 
         for c in range(num_channels):
             if c < len(self.channelControls) and self.channelControls[c][0].isChecked():
@@ -2108,6 +2285,7 @@ class LightsheetViewer(QMainWindow):
 
                 self.logger.debug(f"Channel {c} data shape: {channel_data.shape}")
                 self.logger.debug(f"Channel {c} data range: {channel_data.min()} to {channel_data.max()}")
+                self.logger.debug(f"Channel {c} non-zero elements: {np.count_nonzero(channel_data)}")
 
                 # Normalize channel data
                 channel_data = (channel_data - channel_data.min()) / (channel_data.max() - channel_data.min() + 1e-8)
@@ -2115,7 +2293,8 @@ class LightsheetViewer(QMainWindow):
                 channel_data[channel_data < threshold] = 0
 
                 # Apply color to the channel
-                colored_data = channel_data[:, :, :, np.newaxis] * channel_colors[c]
+                color = channel_colors[c % len(channel_colors)]
+                colored_data = channel_data[:, :, :, np.newaxis] * color
 
                 combined_xy += colored_data * opacity
                 combined_xz += np.transpose(colored_data, (1, 0, 2, 3)) * opacity
@@ -2140,6 +2319,7 @@ class LightsheetViewer(QMainWindow):
 
             t = self.timeSlider.value()
             threshold = self.thresholdSpinBox.value()
+            self.logger.debug(f"Current threshold: {threshold}")
 
             num_channels = self.data.shape[1]
 
@@ -2152,6 +2332,7 @@ class LightsheetViewer(QMainWindow):
 
                     self.logger.debug(f"3D Channel {c} data shape: {volume_data.shape}")
                     self.logger.debug(f"3D Channel {c} data range: {volume_data.min()} to {volume_data.max()}")
+                    self.logger.debug(f"3D Channel {c} non-zero elements: {np.count_nonzero(volume_data)}")
 
                     # Get 3D coordinates of all points above threshold
                     z, y, x = np.where(volume_data > threshold)
@@ -2345,6 +2526,7 @@ class LightsheetViewer(QMainWindow):
                 channelWidget = QWidget()
                 channelWidget.setLayout(channelLayout)
                 self.channelControlsLayout.addWidget(channelWidget)
+                self.logger.debug(f"Created control for channel {i}")
 
             self.updateViews()
             self.create3DVisualization()

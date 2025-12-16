@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>U-Track Particle Tracking Plugin</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            line-height: 1.6;
+            color: #333;
+        }
+        h1 { 
+            color: #2E86AB; 
+            border-bottom: 2px solid #2E86AB;
+            padding-bottom: 10px;
+        }
+        h2 { 
+            color: #A23B72; 
+            margin-top: 25px;
+        }
+        h3 {
+            color: #F18F01;
+            margin-top: 20px;
+        }
+        .version { 
+            color: #666; 
+            font-style: italic; 
+            font-size: 0.9em;
+        }
+        .author { 
+            margin-top: 10px; 
+            color: #666;
+        }
+        code { 
+            background-color: #f4f4f4; 
+            padding: 2px 6px; 
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        .parameter-table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 15px 0;
+        }
+        .parameter-table th, .parameter-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .parameter-table th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .highlight {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .step-list {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .step-list ol {
+            margin: 0;
+            padding-left: 20px;
+        }
+        ul li {
+            margin-bottom: 5px;
+        }
+        .citation {
+            background-color: #f8f9fa;
+            border-left: 4px solid #6c757d;
+            padding: 15px;
+            margin: 20px 0;
+            font-style: italic;
+        }
+        .warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>U-Track Particle Tracking Plugin</h1>
+    <p class="version">Version 1.0.0</p>
+    <p class="author">for FLIKA - Fluorescence Image Analysis</p>
+    
+    <h2>Description</h2>
+    <p>
+        This plugin integrates the powerful <strong>u-track</strong> particle tracking framework 
+        into FLIKA, enabling sophisticated tracking and motion analysis of fluorescent particles 
+        across time-lapse microscopy sequences. The algorithm links detected particles across frames 
+        using advanced cost matrix optimization and handles complex scenarios including particle 
+        merging, splitting, and temporary disappearances.
+    </p>
+    
+    <div class="highlight">
+        <strong>Key Features:</strong>
+        <ul>
+            <li>Frame-to-frame particle linking with multiple motion models</li>
+            <li>Gap closing for handling temporary particle disappearances</li>
+            <li>Merge and split event detection</li>
+            <li>Motion classification (Brownian, directed, switching)</li>
+            <li>Kalman filtering for trajectory prediction</li>
+            <li>Multiple data input sources (detection results, CSV, MAT, PKL)</li>
+            <li>Configurable tracking presets for different particle types</li>
+            <li>Automatic ROI creation for tracked particles</li>
+            <li>Comprehensive motion analysis and statistics</li>
+            <li>Batch processing of multiple windows</li>
+            <li>Export results to multiple formats</li>
+        </ul>
+    </div>
+
+    <h2>Usage</h2>
+    
+    <div class="step-list">
+        <strong>Basic Usage:</strong>
+        <ol>
+            <li>Open your time-lapse fluorescence microscopy sequence in FLIKA</li>
+            <li>Run particle detection first (using Detection Plugin or external tools)</li>
+            <li>Navigate to <strong>Plugins → Particle Tracking → U-Track Tracking</strong></li>
+            <li>Select data source and adjust tracking parameters</li>
+            <li>Click "Apply" to run tracking analysis</li>
+            <li>Track ROIs will be automatically created for visualization</li>
+        </ol>
+    </div>
+
+    <h3>Quick Start with Presets</h3>
+    <p>
+        For convenience, use predefined parameter sets:<br>
+        <strong>Plugins → Particle Tracking → Apply Tracking Presets</strong>
+    </p>
+    <ul>
+        <li><code>Strict</code>: Conservative linking, fewer false tracks</li>
+        <li><code>Balanced</code>: Good balance of sensitivity and specificity</li>
+        <li><code>Lenient</code>: More permissive linking, longer tracks</li>
+        <li><code>Directed</code>: Optimized for directed particle migration</li>
+        <li><code>Membrane</code>: Specialized for membrane protein tracking</li>
+    </ul>
+
+    <h2>Data Input Sources</h2>
+    
+    <h3>Supported Input Formats</h3>
+    <ul>
+        <li><strong>Current Detection Results</strong>: Use results from FLIKA detection plugins</li>
+        <li><strong>CSV Files</strong>: Load particle coordinates from CSV format</li>
+        <li><strong>MAT Files</strong>: Import MATLAB u-track detection results</li>
+        <li><strong>PKL Files</strong>: Load Python pickle files with detection data</li>
+    </ul>
+
+    <h2>Parameters</h2>
+    
+    <h3>Motion Models</h3>
+    <table class="parameter-table">
+        <tr>
+            <th>Model</th>
+            <th>Description</th>
+            <th>Use Cases</th>
+        </tr>
+        <tr>
+            <td>Brownian Motion</td>
+            <td>Random diffusive movement</td>
+            <td>Free diffusion, small molecules</td>
+        </tr>
+        <tr>
+            <td>Directed Motion</td>
+            <td>Consistent directional movement</td>
+            <td>Motor-driven transport, migration</td>
+        </tr>
+        <tr>
+            <td>Mixed Motion</td>
+            <td>Combination of random and directed</td>
+            <td>Most biological particles</td>
+        </tr>
+        <tr>
+            <td>Switching Motion</td>
+            <td>Alternating between motion types</td>
+            <td>Membrane proteins, complex dynamics</td>
+        </tr>
+    </table>
+
+    <h3>Core Tracking Parameters</h3>
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>Min Search Radius</td>
+            <td>2.0 px</td>
+            <td>Minimum search distance for particle linking</td>
+        </tr>
+        <tr>
+            <td>Max Search Radius</td>
+            <td>10.0 px</td>
+            <td>Maximum search distance for particle linking</td>
+        </tr>
+        <tr>
+            <td>Time Window</td>
+            <td>5 frames</td>
+            <td>Maximum gap size for track reconnection</td>
+        </tr>
+        <tr>
+            <td>Min Track Length</td>
+            <td>3 frames</td>
+            <td>Minimum track duration to report</td>
+        </tr>
+        <tr>
+            <td>Gap Penalty</td>
+            <td>1.5</td>
+            <td>Cost penalty for gap closing events</td>
+        </tr>
+    </table>
+
+    <h3>Advanced Parameters</h3>
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>Brownian Std Mult</td>
+            <td>3.0</td>
+            <td>Multiplier for Brownian motion search radius</td>
+        </tr>
+        <tr>
+            <td>Linear Std Mult</td>
+            <td>3.0</td>
+            <td>Multiplier for directed motion search radius</td>
+        </tr>
+        <tr>
+            <td>Max Angle</td>
+            <td>30°</td>
+            <td>Maximum turning angle for directed motion</td>
+        </tr>
+        <tr>
+            <td>Amplitude Ratio Limits</td>
+            <td>0.7 - 1.4</td>
+            <td>Allowed intensity variation for linking</td>
+        </tr>
+    </table>
+
+    <h3>Output Options</h3>
+    <ul>
+        <li><strong>Create Track ROIs</strong>: Generate FLIKA ROIs for tracked particles</li>
+        <li><strong>ROI Types</strong>: Full tracks, track starts, track ends, or centers</li>
+        <li><strong>Track Overlay</strong>: Create visualization window with track overlays</li>
+        <li><strong>Motion Classification</strong>: Analyze and categorize motion types</li>
+        <li><strong>Save Results</strong>: Export tracking data to CSV, PKL, or MAT formats</li>
+        <li><strong>Statistics</strong>: Display comprehensive tracking statistics</li>
+    </ul>
+
+    <h2>Advanced Features</h2>
+    
+    <h3>Motion Analysis</h3>
+    <p>
+        The plugin provides detailed motion analysis including:
+    </p>
+    <ul>
+        <li>Track length and lifetime distributions</li>
+        <li>Average particle velocities and displacements</li>
+        <li>Motion type classification (confined, free, directed)</li>
+        <li>Mean square displacement analysis</li>
+        <li>Trajectory visualization and statistics</li>
+    </ul>
+    
+    <h3>Batch Analysis</h3>
+    <p>
+        Process multiple time-lapse sequences simultaneously:<br>
+        <strong>Plugins → Particle Tracking → Batch Tracking Analysis</strong>
+    </p>
+    
+    <h3>Configuration Presets</h3>
+    <p>Pre-optimized settings for common tracking scenarios:</p>
+    <ul>
+        <li><strong>Fast Particles (High Density)</strong>: Rapid-moving particles in crowded fields</li>
+        <li><strong>Slow Particles (Low Density)</strong>: Slowly diffusing particles</li>
+        <li><strong>Directed Migration</strong>: Cells or organelles with persistent motion</li>
+        <li><strong>Membrane Proteins</strong>: Proteins with confined membrane diffusion</li>
+        <li><strong>Virus Tracking</strong>: High-speed viral particle transport</li>
+    </ul>
+
+    <h2>Output Formats</h2>
+    
+    <h3>CSV Export</h3>
+    <p>Includes columns: Track_ID, Frame, X, Y, Amplitude, Motion_Type</p>
+    
+    <h3>MATLAB Export</h3>
+    <p>Compatible with original u-track MATLAB analysis tools</p>
+    
+    <h3>Pickle Export</h3>
+    <p>Complete Python data structure with all tracking information</p>
+    
+    <h3>FLIKA ROIs</h3>
+    <p>Interactive ROIs for track visualization and analysis within FLIKA</p>
+
+    <h2>Requirements</h2>
+    <p>This plugin requires the following Python packages:</p>
+    <ul>
+        <li>NumPy (array operations)</li>
+        <li>SciPy (statistical functions and optimization)</li>
+        <li>scikit-image (image processing)</li>
+        <li>pandas (data handling for CSV import/export)</li>
+        <li>matplotlib (visualization and plotting)</li>
+    </ul>
+    
+    <div class="highlight">
+        <strong>Installation:</strong><br>
+        <code>pip install numpy scipy scikit-image pandas matplotlib</code>
+    </div>
+
+    <div class="warning">
+        <strong>Required Tracking Modules:</strong><br>
+        This plugin requires additional u-track implementation files in the plugin directory:
+        <ul>
+            <li>track_general.py</li>
+            <li>linking.py</li>
+            <li>gap_closing.py</li>
+            <li>cost_matrices.py</li>
+            <li>kalman_filters.py</li>
+            <li>track_analysis.py</li>
+            <li>advanced_config.py</li>
+            <li>utils.py</li>
+            <li>visualization.py</li>
+        </ul>
+        Use <strong>Test Tracking Plugin</strong> menu item to check module availability.
+    </div>
+
+    <h2>Citation</h2>
+    <div class="citation">
+        When using this plugin, please cite the original u-track papers:<br><br>
+        
+        <strong>Jaqaman, K., Loerke, D., Mettlen, M., Kuwata, H., Grinstein, S., Schmid, S.L. & Danuser, G.</strong> 
+        Robust single-particle tracking in live-cell time-lapse sequences. 
+        <em>Nature Methods</em> 5:695-702, 2008.
+        <br><br>
+        
+        DOI: <a href="https://doi.org/10.1038/nmeth.1237">10.1038/nmeth.1237</a>
+        <br><br>
+        
+        <strong>Applegate, K.T., Besson, S., Matov, A., Bagonis, M.H., Jaqaman, K. & Danuser, G.</strong>
+        plusTipTracker: Quantitative image analysis software for the measurement of microtubule dynamics.
+        <em>Journal of Structural Biology</em> 176:168-184, 2011.
+    </div>
+
+    <h2>Troubleshooting</h2>
+    
+    <h3>No Tracks Found</h3>
+    <ul>
+        <li>Check that detection data is available and properly formatted</li>
+        <li>Increase search radius parameters</li>
+        <li>Reduce minimum track length requirement</li>
+        <li>Try "Lenient" preset for initial testing</li>
+        <li>Verify particle detection quality and density</li>
+    </ul>
+    
+    <h3>Too Many Short/Fragmented Tracks</h3>
+    <ul>
+        <li>Increase gap closing time window</li>
+        <li>Adjust motion model to match particle behavior</li>
+        <li>Reduce gap penalty for more permissive linking</li>
+        <li>Check detection consistency across frames</li>
+    </ul>
+    
+    <h3>Performance Issues</h3>
+    <ul>
+        <li>Reduce search radius for dense particle fields</li>
+        <li>Limit time window for gap closing</li>
+        <li>Process shorter time sequences</li>
+        <li>Use simpler motion models for faster processing</li>
+    </ul>
+    
+    <h3>Module Import Errors</h3>
+    <ul>
+        <li>Ensure all required u-track Python modules are in plugin directory</li>
+        <li>Check Python dependencies are installed</li>
+        <li>Use "Test Tracking Plugin" to diagnose missing components</li>
+        <li>Verify file permissions and Python path settings</li>
+    </ul>
+
+    <h2>Workflow Integration</h2>
+    
+    <h3>Typical Analysis Pipeline</h3>
+    <div class="step-list">
+        <ol>
+            <li><strong>Image Preprocessing</strong>: Denoise and enhance particle contrast</li>
+            <li><strong>Particle Detection</strong>: Use U-Track Detection Plugin or external tools</li>
+            <li><strong>Tracking</strong>: Apply appropriate tracking preset or custom parameters</li>
+            <li><strong>Track Filtering</strong>: Remove short or low-quality tracks</li>
+            <li><strong>Motion Analysis</strong>: Classify motion types and compute statistics</li>
+            <li><strong>Visualization</strong>: Generate track overlays and trajectory plots</li>
+            <li><strong>Export</strong>: Save results for further analysis or publication</li>
+        </ol>
+    </div>
+
+    <h2>Contact & Support</h2>
+    <p>
+        For questions, issues, or contributions:<br>
+        Email: <a href="mailto:your.email@example.com">your.email@example.com</a><br>
+        GitHub: <a href="https://github.com/yourusername/flika-utrack-tracking">flika-utrack-tracking</a>
+    </p>
+    
+    <h2>License</h2>
+    <p>
+        This plugin is distributed under the MIT License. The original u-track algorithm 
+        is developed by the Danuser Lab at UT Southwestern.
+    </p>
+
+    <hr>
+    <p style="text-align: center; color: #666; font-size: 0.9em;">
+        U-Track Particle Tracking Plugin v1.0.0 for FLIKA<br>
+        Advanced particle tracking and motion analysis for fluorescence microscopy
+    </p>
+</body>
+</html>

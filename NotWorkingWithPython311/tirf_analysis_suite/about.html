@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TIRF Analysis Suite for FLIKA</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #2E86AB 0%, #A23B72 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .version {
+            font-size: 1.1em;
+            opacity: 0.9;
+            margin: 10px 0 0 0;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .description {
+            font-size: 1.2em;
+            text-align: center;
+            color: #555;
+            margin-bottom: 30px;
+            font-style: italic;
+        }
+        
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        
+        .feature-card {
+            background: #f8f9fa;
+            border-left: 4px solid #2E86AB;
+            padding: 20px;
+            border-radius: 8px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .feature-card h3 {
+            color: #2E86AB;
+            margin-top: 0;
+            font-size: 1.3em;
+        }
+        
+        .feature-card ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        
+        .feature-card li {
+            margin: 5px 0;
+        }
+        
+        .highlight-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 10px;
+            margin: 25px 0;
+            text-align: center;
+        }
+        
+        .highlight-box h3 {
+            margin-top: 0;
+            font-size: 1.4em;
+        }
+        
+        .usage-section {
+            background: #f1f3f4;
+            padding: 25px;
+            border-radius: 10px;
+            margin: 25px 0;
+        }
+        
+        .usage-section h3 {
+            color: #A23B72;
+            margin-top: 0;
+        }
+        
+        .workflow-steps {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+        
+        .workflow-step {
+            text-align: center;
+            flex: 1;
+            min-width: 120px;
+            margin: 10px;
+        }
+        
+        .step-number {
+            background: #2E86AB;
+            color: white;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 10px;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+        
+        .requirements {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .requirements h4 {
+            color: #856404;
+            margin-top: 0;
+        }
+        
+        .installation-code {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            margin: 15px 0;
+            overflow-x: auto;
+        }
+        
+        .contact-info {
+            background: #e8f5e8;
+            border-left: 4px solid #28a745;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .contact-info h4 {
+            color: #155724;
+            margin-top: 0;
+        }
+        
+        .badges {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .badge {
+            display: inline-block;
+            background: #28a745;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            margin: 5px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+        
+        .footer {
+            background: #2d3748;
+            color: #e2e8f0;
+            text-align: center;
+            padding: 20px;
+            font-size: 0.9em;
+        }
+        
+        .footer a {
+            color: #90cdf4;
+            text-decoration: none;
+        }
+        
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        
+        @media (max-width: 600px) {
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .workflow-steps {
+                flex-direction: column;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔬 TIRF Analysis Suite</h1>
+            <p class="version">Version 1.0.0 | Advanced TIRF Microscopy Analysis for FLIKA</p>
+        </div>
+        
+        <div class="content">
+            <div class="description">
+                A comprehensive collection of advanced analysis tools specifically designed for 
+                Total Internal Reflection Fluorescence (TIRF) microscopy studies of fluorescently-labeled proteins.
+            </div>
+            
+            <div class="badges">
+                <span class="badge">🧬 Single Molecule</span>
+                <span class="badge">📊 Photobleaching</span>
+                <span class="badge">🎯 Colocalization</span>
+                <span class="badge">🌊 Membrane Dynamics</span>
+                <span class="badge">⚡ FRAP Analysis</span>
+                <span class="badge">🧬 Clustering</span>
+            </div>
+
+            <div class="highlight-box">
+                <h3>🚀 Why Choose TIRF Analysis Suite?</h3>
+                <p>
+                    This suite provides publication-ready analysis tools with state-of-the-art algorithms, 
+                    comprehensive statistical validation, and seamless integration with FLIKA workflows. 
+                    Perfect for cell biology, biophysics, and membrane dynamics research.
+                </p>
+            </div>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <h3>🔍 Single Molecule Tracker</h3>
+                    <ul>
+                        <li>Subpixel accuracy tracking</li>
+                        <li>Advanced linking algorithms</li>
+                        <li>Diffusion coefficient calculation</li>
+                        <li>Track quality assessment</li>
+                        <li>Statistical trajectory analysis</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <h3>📉 Photobleaching Analyzer</h3>
+                    <ul>
+                        <li>Oligomerization state determination</li>
+                        <li>Multiple step detection methods</li>
+                        <li>Kinetic fitting models</li>
+                        <li>Signal-to-noise optimization</li>
+                        <li>Batch ROI analysis</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <h3>🎨 TIRF Background Corrector</h3>
+                    <ul>
+                        <li>Uneven illumination correction</li>
+                        <li>Multiple correction algorithms</li>
+                        <li>Flat-field correction</li>
+                        <li>Real-time preview</li>
+                        <li>Automated parameter optimization</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <h3>🎯 Colocalization Analyzer</h3>
+                    <ul>
+                        <li>Multi-channel spatial analysis</li>
+                        <li>Pearson & Manders coefficients</li>
+                        <li>Randomization significance testing</li>
+                        <li>Spot-based colocalization</li>
+                        <li>Temporal dynamics tracking</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <h3>🌊 Membrane Dynamics Analyzer</h3>
+                    <ul>
+                        <li>Cell edge detection & tracking</li>
+                        <li>Protrusion/retraction analysis</li>
+                        <li>Velocity field calculation</li>
+                        <li>Membrane curvature analysis</li>
+                        <li>Event classification</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <h3>⚡ FRAP Analyzer</h3>
+                    <ul>
+                        <li>Multiple kinetic models</li>
+                        <li>Mobile fraction determination</li>
+                        <li>Diffusion coefficient measurement</li>
+                        <li>Automatic bleach detection</li>
+                        <li>Correction algorithms</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <h3>🧬 Cluster Analyzer</h3>
+                    <ul>
+                        <li>Protein aggregate detection</li>
+                        <li>Shape analysis & fitting</li>
+                        <li>Density mapping</li>
+                        <li>Temporal cluster dynamics</li>
+                        <li>Multiple clustering algorithms</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <h3>🔧 Suite Manager</h3>
+                    <ul>
+                        <li>Installation validation</li>
+                        <li>Comprehensive help system</li>
+                        <li>Synthetic data generation</li>
+                        <li>Integrated workflows</li>
+                        <li>Analysis reporting</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="usage-section">
+                <h3>📋 Quick Start Guide</h3>
+                <div class="workflow-steps">
+                    <div class="workflow-step">
+                        <div class="step-number">1</div>
+                        <strong>Install</strong><br>
+                        Extract to ~/.FLIKA/plugins/
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">2</div>
+                        <strong>Dependencies</strong><br>
+                        Install required packages
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">3</div>
+                        <strong>Validate</strong><br>
+                        Run installation check
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">4</div>
+                        <strong>Analyze</strong><br>
+                        Access via Plugins menu
+                    </div>
+                </div>
+                
+                <p><strong>Menu Location:</strong> Plugins → TIRF Analysis → [Choose Analysis Tool]</p>
+                
+                <p><strong>Recommended Workflow:</strong></p>
+                <ol>
+                    <li>Start with <strong>Background Corrector</strong> for image preprocessing</li>
+                    <li>Choose analysis tools based on your experimental goals</li>
+                    <li>Use <strong>Integrated Workflows</strong> for complete analysis pipelines</li>
+                    <li>Generate comprehensive reports with publication-ready figures</li>
+                </ol>
+            </div>
+
+            <div class="requirements">
+                <h4>🔧 System Requirements</h4>
+                <strong>Required:</strong>
+                <ul>
+                    <li>FLIKA version 0.2.25 or higher</li>
+                    <li>Python 3.7 or higher</li>
+                    <li>8GB+ RAM recommended for large datasets</li>
+                </ul>
+                
+                <strong>Dependencies:</strong>
+                <div class="installation-code">
+pip install numpy scipy scikit-image scikit-learn pandas matplotlib qtpy
+                </div>
+            </div>
+
+            <div class="highlight-box">
+                <h3>🎯 Perfect For</h3>
+                <div style="text-align: left; max-width: 600px; margin: 0 auto;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+                        <div>
+                            <strong>Cell Biology:</strong><br>
+                            • Membrane dynamics<br>
+                            • Protein trafficking<br>
+                            • Cell migration
+                        </div>
+                        <div>
+                            <strong>Biophysics:</strong><br>
+                            • Single molecule studies<br>
+                            • Diffusion measurements<br>
+                            • Protein interactions
+                        </div>
+                        <div>
+                            <strong>Research Areas:</strong><br>
+                            • Receptor signaling<br>
+                            • Membrane organization<br>
+                            • Protein complexes
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="contact-info">
+                <h4>📞 Support & Documentation</h4>
+                <p><strong>Documentation:</strong> Comprehensive guides and tutorials available online</p>
+                <p><strong>GitHub:</strong> Source code, examples, and issue tracking</p>
+                <p><strong>Support:</strong> Email support for installation and usage questions</p>
+                <p><strong>Updates:</strong> Regular updates with new features and improvements</p>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <h3 style="color: #2E86AB;">🌟 Key Features</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0;">
+                    <div>
+                        <strong>✨ Easy to Use</strong><br>
+                        Intuitive interfaces with real-time preview
+                    </div>
+                    <div>
+                        <strong>📊 Publication Ready</strong><br>
+                        Professional visualizations and statistics
+                    </div>
+                    <div>
+                        <strong>🚀 High Performance</strong><br>
+                        Optimized algorithms for fast processing
+                    </div>
+                    <div>
+                        <strong>🔧 Customizable</strong><br>
+                        Extensive parameter controls and workflows
+                    </div>
+                </div>
+            </div>
+
+            <div style="background: #e3f2fd; padding: 20px; border-radius: 10px; margin: 25px 0;">
+                <h3 style="color: #1565c0; margin-top: 0;">📖 Citation</h3>
+                <p style="font-style: italic;">
+                    When using the TIRF Analysis Suite in your research, please cite:
+                </p>
+                <div style="background: white; padding: 15px; border-left: 4px solid #1565c0; margin: 10px 0;">
+                    "Advanced TIRF Analysis Suite for FLIKA: Comprehensive tools for fluorescence microscopy analysis"<br>
+                    FLIKA Plugin Development Team (2024)<br>
+                    <small>GitHub: https://github.com/flika-org/tirf_analysis_suite</small>
+                </div>
+                <p style="margin-bottom: 0;">
+                    Also cite the original FLIKA paper: Ellefsen, K. et al. Cell Calcium 56:147-156 (2014)
+                </p>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>
+                TIRF Analysis Suite v1.0.0 | 
+                <a href="https://github.com/flika-org/tirf_analysis_suite">GitHub</a> | 
+                <a href="https://flika-org.github.io/">FLIKA Website</a> | 
+                <a href="mailto:support@flika-plugins.org">Support</a>
+            </p>
+            <p style="font-size: 0.8em; opacity: 0.8;">
+                Developed with ❤️ for the scientific community | MIT License | 
+                © 2024 FLIKA Plugin Development Team
+            </p>
+        </div>
+    </div>
+</body>
+</html>

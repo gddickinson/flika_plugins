@@ -477,6 +477,9 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
             #tempDF = pd.read_csv(file, usecols=['x_transformed', 'y_transformed'])
             tempDF = pd.read_csv(file)
 
+            #drop any na or inf rows
+            tempDF.replace([np.inf, -np.inf], np.nan, inplace=True)
+            tempDF.dropna(inplace=True)
 
             if 'track_number' in tempDF.columns:
                 # filter any points that dont have track_numbers to seperate df

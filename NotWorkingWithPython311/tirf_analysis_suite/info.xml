@@ -1,0 +1,37 @@
+<plugin name="TIRF Analysis Suite">
+    <directory>
+        tirf_analysis_suite
+    </directory>
+    <version>
+        1.0.0
+    </version>
+    <author>
+        FLIKA Plugin Development Team
+    </author>
+    <url>
+        https://github.com/flika-org/tirf_analysis_suite
+    </url>
+    <dependencies>
+        <dependency name='numpy'></dependency>
+        <dependency name='scipy'></dependency>
+        <dependency name='scikit-image'></dependency>
+        <dependency name='scikit-learn'></dependency>
+        <dependency name='pandas'></dependency>
+        <dependency name='matplotlib'></dependency>
+        <dependency name='qtpy'></dependency>
+    </dependencies>
+    <menu_layout>
+        <action location="__init__" function="launch_suite_help">Suite Help</action>
+        <action location="__init__" function="launch_validation">Validate Installation</action>
+        <action location="__init__" function="launch_test_data_generator">Generate Test Data</action>
+        <action location="single_molecule_tracker" function="SingleMoleculeTracker">Single Molecule Tracker</action>
+        <action location="photobleaching_analyzer" function="PhotobleachingAnalyzer">Photobleaching Analyzer</action>
+        <action location="tirf_background_corrector" function="TIRFBackgroundCorrector">Background Corrector</action>
+        <action location="colocalization_analyzer" function="ColocalizationAnalyzer">Colocalization Analyzer</action>
+        <action location="membrane_dynamics_analyzer" function="MembraneDynamicsAnalyzer">Membrane Dynamics</action>
+        <action location="frap_analyzer" function="FRAPAnalyzer">FRAP Analyzer</action>
+        <action location="cluster_analyzer" function="ClusterAnalyzer">Cluster Analyzer</action>
+        <action location="tirf_suite_manager" function="show_suite_help">Help System</action>
+        <action location="tirf_suite_manager" function="validate_installation">System Check</action>
+    </menu_layout>
+</plugin>

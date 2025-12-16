@@ -18,7 +18,7 @@ def scatterRemovePoints(scatterplot,idxs):
     spots=[{'pos':points[i].pos(),'data':points[i].data(),'brush':points[i].brush()} for i in np.arange(len(points))]
     scatterplot.clear()
     scatterplot.addPoints(spots)
-    
+
 def scatterAddPoints(scatterplot,pos,data):
     points=scatterplot.points()
     spots=[{'pos':points[i].pos(),'data':points[i].data()} for i in np.arange(len(points))]
@@ -37,12 +37,12 @@ class Puffs:
         self.normalized_window = puffAnalyzer.normalized_window
         self.data_window = puffAnalyzer.data_window
         self.cluster_im = cluster_im
-        
+
         self.puffs=[]
         nClusters=len(self.clusters.clusters)
         for i in np.arange(nClusters):
             percent=i/nClusters
-            self.puffAnalyzer.algorithm_gui.gaussianProgress.setValue(percent*100); qApp.processEvents();
+            self.puffAnalyzer.algorithm_gui.gaussianProgress.setValue(int(percent*100)); qApp.processEvents();
             self.puffs.append(Puff(i,self.clusters,self,persistentInfo))
         self.puffAnalyzer.algorithm_gui.gaussianProgress.setValue(100)
         qApp.processEvents()
@@ -296,10 +296,10 @@ class Puff:
         thresh20 = baseline+amplitude*.2
         thresh50 = baseline+amplitude*.5
         thresh80 = baseline+amplitude*.8
-        
+
         #GD-EDIT
         integral = np.sum(np.subtract(trace[t_start:t_end+1],baseline))
-        
+
         tmp=np.argwhere(trace>thresh20); tmp=tmp[np.logical_and(tmp>=t_start,tmp<=t_peak)]
         if len(tmp)==0: r20=np.nan
         else:  r20=tmp[0]-t_start
@@ -312,24 +312,24 @@ class Puff:
         tmp=np.argwhere(trace<thresh80); tmp=tmp[tmp>=t_peak]
         if len(tmp)==0: f80=np.nan
         else: f80=tmp[0]-t_peak
-        
+
         tmp=np.argwhere(trace<thresh50); tmp=tmp[tmp>=t_peak]
         if len(tmp)==0: f50=np.nan
         else: f50=tmp[0]-t_peak
-        
+
         tmp=np.argwhere(trace<thresh20); tmp=tmp[tmp>=t_peak]
         if len(tmp)==0: f20=np.nan
         else: f20=tmp[0]-t_peak
-        
+
         tmp=np.argwhere(trace<baseline); tmp=tmp[tmp>=t_peak]
         if len(tmp)==0:
             f0=np.nan
-        else: 
+        else:
             f0=tmp[0]
             if f0<t_end:
                 t_end=f0
             f0=f0-t_peak
-            
+
         kinetics['amplitude'] = amplitude
         kinetics['baseline'] = baseline
         kinetics['integral'] = integral       #GD-EDIT
@@ -385,9 +385,8 @@ class Puff:
         if time!=line.value():
             self.endLine.setValue(time)
         oldend = self.kinetics['t_end']
-        if oldend!=time:   
+        if oldend!=time:
             self.kinetics['t_end'] = time
 
             self.bounds[0] = (self.bounds[0][0], time)
             self.puffs.puffAnalyzer.drawRedOverlay()
-    

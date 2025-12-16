@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Mask Editor Plugin</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #2E86AB;
+            border-bottom: 2px solid #2E86AB;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #A23B72;
+            margin-top: 20px;
+        }
+        .version {
+            color: #666;
+            font-style: italic;
+        }
+        .author {
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        ul {
+            margin: 10px 0;
+        }
+        li {
+            margin: 5px 0;
+        }
+        .feature {
+            background-color: #e8f4f8;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎨 Mask Editor</h1>
+    <p class="version">Version 1.0.1</p>
+    <p class="author">By George Dickinson</p>
+
+    <h2>Description</h2>
+    <p>
+        An interactive mask editor plugin for FLIKA that allows you to draw, erase, and
+        modify binary mask stacks directly on mask windows. Perfect for manual segmentation,
+        cell mask editing, and refining automated segmentation results.
+    </p>
+
+    <div class="feature">
+        <strong>Key Features:</strong>
+        <ul>
+            <li>✏️ Draw and erase with adjustable brush size (1-50 pixels)</li>
+            <li>🖱️ Click and drag for smooth drawing</li>
+            <li>↶↷ Undo/redo support (20 levels)</li>
+            <li>🪣 Fill or clear entire frames</li>
+            <li>📋 Copy masks between frames or to all frames</li>
+            <li>💾 Save modified masks as TIFF files</li>
+        </ul>
+    </div>
+
+    <h2>Usage</h2>
+    <p>
+        <strong>1. Launch the plugin:</strong><br>
+        <code>Plugins → Mask Editor → Mask Editor</code>
+    </p>
+
+    <p>
+        <strong>2. Select a mask window:</strong><br>
+        Choose the mask window you want to edit from the dropdown menu and click Apply.
+    </p>
+
+    <p>
+        <strong>3. Use the control panel:</strong><br>
+        The Mask Editor Controls panel will appear with all editing tools.
+    </p>
+
+    <p>
+        <strong>4. Draw on the mask:</strong><br>
+        Click and drag on your mask window to draw or erase. Use right-click to stop drawing.
+    </p>
+
+    <h2>Tools</h2>
+    <ul>
+        <li><strong>Draw:</strong> Add white pixels to the mask (value 255)</li>
+        <li><strong>Erase:</strong> Remove pixels from the mask (value 0)</li>
+        <li><strong>Fill Frame:</strong> Fill the entire current frame with mask</li>
+        <li><strong>Clear Frame:</strong> Remove all mask from the current frame</li>
+        <li><strong>Brush Size:</strong> Adjust the size of your drawing brush (1-50 pixels)</li>
+    </ul>
+
+    <h2>Frame Operations</h2>
+    <ul>
+        <li><strong>Copy to Next:</strong> Copy the current frame's mask to the next frame</li>
+        <li><strong>Copy to Previous:</strong> Copy the current frame's mask to the previous frame</li>
+        <li><strong>Copy to All Frames:</strong> Apply the current mask to all frames in the stack</li>
+    </ul>
+
+    <h2>History</h2>
+    <ul>
+        <li><strong>Undo:</strong> Revert the last change (up to 20 levels)</li>
+        <li><strong>Redo:</strong> Reapply an undone change</li>
+    </ul>
+
+    <h2>Saving</h2>
+    <p>
+        Click <strong>Save Modified Mask</strong> to save your edited mask stack as a TIFF file.
+        The plugin ensures binary masks (0 or 255 values) when saving.
+    </p>
+
+    <h2>Requirements</h2>
+    <ul>
+        <li>FLIKA >= 0.2.23</li>
+        <li>NumPy</li>
+        <li>QtPy</li>
+        <li>scikit-image</li>
+        <li>tifffile</li>
+    </ul>
+
+    <h2>Tips</h2>
+    <ul>
+        <li>Use smaller brush sizes for detailed work</li>
+        <li>Use larger brush sizes for filling large regions quickly</li>
+        <li>Right-click to stop drawing without making changes</li>
+        <li>Use Copy to Next/Previous for similar masks across sequential frames</li>
+        <li>Save your work frequently to avoid losing changes</li>
+    </ul>
+
+    <h2>Version History</h2>
+    <p><strong>v1.0.1</strong> - Rebuilt using BaseProcess framework for proper FLIKA integration</p>
+    <p><strong>v1.0.0</strong> - Initial release</p>
+
+    <h2>Contact</h2>
+    <p>
+        For questions, issues, or suggestions, contact George Dickinson.
+    </p>
+</body>
+</html>

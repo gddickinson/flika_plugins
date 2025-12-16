@@ -23,30 +23,34 @@ else:
 
 
 
-def generate_model_particle(x_remainder, y_remainder, amp):
+def generate_model_particle(x_remainder, y_remainder, amp, addNoise = False):
     x = np.arange(7)
     y = np.arange(7)
     xorigin = 3 + x_remainder
     yorigin = 3 + y_remainder
     sigma = 1.3
     model_particle = gaussian(x[:, None], y[None, :], xorigin, yorigin, sigma, amp)
+    #add noise
+    noise = np.random.uniform(0,0.5,[7,7])
+    model_particle = np.multiply(model_particle,noise)
     return model_particle
 
 
-def addParticle(A, t, x, y, amp, mx, my):
+def addParticle(A, t, x, y, amp, mx, my, amp_variability):
     assert isinstance(A, np.ndarray)
     x_int = int(np.round(x))
     y_int = int(np.round(y))
     x_remainder = x-x_int
     y_remainder = y-y_int
+    amp = amp + np.random.uniform(-amp_variability,amp_variability)
     model_particle = generate_model_particle(x_remainder, y_remainder, amp)
     dx, dy = model_particle.shape
     assert dx % 2 == 1
-    tt = np.array([t], dtype=np.int)
+    tt = np.array([t], dtype=int)
     dx = (dx-1)/2
     dy = (dy-1)/2
-    yy = np.arange(y_int-dy,y_int+dy+1, dtype=np.int)
-    xx = np.arange(x_int-dx,x_int+dx+1, dtype=np.int)
+    yy = np.arange(y_int-dy,y_int+dy+1, dtype=int)
+    xx = np.arange(x_int-dx,x_int+dx+1, dtype=int)
     if np.min(yy)<0 or np.min(xx)<0 or np.max(yy)>=my or np.max(xx)>=mx:
         return A
     A[np.ix_(tt, xx, yy)] = A[np.ix_(tt, xx, yy)] + model_particle
@@ -64,7 +68,7 @@ def get_accuracy(true_pts, det_pts):
     for frame in np.arange(max_frame+1):
         true_pts_by_frame.append(np.where(true_pts[:,0]==frame)[0])
         det_pts_by_frame.append(np.where(det_pts[:,0]==frame)[0])
-    
+
     linked_pts=[]  #list of lists where each entry is [true_pt_idx, det_pt_idx, distance]
     false_pos=[]   #list of detected point indicies which have no corresponding true_pt entry
     false_neg=[]   #list of true point indicies which have no corresponding det_pt entry
@@ -75,7 +79,7 @@ def get_accuracy(true_pts, det_pts):
         for i in np.arange(len(tru)):
             for j in np.arange(len(det)):
                 D[i,j]=np.sqrt(np.sum((true_pts[tru[i]][1:]-det_pts[det[j]][1:])**2))
-                
+
         used_det=[]
         for i in np.arange(len(tru)):
             if len(det)>0 and np.min(D[i,:])<true_pos_dist_cutoff:
@@ -126,7 +130,7 @@ def get_diffusion_coefficients(D1, D2, r1, r2, frame_duration, nFrames):
             states.append(1)
         switch_times.append(t)
     switch_times = np.array(switch_times)
-    switch_times = np.round(switch_times/frame_duration).astype(np.int)
+    switch_times = np.round(switch_times/frame_duration).astype(int)
     states = np.array(states).astype(np.float)
     states[states==1] = D1
     states[states==2] = D2
@@ -142,7 +146,7 @@ This function simulates particles undergoing 2D brownian diffusion
     Args:
         rate_of_appearance (float): Particles are created as a poisson process with this rate
         rate_of_disappearance (float): Particle decay exponentially at this rate
-        amplitude (float): Particle amplitude 
+        amplitude (float): Particle amplitude
         D1 (float): Diffusion coefficient 1 (um^2/s)
         D2 (float): Diffusion coefficient 2 (um^2/s)
         r1 (float): rate (per second) particles switch from having a diffusion coefficient of D1 to D2
@@ -151,7 +155,7 @@ This function simulates particles undergoing 2D brownian diffusion
         mx (int): Movie width and movie height
         frame_duration (float): The duration between frames, in seconds
         microns_per_pixel (float): Width of each pixel
-        
+
     Returns:
         newWindow
     """
@@ -171,6 +175,8 @@ This function simulates particles undergoing 2D brownian diffusion
         s['r2'] = 0
         s['frame_duration'] = 1  # seconds
         s['microns_per_pixel'] = 0.16
+        s['amp_variability'] = 0
+        s['startingParticles'] = 0
         return s
 
     def gui(self):
@@ -195,8 +201,12 @@ This function simulates particles undergoing 2D brownian diffusion
         r2.setRange(0, 1)
         frame_duration = SliderLabel(2)
         frame_duration.setRange(0, 1)
-        microns_per_pixel = SliderLabel(2)
+        microns_per_pixel = SliderLabel(3)
         microns_per_pixel.setRange(0, 1)
+        amp_variability= SliderLabel(1)
+        amp_variability.setRange(0, 100)
+        startingParticles = SliderLabel(0)
+        startingParticles.setRange(0, 1000)
 
         self.items.append({'name': 'rate_of_appearance',    'string': 'Rate of Appearance',     'object': rate_of_appearance})
         self.items.append({'name': 'rate_of_disappearance', 'string': 'Rate of Disappearance',  'object': rate_of_disappearance})
@@ -209,10 +219,13 @@ This function simulates particles undergoing 2D brownian diffusion
         self.items.append({'name': 'r2',                    'string': 'rate 2 (per second)',  'object': r2})
         self.items.append({'name': 'frame_duration',        'string': 'Frame Duration (s)',     'object': frame_duration})
         self.items.append({'name': 'microns_per_pixel',     'string': 'microns per pixel',      'object': microns_per_pixel})
+        self.items.append({'name': 'amp_variability',     'string': 'Amplitude variability',      'object': amp_variability})
+        self.items.append({'name': 'startingParticles',     'string': 'Number of seed particles',      'object': startingParticles})
+
 
         super().gui()
 
-    def __call__(self, rate_of_appearance, rate_of_disappearance, amplitude, D1, D2, r1, r2, mt, mx, frame_duration, microns_per_pixel):
+    def __call__(self, rate_of_appearance, rate_of_disappearance, amplitude, D1, D2, r1, r2, mt, mx, frame_duration, microns_per_pixel,amp_variability,startingParticles):
         self.start()
         udc = {'rate_of_appearance': rate_of_appearance,
                'rate_of_disappearance': rate_of_disappearance,
@@ -224,7 +237,10 @@ This function simulates particles undergoing 2D brownian diffusion
                'mt': mt,
                'mx': mx,
                'frame_duration': frame_duration,
-               'microns_per_pixel': microns_per_pixel}
+               'microns_per_pixel': microns_per_pixel,
+               'amp_variability': amp_variability,
+               'startingParticles': startingParticles}
+
         simulated_particles = Simulated_particles(udc)
         self.newtif = simulated_particles.image
         self.newname = 'Simulated Particles'
@@ -253,6 +269,8 @@ class Simulated_particles(QtWidgets.QWidget):
         amplitude = self.udc['amplitude']
         frame_duration = self.udc['frame_duration']
         microns_per_pixel = self.udc['microns_per_pixel']
+        amp_variability = self.udc['amp_variability']
+        startingParticles = self.udc['startingParticles']
         D1 = self.udc['D1']
         D2 = self.udc['D2']
         r1 = self.udc['r1']
@@ -262,6 +280,10 @@ class Simulated_particles(QtWidgets.QWidget):
         my = mx
 
         a = random.poisson(rate_of_appearance, mt)
+
+        #seed with n particles in frame 0
+        a[0] = int(startingParticles)
+
         creation_times = []
         while len(np.where(a)[0]) > 0:
             creation_times.extend(np.where(a)[0])
@@ -272,7 +294,7 @@ class Simulated_particles(QtWidgets.QWidget):
         lifetimes = random.exponential(1/rate_of_disappearance, nParticles)
         destroy_times = creation_times + lifetimes
         destroy_times[destroy_times > mt - 1] = mt - 1
-        destroy_times = np.round(destroy_times).astype(np.int)
+        destroy_times = np.round(destroy_times).astype(int)
         txy_pts = []
         tracks = []
         for i in np.arange(nParticles):
@@ -299,7 +321,7 @@ class Simulated_particles(QtWidgets.QWidget):
         A = np.ones((mt, mx, my)) * 8
         for pt in txy_pts:
             frame, x, y = pt
-            A = addParticle(A, frame, x, y, amplitude, mx, my)
+            A = addParticle(A, frame, x, y, amplitude, mx, my, amp_variability)
 
         A = np.random.poisson(A, A.shape)
         return A, points
