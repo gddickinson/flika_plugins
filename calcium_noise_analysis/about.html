@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Calcium Noise Analysis Plugin</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+        }
+        h1 {
+            color: #2E86AB;
+            border-bottom: 3px solid #2E86AB;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #A23B72;
+            margin-top: 30px;
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 5px;
+        }
+        h3 {
+            color: #555;
+            margin-top: 20px;
+        }
+        .version {
+            color: #666;
+            font-style: italic;
+            margin-bottom: 5px;
+        }
+        .author {
+            margin-top: 5px;
+            color: #666;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            color: #c7254e;
+        }
+        .feature-list {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        .feature-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .feature-list li:before {
+            content: "✓ ";
+            color: #2E86AB;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        .note {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 12px;
+            margin: 15px 0;
+        }
+        .tip {
+            background-color: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            padding: 12px;
+            margin: 15px 0;
+        }
+        .important {
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+            padding: 12px;
+            margin: 15px 0;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 15px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #2E86AB;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .equation {
+            background-color: #f8f8f8;
+            padding: 10px;
+            margin: 10px 0;
+            border-left: 3px solid #2E86AB;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <h1>Calcium Noise Analysis Plugin</h1>
+    <p class="version">Version 1.0.0</p>
+    <p class="author">By George</p>
+    
+    <h2>Overview</h2>
+    <p>
+        The <strong>Calcium Noise Analysis</strong> plugin provides a comprehensive suite of 
+        production-quality tools for characterizing and analyzing noise in calcium imaging data. 
+        Integrating traditional signal processing algorithms with modern noise characterization 
+        methods, this plugin enables researchers to quantify noise, detect events, and prepare 
+        data for advanced analysis pipelines.
+    </p>
+    
+    <h3>Research Foundation</h3>
+    <p>This plugin implements methods from cutting-edge calcium imaging research:</p>
+    <ul>
+        <li><strong>CASCADE</strong> (Calibrated spike inference from calcium imaging) - Noise-matched training and metrics</li>
+        <li><strong>Swaminathan et al. 2020</strong> - Power spectral density analysis for Ca²⁺-active pixels</li>
+        <li><strong>Lock & Parker 2020</strong> - SD fluctuation analysis methodology (FLIKA)</li>
+        <li><strong>Suite2p</strong> - Baseline estimation methods (maximin filter)</li>
+        <li><strong>CaImAn</strong> - Local correlation image computation</li>
+    </ul>
+    
+    <h2>Key Features</h2>
+    <ul class="feature-list">
+        <li><strong>Power Spectrum Analysis:</strong> Identify Ca²⁺-active pixels via PSD, separate signals from shot noise</li>
+        <li><strong>SD Fluctuation Analysis:</strong> FLIKA-style running variance with shot noise correction</li>
+        <li><strong>Anscombe Transform:</strong> Variance-stabilizing transform for Poisson noise</li>
+        <li><strong>Baseline Estimation:</strong> Multiple F₀ methods (percentile, maximin, photobleaching)</li>
+        <li><strong>ΔF/F Calculation:</strong> Normalized fluorescence with division-safe epsilon</li>
+        <li><strong>Event Detection:</strong> Dual-threshold calcium spark detection</li>
+        <li><strong>Correlation Images:</strong> Local correlation for ROI detection</li>
+        <li><strong>Noise Metrics:</strong> CASCADE noise metric (ν = σ_ΔF/F × √framerate)</li>
+        <li><strong>Bandpass Filtering:</strong> Butterworth filters for calcium transient isolation</li>
+    </ul>
+    
+    <h2>Usage</h2>
+    <p>
+        Access the plugin through the FLIKA menu: <br>
+        <strong>Plugins → Calcium Noise Analysis → [Select Category] → [Select Operation]</strong>
+    </p>
+    
+    <p>The plugin is organized into logical categories:</p>
+    <ul>
+        <li><strong>Power Spectrum:</strong> Spectral analysis and bandpass filtering</li>
+        <li><strong>Fluctuation Analysis:</strong> SD fluctuation processing</li>
+        <li><strong>Shot Noise:</strong> Variance stabilization transforms</li>
+        <li><strong>Baseline & ΔF/F:</strong> F₀ estimation and normalization</li>
+        <li><strong>Event Detection:</strong> Spark and transient detection</li>
+        <li><strong>Correlation Analysis:</strong> ROI identification</li>
+        <li><strong>Metrics:</strong> Noise quantification</li>
+    </ul>
+    
+    <h2>Detailed Operations</h2>
+    
+    <h3>Power Spectrum Analysis</h3>
+    
+    <h4>Power Spectrum Map</h4>
+    <p>
+        Generate a 2D map identifying Ca²⁺-active pixels by separating calcium signals (0.1-5 Hz) 
+        from high-frequency shot noise (>50 Hz) using Welch periodograms.
+    </p>
+    
+    <table>
+        <tr>
+            <th>Parameter</th>
+            <th>Description</th>
+            <th>Typical Values</th>
+        </tr>
+        <tr>
+            <td><code>low_freq_min</code></td>
+            <td>Lower calcium frequency bound</td>
+            <td>0.1 Hz</td>
+        </tr>
+        <tr>
+            <td><code>low_freq_max</code></td>
+            <td>Upper calcium frequency bound</td>
+            <td>5.0 Hz</td>
+        </tr>
+        <tr>
+            <td><code>high_freq_cutoff</code></td>
+            <td>Shot noise frequency threshold</td>
+            <td>50 Hz</td>
+        </tr>
+        <tr>
+            <td><code>nperseg</code></td>
+            <td>Welch segment length</td>
+            <td>256 (power of 2)</td>
+        </tr>
+    </table>
+    
+    <div class="tip">
+        <strong>Application:</strong> Use this to identify regions with calcium activity before 
+        segmentation. Higher PSM values indicate pixels with strong calcium signal content.
+    </div>
+    
+    <h4>Butterworth Bandpass Filter</h4>
+    <p>
+        Isolate calcium transient frequencies by removing low-frequency baseline drift and 
+        high-frequency shot noise with a Butterworth bandpass filter.
+    </p>
+    
+    <div class="equation">
+        Typical calcium frequencies: 0.1-5 Hz<br>
+        Filter order: 2 (steeper rolloff with higher orders)
+    </div>
+    
+    <h3>Fluctuation Analysis</h3>
+    
+    <h4>SD Fluctuation Analysis</h4>
+    <p>
+        FLIKA-style running variance calculation that highlights transient local calcium signals.
+        The algorithm applies spatial smoothing, temporal high-pass filtering, computes windowed 
+        variance, and optionally corrects for shot noise.
+    </p>
+    
+    <table>
+        <tr>
+            <th>Parameter</th>
+            <th>Description</th>
+            <th>Typical Values</th>
+        </tr>
+        <tr>
+            <td><code>spatial_sigma</code></td>
+            <td>Gaussian blur sigma</td>
+            <td>1.0 pixels</td>
+        </tr>
+        <tr>
+            <td><code>highpass_cutoff</code></td>
+            <td>High-pass filter frequency</td>
+            <td>0.5 Hz</td>
+        </tr>
+        <tr>
+            <td><code>window_size</code></td>
+            <td>Running variance window</td>
+            <td>30 frames (~1 second)</td>
+        </tr>
+        <tr>
+            <td><code>shot_noise_factor</code></td>
+            <td>Shot noise correction factor</td>
+            <td>0.001-0.01 (or disabled)</td>
+        </tr>
+    </table>
+    
+    <div class="note">
+        <strong>Note:</strong> The shot noise factor depends on camera characteristics. Start with 
+        it disabled, then adjust based on your specific imaging system if needed.
+    </div>
+    
+    <h3>Shot Noise Analysis</h3>
+    
+    <h4>Anscombe Transform</h4>
+    <p>
+        Apply variance-stabilizing transform for Poisson-distributed photon shot noise.
+    </p>
+    
+    <div class="equation">
+        Forward: y = 2√(x + 3/8)<br>
+        Inverse: x = (y/2)² - 3/8
+    </div>
+    
+    <p>
+        The Anscombe transform converts Poisson noise (variance = mean) to approximately Gaussian 
+        noise with unit variance, enabling standard denoising techniques.
+    </p>
+    
+    <div class="tip">
+        <strong>Workflow:</strong> Apply Anscombe → Denoise with Gaussian methods → Inverse Anscombe
+    </div>
+    
+    <h3>Baseline Estimation (F₀)</h3>
+    
+    <h4>Estimate Baseline F₀</h4>
+    <p>
+        Estimate the baseline fluorescence using one of three methods:
+    </p>
+    
+    <table>
+        <tr>
+            <th>Method</th>
+            <th>Description</th>
+            <th>Use Case</th>
+        </tr>
+        <tr>
+            <td><code>percentile</code></td>
+            <td>Sliding 8th percentile</td>
+            <td>Default method, robust to transients</td>
+        </tr>
+        <tr>
+            <td><code>maximin</code></td>
+            <td>Suite2p's max(min(F))</td>
+            <td>Fast, less parameter-sensitive</td>
+        </tr>
+        <tr>
+            <td><code>photobleaching</code></td>
+            <td>Double exponential fit</td>
+            <td>Long recordings with significant bleaching</td>
+        </tr>
+    </table>
+    
+    <div class="important">
+        <strong>Important:</strong> Window size should be longer than typical calcium transients 
+        (15-30 seconds worth of frames). For 30 Hz imaging, use 450-900 frames.
+    </div>
+    
+    <h4>Compute ΔF/F</h4>
+    <p>
+        Calculate normalized fluorescence change with division-safe epsilon parameter.
+    </p>
+    
+    <div class="equation">
+        ΔF/F = (F - F₀) / max(F₀, ε)
+    </div>
+    
+    <p>
+        The epsilon parameter prevents division artifacts when F₀ is near zero (typical: 0.1-10 
+        depending on intensity scale).
+    </p>
+    
+    <h3>Event Detection</h3>
+    
+    <h4>Detect Calcium Sparks</h4>
+    <p>
+        Dual-threshold approach for detecting calcium sparks with variance stabilization.
+    </p>
+    
+    <div class="equation">
+        Normalized: (F - F₀) / √F₀<br>
+        Intensity threshold: 2σ (defines boundaries)<br>
+        Peak threshold: 3.8σ (confirms true events)
+    </div>
+    
+    <table>
+        <tr>
+            <th>Parameter</th>
+            <th>Description</th>
+            <th>Typical Values</th>
+        </tr>
+        <tr>
+            <td><code>intensity_thresh</code></td>
+            <td>Event boundary threshold</td>
+            <td>2.0σ</td>
+        </tr>
+        <tr>
+            <td><code>peak_thresh</code></td>
+            <td>Peak confirmation threshold</td>
+            <td>3.8σ</td>
+        </tr>
+        <tr>
+            <td><code>min_size</code></td>
+            <td>Minimum event size</td>
+            <td>40 pixels</td>
+        </tr>
+    </table>
+    
+    <div class="tip">
+        <strong>Tuning:</strong> Increase peak threshold to reduce false positives. Adjust 
+        min_size based on expected spark dimensions (typically 3-10 pixels diameter).
+    </div>
+    
+    <h3>Correlation Analysis</h3>
+    
+    <h4>Local Correlation Image</h4>
+    <p>
+        Compute local correlation image for neuron/ROI detection. For each pixel, calculates 
+        average Pearson correlation with spatial neighbors across time.
+    </p>
+    
+    <p>
+        High correlation indicates co-active regions (neurons, dendrites, axons). Based on 
+        CaImAn and Suite2p methodology.
+    </p>
+    
+    <table>
+        <tr>
+            <th>Parameter</th>
+            <th>Description</th>
+            <th>Typical Values</th>
+        </tr>
+        <tr>
+            <td><code>neighborhood</code></td>
+            <td>Neighborhood radius</td>
+            <td>1 (3×3) or 2 (5×5)</td>
+        </tr>
+    </table>
+    
+    <h3>Noise Metrics</h3>
+    
+    <h4>Compute Noise Metric (ν)</h4>
+    <p>
+        Calculate CASCADE noise metric for standardized noise comparison across recording conditions.
+    </p>
+    
+    <div class="equation">
+        ν = σ_ΔF/F × √(framerate)
+    </div>
+    
+    <p>
+        This metric standardizes noise measurements across different frame rates and recording 
+        conditions. Typical values:
+    </p>
+    
+    <ul>
+        <li><strong>ν ≈ 1-2:</strong> Low noise (excellent recording quality)</li>
+        <li><strong>ν ≈ 3-5:</strong> Moderate noise (typical for in vivo)</li>
+        <li><strong>ν ≈ 6-9:</strong> High noise (challenging for analysis)</li>
+    </ul>
+    
+    <div class="note">
+        <strong>CASCADE Training:</strong> When using CASCADE for spike inference, match your 
+        noise level (ν) to the appropriate pre-trained model for best results.
+    </div>
+    
+    <h2>Typical Workflows</h2>
+    
+    <h3>Workflow 1: Noise Characterization</h3>
+    <ol>
+        <li><strong>Power Spectrum Map:</strong> Identify Ca²⁺-active regions</li>
+        <li><strong>Compute Noise Metric:</strong> Quantify overall noise level</li>
+        <li><strong>Fluctuation Analysis:</strong> Visualize transient activity</li>
+        <li><strong>Local Correlation:</strong> Identify potential ROIs</li>
+    </ol>
+    
+    <h3>Workflow 2: Event Detection Pipeline</h3>
+    <ol>
+        <li><strong>Estimate Baseline F₀:</strong> Use percentile method</li>
+        <li><strong>Compute ΔF/F:</strong> Normalize fluorescence</li>
+        <li><strong>Detect Calcium Sparks:</strong> Identify events with dual thresholds</li>
+        <li><strong>Export Results:</strong> Save detected events for further analysis</li>
+    </ol>
+    
+    <h3>Workflow 3: Preprocessing for CASCADE</h3>
+    <ol>
+        <li><strong>Butterworth Bandpass:</strong> Filter 0.1-5 Hz</li>
+        <li><strong>Estimate Baseline F₀:</strong> Use maximin method</li>
+        <li><strong>Compute ΔF/F:</strong> Normalize traces</li>
+        <li><strong>Compute Noise Metric:</strong> Determine ν for model selection</li>
+        <li><strong>Export traces:</strong> Ready for CASCADE spike inference</li>
+    </ol>
+    
+    <h2>TIRF Microscopy Applications</h2>
+    <p>This plugin is optimized for TIRF microscopy calcium imaging:</p>
+    <ul>
+        <li><strong>Shot Noise Handling:</strong> Anscombe transform for low-photon conditions</li>
+        <li><strong>Spark Detection:</strong> Optimized for CICR (Ca²⁺-induced Ca²⁺ release) events</li>
+        <li><strong>Photobleaching Correction:</strong> Essential for long TIRF recordings</li>
+        <li><strong>Spatial Filtering:</strong> Matched to TIRF point spread function</li>
+    </ul>
+    
+    <h2>Technical Notes</h2>
+    <ul>
+        <li>All operations preserve framerate metadata when available</li>
+        <li>Default framerate (30 Hz) used if metadata missing</li>
+        <li>Operations work on both single images and multi-frame stacks</li>
+        <li>Original windows can be preserved with <code>keepSourceWindow</code> option</li>
+        <li>Edge effects minimized with appropriate boundary handling</li>
+        <li>Memory-efficient processing for large datasets</li>
+    </ul>
+    
+    <h2>Modular Design</h2>
+    <p>
+        The plugin is built with a modular architecture for easy testing and extension:
+    </p>
+    <ul>
+        <li><code>power_spectrum_module.py</code> - PSD analysis and bandpass filtering</li>
+        <li><code>fluctuation_module.py</code> - SD fluctuation analysis</li>
+        <li><code>shot_noise_module.py</code> - Anscombe transform and noise utilities</li>
+        <li><code>baseline_module.py</code> - F₀ estimation and ΔF/F calculation</li>
+        <li><code>event_detection_module.py</code> - Spark detection algorithms</li>
+        <li><code>correlation_module.py</code> - Correlation image computation</li>
+    </ul>
+    
+    <div class="tip">
+        <strong>For Developers:</strong> Each module can be unit tested independently. 
+        Run <code>python module_name.py</code> to execute built-in tests.
+    </div>
+    
+    <h2>Requirements</h2>
+    <ul>
+        <li>FLIKA ≥ 0.2.25</li>
+        <li>NumPy</li>
+        <li>SciPy</li>
+        <li>Python 3.6+</li>
+    </ul>
+    
+    <h2>Performance Tips</h2>
+    <ol>
+        <li><strong>Process Subsets First:</strong> Test parameters on single frames before processing full stacks</li>
+        <li><strong>Correlation Images:</strong> Can be slow for large movies; consider downsampling first</li>
+        <li><strong>Event Detection:</strong> Adjust thresholds based on noise level (use Noise Metric)</li>
+        <li><strong>Memory Management:</strong> For very large stacks (>10GB), process in temporal chunks</li>
+    </ol>
+    
+    <h2>Troubleshooting</h2>
+    <table>
+        <tr>
+            <th>Issue</th>
+            <th>Solution</th>
+        </tr>
+        <tr>
+            <td>Framerate not detected</td>
+            <td>Plugin uses 30 Hz default; manually set in Window metadata if needed</td>
+        </tr>
+        <tr>
+            <td>No sparks detected</td>
+            <td>Lower peak_thresh parameter; check if ΔF/F is computed correctly</td>
+        </tr>
+        <tr>
+            <td>Correlation image all zeros</td>
+            <td>Increase movie length (need >100 frames); check for flat pixels</td>
+        </tr>
+        <tr>
+            <td>Photobleaching fit fails</td>
+            <td>Plugin falls back to percentile method automatically</td>
+        </tr>
+        <tr>
+            <td>High noise metric (ν > 10)</td>
+            <td>Consider spatial binning or temporal filtering before analysis</td>
+        </tr>
+    </table>
+    
+    <h2>Citation</h2>
+    <p>
+        When using FLIKA in your research, please cite:
+    </p>
+    <blockquote>
+        Ellefsen, K., Settle, B., Parker, I. & Smith, I. An algorithm for automated detection, 
+        localization and measurement of local calcium signals from camera-based imaging. 
+        <em>Cell Calcium</em>. 56:147-156, 2014
+    </blockquote>
+    
+    <p>
+        If using specific methods, please also cite the original papers:
+    </p>
+    <ul>
+        <li><strong>CASCADE:</strong> Rupprecht et al., Nat. Methods 2021</li>
+        <li><strong>Power Spectrum:</strong> Swaminathan et al., J. Physiol. 2020</li>
+        <li><strong>Suite2p:</strong> Pachitariu et al., bioRxiv 2017</li>
+        <li><strong>CaImAn:</strong> Giovannucci et al., eLife 2019</li>
+    </ul>
+    
+    <h2>Support & Contributing</h2>
+    <ul>
+        <li><strong>GitHub:</strong> <a href="https://github.com/flika-org/flika">FLIKA Repository</a></li>
+        <li><strong>Issues:</strong> Use GitHub issue tracker for bug reports and feature requests</li>
+        <li><strong>Documentation:</strong> <a href="https://flika-org.github.io/">FLIKA Documentation</a></li>
+    </ul>
+    
+    <h2>License</h2>
+    <p>
+        This plugin is distributed under the MIT license and is free and open source software.
+    </p>
+    
+    <hr>
+    <p style="text-align: center; color: #888; font-size: 0.9em;">
+        Calcium Noise Analysis Plugin v1.0.0 for FLIKA
+    </p>
+</body>
+</html>

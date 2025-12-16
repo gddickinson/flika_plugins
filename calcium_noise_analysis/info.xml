@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin name="Calcium Noise Analysis">
+	<directory>
+		calcium_noise_analysis
+	</directory>
+	<version>
+		1.0.0
+	</version>
+	<author>
+		George
+	</author>
+	<email>
+		george@example.com
+	</email>
+	<url>
+		https://github.com/username/calcium_noise_analysis
+	</url>
+	<description>
+		Comprehensive calcium imaging noise analysis toolkit integrating traditional signal
+		processing algorithms, noise characterization, and event detection methods.
+	</description>
+	<long_description>
+		Calcium Noise Analysis provides production-quality tools for characterizing and
+		analyzing noise in calcium imaging data. Features include power spectral density
+		analysis, SD fluctuation processing, shot noise characterization with Anscombe
+		transforms, multiple F0 baseline estimation methods, dF/F calculation, calcium
+		spark detection, local correlation images, noise metric computation, and
+		Butterworth bandpass filtering. Based on research from CASCADE, Swaminathan et al.
+		2020, Lock and Parker 2020 (FLIKA), and Suite2p methodologies. Optimized for TIRF
+		microscopy and calcium imaging workflows.
+	</long_description>
+	<dependencies>
+		<dependency name='numpy'></dependency>
+		<dependency name='scipy'></dependency>
+	</dependencies>
+	<tags>
+		<tag>calcium imaging</tag>
+		<tag>noise analysis</tag>
+		<tag>TIRF</tag>
+		<tag>signal processing</tag>
+		<tag>event detection</tag>
+		<tag>microscopy</tag>
+	</tags>
+	<menu_layout>
+		<menu name="Power Spectrum">
+			<action location="calcium_noise_analysis" function="power_spectrum_map.gui">Power Spectrum Map</action>
+			<action location="calcium_noise_analysis" function="butterworth_bandpass.gui">Butterworth Bandpass Filter</action>
+		</menu>
+		<menu name="Fluctuation Analysis">
+			<action location="calcium_noise_analysis" function="fluctuation_analysis.gui">SD Fluctuation Analysis</action>
+		</menu>
+		<menu name="Shot Noise">
+			<action location="calcium_noise_analysis" function="anscombe_transform.gui">Anscombe Transform</action>
+		</menu>
+		<menu name="Baseline and dF/F">
+			<action location="calcium_noise_analysis" function="estimate_baseline_f0.gui">Estimate Baseline (F0)</action>
+			<action location="calcium_noise_analysis" function="compute_dff.gui">Compute dF/F</action>
+		</menu>
+		<menu name="Event Detection">
+			<action location="calcium_noise_analysis" function="detect_calcium_sparks.gui">Detect Calcium Sparks</action>
+		</menu>
+		<menu name="Correlation Analysis">
+			<action location="calcium_noise_analysis" function="local_correlation_image.gui">Local Correlation Image</action>
+		</menu>
+		<menu name="Metrics">
+			<action location="calcium_noise_analysis" function="compute_noise_metric.gui">Compute Noise Metric (nu)</action>
+		</menu>
+		<action location="calcium_noise_analysis" function="launch_docs">Documentation</action>
+	</menu_layout>
+</plugin>

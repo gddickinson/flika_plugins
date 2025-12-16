@@ -1,0 +1,140 @@
+====================================================================
+CALCIUM NOISE ANALYSIS PLUGIN FOR FLIKA - INSTALLATION GUIDE
+====================================================================
+
+VERSION: 1.0.0
+AUTHOR: George
+DATE: December 2024
+
+====================================================================
+QUICK START
+====================================================================
+
+1. Download the entire "calcium_noise_analysis" folder
+
+2. Copy to your FLIKA plugins directory:
+   
+   Windows:
+   C:\Users\[YourUsername]\.FLIKA\plugins\calcium_noise_analysis\
+   
+   macOS/Linux:
+   ~/.FLIKA/plugins/calcium_noise_analysis/
+
+3. Restart FLIKA
+
+4. Access via: Plugins → Calcium Noise Analysis
+
+====================================================================
+PACKAGE CONTENTS
+====================================================================
+
+calcium_noise_analysis/
+├── calcium_noise_analysis.py    # Main plugin (BaseProcess classes)
+├── power_spectrum_module.py     # PSD analysis & bandpass filtering
+├── fluctuation_module.py        # SD fluctuation analysis
+├── shot_noise_module.py         # Anscombe transform
+├── baseline_module.py           # F₀ estimation & ΔF/F
+├── event_detection_module.py   # Spark detection
+├── correlation_module.py        # Correlation images
+├── info.xml                     # Plugin metadata
+├── about.html                   # Full documentation
+├── README.md                    # Usage guide
+├── __init__.py                  # Python package file
+└── INSTALLATION.txt             # This file
+
+====================================================================
+FEATURES
+====================================================================
+
+✓ Power Spectrum Map - Identify Ca²⁺-active pixels
+✓ SD Fluctuation Analysis - FLIKA-style running variance
+✓ Anscombe Transform - Variance stabilization for Poisson noise
+✓ Baseline Estimation - Multiple F₀ methods (percentile, maximin, photobleaching)
+✓ ΔF/F Calculation - Normalized fluorescence
+✓ Calcium Spark Detection - Dual-threshold event detection
+✓ Local Correlation Image - ROI identification
+✓ Noise Metric Computation - CASCADE noise metric (ν)
+✓ Butterworth Bandpass - Filter calcium transient frequencies
+
+====================================================================
+MODULAR DESIGN
+====================================================================
+
+Each module can be tested independently:
+
+cd ~/.FLIKA/plugins/calcium_noise_analysis/
+python power_spectrum_module.py       # Test power spectrum functions
+python fluctuation_module.py          # Test fluctuation functions
+python shot_noise_module.py           # Test shot noise functions
+python baseline_module.py             # Test baseline functions
+python event_detection_module.py     # Test event detection functions
+python correlation_module.py          # Test correlation functions
+
+====================================================================
+REQUIREMENTS
+====================================================================
+
+- FLIKA >= 0.2.25
+- NumPy
+- SciPy
+- Python 3.6+
+
+====================================================================
+TYPICAL WORKFLOWS
+====================================================================
+
+Workflow 1: Noise Characterization
+1. Power Spectrum Map → Identify active regions
+2. Compute Noise Metric → Quantify noise level (ν)
+3. Fluctuation Analysis → Visualize transients
+4. Local Correlation → Find potential ROIs
+
+Workflow 2: Event Detection
+1. Estimate Baseline F₀ → Use percentile method
+2. Compute ΔF/F → Normalize fluorescence
+3. Detect Calcium Sparks → Dual-threshold detection
+
+Workflow 3: CASCADE Preprocessing
+1. Butterworth Bandpass → Filter 0.1-5 Hz
+2. Estimate Baseline F₀ → Use maximin method
+3. Compute ΔF/F → Normalize traces
+4. Compute Noise Metric → Determine ν for model selection
+
+====================================================================
+RESEARCH FOUNDATION
+====================================================================
+
+This plugin implements methods from:
+
+• CASCADE (Rupprecht et al., Nat. Methods 2021)
+• Swaminathan et al. 2020 (J. Physiol.)
+• Lock & Parker 2020 - FLIKA methodology
+• Suite2p (Pachitariu et al., bioRxiv 2017)
+• CaImAn (Giovannucci et al., eLife 2019)
+
+====================================================================
+SUPPORT
+====================================================================
+
+Documentation: Open about.html in a web browser
+GitHub: https://github.com/flika-org/flika
+Issues: Use GitHub issue tracker
+
+====================================================================
+CITATION
+====================================================================
+
+When using FLIKA, please cite:
+
+Ellefsen, K., Settle, B., Parker, I. & Smith, I. (2014).
+An algorithm for automated detection, localization and 
+measurement of local calcium signals from camera-based imaging.
+Cell Calcium, 56:147-156.
+
+====================================================================
+LICENSE
+====================================================================
+
+MIT License - Free and open source software
+
+====================================================================
