@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin name="Calcium Event Data Labeler">
+	<directory>
+		ca_event_labeler_flika
+	</directory>
+	<version>
+		1.0.0
+	</version>
+	<author>
+		George
+	</author>
+	<email>
+		george.dickinson@gmail.com
+	</email>
+	<url>
+		https://github.com/gddickinson/ca_event_labeler_flika
+	</url>
+	<description>
+		Comprehensive training data labeling and dataset creation tool for calcium event
+		detection. Create high-quality labeled datasets with interactive tools, automated
+		labeling, quality assessment, and data augmentation.
+	</description>
+	<long_description>
+		Calcium Event Data Labeler for FLIKA provides everything needed to create 
+		training datasets for deep learning calcium event detection models.
+		
+		Interactive Manual Labeling:
+		- Frame-by-frame ROI drawing tools
+		- Multiple drawing modes (rectangle, ellipse, polygon, freehand)
+		- Class selection (spark, puff, wave)
+		- Undo/redo support
+		- Save/load annotations in multiple formats
+		
+		Automated Label Generation:
+		- Intensity-based event detection
+		- Temporal filtering and morphological cleanup
+		- Connected component analysis
+		- Automatic classification by size and duration
+		- Template matching (advanced)
+		
+		Label Quality Assessment:
+		- Class distribution analysis
+		- Spatial and temporal coverage metrics
+		- Label consistency checking
+		- Annotation completeness verification
+		- Inter-annotator agreement (Cohen's kappa)
+		
+		Dataset Creation:
+		- Extract patches from full frames
+		- Train/validation/test splitting with stratification
+		- Class balancing via intelligent oversampling
+		- Multiple output formats
+		
+		Data Augmentation:
+		- Geometric transforms (rotation, flipping, elastic)
+		- Intensity variations (brightness, contrast, gamma)
+		- Temporal transforms (warping, subsampling)
+		- Configurable augmentation pipelines
+		
+		Perfect companion to the Calcium Event Detector plugin for creating
+		high-quality training datasets!
+	</long_description>
+	<dependencies>
+		<dependency name='numpy'></dependency>
+		<dependency name='scipy'></dependency>
+		<dependency name='scikit-image'></dependency>
+		<dependency name='scikit-learn'></dependency>
+		<dependency name='pandas'></dependency>
+		<dependency name='tifffile'></dependency>
+	</dependencies>
+	<tags>
+		<tag>calcium imaging</tag>
+		<tag>data labeling</tag>
+		<tag>annotation</tag>
+		<tag>training data</tag>
+		<tag>machine learning</tag>
+		<tag>dataset creation</tag>
+		<tag>quality assessment</tag>
+		<tag>data augmentation</tag>
+	</tags>
+	<menu_layout>
+		<action location="__init__" function="ca_labeler_manual_label.gui">Manual Labeling</action>
+		<action location="__init__" function="ca_labeler_auto_label.gui">Automated Labeling</action>
+		<action location="__init__" function="ca_labeler_check_quality.gui">Check Label Quality</action>
+		<action location="__init__" function="ca_labeler_create_dataset.gui">Create Dataset</action>
+		<action location="__init__" function="ca_labeler_augment_data.gui">Augment Data</action>
+	</menu_layout>
+</plugin>
