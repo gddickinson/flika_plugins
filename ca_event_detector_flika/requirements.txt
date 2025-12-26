@@ -1,0 +1,26 @@
+# Calcium Event Detector FLIKA Plugin Requirements
+# ================================================
+
+# Core dependencies
+numpy>=1.20.0
+scipy>=1.7.0
+pandas>=1.3.0
+
+# Deep learning
+torch>=1.9.0
+torchvision>=0.10.0
+
+# Image processing
+tifffile>=2021.11.2
+scikit-image>=0.19.0
+
+# GUI (usually comes with FLIKA)
+PyQt5>=5.15.0
+pyqtgraph>=0.12.0
+
+# FLIKA
+# Note: Install separately with: pip install flika
+# flika>=0.2.23
+
+# Optional for better performance
+# joblib>=1.1.0  # For parallel processing

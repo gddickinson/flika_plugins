@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin name="Calcium Event Detector">
+	<directory>
+		ca_event_detector_flika
+	</directory>
+	<version>
+		1.1.0
+	</version>
+	<author>
+		George Dickinson
+	</author>
+	<email>
+		george.dickinson@gmail.com
+	</email>
+	<url>
+		https://github.com/gddickinson/ca_event_detector_flika
+	</url>
+	<description>
+		Deep learning-based detection and classification of local Ca²⁺ release events
+		in confocal imaging with comprehensive diagnostics and testing. Automatically
+		identifies sparks, puffs, and waves using 3D U-Net neural network with robust
+		error handling and MPS optimization.
+	</description>
+	<long_description>
+		Calcium Event Detector for FLIKA provides comprehensive deep learning analysis
+		of calcium imaging data with extensive diagnostics and testing capabilities.
+
+		Based on Dotti et al. (2024), this plugin uses a 3D U-Net architecture to detect
+		and classify calcium release events: Ca²⁺ sparks, Ca²⁺ puffs, and Ca²⁺ waves.
+
+		Core Features:
+		- Automatic event detection with &gt;85% accuracy
+		- Multi-class segmentation and instance labeling
+		- Interactive visualization with color-coded overlays
+		- Results export to CSV/TIFF formats
+
+		Enhanced Training (v1.1.0) - Features from train_patches_resume_mps.py:
+		- Robust checkpoint finding by iteration number
+		- Data integrity verification (detects iCloud stub files)
+		- Robust dataset wrapper for corrupted file handling
+		- Enhanced progress monitoring with ETA calculation
+		- Emergency checkpoint saving on errors
+		- MPS optimization for Apple Silicon
+
+		Diagnostics and Testing (v1.1.0):
+		- Data integrity checking
+		- Class balance analysis
+		- System capability detection
+		- Model checkpoint inspection
+		- Training history analysis
+		- Ground truth comparison
+		- Threshold optimization
+		- Inference speed benchmarking
+		- Memory profiling
+
+		Perfect for analyzing confocal calcium imaging data with state-of-the-art
+		accuracy and comprehensive validation tools.
+
+		Reference: Dotti, P., et al. (2024). "A deep learning-based approach for efficient
+		detection and classification of local Ca²⁺ release events in Full-Frame confocal
+		imaging." Cell Calcium, 121, 102893.
+	</long_description>
+	<dependencies>
+		<dependency name='numpy'></dependency>
+		<dependency name='scipy'></dependency>
+		<dependency name='torch'></dependency>
+		<dependency name='tifffile'></dependency>
+		<dependency name='scikit-image'></dependency>
+	</dependencies>
+	<tags>
+		<tag>calcium imaging</tag>
+		<tag>deep learning</tag>
+		<tag>event detection</tag>
+		<tag>confocal</tag>
+		<tag>U-Net</tag>
+		<tag>calcium sparks</tag>
+		<tag>calcium puffs</tag>
+		<tag>calcium waves</tag>
+	</tags>
+	<menu_layout>
+		<action location="__init__" function="ca_event_detector_run_detection.gui">Run Detection</action>
+		<action location="__init__" function="ca_event_detector_quick_detection.gui">Quick Detection</action>
+		<action location="__init__" function="ca_event_detector_display_results.gui">Display Results</action>
+		<action location="__init__" function="ca_event_detector_toggle_display.gui">Toggle Display</action>
+		<action location="__init__" function="ca_event_detector_view_results.gui">View Results Table</action>
+		<action location="__init__" function="ca_event_detector_export_results.gui">Export Results</action>
+		<action location="__init__" function="ca_event_detector_run_diagnostics.gui">Run Diagnostics</action>
+		<action location="__init__" function="ca_event_detector_run_tests.gui">Run Tests</action>
+		<action location="__init__" function="ca_event_detector_train_model.gui">Train Model (Enhanced)</action>
+		<action location="__init__" function="ca_event_detector_train_model_simple.gui">Train Model (Simple)</action>
+	</menu_layout>
+</plugin>
