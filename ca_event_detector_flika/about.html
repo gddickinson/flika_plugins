@@ -1,61 +1,58 @@
-<div style="font-family: Arial, sans-serif; padding: 20px; max-width: 800px;">
-	<h2>Calcium Event Detector for FLIKA</h2>
-	
-	<p><strong>Version 1.0.0</strong> | Author: George Stuyt</p>
-	
-	<h3>Description</h3>
-	<p>
-		Deep learning-based detection and classification of local Ca²⁺ release events in confocal imaging.
-		This plugin automatically identifies and classifies calcium events using a 3D U-Net neural network
-		trained on expert-annotated data.
-	</p>
-	
-	<h3>Event Types</h3>
-	<ul>
-		<li><strong>Ca²⁺ sparks:</strong> Fast, localized release events (~10-100 µm²)</li>
-		<li><strong>Ca²⁺ puffs:</strong> Intermediate events with moderate spatial extent</li>
-		<li><strong>Ca²⁺ waves:</strong> Large propagating events (&gt;100 µm²)</li>
-	</ul>
-	
-	<h3>Features</h3>
-	<ul>
-		<li>Automatic event detection with &gt;85% accuracy</li>
-		<li>Multi-class segmentation (sparks, puffs, waves)</li>
-		<li>Instance labeling for individual events</li>
-		<li>Real-time visualization with color-coded overlays</li>
-		<li>Interactive results viewer with filtering and statistics</li>
-		<li>Export results to CSV/TIFF formats</li>
-		<li>Model training on custom datasets</li>
-		<li>GPU acceleration (CUDA, MPS) support</li>
-	</ul>
-	
-	<h3>Quick Start</h3>
-	<ol>
-		<li>Load your calcium imaging data in FLIKA</li>
-		<li>Select <strong>Calcium Event Detector &gt; Quick Detection</strong></li>
-		<li>Choose your trained model file (.pth)</li>
-		<li>Click "Run" to detect events</li>
-		<li>View results overlaid on your image</li>
-	</ol>
-	
-	<h3>Reference</h3>
-	<p style="font-size: 0.9em; color: #555;">
-		Dotti, P., Davey, G. I. J., Higgins, E. R., & Shirokova, N. (2024). 
-		<em>A deep learning-based approach for efficient detection and classification of 
-		local Ca²⁺ release events in Full-Frame confocal imaging.</em> 
-		Cell Calcium, 121, 102893.
-		<br>
-		<a href="https://doi.org/10.1016/j.ceca.2024.102893" target="_blank">
-			https://doi.org/10.1016/j.ceca.2024.102893
-		</a>
-	</p>
-	
-	<h3>Support</h3>
-	<p>
-		For issues, feature requests, or questions, please visit:
-		<br>
-		<a href="https://github.com/gddickinson/ca_event_detector_flika" target="_blank">
-			GitHub Repository
-		</a>
-	</p>
-</div>
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta http-equiv="Content-Style-Type" content="text/css">
+  <title></title>
+  <meta name="Generator" content="Cocoa HTML Writer">
+  <meta name="CocoaVersion" content="2685.2">
+  <style type="text/css">
+    p.p2 {margin: 0.0px 0.0px 12.0px 0.0px; font: 12.0px Arial; -webkit-text-stroke: #000000}
+    p.p5 {margin: 0.0px 0.0px 10.8px 0.0px; font: 10.8px Arial; color: #434343; -webkit-text-stroke: #434343}
+    li.li4 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Arial; -webkit-text-stroke: #000000}
+    span.s1 {font-kerning: none}
+    span.s2 {-webkit-text-stroke: 0px #000000}
+    span.s3 {font: 10.8px Arial; text-decoration: underline ; font-kerning: none; color: #0000e9; -webkit-text-stroke: 0px #0000e9}
+    span.s4 {font: 12.0px Arial; text-decoration: underline ; font-kerning: none; color: #0000e9; -webkit-text-stroke: 0px #0000e9}
+    ol.ol1 {list-style-type: decimal}
+    ul.ul1 {list-style-type: disc}
+  </style>
+</head>
+<body>
+<h2 style="margin: 0.0px 0.0px 14.9px 0.0px; font: 18.0px Arial; -webkit-text-stroke: #000000"><span class="s1"><b>Calcium Event Detector for FLIKA</b></span></h2>
+<p class="p2"><span class="s1"><b>Version 1.0.0</b> | Author: George<span class="Apple-converted-space"> </span></span></p>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Arial; -webkit-text-stroke: #000000"><span class="s1"><b>Description</b></span></h3>
+<p class="p2"><span class="s1">Deep learning-based detection and classification of local CaÂ²âº release events in confocal imaging. This plugin automatically identifies and classifies calcium events using a 3D U-Net neural network trained on expert-annotated data.</span></p>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Arial; -webkit-text-stroke: #000000"><span class="s1"><b>Event Types</b></span></h3>
+<ul class="ul1">
+  <li class="li4"><span class="s2"><b></b></span><span class="s1"><b>CaÂ²âº sparks:</b> Fast, localized release events (~10-100 ÂµmÂ²)</span></li>
+  <li class="li4"><span class="s2"><b></b></span><span class="s1"><b>CaÂ²âº puffs:</b> Intermediate events with moderate spatial extent</span></li>
+  <li class="li4"><span class="s2"><b></b></span><span class="s1"><b>CaÂ²âº waves:</b> Large propagating events (&gt;100 ÂµmÂ²)</span></li>
+</ul>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Arial; -webkit-text-stroke: #000000"><span class="s1"><b>Features</b></span></h3>
+<ul class="ul1">
+  <li class="li4"><span class="s2"></span><span class="s1">Automatic event detection with &gt;85% accuracy</span></li>
+  <li class="li4"><span class="s2"></span><span class="s1">Multi-class segmentation (sparks, puffs, waves)</span></li>
+  <li class="li4"><span class="s2"></span><span class="s1">Instance labeling for individual events</span></li>
+  <li class="li4"><span class="s2"></span><span class="s1">Real-time visualization with color-coded overlays</span></li>
+  <li class="li4"><span class="s2"></span><span class="s1">Interactive results viewer with filtering and statistics</span></li>
+  <li class="li4"><span class="s2"></span><span class="s1">Export results to CSV/TIFF formats</span></li>
+  <li class="li4"><span class="s2"></span><span class="s1">Model training on custom datasets</span></li>
+  <li class="li4"><span class="s2"></span><span class="s1">GPU acceleration (CUDA, MPS) support</span></li>
+</ul>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Arial; -webkit-text-stroke: #000000"><span class="s1"><b>Quick Start</b></span></h3>
+<ol class="ol1">
+  <li class="li4"><span class="s2"></span><span class="s1">Load your calcium imaging data in FLIKA</span></li>
+  <li class="li4"><span class="s2"></span><span class="s1">Select <b>Calcium Event Detector &gt; Quick Detection</b><b></b></span></li>
+  <li class="li4"><span class="s2"></span><span class="s1">Choose your trained model file (.pth)</span></li>
+  <li class="li4"><span class="s2"></span><span class="s1">Click "Run" to detect events</span></li>
+  <li class="li4"><span class="s2"></span><span class="s1">View results overlaid on your image</span></li>
+</ol>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Arial; -webkit-text-stroke: #000000"><span class="s1"><b>Reference</b></span></h3>
+<p class="p5"><span class="s1">Dotti, P., Davey, G. I. J., Higgins, E. R., &amp; Shirokova, N. (2024). <i>A deep learning-based approach for efficient detection and classification of local CaÂ²âº release events in Full-Frame confocal imaging.</i> Cell Calcium, 121, 102893. <br>
+<a href="https://doi.org/10.1016/j.ceca.2024.102893"><span class="s3">https://doi.org/10.1016/j.ceca.2024.102893</span></a></span></p>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Arial; -webkit-text-stroke: #000000"><span class="s1"><b>Support</b></span></h3>
+<p class="p2"><span class="s1">For issues, feature requests, or questions, please visit: <br>
+<a href="https://github.com/gddickinson/ca_event_detector_flika"><span class="s4">GitHub Repository</span></a></span></p>
+</body>
+</html>

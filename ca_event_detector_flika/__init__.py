@@ -27,7 +27,7 @@ Reference: Dotti, P., et al. (2024). Cell Calcium, 121, 102893.
 """
 
 __version__ = '1.1.0'  # Updated with diagnostics & testing
-__author__ = 'George Stuyt'
+__author__ = 'George'
 
 from flika import global_vars as g
 from flika.window import Window
