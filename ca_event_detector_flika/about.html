@@ -1,58 +1,348 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-  <meta http-equiv="Content-Style-Type" content="text/css">
-  <title></title>
-  <meta name="Generator" content="Cocoa HTML Writer">
-  <meta name="CocoaVersion" content="2685.2">
-  <style type="text/css">
-    p.p2 {margin: 0.0px 0.0px 12.0px 0.0px; font: 12.0px Arial; -webkit-text-stroke: #000000}
-    p.p5 {margin: 0.0px 0.0px 10.8px 0.0px; font: 10.8px Arial; color: #434343; -webkit-text-stroke: #434343}
-    li.li4 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Arial; -webkit-text-stroke: #000000}
-    span.s1 {font-kerning: none}
-    span.s2 {-webkit-text-stroke: 0px #000000}
-    span.s3 {font: 10.8px Arial; text-decoration: underline ; font-kerning: none; color: #0000e9; -webkit-text-stroke: 0px #0000e9}
-    span.s4 {font: 12.0px Arial; text-decoration: underline ; font-kerning: none; color: #0000e9; -webkit-text-stroke: 0px #0000e9}
-    ol.ol1 {list-style-type: decimal}
-    ul.ul1 {list-style-type: disc}
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calcium Event Detector - About</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+            padding: 30px;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        h2 {
+            color: #34495e;
+            border-left: 4px solid #667eea;
+            padding-left: 10px;
+            margin-top: 30px;
+        }
+        h3 {
+            color: #5a67d8;
+            margin-top: 20px;
+        }
+        .version {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 25px;
+            display: inline-block;
+            font-size: 0.9em;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .badge {
+            background: #27ae60;
+            color: white;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            margin-left: 10px;
+            font-weight: bold;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .stat-box .number {
+            font-size: 2.5em;
+            font-weight: bold;
+            display: block;
+        }
+        .stat-box .label {
+            font-size: 0.9em;
+            opacity: 0.95;
+        }
+        .feature-list {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            margin: 15px 0;
+        }
+        .feature-list ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .feature-list li {
+            margin: 8px 0;
+        }
+        .new-feature {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .authors {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            border: 2px solid #2196f3;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .citation {
+            background: #d1ecf1;
+            border: 2px solid #17a2b8;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        .btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 25px;
+            border-radius: 25px;
+            text-decoration: none;
+            margin: 5px;
+            font-weight: bold;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+        }
+        a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        code {
+            background: #f4f4f4;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: #e83e8c;
+        }
+        pre {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        .success { color: #27ae60; font-weight: bold; }
+        .warning { color: #f39c12; font-weight: bold; }
+        .error { color: #e74c3c; font-weight: bold; }
+    </style>
 </head>
 <body>
-<h2 style="margin: 0.0px 0.0px 14.9px 0.0px; font: 18.0px Arial; -webkit-text-stroke: #000000"><span class="s1"><b>Calcium Event Detector for FLIKA</b></span></h2>
-<p class="p2"><span class="s1"><b>Version 1.0.0</b> | Author: George<span class="Apple-converted-space"> </span></span></p>
-<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Arial; -webkit-text-stroke: #000000"><span class="s1"><b>Description</b></span></h3>
-<p class="p2"><span class="s1">Deep learning-based detection and classification of local CaÂ²âº release events in confocal imaging. This plugin automatically identifies and classifies calcium events using a 3D U-Net neural network trained on expert-annotated data.</span></p>
-<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Arial; -webkit-text-stroke: #000000"><span class="s1"><b>Event Types</b></span></h3>
-<ul class="ul1">
-  <li class="li4"><span class="s2"><b></b></span><span class="s1"><b>CaÂ²âº sparks:</b> Fast, localized release events (~10-100 ÂµmÂ²)</span></li>
-  <li class="li4"><span class="s2"><b></b></span><span class="s1"><b>CaÂ²âº puffs:</b> Intermediate events with moderate spatial extent</span></li>
-  <li class="li4"><span class="s2"><b></b></span><span class="s1"><b>CaÂ²âº waves:</b> Large propagating events (&gt;100 ÂµmÂ²)</span></li>
-</ul>
-<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Arial; -webkit-text-stroke: #000000"><span class="s1"><b>Features</b></span></h3>
-<ul class="ul1">
-  <li class="li4"><span class="s2"></span><span class="s1">Automatic event detection with &gt;85% accuracy</span></li>
-  <li class="li4"><span class="s2"></span><span class="s1">Multi-class segmentation (sparks, puffs, waves)</span></li>
-  <li class="li4"><span class="s2"></span><span class="s1">Instance labeling for individual events</span></li>
-  <li class="li4"><span class="s2"></span><span class="s1">Real-time visualization with color-coded overlays</span></li>
-  <li class="li4"><span class="s2"></span><span class="s1">Interactive results viewer with filtering and statistics</span></li>
-  <li class="li4"><span class="s2"></span><span class="s1">Export results to CSV/TIFF formats</span></li>
-  <li class="li4"><span class="s2"></span><span class="s1">Model training on custom datasets</span></li>
-  <li class="li4"><span class="s2"></span><span class="s1">GPU acceleration (CUDA, MPS) support</span></li>
-</ul>
-<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Arial; -webkit-text-stroke: #000000"><span class="s1"><b>Quick Start</b></span></h3>
-<ol class="ol1">
-  <li class="li4"><span class="s2"></span><span class="s1">Load your calcium imaging data in FLIKA</span></li>
-  <li class="li4"><span class="s2"></span><span class="s1">Select <b>Calcium Event Detector &gt; Quick Detection</b><b></b></span></li>
-  <li class="li4"><span class="s2"></span><span class="s1">Choose your trained model file (.pth)</span></li>
-  <li class="li4"><span class="s2"></span><span class="s1">Click "Run" to detect events</span></li>
-  <li class="li4"><span class="s2"></span><span class="s1">View results overlaid on your image</span></li>
-</ol>
-<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Arial; -webkit-text-stroke: #000000"><span class="s1"><b>Reference</b></span></h3>
-<p class="p5"><span class="s1">Dotti, P., Davey, G. I. J., Higgins, E. R., &amp; Shirokova, N. (2024). <i>A deep learning-based approach for efficient detection and classification of local CaÂ²âº release events in Full-Frame confocal imaging.</i> Cell Calcium, 121, 102893. <br>
-<a href="https://doi.org/10.1016/j.ceca.2024.102893"><span class="s3">https://doi.org/10.1016/j.ceca.2024.102893</span></a></span></p>
-<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Arial; -webkit-text-stroke: #000000"><span class="s1"><b>Support</b></span></h3>
-<p class="p2"><span class="s1">For issues, feature requests, or questions, please visit: <br>
-<a href="https://github.com/gddickinson/ca_event_detector_flika"><span class="s4">GitHub Repository</span></a></span></p>
+    <div class="container">
+        <h1>🔬 Calcium Event Detector for FLIKA</h1>
+        <div class="version">Version 1.1.0 | December 26, 2024 <span class="badge">ENHANCED</span></div>
+
+        <p><strong>Deep learning-based detection and classification of local Ca²⁺ release events in confocal imaging with comprehensive diagnostics, testing, and robust training capabilities.</strong></p>
+
+        <div class="stats">
+            <div class="stat-box">
+                <span class="number">10</span>
+                <span class="label">Plugin Tools</span>
+            </div>
+            <div class="stat-box">
+                <span class="number">&gt;85%</span>
+                <span class="label">Detection Accuracy</span>
+            </div>
+            <div class="stat-box">
+                <span class="number">3</span>
+                <span class="label">Event Types</span>
+            </div>
+            <div class="stat-box">
+                <span class="number">15</span>
+                <span class="label">Code Modules</span>
+            </div>
+        </div>
+
+        <h2>🎯 Overview</h2>
+        <p>This plugin uses a 3D U-Net deep learning architecture to automatically detect and classify calcium release events in confocal microscopy data. Based on the method by <strong>Dotti et al. (2024)</strong>, it identifies Ca²⁺ sparks, puffs, and waves with high accuracy.</p>
+
+        <div class="new-feature">
+            <h3>🆕 What's New in v1.1.0 (Enhanced Edition)</h3>
+            <ul>
+                <li><strong>Diagnostics Module:</strong> Data integrity checks, class balance analysis, system capabilities</li>
+                <li><strong>Testing Module:</strong> Ground truth comparison, threshold optimization, benchmarking</li>
+                <li><strong>Enhanced Training:</strong> Robust error handling, emergency checkpoints, progress monitoring</li>
+                <li><strong>Smart Checkpoints:</strong> Finds latest by iteration number (fixes resume issues!)</li>
+                <li><strong>Data Verification:</strong> Detects iCloud stubs before training starts</li>
+                <li><strong>MPS Optimization:</strong> Better performance on Apple Silicon</li>
+            </ul>
+        </div>
+
+        <h2>✨ Core Features</h2>
+
+        <div class="feature-list">
+            <h3>Detection & Visualization</h3>
+            <ul>
+                <li>3D U-Net neural network with ~31M parameters</li>
+                <li>Multi-class segmentation (sparks, puffs, waves)</li>
+                <li>Real-time color-coded overlays</li>
+                <li>Interactive results table</li>
+                <li>Batch processing support</li>
+            </ul>
+        </div>
+
+        <div class="feature-list">
+            <h3>Diagnostics <span class="badge">NEW v1.1</span></h3>
+            <ul>
+                <li><strong>Data Integrity:</strong> Checks for iCloud stubs, corrupted files</li>
+                <li><strong>Class Balance:</strong> Analyzes pixel distribution, warns if imbalanced</li>
+                <li><strong>System Capabilities:</strong> Detects CUDA/MPS/CPU, shows memory</li>
+                <li><strong>Model Inspection:</strong> Examines checkpoints (iteration, loss, params)</li>
+                <li><strong>Training History:</strong> Detects overfitting, convergence issues</li>
+            </ul>
+        </div>
+
+        <div class="feature-list">
+            <h3>Testing & Validation <span class="badge">NEW v1.1</span></h3>
+            <ul>
+                <li><strong>Ground Truth Comparison:</strong> Accuracy, precision, recall, F1, confusion matrix</li>
+                <li><strong>Threshold Optimization:</strong> Auto-finds best threshold (tests 17 values)</li>
+                <li><strong>Speed Benchmark:</strong> Measures inference time, FPS on different sizes</li>
+                <li><strong>Memory Profiling:</strong> Tracks GPU/CPU memory usage</li>
+                <li><strong>Model Comparison:</strong> Compare multiple models side-by-side</li>
+            </ul>
+        </div>
+
+        <div class="feature-list">
+            <h3>Enhanced Training <span class="badge">NEW v1.1</span></h3>
+            <ul>
+                <li><strong>Robust Dataset:</strong> Skips corrupted files, tries alternatives (no crashes!)</li>
+                <li><strong>Smart Checkpoints:</strong> Finds latest by iteration number across all checkpoint types</li>
+                <li><strong>Emergency Saves:</strong> Auto-saves on errors, Ctrl+C gracefully saves</li>
+                <li><strong>Beautiful Progress:</strong> Box-formatted output every 100 iters with ETA</li>
+                <li><strong>Data Verification:</strong> Checks files before training (detects iCloud stubs)</li>
+                <li><strong>MPS Optimized:</strong> Better batch size (4 vs 2) and memory on Apple Silicon</li>
+            </ul>
+        </div>
+
+        <h2>🏷️ Event Classification</h2>
+        <ul>
+            <li><strong class="success">Ca²⁺ Sparks (Green):</strong> Small, fast events (≤50 pixels, ≤10 frames)</li>
+            <li><strong class="warning">Ca²⁺ Puffs (Orange):</strong> Medium events (30-200 pixels, 5-30 frames)</li>
+            <li><strong class="error">Ca²⁺ Waves (Red):</strong> Large, propagating events (≥150 pixels, ≥20 frames)</li>
+        </ul>
+
+        <h2>🚀 Quick Start</h2>
+        <ol>
+            <li>Load calcium imaging data in FLIKA</li>
+            <li><strong>Plugins → Calcium Event Detector → Quick Detection</strong></li>
+            <li>Select model file or use default</li>
+            <li>Set threshold (0.5 recommended)</li>
+            <li>Click "Run" and view results!</li>
+        </ol>
+
+        <h3>Enhanced Training Workflow</h3>
+        <ol>
+            <li><strong>Plugins → Train Model (Enhanced)</strong></li>
+            <li>Select data directory (with images/ and masks/)</li>
+            <li>Enable "Run data verification" ✓</li>
+            <li>Set parameters (iterations, batch size, learning rate)</li>
+            <li>Choose device (CUDA/MPS/CPU)</li>
+            <li>Click "Run" - see beautiful progress with ETA!</li>
+        </ol>
+
+        <h2>📋 Menu Items</h2>
+        <p><strong>Plugins → Calcium Event Detector:</strong></p>
+        <ul>
+            <li>Run Detection</li>
+            <li>Quick Detection</li>
+            <li>Display Results</li>
+            <li>Toggle Display</li>
+            <li>View Results Table</li>
+            <li>Export Results</li>
+            <li><strong>Run Diagnostics</strong> <span class="badge">NEW</span></li>
+            <li><strong>Run Tests</strong> <span class="badge">NEW</span></li>
+            <li><strong>Train Model (Enhanced)</strong> <span class="badge">NEW</span></li>
+            <li>Train Model (Simple)</li>
+        </ul>
+
+        <h2>🔗 Integration with Data Labeler</h2>
+        <p>Complete workflow with the <strong>Calcium Event Data Labeler</strong> plugin:</p>
+        <ol>
+            <li>Label data → Labeler plugin</li>
+            <li>Create dataset → Labeler plugin</li>
+            <li>Train model → This plugin (Enhanced Training)</li>
+            <li>Detect events → This plugin (Quick Detection)</li>
+            <li>Validate → Labeler plugin (Quality Check)</li>
+        </ol>
+
+        <div class="authors">
+            <h2>👨‍🔬 Author</h2>
+            <p><strong>George Dickinson</strong><br>
+            Bioinformatics Programmer III<br>
+            Department of Neurobiology & Behavior<br>
+            University of California, Irvine<br>
+            Dr. Medha Pathak Laboratory</p>
+            <p><strong>Email:</strong> <a href="mailto:gstuyt@uci.edu">gstuyt@uci.edu</a></p>
+            <p><strong>Research:</strong> PIEZO1 channels, calcium signaling, single-molecule microscopy</p>
+        </div>
+
+        <div class="citation">
+            <h2>📚 Citations</h2>
+            <p><strong>Plugin Software:</strong></p>
+            <pre>Dickinson, G. (2024). Calcium Event Detector for FLIKA (v1.1.0).
+https://github.com/gddickinson/ca_event_detector_flika</pre>
+            
+            <p><strong>Detection Method:</strong></p>
+            <pre>Dotti, P., Davey, G. I. J., Higgins, E. R., & Shirokova, N. (2024).
+A deep learning-based approach for efficient detection and classification
+of local Ca²⁺ release events in Full-Frame confocal imaging.
+Cell Calcium, 121, 102893.
+https://doi.org/10.1016/j.ceca.2024.102893</pre>
+        </div>
+
+        <h2>📦 Installation</h2>
+        <pre>pip install numpy scipy torch tifffile scikit-image scikit-learn
+pip install -e /path/to/ca_event_detector
+cp -r ca_event_detector_flika ~/.FLIKA/plugins/</pre>
+
+        <h2>🔗 Resources</h2>
+        <div style="margin: 20px 0;">
+            <a href="https://github.com/gddickinson/ca_event_detector_flika" class="btn">GitHub</a>
+            <a href="README.md" class="btn">User Guide</a>
+            <a href="RELEASE_NOTES_v1.1.md" class="btn">Release Notes</a>
+            <a href="CHANGELOG.md" class="btn">Changelog</a>
+        </div>
+
+        <h2>📄 License</h2>
+        <p>MIT License - See LICENSE file</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 2px solid #ecf0f1;">
+
+        <p style="text-align: center; color: #7f8c8d; font-size: 0.9em;">
+            <strong>Calcium Event Detector v1.1.0 - Enhanced Edition</strong><br>
+            State-of-the-Art Deep Learning Detection with Comprehensive Diagnostics & Robust Training<br>
+            December 26, 2024
+        </p>
+    </div>
 </body>
 </html>
