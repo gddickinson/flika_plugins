@@ -83,25 +83,44 @@
             margin: 5px 0;
             border-left: 3px solid #2196F3;
         }
+        .new-feature {
+            background-color: #fff3cd;
+            padding: 10px;
+            border-left: 4px solid #ffc107;
+            margin: 15px 0;
+        }
+        .comparison-box {
+            background-color: #e8f4f8;
+            padding: 10px;
+            margin: 8px 0;
+            border-left: 3px solid #17a2b8;
+        }
     </style>
 </head>
 <body>
     <h1>SPT Batch Analysis Plugin</h1>
-    <p class="version">Version 2.0</p>
+    <p class="version">Version 2.1 - Enhanced with ThunderSTORM Detection</p>
     <p class="author">For FLIKA - A Python-based image analysis platform</p>
+
+    <div class="new-feature">
+        <strong>✨ NEW in Version 2.1:</strong> ThunderSTORM particle detection now available as an alternative to U-Track!
+        Choose between two powerful detection methods based on your experimental needs.
+    </div>
 
     <h2>Description</h2>
     <p>
         The SPT (Single Particle Tracking) Batch Analysis plugin provides comprehensive automated analysis
-        of single particle tracking data from fluorescence microscopy images. The plugin integrates particle
-        detection, linking, feature calculation, and advanced analysis methods into a unified workflow designed
-        for batch processing of multiple experimental datasets.
+        of single particle tracking data from fluorescence microscopy images. The plugin integrates <strong>dual
+        particle detection methods</strong> (U-Track and ThunderSTORM), multiple linking algorithms, feature calculation,
+        and advanced analysis into a unified workflow designed for batch processing of multiple experimental datasets.
     </p>
 
     <div class="section-box">
         <h3>Core Capabilities</h3>
         <ul>
-            <li><strong>Particle Detection:</strong> U-Track based detection with background estimation and statistical significance testing</li>
+            <li><strong>Dual Detection Methods:</strong> Choose between U-Track statistical detection or ThunderSTORM's advanced pipeline</li>
+            <li><strong>U-Track Detection:</strong> Statistical significance-based detection with background estimation</li>
+            <li><strong>ThunderSTORM Detection:</strong> Wavelet filtering, multiple fitters (LSQ/WLSQ/MLE), and flexible thresholding</li>
             <li><strong>Particle Linking:</strong> Multiple algorithms including built-in method, trackpy integration, and U-Track with mixed motion models</li>
             <li><strong>Feature Analysis:</strong> Over 45 quantitative features including geometric, kinetic, and spatial parameters</li>
             <li><strong>Advanced Analysis:</strong> Machine learning classification, autocorrelation analysis, and geometric methods</li>
@@ -119,7 +138,7 @@
     </div>
 
     <div class="tab-description">
-        <strong>Detection Tab:</strong> Configure U-Track particle detection parameters including PSF sigma, significance thresholds, and output options. Detection runs automatically when enabled.
+        <strong>Detection Tab (Enhanced!):</strong> Choose between U-Track or ThunderSTORM detection methods with dedicated parameter panels for each. Configure detection parameters, view method descriptions, and control detection workflow. Only one method can be enabled at a time.
     </div>
 
     <div class="tab-description">
@@ -146,112 +165,170 @@
         <strong>Progress Tab:</strong> Monitor analysis progress with real-time logging and status updates during batch processing.
     </div>
 
+    <h2>Particle Detection Methods</h2>
+
+    <h3>Method Comparison</h3>
+
+    <table class="parameter-table">
+        <tr>
+            <th>Feature</th>
+            <th>U-Track Detection</th>
+            <th>ThunderSTORM Detection</th>
+        </tr>
+        <tr>
+            <td><strong>Filtering</strong></td>
+            <td>Gaussian PSF-matched filtering</td>
+            <td>Wavelet, Gaussian, DoG, or custom</td>
+        </tr>
+        <tr>
+            <td><strong>Detection</strong></td>
+            <td>Morphological local maxima</td>
+            <td>Local maximum, NMS, or centroid</td>
+        </tr>
+        <tr>
+            <td><strong>Thresholding</strong></td>
+            <td>Fixed alpha-level significance</td>
+            <td>Flexible expression-based (adaptive)</td>
+        </tr>
+        <tr>
+            <td><strong>Fitting Methods</strong></td>
+            <td>Intensity-weighted centroid</td>
+            <td>LSQ, WLSQ, MLE, Radial Symmetry, Centroid</td>
+        </tr>
+        <tr>
+            <td><strong>Best For</strong></td>
+            <td>Standardized workflows, consistency</td>
+            <td>Flexibility, multiple experimental conditions</td>
+        </tr>
+        <tr>
+            <td><strong>Speed</strong></td>
+            <td>Fast</td>
+            <td>Varies (LSQ: fast, MLE: slower but more accurate)</td>
+        </tr>
+    </table>
+
+    <h3>U-Track Detection</h3>
+    <div class="comparison-box">
+        <strong>Key Features:</strong>
+        <ul>
+            <li>Statistical significance testing against background noise</li>
+            <li>Robust background estimation using percentile-based methods</li>
+            <li>PSF-matched Gaussian pre-filtering</li>
+            <li>Sub-pixel localization via intensity-weighted centroid</li>
+        </ul>
+
+        <strong>Parameters:</strong>
+        <ul>
+            <li><strong>PSF Sigma:</strong> Expected point spread function width (typically 1.0-2.0 pixels)</li>
+            <li><strong>Significance Threshold (α):</strong> Statistical threshold (0.05 = 95% confidence)</li>
+            <li><strong>Minimum Intensity:</strong> Absolute intensity cutoff</li>
+        </ul>
+
+        <strong>When to Use:</strong> Standard single-molecule experiments with consistent imaging conditions,
+        when you need proven statistical rigor and consistency with published U-Track methodology.
+    </div>
+
+    <h3>ThunderSTORM Detection</h3>
+    <div class="comparison-box">
+        <strong>Key Features:</strong>
+        <ul>
+            <li>B-spline wavelet decomposition for enhanced SNR</li>
+            <li>Multiple fitting algorithms (LSQ, WLSQ, MLE, Radial Symmetry)</li>
+            <li>Expression-based adaptive thresholding</li>
+            <li>Comprehensive localization quality metrics</li>
+        </ul>
+
+        <strong>Parameters:</strong>
+        <ul>
+            <li><strong>Filter Type:</strong> Wavelet (recommended), Gaussian, DoG, Lowered Gaussian</li>
+            <li><strong>Wavelet Scale:</strong> Decomposition scale (typically 2)</li>
+            <li><strong>Detector Type:</strong> Local maximum, Non-maximum suppression, Centroid</li>
+            <li><strong>Detection Threshold:</strong> Expression like 'std(Wave.F1)', '2*std(Wave.F1)', etc.</li>
+            <li><strong>PSF Fitter:</strong> Gaussian LSQ/WLSQ/MLE, Radial Symmetry, Centroid</li>
+            <li><strong>Fit Radius:</strong> Region for fitting (typically 3 pixels)</li>
+            <li><strong>Initial PSF Sigma:</strong> Starting estimate for Gaussian width (typically 1.3)</li>
+        </ul>
+
+        <strong>When to Use:</strong> Variable experimental conditions, need for different fitting methods,
+        when you want maximum flexibility or are working with challenging SNR conditions.
+    </div>
+
+    <h3>Fitter Comparison (ThunderSTORM)</h3>
+    <table class="parameter-table">
+        <tr>
+            <th>Fitter</th>
+            <th>Speed</th>
+            <th>Accuracy</th>
+            <th>Best For</th>
+        </tr>
+        <tr>
+            <td>Gaussian LSQ</td>
+            <td>Fast</td>
+            <td>Good</td>
+            <td>General purpose, preview analysis</td>
+        </tr>
+        <tr>
+            <td>Gaussian WLSQ</td>
+            <td>Fast</td>
+            <td>Very Good</td>
+            <td>Low SNR data, Poisson noise</td>
+        </tr>
+        <tr>
+            <td>Gaussian MLE</td>
+            <td>Slow</td>
+            <td>Excellent</td>
+            <td>Publication-quality, final analysis</td>
+        </tr>
+        <tr>
+            <td>Radial Symmetry</td>
+            <td>Very Fast</td>
+            <td>Good</td>
+            <td>Quick screening, high-throughput</td>
+        </tr>
+        <tr>
+            <td>Centroid</td>
+            <td>Very Fast</td>
+            <td>Fair</td>
+            <td>Simple analysis, validation</td>
+        </tr>
+    </table>
+
+    <h2>Detection Tab Interface</h2>
+
+    <div class="workflow-step">
+        <strong>Step 1: Select Detection Method</strong><br>
+        Choose between U-Track or ThunderSTORM using radio buttons. Only one can be active at a time.
+        The selected method's parameter panel will be highlighted and enabled.
+    </div>
+
+    <div class="workflow-step">
+        <strong>Step 2: Enable Detection</strong><br>
+        Check "Enable Particle Detection for Analysis" to activate detection during batch processing.
+        Detection runs automatically before tracking when enabled.
+    </div>
+
+    <div class="workflow-step">
+        <strong>Step 3: Configure Parameters</strong><br>
+        Set parameters in the active panel (U-Track or ThunderSTORM). Panels are displayed side-by-side
+        for easy comparison and parameter reference.
+    </div>
+
+    <div class="workflow-step">
+        <strong>Step 4: Set Output Options</strong><br>
+        Choose output directory, enable skip-existing option, and toggle result visualization.
+    </div>
+
     <h2>Analysis Pipeline</h2>
 
     <div class="workflow-step">
         <strong>Phase 1: Detection and Main Analysis</strong><br>
-        For each selected file: particle detection (if enabled) → particle linking → feature calculation → specialized analyses → data export
+        For each selected file: particle detection (if enabled, using selected method) → particle linking → feature calculation → specialized analyses → data export
     </div>
 
     <div class="workflow-step">
         <strong>Phase 2: Autocorrelation Analysis</strong><br>
         For successfully processed files: load track data → calculate directional persistence → generate plots → export results
     </div>
-
-    <h3>Particle Linking Methods</h3>
-
-    <table class="parameter-table">
-        <tr>
-            <th>Method</th>
-            <th>Description</th>
-            <th>Best For</th>
-            <th>Key Parameters</th>
-        </tr>
-        <tr>
-            <td>Built-in</td>
-            <td>Fast linking algorithm with gap closing</td>
-            <td>Sparse particles, simple motion</td>
-            <td>Max distance, max gap frames</td>
-        </tr>
-        <tr>
-            <td>Trackpy</td>
-            <td>Python implementation of Crocker & Grier algorithm</td>
-            <td>Dense particles, adaptive search</td>
-            <td>Search distance, memory, linking type</td>
-        </tr>
-        <tr>
-            <td>U-Track Mixed Motion</td>
-            <td>LAP-based with heterogeneous motion support</td>
-            <td>Complex motion patterns, regime switching</td>
-            <td>Motion model, regime sensitivity, transition probabilities</td>
-        </tr>
-    </table>
-
-    <h2>Analysis Features</h2>
-
-    <h3>Core Track Features</h3>
-    <div class="feature-box">
-        <strong>Geometric Properties:</strong> Radius of gyration, asymmetry, skewness, kurtosis, fractal dimension, net displacement, efficiency, straightness measurements
-    </div>
-
-    <div class="feature-box">
-        <strong>Kinematic Analysis:</strong> Lag displacements, velocities, track lengths, directional persistence, mean squared displacement
-    </div>
-
-    <div class="feature-box">
-        <strong>Spatial Analysis:</strong> Nearest neighbor distances and counts at multiple radii, local density measurements, frame-by-frame spatial statistics
-    </div>
-
-    <h3>Advanced Analysis Methods</h3>
-
-    <div class="feature-box">
-        <strong>Geometric Analysis Suite:</strong> Alternative radius of gyration calculations using direct geometric methods, scaled Rg metrics for mobility classification, linear motion detection with directionality ratios
-    </div>
-
-    <div class="feature-box">
-        <strong>Machine Learning Classification:</strong> SVM-based particle mobility classification (mobile/confined/trapped) with Box-Cox preprocessing and hyperparameter optimization
-    </div>
-
-    <div class="feature-box">
-        <strong>Autocorrelation Analysis:</strong> Directional persistence measurements following Gorelik & Gautreau methodology, autocorrelation decay curves with statistical analysis
-    </div>
-
-    <div class="feature-box">
-        <strong>Background Correction:</strong> ROI-based background subtraction with frame-specific or average correction, camera black level estimation
-    </div>
-
-    <div class="feature-box">
-        <strong>Data Enhancement:</strong> Missing points integration with intensity calculation, enhanced interpolation for trapped particles, unlinked localization recovery
-    </div>
-
-    <h2>Detection Parameters</h2>
-
-    <table class="parameter-table">
-        <tr>
-            <th>Parameter</th>
-            <th>Description</th>
-            <th>Default</th>
-            <th>Range</th>
-        </tr>
-        <tr>
-            <td>PSF Sigma</td>
-            <td>Expected point spread function width</td>
-            <td>1.5 pixels</td>
-            <td>0.5-10.0</td>
-        </tr>
-        <tr>
-            <td>Alpha Threshold</td>
-            <td>Statistical significance for detection</td>
-            <td>0.05</td>
-            <td>0.001-0.5</td>
-        </tr>
-        <tr>
-            <td>Minimum Intensity</td>
-            <td>Absolute intensity cutoff</td>
-            <td>100.0</td>
-            <td>0-10000</td>
-        </tr>
-    </table>
 
     <h2>Output Files</h2>
 
@@ -266,7 +343,7 @@
             <td>Detection Results</td>
             <td><code>_locsID.csv</code></td>
             <td>frame, x [nm], y [nm], intensity [photon], id</td>
-            <td>Particle localizations from U-Track detection</td>
+            <td>Particle localizations from detection (both methods produce same format)</td>
         </tr>
         <tr>
             <td>Basic Tracks</td>
@@ -301,7 +378,7 @@
         <tr>
             <td>Analysis Metadata</td>
             <td><code>_analysis_metadata.json</code></td>
-            <td>Complete parameter set and column information</td>
+            <td>Complete parameter set including detection method and settings</td>
             <td>Analysis reproducibility and documentation</td>
         </tr>
     </table>
@@ -316,7 +393,9 @@
         <strong>2. Configuration:</strong>
         <ul>
             <li>Select input directory and file pattern</li>
+            <li><strong>NEW:</strong> Choose detection method (U-Track or ThunderSTORM)</li>
             <li>Enable detection if working with raw images</li>
+            <li>Configure method-specific parameters</li>
             <li>Choose linking method and configure parameters</li>
             <li>Select desired analysis components</li>
             <li>Configure output options</li>
@@ -324,4 +403,131 @@
     </div>
 
     <div class="workflow-step">
-        <strong>3. Analysis Execution:</strong> Click "Start Analysis" to begin automated processing. Monitor progress in the Progress tab with real-time st
+        <strong>3. Analysis Execution:</strong> Click "Start Analysis" to begin automated processing. Monitor progress in the Progress tab with real-time status updates.
+    </div>
+
+    <div class="workflow-step">
+        <strong>4. Review Results:</strong> Check output CSV files and visualizations. Analysis metadata includes detection method used for reproducibility.
+    </div>
+
+    <h2>Recommended Detection Settings</h2>
+
+    <h3>For Standard TIRF Microscopy</h3>
+    <div class="feature-box">
+        <strong>U-Track Method:</strong><br>
+        PSF Sigma: 1.5 pixels | Alpha: 0.05 | Min Intensity: 100<br>
+        <em>Best for: Consistent imaging conditions, proven methodology</em>
+    </div>
+
+    <div class="feature-box">
+        <strong>ThunderSTORM Method:</strong><br>
+        Filter: Wavelet (scale 2) | Detector: Local Maximum | Threshold: std(Wave.F1) | Fitter: Gaussian LSQ<br>
+        <em>Best for: Moderate SNR, general-purpose analysis</em>
+    </div>
+
+    <h3>For Low SNR Data</h3>
+    <div class="feature-box">
+        <strong>ThunderSTORM Method (Recommended):</strong><br>
+        Filter: Wavelet (scale 2-3) | Detector: Non-maximum suppression | Threshold: 2*std(Wave.F1) | Fitter: Gaussian WLSQ<br>
+        <em>Weighted least squares fitting optimized for Poisson noise</em>
+    </div>
+
+    <h3>For Publication-Quality Results</h3>
+    <div class="feature-box">
+        <strong>ThunderSTORM Method:</strong><br>
+        Filter: Wavelet (scale 2) | Detector: Local Maximum | Threshold: std(Wave.F1) | Fitter: Gaussian MLE<br>
+        <em>Maximum likelihood estimation provides highest accuracy at cost of speed</em>
+    </div>
+
+    <h3>For Quick Screening/Preview</h3>
+    <div class="feature-box">
+        <strong>ThunderSTORM Method:</strong><br>
+        Filter: Gaussian | Detector: Local Maximum | Threshold: std(Wave.F1) | Fitter: Radial Symmetry<br>
+        <em>Very fast, suitable for parameter optimization and data quality assessment</em>
+    </div>
+
+    <h2>Installation Requirements</h2>
+
+    <h3>Core Requirements (Already Installed)</h3>
+    <ul>
+        <li>FLIKA (version 0.2.25 or higher)</li>
+        <li>NumPy, SciPy, scikit-learn, scikit-image</li>
+        <li>Pandas, matplotlib, tqdm</li>
+    </ul>
+
+    <h3>For ThunderSTORM Detection</h3>
+    <div class="new-feature">
+        <strong>Additional Requirement:</strong> thunderstorm_python package
+        <div class="code-block">
+pip install pywavelets
+# Then install thunderstorm_python package in FLIKA plugins directory
+        </div>
+        If thunderstorm_python is not available, the ThunderSTORM option will be disabled in the GUI
+        with a warning message. U-Track detection remains fully functional.
+    </div>
+
+    <h2>Troubleshooting</h2>
+
+    <h3>ThunderSTORM Not Available</h3>
+    <ul>
+        <li>Verify thunderstorm_python package is in FLIKA plugins directory</li>
+        <li>Check that pywavelets is installed: <code>pip install pywavelets</code></li>
+        <li>Restart FLIKA after installation</li>
+        <li>Check console for specific import errors</li>
+    </ul>
+
+    <h3>Detection Quality Issues</h3>
+    <ul>
+        <li><strong>Too many false positives:</strong> Increase detection threshold or alpha value</li>
+        <li><strong>Missing particles:</strong> Decrease threshold, check PSF sigma estimate</li>
+        <li><strong>Poor localizations:</strong> Try different fitter (WLSQ for low SNR, MLE for best accuracy)</li>
+        <li><strong>Inconsistent results:</strong> Use wavelet filter for better robustness</li>
+    </ul>
+
+    <h2>References</h2>
+
+    <div class="section-box">
+        <strong>U-Track Methodology:</strong><br>
+        Jaqaman et al. (2008) "Robust single-particle tracking in live-cell time-lapse sequences"
+        Nature Methods 5(8): 695-702
+    </div>
+
+    <div class="section-box">
+        <strong>ThunderSTORM:</strong><br>
+        Ovesný et al. (2014) "ThunderSTORM: a comprehensive ImageJ plug-in for PALM and STORM data
+        analysis and super-resolution imaging" Bioinformatics 30(16): 2389-2390
+    </div>
+
+    <div class="section-box">
+        <strong>Autocorrelation Analysis:</strong><br>
+        Gorelik & Gautreau (2014) "Quantitative and unbiased analysis of directional persistence
+        in cell migration" Methods in Cell Biology 123: 125-148
+    </div>
+
+    <h2>Version History</h2>
+
+    <div class="new-feature">
+        <strong>Version 2.1 (Current)</strong>
+        <ul>
+            <li>✨ Added ThunderSTORM detection as alternative to U-Track</li>
+            <li>✨ Side-by-side parameter panels for easy method comparison</li>
+            <li>✨ Radio button selection ensures only one method active</li>
+            <li>✨ Automatic availability detection for ThunderSTORM</li>
+            <li>✨ Enhanced metadata export includes detection method information</li>
+            <li>✨ Comprehensive documentation for both detection methods</li>
+        </ul>
+    </div>
+
+    <div class="workflow-step">
+        <strong>Version 2.0</strong>
+        <ul>
+            <li>Comprehensive batch processing with error handling</li>
+            <li>Multiple particle linking algorithms</li>
+            <li>SVM classification with custom training</li>
+            <li>Autocorrelation analysis</li>
+            <li>Enhanced logging and debugging</li>
+        </ul>
+    </div>
+
+</body>
+</html>
