@@ -339,8 +339,8 @@ ln -s $(pwd) ~/.FLIKA/plugins/thunderstorm_flika
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/your_username/thunderstorm_flika/issues)
-- **Email**: george@research.edu
+- **Issues**: [GitHub Issues](https://github.com/gddickinson/thunderstorm_flika/issues)
+- **Email**: georg.dickinsone@gmail.com
 - **Documentation**: See `about.html` for detailed documentation
 
 ## License
@@ -351,8 +351,6 @@ This plugin is distributed under the GNU General Public License v3.0, consistent
 
 - Original thunderSTORM ImageJ plugin by Martin Ovesný et al.
 - FLIKA development team
-- All cited algorithm authors
-
 ---
 
 **ThunderSTORM for FLIKA** - Bringing super-resolution to FLIKA  

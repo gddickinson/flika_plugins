@@ -7,13 +7,13 @@
 		1.0.0
 	</version>
 	<author>
-		George
+		George Dickinson
 	</author>
 	<email>
-		george@lab.edu
+		george.dickinson@gamil.com
 	</email>
 	<url>
-		https://github.com/yourusername/thunderstorm_flika
+		https://github.com/gddickinson/thunderstorm_flika
 	</url>
 	<description>
 		Comprehensive ThunderSTORM implementation for FLIKA providing Single Molecule
