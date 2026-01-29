@@ -8,7 +8,13 @@ Provides thunderSTORM-based particle detection as an alternative to U-Track
 import numpy as np
 import pandas as pd
 from pathlib import Path
-import os
+import os, sys
+
+
+# Add the current directory to Python path to ensure import thunderstorm_python works acrosss differnt platforms
+current_dir = Path(__file__).parent.absolute()
+if str(current_dir) not in sys.path:
+    sys.path.insert(0, str(current_dir))
 
 try:
     # Try to import thunderSTORM Python package
@@ -21,10 +27,10 @@ except ImportError:
 
 class ThunderSTORMDetector:
     """Wrapper for thunderSTORM detection compatible with SPT Batch Analysis pipeline"""
-    
+
     def __init__(self, parameters=None):
         """Initialize thunderSTORM detector with parameters
-        
+
         Parameters
         ----------
         parameters : dict, optional
@@ -40,12 +46,12 @@ class ThunderSTORMDetector:
         """
         if not THUNDERSTORM_AVAILABLE:
             raise ImportError("thunderstorm_python package is required for thunderSTORM detection")
-        
+
         # Default parameters
         self.params = {
             'filter_type': 'wavelet',
             'filter_scale': 2,
-            'detector_type': 'local_maximum', 
+            'detector_type': 'local_maximum',
             'detector_threshold': 'std(Wave.F1)',
             'fitter_type': 'gaussian_lsq',
             'fit_radius': 3,
@@ -55,28 +61,28 @@ class ThunderSTORMDetector:
             'baseline': 100.0,
             'em_gain': 1.0
         }
-        
+
         # Update with provided parameters
         if parameters:
             self.params.update(parameters)
-        
+
         # Create thunderSTORM pipeline
         self.pipeline = None
         self._create_pipeline()
-    
+
     def _create_pipeline(self):
         """Create thunderSTORM analysis pipeline"""
         # Create filter parameters
         filter_params = {}
         if self.params['filter_type'] == 'wavelet':
             filter_params = {'scale': self.params['filter_scale']}
-        
+
         # Create detector parameters
         detector_params = {}
-        
+
         # Create fitter parameters
         fitter_params = {'initial_sigma': self.params['initial_sigma']}
-        
+
         # Create pipeline
         self.pipeline = ThunderSTORM(
             filter_type=self.params['filter_type'],
@@ -91,17 +97,17 @@ class ThunderSTORMDetector:
             baseline=self.params['baseline'],
             em_gain=self.params['em_gain']
         )
-    
+
     def detect_and_fit(self, image_stack, show_progress=True):
         """Detect and fit particles in an image stack
-        
+
         Parameters
         ----------
         image_stack : ndarray
             3D array (frames, height, width) or 2D array for single frame
         show_progress : bool
             Show progress bar during analysis
-            
+
         Returns
         -------
         localizations : dict
@@ -118,19 +124,19 @@ class ThunderSTORMDetector:
         # Ensure 3D stack
         if image_stack.ndim == 2:
             image_stack = image_stack[np.newaxis, ...]
-        
+
         # Run thunderSTORM analysis
         localizations = self.pipeline.analyze_stack(
-            image_stack, 
+            image_stack,
             fit_radius=self.params['fit_radius'],
             show_progress=show_progress
         )
-        
+
         return localizations
-    
+
     def save_localizations(self, localizations, output_path):
         """Save localizations in SPT-compatible format
-        
+
         Parameters
         ----------
         localizations : dict
@@ -142,7 +148,7 @@ class ThunderSTORMDetector:
         output_path = Path(output_path)
         if not str(output_path).endswith('_locsID.csv'):
             output_path = output_path.parent / (output_path.stem + '_locsID.csv')
-        
+
         # Create DataFrame in SPT-compatible format
         # SPT format: frame, x [nm], y [nm], intensity [photon], id
         df = pd.DataFrame({
@@ -152,21 +158,21 @@ class ThunderSTORMDetector:
             'intensity [photon]': localizations['intensity'],
             'id': np.arange(len(localizations['x']))  # Sequential IDs
         })
-        
+
         # Save to CSV
         df.to_csv(output_path, index=False)
-        
+
         return output_path
-    
+
     @staticmethod
     def create_from_gui_parameters(gui_params):
         """Create detector from GUI parameters dictionary
-        
+
         Parameters
         ----------
         gui_params : dict
             Parameters from the GUI including all thunderSTORM settings
-        
+
         Returns
         -------
         detector : ThunderSTORMDetector
@@ -185,7 +191,7 @@ class ThunderSTORMDetector:
             'baseline': gui_params.get('ts_baseline', 100.0),
             'em_gain': gui_params.get('ts_em_gain', 1.0)
         }
-        
+
         return ThunderSTORMDetector(parameters=params)
 
 
@@ -213,7 +219,7 @@ def get_default_threshold_expressions():
     """Get list of common threshold expressions"""
     return [
         'std(Wave.F1)',
-        '2*std(Wave.F1)', 
+        '2*std(Wave.F1)',
         '3*std(Wave.F1)',
         'mean(Wave.F1) + 3*std(Wave.F1)',
         '100'  # Fixed threshold
