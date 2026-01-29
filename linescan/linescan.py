@@ -39,7 +39,7 @@ class FolderSelector(QWidget):
         self.button.clicked.connect(self.buttonclicked)
         self.filetypes = filetypes
         self.folder = ''
-        
+
     def buttonclicked(self):
         prompt = 'testing folderSelector'
         self.folder = QFileDialog.getExistingDirectory(g.m, "Select recording folder.", expanduser("~"), QFileDialog.ShowDirsOnly)
@@ -51,13 +51,13 @@ class FolderSelector(QWidget):
 
     def setValue(self, folder):
         self.folder = str(folder)
-        self.label.setText('...' + os.path.split(self.folder)[-1][-20:])    
+        self.label.setText('...' + os.path.split(self.folder)[-1][-20:])
 
 
 class PlotWindow(BaseProcess_noPriorWindow):
     def __init__(self,window, channel):
         BaseProcess_noPriorWindow.__init__(self)
-        #set current window 
+        #set current window
         self.win = window
         #set linescan width
         self.width = 1
@@ -82,18 +82,18 @@ class PlotWindow(BaseProcess_noPriorWindow):
 
     def initalizePlot(self):
         #create window for plot
-        self.plotWin = pg.GraphicsWindow(title="Linescan Plot")       
+        self.plotWin = pg.GraphicsLayoutWidget(show=True, title="Linescan Plot")
         #add plot object to window
         self.linescanPlot = self.plotWin.addPlot()
         #add label to display xy data
         label = pg.LabelItem(justify='right')
         self.plotWin.addItem(label)
         #add plot
-        #self.linescanPlot.plot(x, self.linescanData, pen=penType, symbol='o')       
+        #self.linescanPlot.plot(x, self.linescanData, pen=penType, symbol='o')
         self.linescanPlot.plot(self.x, self.y, pen=self.penType, clear=True)
         #add title to plot
-        #self.linescanPlot.setTitle('ROI #1') 
-        
+        #self.linescanPlot.setTitle('ROI #1')
+
         #get mouse hover data from line
 
         #cross hair
@@ -103,7 +103,7 @@ class PlotWindow(BaseProcess_noPriorWindow):
         self.linescanPlot.addItem(hLine, ignoreBounds=True)
         vb = self.linescanPlot.vb
 
-        def mouseMoved(evt): 
+        def mouseMoved(evt):
             if self.linescanPlot.sceneBoundingRect().contains(evt):
                 mousePoint = vb.mapSceneToView(evt)
                 index = int(mousePoint.x())
@@ -114,30 +114,30 @@ class PlotWindow(BaseProcess_noPriorWindow):
                     hLine.setPos(self.y[index])
 
         ## use signal proxy to turn original arguments into a tuple
-        proxy = pg.SignalProxy(self.linescanPlot.scene().sigMouseMoved, rateLimit=60, slot=mouseMoved)  
+        proxy = pg.SignalProxy(self.linescanPlot.scene().sigMouseMoved, rateLimit=60, slot=mouseMoved)
         self.linescanPlot.scene().sigMouseMoved.connect(mouseMoved)
-        return 
+        return
 
 # =============================================================================
 #     def getLineData(self):
 #         #get current frame index
-#         self.index = self.win.imageview.currentIndex 
+#         self.index = self.win.imageview.currentIndex
 #         #get current frame data
 #         data = self.win.imageview.getProcessedImage()
-# 
+#
 #         #using data.shape to detect if colour image ##TODO fix this to better deal with movies v single images, bw v colour etc
 #         if data.shape[2] != 3:
 #             data = data[self.index]
 #             linescanData = self.win.rois[0].getArrayRegion(data,self.win.imageview.imageItem)
 #             self.x = range(linescanData.shape[0])
 #             self.y = linescanData
-# 
+#
 #         else:
 #             linescanData = self.win.rois[0].getArrayRegion(data,self.win.imageview.imageItem)
-# 
+#
 #             #colour image line plot
 #             channel = self.colourChannelDict[self.channelSelection]
-#     
+#
 #             self.x = range(linescanData[:,0].shape[0])
 #             self.y = linescanData[:,channel]
 # =============================================================================
@@ -145,37 +145,45 @@ class PlotWindow(BaseProcess_noPriorWindow):
 
     def getROIdata(self):
         #get current frame index
-        self.index = self.win.imageview.currentIndex 
+        self.index = self.win.imageview.currentIndex
         #get current frame data
         data = self.win.imageview.getProcessedImage()
 
-        #using data.shape to detect if colour image ##TODO fix this to better deal with movies v single images, bw v colour etc
-        if data.shape[2] != 3:
-            data = data[self.index]
-            
-            if self.integrationSelection == 'mean':            
+        # Check if data is color or grayscale
+        # For single frame: grayscale is (height, width), color is (height, width, 3)
+        # For movies: grayscale is (frames, height, width), color is (frames, height, width, 3)
+        is_color = len(data.shape) >= 3 and data.shape[-1] == 3
+
+        if not is_color:
+            # Grayscale image
+            # If it's a movie, get the current frame
+            if len(data.shape) == 3:
+                data = data[self.index]
+
+            if self.integrationSelection == 'mean':
                 linescanData = np.mean(self.roi.getArrayRegion(data,self.win.imageview.imageItem),axis=1)
-            elif self.integrationSelection == 'min':            
+            elif self.integrationSelection == 'min':
                 linescanData = np.min(self.roi.getArrayRegion(data,self.win.imageview.imageItem),axis=1)
-            elif self.integrationSelection == 'max':            
-                linescanData = np.max(self.roi.getArrayRegion(data,self.win.imageview.imageItem),axis=1)            
-                        
+            elif self.integrationSelection == 'max':
+                linescanData = np.max(self.roi.getArrayRegion(data,self.win.imageview.imageItem),axis=1)
+
             self.x = range(linescanData.shape[0])
             self.y = linescanData
 
         else:
-            if self.integrationSelection == 'mean':            
+            # Color image
+            if self.integrationSelection == 'mean':
                 linescanData = np.mean(self.roi.getArrayRegion(data,self.win.imageview.imageItem),axis=1)
-            elif self.integrationSelection == 'min':            
+            elif self.integrationSelection == 'min':
                 linescanData = np.min(self.roi.getArrayRegion(data,self.win.imageview.imageItem),axis=1)
-            elif self.integrationSelection == 'max':            
-                linescanData = np.max(self.roi.getArrayRegion(data,self.win.imageview.imageItem),axis=1) 
+            elif self.integrationSelection == 'max':
+                linescanData = np.max(self.roi.getArrayRegion(data,self.win.imageview.imageItem),axis=1)
 
             #colour image line plot
             channel = self.colourChannelDict[self.channelSelection]
-    
+
             self.x = range(linescanData[:,0].shape[0])
-            self.y = linescanData[:,channel]        
+            self.y = linescanData[:,channel]
 
 
     def setStyle(self):
@@ -199,7 +207,7 @@ class PlotWindow(BaseProcess_noPriorWindow):
     def setUpdateConnections(self):
         #connect roi change to update
         #self.win.rois[0].sigRegionChanged.connect(self.update)
-        self.roi.sigRegionChanged.connect(self.update)        
+        self.roi.sigRegionChanged.connect(self.update)
         #connect frame index change to update
         self.win.sigTimeChanged.connect(self.update)
         return
@@ -219,22 +227,40 @@ class PlotWindow(BaseProcess_noPriorWindow):
 
     def drawROI(self):
         # Custom ROI for selecting an image region
-        handle1_x = self.win.rois[0].getLocalHandlePositions()[0][1].x()
-        handle1_y = self.win.rois[0].getLocalHandlePositions()[0][1].y()
-        handle2_x = self.win.rois[0].getLocalHandlePositions()[1][1].x()
-        handle2_y = self.win.rois[0].getLocalHandlePositions()[1][1].y()               
-        #imageHeight = self.win.imageDimensions()[1]
-        #angle = math.degrees(math.atan2(handle2_y-handle1_y , handle2_x-handle1_x))
-        
-        def newY(handle1_y,handle2_y):
-            diff = abs(handle1_y-handle2_y)
-            if handle2_y - handle1_y >= 0:
-                return handle1_y - diff
+        # Check if there's an existing ROI to copy from
+        if len(self.win.rois) > 0 and hasattr(self.win.rois[0], 'getLocalHandlePositions'):
+            handle1_x = self.win.rois[0].getLocalHandlePositions()[0][1].x()
+            handle1_y = self.win.rois[0].getLocalHandlePositions()[0][1].y()
+            handle2_x = self.win.rois[0].getLocalHandlePositions()[1][1].x()
+            handle2_y = self.win.rois[0].getLocalHandlePositions()[1][1].y()
+            #imageHeight = self.win.imageDimensions()[1]
+            #angle = math.degrees(math.atan2(handle2_y-handle1_y , handle2_x-handle1_x))
+
+            def newY(handle1_y,handle2_y):
+                diff = abs(handle1_y-handle2_y)
+                if handle2_y - handle1_y >= 0:
+                    return handle1_y - diff
+                else:
+                    return handle1_y + diff
+
+
+            self.roi = pg.LineROI([handle1_x, handle1_y], [handle2_x, newY(handle1_y,handle2_y)], width = self.width, pen=(1,9))
+        else:
+            # Create a default ROI if none exists
+            # Place it in the center of the image
+            img_shape = self.win.image.shape
+            if len(img_shape) >= 2:
+                height, width = img_shape[-2], img_shape[-1]
+                # Create a horizontal line in the middle
+                handle1_x = width * 0.25
+                handle1_y = height * 0.5
+                handle2_x = width * 0.75
+                handle2_y = height * 0.5
+                self.roi = pg.LineROI([handle1_x, handle1_y], [handle2_x, handle2_y], width = self.width, pen=(1,9))
             else:
-                return handle1_y + diff
-            
-        
-        self.roi = pg.LineROI([handle1_x, handle1_y], [handle2_x, newY(handle1_y,handle2_y)], width = self.width, pen=(1,9))
+                # Fallback to simple coordinates
+                self.roi = pg.LineROI([10, 10], [100, 10], width = self.width, pen=(1,9))
+
         #roi.addScaleHandle([0.5, 1], [0.5, 0.5])
         #roi.addScaleHandle([0, 0.5], [0.5, 0.5])
         self.win.removeAllROIs()
@@ -258,41 +284,41 @@ class OptionsGUI(QDialog):
         self.top = 300
         self.width = 300
         self.height = 150
-                
+
         #ComboBox
-        self.integrationSelectorBoxLabel = QLabel("width integration") 
+        self.integrationSelectorBoxLabel = QLabel("width integration")
         self.integrationSelectorBox = QComboBox()
         self.integrationSelectorBox.addItems(["mean", "min", "max"])
         self.integrationSelectorBox.currentIndexChanged.connect(self.integrationSelectionChange)
-        self.integrationSelection = self.integrationSelectorBox.currentText()        
-        
-        self.channelSelectorBoxLabel = QLabel("channel") 
+        self.integrationSelection = self.integrationSelectorBox.currentText()
+
+        self.channelSelectorBoxLabel = QLabel("channel")
         self.channelSelectorBox = QComboBox()
         self.channelSelectorBox.addItems(["R", "G", "B"])
         self.channelSelectorBox.currentIndexChanged.connect(self.channelSelectionChange)
         self.channelSelection = self.channelSelectorBox.currentText()
- 
+
         #buttons
         self.closeButton = QPushButton('Close')
         self.closeButton.pressed.connect(self.closeOptions)
-        
+
         #self.exportButton = QPushButton('Export')
-        #self.exportButton.pressed.connect(self.export)        
-        
+        #self.exportButton.pressed.connect(self.export)
+
         #grid layout
         layout = QGridLayout()
         layout.setSpacing(10)
-        
-        layout.addWidget(self.integrationSelectorBoxLabel, 4, 0)        
+
+        layout.addWidget(self.integrationSelectorBoxLabel, 4, 0)
         layout.addWidget(self.integrationSelectorBox, 4, 1)
-        layout.addWidget(self.channelSelectorBoxLabel, 5, 0)  
+        layout.addWidget(self.channelSelectorBoxLabel, 5, 0)
         layout.addWidget(self.channelSelectorBox, 5, 1)
-        #layout.addWidget(self.exportButton, 7, 0)           
+        #layout.addWidget(self.exportButton, 7, 0)
         layout.addWidget(self.closeButton, 8, 0)
-                     
+
         self.setLayout(layout)
         self.setGeometry(self.left, self.top, self.width, self.height)
-        
+
         #add window title
         self.setWindowTitle("options GUI")
 
@@ -314,7 +340,7 @@ class OptionsGUI(QDialog):
         return
 
 #    def export(self):
-#        data = linescan.getData()       
+#        data = linescan.getData()
 #        return
 
 class Linescan(BaseProcess_noPriorWindow):
@@ -327,7 +353,7 @@ class Linescan(BaseProcess_noPriorWindow):
 
     def __call__(self):
         '''
-        
+
         '''
         self.linescanPlot.close()
         return
@@ -340,14 +366,14 @@ class Linescan(BaseProcess_noPriorWindow):
         self.gui_reset()
         self.linescanButton = QPushButton('Start')
         self.linescanButton.pressed.connect(self.linescan)
-        
+
         self.optionsButton = QPushButton('Show Options Menu')
-        self.optionsButton.pressed.connect(self.options)  
-        
+        self.optionsButton.pressed.connect(self.options)
+
         #self.exportFolder = FolderSelector('*.txt')
-        
-        self.items.append({'name': 'linescan', 'string': 'Linescan: ', 'object': self.linescanButton})         
-        self.items.append({'name': 'options', 'string': 'Options: ', 'object': self.optionsButton})       
+
+        self.items.append({'name': 'linescan', 'string': 'Linescan: ', 'object': self.linescanButton})
+        self.items.append({'name': 'options', 'string': 'Options: ', 'object': self.optionsButton})
         super().gui()
 
     def linescan(self):
@@ -355,16 +381,16 @@ class Linescan(BaseProcess_noPriorWindow):
         if self.linescanPlot != None:
             self.linescanPlot.close()
         #create plotWindow instance
-        self.linescanPlot = PlotWindow(g.win, 'R')   
-        
+        self.linescanPlot = PlotWindow(g.win, 'R')
+
         return
 
     def options(self):
         #create optionsGUI instance
-        self.optionsGUI = OptionsGUI()      
-        return        
+        self.optionsGUI = OptionsGUI()
+        return
 
     def getData(self):
         return self.linescanPlot.exportLineData()
- 
+
 linescan = Linescan()
