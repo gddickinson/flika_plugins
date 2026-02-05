@@ -50,7 +50,8 @@ console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.INFO)
 
 # Create file handler and set level to info
-file_handler = logging.FileHandler('volumeslider.log')
+log_path = os.path.expanduser('~/.flika/volumeslider.log')
+file_handler = logging.FileHandler(log_path)
 file_handler.setLevel(logging.INFO)
 
 # Create formatter

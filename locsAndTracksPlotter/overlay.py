@@ -87,6 +87,24 @@ from .helperFunctions import gammaCorrect, dictFromList
 logger = logging.getLogger(__name__)
 
 
+def set_scatter_data_compat(scatter_item, **kwargs):
+    """
+    Set scatter data with PyQtGraph version compatibility.
+    
+    Handles differences between PyQtGraph versions.
+    """
+    try:
+        if hasattr(scatter_item, 'setData') and callable(scatter_item.setData):
+            scatter_item.setData(**kwargs)
+        elif hasattr(scatter_item, 'setPoints') and callable(scatter_item.setPoints):
+            scatter_item.setPoints(**kwargs)
+        else:
+            scatter_item.setData(**kwargs)  # Try anyway
+    except Exception as e:
+        logger.error(f"Error setting scatter data: {e}")
+        raise
+
+
 class Overlay:
     """
     Comprehensive overlay system for image analysis and visualization.
@@ -1064,14 +1082,18 @@ class Overlay:
                 self.logger.warning("No points remain after filtering")
                 return
 
-            # Create scatter plot
-            self.pointMapScatter = pg.ScatterPlotItem(
-                size=4,
-                pen=None,
-                brush=pg.mkBrush(30, 255, 35, 200)
-            )
-            self.pointMapScatter.setData(df['x'], df['y'])
-            self.overlayWindow.view.addItem(self.pointMapScatter)
+            # Create scatter plot with error handling
+            try:
+                self.pointMapScatter = pg.ScatterPlotItem(
+                    size=4,
+                    pen=None,
+                    brush=pg.mkBrush(30, 255, 35, 200)
+                )
+                set_scatter_data_compat(self.pointMapScatter, x=df['x'], y=df['y'])
+                self.overlayWindow.view.addItem(self.pointMapScatter)
+            except Exception as e:
+                self.logger.error(f"Error creating scatter plot: {e}")
+                raise
 
             self.pointsPlotted = True
             self.showData_button.setText('Hide Data Points')

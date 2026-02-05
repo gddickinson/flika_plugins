@@ -1,6 +1,6 @@
 # Image Transforms Plugin for FLIKA
 
-A comprehensive plugin providing geometric and intensity transformation operations for FLIKA image stacks, optimized for TIRF microscopy and experimental imaging applications.
+A plugin providing geometric and intensity transformation operations for FLIKA image stacks, optimized for TIRF microscopy and experimental imaging applications.
 
 ## Features
 

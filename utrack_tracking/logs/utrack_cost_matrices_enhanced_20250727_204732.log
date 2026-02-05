@@ -1,8 +1,0 @@
-20:47:32.102 |     INFO |           get_logger | === COST_MATRICES_ENHANCED MODULE LOGGING STARTED ===
-20:47:32.102 |     INFO |           get_logger | Log file: /Users/george/.FLIKA/plugins/utrack_tracking/logs/utrack_cost_matrices_enhanced_20250727_204732.log
-20:47:32.102 |     INFO |           get_logger | Log level: DEBUG
-20:47:32.102 |     INFO |           get_logger | Session ID: 20250727_204732
-20:47:32.102 |     INFO |             <module> | === ENHANCED U-TRACK COST MATRICES MODULE LOADED ===
-20:47:32.102 |     INFO |             <module> | Enhanced implementation maintaining original class names for compatibility
-20:47:32.102 |     INFO |             <module> | Full u-track algorithms: Kalman filtering, enhanced LAP framework, proper gap closing
-20:47:32.102 |     INFO |             <module> | Ready for enhanced particle tracking with full u-track algorithms

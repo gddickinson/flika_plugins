@@ -12,3 +12,4 @@ NanotubeDetection/
 /volumeSlider_2/utils/__pycache__
 /volumeSlider_2/io/__pycache__
 *.pyc
+*.log

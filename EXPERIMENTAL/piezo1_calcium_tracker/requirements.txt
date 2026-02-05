@@ -1,0 +1,48 @@
+# Core deep learning
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Numerical computing
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Image processing
+scikit-image>=0.20.0
+opencv-python>=4.7.0
+tifffile>=2023.0.0
+imageio>=2.27.0
+
+# Data handling
+pandas>=2.0.0
+h5py>=3.8.0
+zarr>=2.14.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.14.0
+
+# Configuration
+pyyaml>=6.0
+omegaconf>=2.3.0
+
+# Progress & logging
+tqdm>=4.65.0
+tensorboard>=2.12.0
+wandb>=0.15.0  # Optional: for cloud logging
+
+# Particle tracking
+trackpy>=0.6.0  # For evaluation
+scikit-learn>=1.2.0  # For LAP tracking
+
+# Testing
+pytest>=7.3.0
+pytest-cov>=4.0.0
+
+# Jupyter
+jupyterlab>=4.0.0
+ipywidgets>=8.0.0
+
+# Utilities
+pillow>=9.5.0
+colorama>=0.4.6

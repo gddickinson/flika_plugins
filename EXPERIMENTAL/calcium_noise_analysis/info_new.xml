@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin name="Calcium Noise Analysis">
+	<directory>
+		calcium_noise_analysis
+	</directory>
+	<version>
+		2.0.0
+	</version>
+	<author>
+		George
+	</author>
+	<email>
+		george@example.com
+	</email>
+	<url>
+		https://github.com/username/calcium_noise_analysis
+	</url>
+	<description>
+		Comprehensive calcium imaging analysis toolkit with 16+ modules for noise analysis, event detection, spatial analysis, wave propagation, oscillations, and quality control.
+	</description>
+	<long_description>
+		<![CDATA[Calcium Noise Analysis v2.0 provides production-quality tools for comprehensive calcium imaging data analysis. Features include:
+
+CORE MODULES: Power spectral density analysis, SD fluctuation processing, shot noise characterization, baseline estimation, dF/F calculation, event detection, correlation analysis, and noise metrics.
+
+ADVANCED MODULES: Power spectrum maps (PSM/η), correlation maps (CRM/ξ), advanced cross-correlation, ring correlation, spatial extent analysis, flux analysis, clearance rate estimation, punctate vs diffuse separation, Lorentzian/exponential fitting.
+
+SPATIAL ANALYSIS: Automated activity detection from PSM/CRM, spatial clustering, Ripley's K function, density mapping, nearest-neighbor analysis.
+
+TEMPORAL ANALYSIS: Lock & Parker SD stack generation, event kinetics (rise time, decay tau, FWHM), oscillation detection, frequency analysis, phase coherence, regularity metrics.
+
+WAVE PROPAGATION: Initiation site detection, velocity measurement, directional analysis, spatiotemporal maps (kymographs), wave collision detection.
+
+QUALITY CONTROL: Comprehensive SNR assessment, photobleaching detection, motion artifact identification, CASCADE noise metric (ν), automated quality reporting.
+
+BATCH COMPARISON: Statistical comparisons (t-test, ANOVA, Mann-Whitney, Kruskal-Wallis), dose-response curves, effect sizes, publication-ready reports.
+
+Based on research from CASCADE, Swaminathan et al. 2020, Lock & Parker 2020 (FLIKA), and Suite2p methodologies. Optimized for TIRF microscopy and calcium imaging workflows.]]>
+	</long_description>
+	<dependencies>
+		<dependency name='numpy'></dependency>
+		<dependency name='scipy'></dependency>
+	</dependencies>
+	<tags>
+		<tag>calcium imaging</tag>
+		<tag>noise analysis</tag>
+		<tag>TIRF</tag>
+		<tag>signal processing</tag>
+		<tag>event detection</tag>
+		<tag>microscopy</tag>
+		<tag>wave propagation</tag>
+		<tag>spatial analysis</tag>
+		<tag>quality control</tag>
+	</tags>
+	<menu_layout>
+		<menu name="Power Spectrum">
+			<action location="calcium_noise_analysis" function="power_spectrum_map.gui">Power Spectrum Map</action>
+			<action location="calcium_noise_analysis" function="butterworth_bandpass.gui">Butterworth Bandpass Filter</action>
+		</menu>
+		<menu name="Fluctuation Analysis">
+			<action location="calcium_noise_analysis" function="fluctuation_analysis.gui">SD Fluctuation Analysis</action>
+			<action location="calcium_noise_analysis" function="sd_image_stack.gui">SD Image Stack (Lock and Parker)</action>
+		</menu>
+		<menu name="Advanced Maps">
+			<action location="calcium_noise_analysis" function="generate_psm.gui">Generate PSM (eta values)</action>
+			<action location="calcium_noise_analysis" function="generate_crm.gui">Generate CRM (xi values)</action>
+		</menu>
+		<menu name="Shot Noise">
+			<action location="calcium_noise_analysis" function="anscombe_transform.gui">Anscombe Transform</action>
+		</menu>
+		<menu name="Baseline and dF/F">
+			<action location="calcium_noise_analysis" function="estimate_baseline_f0.gui">Estimate Baseline (F0)</action>
+			<action location="calcium_noise_analysis" function="compute_dff.gui">Compute dF/F</action>
+		</menu>
+		<menu name="Event Detection">
+			<action location="calcium_noise_analysis" function="detect_calcium_sparks.gui">Detect Calcium Sparks</action>
+		</menu>
+		<menu name="Correlation Analysis">
+			<action location="calcium_noise_analysis" function="local_correlation_image.gui">Local Correlation Image</action>
+		</menu>
+		<menu name="Wave Propagation">
+			<action location="calcium_noise_analysis" function="detect_wave_sites.gui">Detect Wave Initiation Sites</action>
+			<action location="calcium_noise_analysis" function="spatiotemporal_map.gui">Spatiotemporal Map (Kymograph)</action>
+		</menu>
+		<menu name="Quality Control">
+			<action location="calcium_noise_analysis" function="compute_noise_metric.gui">Compute Noise Metric (nu)</action>
+			<action location="calcium_noise_analysis" function="quality_report.gui">Generate Quality Report</action>
+		</menu>
+		<action location="calcium_noise_analysis" function="launch_docs">Documentation</action>
+	</menu_layout>
+</plugin>

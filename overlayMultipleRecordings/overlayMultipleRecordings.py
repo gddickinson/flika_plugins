@@ -495,8 +495,8 @@ class OverlayMultipleRecordings(BaseProcess_noPriorWindow):
             if self.getValue('centerData'):
                 print('centering')
                 center = tempDF[['x_transformed', 'y_transformed']].mean()
-                xShift = center[0] - imgCenter[0]
-                yShift = center[1] - imgCenter[1]
+                xShift = center['x_transformed'] - imgCenter[0]
+                yShift = center['y_transformed'] - imgCenter[1]
                 tempDF['x_transformed'] = tempDF['x_transformed'] - xShift
                 tempDF['y_transformed'] = tempDF['y_transformed'] - yShift
             truncFileName = os.path.basename(file).split('_locsID')[0]

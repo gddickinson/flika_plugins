@@ -1,9 +1,0 @@
-11:17:14.609 |     INFO |           get_logger | === TRACK_ANALYSIS MODULE LOGGING STARTED ===
-11:17:14.609 |     INFO |           get_logger | Log file: /Users/george/.FLIKA/plugins/utrack_tracking/logs/utrack_track_analysis_20250925_111714.log
-11:17:14.609 |     INFO |           get_logger | Log level: DEBUG
-11:17:14.609 |     INFO |           get_logger | Session ID: 20250925_111714
-11:17:14.610 |     INFO |             <module> | === TRACK ANALYSIS MODULE LOADED ===
-11:17:14.610 |    DEBUG |             <module> | Module file: /Users/george/.FLIKA/plugins/utrack_tracking/track_analysis.py
-11:17:14.610 |    DEBUG |             <module> | Available classes: TrackAnalyzer, MotionAnalyzer
-11:17:14.610 |    DEBUG |             <module> | Available functions: analyze_tracking_results
-11:17:14.610 |     INFO |             <module> | Track analysis module with centralized logging ready

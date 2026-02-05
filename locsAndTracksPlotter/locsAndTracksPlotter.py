@@ -79,6 +79,43 @@ from .roiZoomPlotter import ROIPLOT
 # Set up logging
 logger = logging.getLogger(__name__)
 
+# Log PyQtGraph version for debugging
+try:
+    pg_version = getattr(pg, '__version__', 'unknown')
+    logger.info(f"✓ PyQtGraph version: {pg_version}")
+
+    # Test ScatterPlotItem capabilities
+    test_scatter = pg.ScatterPlotItem()
+    has_setData = hasattr(test_scatter, 'setData') and callable(test_scatter.setData)
+    has_setPoints = hasattr(test_scatter, 'setPoints') and callable(test_scatter.setPoints)
+    has_addPoints = hasattr(test_scatter, 'addPoints') and callable(test_scatter.addPoints)
+    logger.info(f"✓ ScatterPlotItem methods - setData: {has_setData}, setPoints: {has_setPoints}, addPoints: {has_addPoints}")
+except Exception as e:
+    logger.warning(f"Could not detect PyQtGraph capabilities: {e}")
+
+
+def set_scatter_data_compat(scatter_item, **kwargs):
+    """
+    Set scatter data with PyQtGraph version compatibility.
+
+    Handles differences between PyQtGraph versions where some use
+    setData() and others use setPoints().
+    """
+    try:
+        if hasattr(scatter_item, 'setData') and callable(scatter_item.setData):
+            scatter_item.setData(**kwargs)
+        elif hasattr(scatter_item, 'setPoints') and callable(scatter_item.setPoints):
+            scatter_item.setPoints(**kwargs)
+        else:
+            # Fallback - try setData anyway
+            logger.warning("ScatterPlotItem has neither setData nor setPoints, attempting setData")
+            scatter_item.setData(**kwargs)
+    except Exception as e:
+        logger.error(f"Error setting scatter data: {e}")
+        logger.error(f"PyQtGraph version: {getattr(pg, '__version__', 'unknown')}")
+        logger.error(f"kwargs: {kwargs.keys()}")
+        raise
+
 
 class ColorButton(QPushButton):
     """
@@ -1596,13 +1633,29 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
 
             logger.debug(f"Plotting {len(tracks_to_plot)} tracks")
 
+
             # Plot each track
             for track_idx in tracks_to_plot:
-                if track_idx not in self.tracks.groups:
-                    continue
+                # Convert numpy types to native Python types
+                track_key = int(track_idx)
 
-                track = self.tracks.get_group(track_idx)
-                self._plot_single_track(track, pen)
+                try:
+                    # Direct index selection from original data (PyInstaller compatible)
+                    if 'track_number' in self.data.columns:
+                        track_mask = self.data['track_number'] == track_key
+                        track = self.data[track_mask]
+                    else:
+                        logger.warning("No 'track_number' column found in data")
+                        continue
+
+                    if len(track) == 0:
+                        continue
+
+                    self._plot_single_track(track, pen)
+
+                except Exception as e:
+                    logger.warning(f"Could not plot track {track_key}: {e}")
+                    continue
 
             # Plot tracks in flower plot if enabled
             if self.displayFlowPlot_checkbox.isChecked():
@@ -1620,11 +1673,21 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             logger.debug("Track visualization completed")
 
         except Exception as e:
+            import traceback
             logger.error(f"Error showing tracks: {e}")
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
+            print(f"\n{'='*70}")
+            print(f"ERROR in showTracks:")
+            print(f"{'='*70}")
+            print(traceback.format_exc())
+            print(f"{'='*70}\n")
+
 
     def _plot_single_track(self, track: pd.DataFrame, pen: QPen) -> None:
         """Plot a single track path."""
         try:
+            track_id = track['track_number'].iloc[0] if 'track_number' in track.columns else 'unknown'
+
             # Create path item for main window
             pathitem = QGraphicsPathItem(self.plotWindow.imageview.view)
 
@@ -1923,14 +1986,19 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
                 if self.displayUnlinkedPoints and hasattr(self, 'data_unlinked'):
                     df = pd.concat([df, self.data_unlinked])
 
-                # Create scatter plot
-                self.pointMapScatter = pg.ScatterPlotItem(
-                    size=2, pen=None, brush=pg.mkBrush(30, 255, 35, 255)
-                )
-                self.pointMapScatter.setSize(2, update=False)
-                self.pointMapScatter.setData(df['x'], df['y'])
-                self.plotWindow.imageview.view.addItem(self.pointMapScatter)
-                self.togglePointMap_button.setText('Hide Point Map')
+                # Create scatter plot with error handling
+                try:
+                    self.pointMapScatter = pg.ScatterPlotItem(
+                        size=2, pen=None, brush=pg.mkBrush(30, 255, 35, 255)
+                    )
+                    self.pointMapScatter.setSize(2, update=False)
+                    set_scatter_data_compat(self.pointMapScatter, x=df['x'], y=df['y'])
+                    self.plotWindow.imageview.view.addItem(self.pointMapScatter)
+                    self.togglePointMap_button.setText('Hide Point Map')
+                except Exception as e:
+                    logger.error(f"Error creating point map scatter plot: {e}")
+                    g.m.statusBar().showMessage(f'Error creating point map: {str(e)}')
+                    raise
 
             else:
                 # Remove scatter plot

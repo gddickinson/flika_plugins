@@ -31,6 +31,53 @@ from pyqtgraph.dockarea.DockArea import DockArea
 
 from .helperFunctions import *
 
+# PyQtGraph compatibility for different versions
+import logging
+import numpy as np
+logger = logging.getLogger(__name__)
+
+def set_scatter_data_compat(scatter_item, **kwargs):
+    """Set scatter data with version compatibility."""
+    try:
+        if hasattr(scatter_item, 'setData') and callable(scatter_item.setData):
+            scatter_item.setData(**kwargs)
+        elif hasattr(scatter_item, 'setPoints') and callable(scatter_item.setPoints):
+            scatter_item.setPoints(**kwargs)
+        else:
+            scatter_item.setData(**kwargs)  # Try anyway
+    except Exception as e:
+        logger.error(f"Error setting scatter data: {e}")
+        raise
+
+def add_scatter_points_compat(scatter_item, **kwargs):
+    """Add scatter points with version compatibility."""
+    try:
+        if hasattr(scatter_item, 'addPoints') and callable(scatter_item.addPoints):
+            scatter_item.addPoints(**kwargs)
+        else:
+            # Emulate addPoints with setData
+            current_data = scatter_item.getData()
+            if current_data is not None and len(current_data) > 0:
+                curr_x, curr_y = current_data
+                new_x = np.asarray(kwargs.get('x', []))
+                new_y = np.asarray(kwargs.get('y', []))
+                if len(new_x) > 0 and len(new_y) > 0:
+                    combined_x = np.concatenate([curr_x, new_x])
+                    combined_y = np.concatenate([curr_y, new_y])
+                    # Note: size, brush, pen, symbol concatenation not implemented
+                    # This is a simplified version
+                    new_kwargs = {k: v for k, v in kwargs.items() if k not in ['x', 'y']}
+                    new_kwargs['x'] = combined_x
+                    new_kwargs['y'] = combined_y
+                    set_scatter_data_compat(scatter_item, **new_kwargs)
+                else:
+                    set_scatter_data_compat(scatter_item, **kwargs)
+            else:
+                set_scatter_data_compat(scatter_item, **kwargs)
+    except Exception as e:
+        logger.error(f"Error adding scatter points: {e}")
+        raise
+
 class Scale_Bar_ROIzoom(BaseProcess):
     ''' scale_bar(width_NoUnits, width_pixels, font_size, color, background, offset, location, show=True)
 
@@ -768,8 +815,8 @@ class ROIPLOT():
         if self.dataWindow == None:
             return
         #clear scatter plot data
-        self.scatter.setData([],[])
-        self.scatter2.setData([],[])
+        set_scatter_data_compat(self.scatter, x=[], y=[])
+        set_scatter_data_compat(self.scatter2, x=[], y=[])
         #clear intensity plot
         self.w2.clear()
 
@@ -829,7 +876,7 @@ class ROIPLOT():
             brush_list = [pg.mkBrush(i) for i in trackColour_list]
             pen_list = [pg.mkPen(i, width=5) for i in trackColour_list]
 
-            self.scatter.addPoints(x=x_list, y=y_list, size=self.pointSize_box.value(), brush=brush_list, name=trackID_list, hoverable=False)
+            add_scatter_points_compat(self.scatter, x=x_list, y=y_list, size=self.pointSize_box.value(), brush=brush_list, name=trackID_list, hoverable=False)
 
             #plot boxs representing ROIs used to get mean intensity
             if self.ROISize_checkbox.isChecked():
@@ -841,13 +888,13 @@ class ROIPLOT():
                     x_rounded_list = x_list.astype(int) + 0.5
                     y_rounded_list = y_list.astype(int) + 0.5
 
-                self.scatter2.addPoints(x=x_rounded_list, y=y_rounded_list, size=self.ROISize_box.value(), pen=pen_list, brush=None, symbol='s',pxMode=False, hoverable=False)
+                add_scatter_points_compat(self.scatter2, x=x_rounded_list, y=y_rounded_list, size=self.ROISize_box.value(), pen=pen_list, brush=None, symbol='s',pxMode=False, hoverable=False)
 
 
             if self.displayID_checkbox.isChecked():
                 label_list = [custom_symbol(str(i)) for i in trackID_list]
                 offset = self.pointSize_box.value()/10
-                self.scatter.addPoints(x=x_list+offset, y=y_list+offset, size=self.pointSize_box.value(), symbol = label_list, brush=brush_list, name=trackID_list, hoverable=False)
+                add_scatter_points_compat(self.scatter, x=x_list+offset, y=y_list+offset, size=self.pointSize_box.value(), symbol = label_list, brush=brush_list, name=trackID_list, hoverable=False)
 
 
         #add timestamp
