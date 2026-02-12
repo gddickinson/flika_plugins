@@ -6780,6 +6780,9 @@ directional persistence is important for understanding underlying mechanisms.
                 if 'is_interpolated' not in tracks_df.columns:
                     tracks_df['is_interpolated'] = 0
                 tracks_df = EnhancedInterpolator.interpolate_trapped_sites(tracks_df, file_path)
+                # Fix background subtraction for newly interpolated points
+                if self.parameters.enable_background_subtraction:
+                    tracks_df = self._fix_interpolated_background(tracks_df)
 
             # Add motion model information to tracks if using U-Track
             if self.parameters.linking_method == 'utrack':
@@ -6824,6 +6827,9 @@ directional persistence is important for understanding underlying mechanisms.
                 tracks_df_interpolated = FullTrackInterpolator.interpolate_all_tracks(
                     tracks_df, file_path,
                     extend_to_full_recording=self.parameters.extend_interpolation_to_full_recording)
+                # Fix background subtraction for newly interpolated points
+                if self.parameters.enable_background_subtraction:
+                    tracks_df_interpolated = self._fix_interpolated_background(tracks_df_interpolated)
 
                 # Save interpolated results
                 self.save_analysis_files(tracks_df_interpolated, file_path, use_export_control, suffix="_interpolated")
@@ -6836,6 +6842,9 @@ directional persistence is important for understanding underlying mechanisms.
                     tracks_df = FullTrackInterpolator.interpolate_all_tracks(
                         tracks_df, file_path,
                         extend_to_full_recording=self.parameters.extend_interpolation_to_full_recording)  # NEW parameter
+                    # Fix background subtraction for newly interpolated points
+                    if self.parameters.enable_background_subtraction:
+                        tracks_df = self._fix_interpolated_background(tracks_df)
                 elif 'is_interpolated' not in tracks_df.columns:
                     tracks_df['is_interpolated'] = 0
 
@@ -7524,6 +7533,11 @@ directional persistence is important for understanding underlying mechanisms.
 
                 background_subtracted = True
                 background_method = 'frame_specific' if frame_specific else 'single_mean'
+
+                # Store frame-specific ROI intensity array for post-interpolation fix-up
+                if frame_specific and isinstance(roi_intensity, np.ndarray):
+                    self._roi_intensity_array = roi_intensity
+                    self._camera_black = camera_black
             else:
                 self.log_message("    Warning: ROI intensity is 0 or invalid, no background subtraction applied")
                 intensity_bg_subtracted = tracks_df['intensity']
@@ -7567,6 +7581,44 @@ directional persistence is important for understanding underlying mechanisms.
 
             return tracks_df
 
+    def _fix_interpolated_background(self, tracks_df):
+        """Apply frame-specific background subtraction to interpolated points.
+
+        After interpolation adds new points, their background columns are either
+        NaN or copied from the first point of the track. This method corrects them
+        using the stored per-frame ROI intensity array.
+        """
+        frame_specific = getattr(self.parameters, 'roi_frame_specific_background', False)
+        roi_intensity_array = getattr(self, '_roi_intensity_array', None)
+        camera_black = getattr(self, '_camera_black', 0.0)
+
+        if not frame_specific or roi_intensity_array is None:
+            return tracks_df
+
+        if 'is_interpolated' not in tracks_df.columns:
+            return tracks_df
+
+        interpolated_mask = tracks_df['is_interpolated'] == 1
+        if not interpolated_mask.any():
+            return tracks_df
+
+        n_roi_frames = len(roi_intensity_array)
+        mean_roi = roi_intensity_array.mean()
+
+        # Look up the frame-specific ROI intensity for each interpolated point
+        frames = tracks_df.loc[interpolated_mask, 'frame'].astype(int)
+        bg_values = frames.apply(
+            lambda f: roi_intensity_array[f] if f < n_roi_frames else mean_roi)
+
+        tracks_df.loc[interpolated_mask, 'roi_intensity'] = bg_values.values
+        tracks_df.loc[interpolated_mask, 'background_signal_used'] = bg_values.values
+        tracks_df.loc[interpolated_mask, 'intensity_bg_subtracted'] = (
+            tracks_df.loc[interpolated_mask, 'intensity'].values - bg_values.values)
+        tracks_df.loc[interpolated_mask, 'background_subtracted'] = True
+        tracks_df.loc[interpolated_mask, 'background_method'] = 'frame_specific'
+        tracks_df.loc[interpolated_mask, 'camera_black_estimate'] = camera_black
+
+        return tracks_df
 
     # Add this method to the SPTBatchAnalysis class for ROI validation
 

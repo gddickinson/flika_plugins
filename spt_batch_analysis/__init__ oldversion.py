@@ -72,6 +72,23 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Tuple
 from scipy.optimize import linear_sum_assignment
 
+# ThunderSTORM integration
+try:
+    from .thunderstorm_integration import (
+        ThunderSTORMDetector,
+        is_thunderstorm_available,
+        get_available_filters,
+        get_available_detectors,
+        get_available_fitters,
+        get_default_threshold_expressions
+    )
+    THUNDERSTORM_AVAILABLE = is_thunderstorm_available()
+except ImportError:
+    THUNDERSTORM_AVAILABLE = False
+    print("Warning: ThunderSTORM integration module not found")
+
+
+
 
 # ==================== FILE LOGGING SYSTEM ====================
 
@@ -407,16 +424,31 @@ class DetectionWorker(QThread):
     detection_error = Signal(str)
     file_processed = Signal(str, str)  # (image_file_path, detection_file_path) for visualization
 
-    def __init__(self, file_paths, detector_params, output_dir, pixel_size, show_results=False):
+    def __init__(self, file_paths, detector_params, output_dir, pixel_size, show_results=False, detection_method='utrack'):
         super().__init__()
         self.file_paths = file_paths
         self.detector_params = detector_params
         self.output_dir = output_dir
         self.pixel_size = pixel_size
         self.show_results = show_results
+        self.detection_method = detection_method  # 'utrack' or 'thunderstorm'
 
     def run(self):
         """Run detection on all files"""
+        try:
+            # Route to appropriate detection method
+            if self.detection_method == 'thunderstorm':
+                self._run_thunderstorm_detection()
+            else:  # 'utrack' or default
+                self._run_utrack_detection()
+
+        except Exception as e:
+            self.detection_error.emit(f"Detection failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def _run_utrack_detection(self):
+        """Run U-Track based detection on all files"""
         try:
             total_files = len(self.file_paths)
 
@@ -488,10 +520,85 @@ class DetectionWorker(QThread):
                 else:
                     self.progress_update.emit(f"No detections found in {os.path.basename(file_path)}")
 
-            self.detection_complete.emit("Detection completed successfully!")
+            self.detection_complete.emit("U-Track detection completed successfully!")
 
         except Exception as e:
-            self.detection_error.emit(f"Detection failed: {str(e)}")
+            self.detection_error.emit(f"U-Track detection failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def _run_thunderstorm_detection(self):
+        """Run ThunderSTORM based detection on all files"""
+        try:
+            # Check if thunderSTORM is available
+            if not THUNDERSTORM_AVAILABLE:
+                self.detection_error.emit("ThunderSTORM is not available. Please install thunderstorm_python package.")
+                return
+
+            total_files = len(self.file_paths)
+
+            for file_idx, file_path in enumerate(self.file_paths):
+                self.progress_update.emit(f"ThunderSTORM processing {file_idx + 1}/{total_files}: {os.path.basename(file_path)}")
+
+                try:
+                    # Load image sequence
+                    images = skio.imread(file_path, plugin='tifffile')
+                    if images.ndim == 2:
+                        images = images[np.newaxis, ...]  # Add time dimension
+
+                    # Apply same transformations as in main plugin
+                    images = np.rot90(images, axes=(1,2))
+                    images = np.fliplr(images)
+
+                except Exception as e:
+                    self.detection_error.emit(f"Error loading {file_path}: {e}")
+                    continue
+
+                # Create ThunderSTORM detector with parameters
+                gui_params = {
+                    'ts_filter_type': self.detector_params.get('ts_filter_type', 'wavelet'),
+                    'ts_filter_scale': self.detector_params.get('ts_filter_scale', 2),
+                    'ts_detector_type': self.detector_params.get('ts_detector_type', 'local_maximum'),
+                    'ts_detector_threshold': self.detector_params.get('ts_detector_threshold', 'std(Wave.F1)'),
+                    'ts_fitter_type': self.detector_params.get('ts_fitter_type', 'gaussian_lsq'),
+                    'ts_fit_radius': self.detector_params.get('ts_fit_radius', 3),
+                    'pixel_size': self.pixel_size,
+                    'ts_initial_sigma': self.detector_params.get('ts_initial_sigma', 1.3),
+                    'ts_photons_per_adu': self.detector_params.get('ts_photons_per_adu', 1.0),
+                    'ts_baseline': self.detector_params.get('ts_baseline', 100.0),
+                    'ts_em_gain': self.detector_params.get('ts_em_gain', 1.0),
+                }
+
+                detector = ThunderSTORMDetector.create_from_gui_parameters(gui_params)
+
+                # Run detection on all frames
+                n_frames = images.shape[0]
+                self.progress_update.emit(f"Running ThunderSTORM on {n_frames} frames...")
+
+                localizations = detector.detect_and_fit(images, show_progress=False)
+
+                # Update progress after detection
+                self.frame_progress.emit(100)
+
+                # Save results in SPT-compatible format
+                base_name = os.path.splitext(os.path.basename(file_path))[0]
+                output_file = os.path.join(self.output_dir, f"{base_name}_locsID.csv")
+
+                detector.save_localizations(localizations, output_file)
+
+                n_detections = len(localizations['x'])
+                self.progress_update.emit(f"ThunderSTORM: Saved {n_detections} detections to {os.path.basename(output_file)}")
+
+                # Emit signal for visualization if requested
+                if self.show_results:
+                    self.file_processed.emit(file_path, output_file)
+
+            self.detection_complete.emit("ThunderSTORM detection completed successfully!")
+
+        except Exception as e:
+            self.detection_error.emit(f"ThunderSTORM detection failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
 
 
 
@@ -2193,6 +2300,19 @@ class SPTAnalysisParameters:
         self.detection_output_directory = ""
         self.detection_skip_existing = True
         self.detection_show_results = False
+        # ThunderSTORM detection parameters
+        self.detection_method = 'utrack'  # 'utrack' or 'thunderstorm'
+        self.ts_filter_type = 'wavelet'
+        self.ts_filter_scale = 2
+        self.ts_detector_type = 'local_maximum'
+        self.ts_detector_threshold = 'std(Wave.F1)'
+        self.ts_fitter_type = 'gaussian_lsq'
+        self.ts_fit_radius = 3
+        self.ts_initial_sigma = 1.3
+        self.ts_photons_per_adu = 1.0
+        self.ts_baseline = 100.0
+        self.ts_em_gain = 1.0
+
 
         # Enhanced U-Track linking parameters (all existing preserved)
         self.utrack_max_linking_distance = 10.0
@@ -3711,7 +3831,7 @@ class SPTBatchAnalysis(QWidget):
             self.update_column_summary()
 
     def create_detection_tab(self):
-        """Create detection configuration tab"""
+        """Create detection configuration tab with U-Track and ThunderSTORM options"""
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
@@ -3720,24 +3840,61 @@ class SPTBatchAnalysis(QWidget):
         scroll_widget = QWidget()
         scroll_layout = QVBoxLayout(scroll_widget)
 
-        # Enable/Disable Detection
+        # ========== Detection Method Selection ==========
+        method_group = QGroupBox("Detection Method Selection")
+        method_layout = QVBoxLayout(method_group)
+
+        # Radio buttons for detection method
+        self.detection_method_group = QButtonGroup()
+
+        self.utrack_method_radio = QRadioButton("U-Track Based Detection")
+        self.utrack_method_radio.setChecked(self.parameters.detection_method == 'utrack')
+        self.detection_method_group.addButton(self.utrack_method_radio, 0)
+        method_layout.addWidget(self.utrack_method_radio)
+
+        self.thunderstorm_method_radio = QRadioButton("ThunderSTORM Detection")
+        self.thunderstorm_method_radio.setChecked(self.parameters.detection_method == 'thunderstorm')
+        self.thunderstorm_method_radio.setEnabled(THUNDERSTORM_AVAILABLE)
+        if not THUNDERSTORM_AVAILABLE:
+            ts_warning = QLabel("⚠ ThunderSTORM package not available. Install thunderstorm_python to enable.")
+            ts_warning.setStyleSheet("color: #ff6b6b; font-style: italic; margin-left: 20px;")
+            method_layout.addWidget(ts_warning)
+        self.detection_method_group.addButton(self.thunderstorm_method_radio, 1)
+        method_layout.addWidget(self.thunderstorm_method_radio)
+
+        # Connect method selection to update panels
+        self.utrack_method_radio.toggled.connect(self.on_detection_method_changed)
+
+        scroll_layout.addWidget(method_group)
+
+        # ========== Enable/Disable Detection ==========
         enable_group = QGroupBox("Enable Particle Detection")
         enable_layout = QVBoxLayout(enable_group)
 
-        self.detection_enable_checkbox = QCheckBox("Enable U-Track Based Particle Detection")
+        self.detection_enable_checkbox = QCheckBox("Enable Particle Detection for Analysis")
         self.detection_enable_checkbox.setChecked(self.parameters.enable_detection)
         self.detection_enable_checkbox.toggled.connect(self.on_detection_enable_toggled)
         enable_layout.addWidget(self.detection_enable_checkbox)
 
-        info_label = QLabel("Detects particles in images using U-Track methodology and saves as localization CSV files")
+        info_label = QLabel("Detects particles in images and saves as localization CSV files")
         info_label.setStyleSheet("color: #666; font-style: italic; margin-left: 20px;")
         enable_layout.addWidget(info_label)
 
         scroll_layout.addWidget(enable_group)
 
-        # Detection Parameters
-        self.detection_params_group = QGroupBox("Detection Parameters")
-        params_layout = QFormLayout(self.detection_params_group)
+        # ========== Create Horizontal Splitter for Two Detection Panels ==========
+        detection_splitter = QSplitter(Qt.Horizontal)
+
+        # === LEFT PANEL: U-Track Detection ===
+        self.utrack_panel = QWidget()
+        utrack_layout = QVBoxLayout(self.utrack_panel)
+
+        utrack_title = QLabel("<b>U-Track Detection Parameters</b>")
+        utrack_title.setStyleSheet("font-size: 12pt; color: #2E86AB; margin-bottom: 10px;")
+        utrack_layout.addWidget(utrack_title)
+
+        utrack_params_group = QGroupBox("U-Track Detection Settings")
+        utrack_params_layout = QFormLayout(utrack_params_group)
 
         # PSF Sigma
         self.detection_psf_sigma_spin = QDoubleSpinBox()
@@ -3745,24 +3902,133 @@ class SPTBatchAnalysis(QWidget):
         self.detection_psf_sigma_spin.setDecimals(2)
         self.detection_psf_sigma_spin.setValue(self.parameters.detection_psf_sigma)
         self.detection_psf_sigma_spin.setSuffix(" pixels")
-        params_layout.addRow("PSF Sigma:", self.detection_psf_sigma_spin)
+        utrack_params_layout.addRow("PSF Sigma:", self.detection_psf_sigma_spin)
 
         # Alpha threshold
         self.detection_alpha_spin = QDoubleSpinBox()
         self.detection_alpha_spin.setRange(0.001, 0.5)
         self.detection_alpha_spin.setDecimals(3)
         self.detection_alpha_spin.setValue(self.parameters.detection_alpha_threshold)
-        params_layout.addRow("Significance Threshold (α):", self.detection_alpha_spin)
+        utrack_params_layout.addRow("Significance Threshold (α):", self.detection_alpha_spin)
 
         # Minimum intensity
         self.detection_min_intensity_spin = QDoubleSpinBox()
         self.detection_min_intensity_spin.setRange(0, 10000)
         self.detection_min_intensity_spin.setValue(self.parameters.detection_min_intensity)
-        params_layout.addRow("Minimum Intensity:", self.detection_min_intensity_spin)
+        utrack_params_layout.addRow("Minimum Intensity:", self.detection_min_intensity_spin)
 
-        scroll_layout.addWidget(self.detection_params_group)
+        utrack_layout.addWidget(utrack_params_group)
 
-        # Output Options
+        # U-Track description
+        utrack_desc = QTextEdit()
+        utrack_desc.setReadOnly(True)
+        utrack_desc.setMaximumHeight(180)
+        utrack_desc.setText("""U-Track Based Particle Detection:
+
+• Background Estimation: Robust percentile-based methods
+• Pre-filtering: Gaussian filtering matching PSF size
+• Local Maxima Detection: Morphological peak detection
+• Statistical Testing: Significance against background noise
+• Sub-pixel Localization: Intensity-weighted centroid refinement
+
+Parameters:
+• PSF Sigma: Expected PSF width (1.0-2.0 pixels typically)
+• Significance Threshold: Statistical confidence (0.05 = 95%)
+• Minimum Intensity: Absolute intensity cutoff
+        """)
+        utrack_layout.addWidget(utrack_desc)
+
+        detection_splitter.addWidget(self.utrack_panel)
+
+        # === RIGHT PANEL: ThunderSTORM Detection ===
+        self.thunderstorm_panel = QWidget()
+        ts_layout = QVBoxLayout(self.thunderstorm_panel)
+
+        ts_title = QLabel("<b>ThunderSTORM Detection Parameters</b>")
+        ts_title.setStyleSheet("font-size: 12pt; color: #A23B72; margin-bottom: 10px;")
+        ts_layout.addWidget(ts_title)
+
+        ts_params_group = QGroupBox("ThunderSTORM Settings")
+        ts_params_layout = QFormLayout(ts_params_group)
+
+        # Filter type
+        self.ts_filter_combo = QComboBox()
+        self.ts_filter_combo.addItems(['wavelet', 'gaussian', 'dog', 'lowered_gaussian'])
+        self.ts_filter_combo.setCurrentText(self.parameters.ts_filter_type)
+        ts_params_layout.addRow("Filter Type:", self.ts_filter_combo)
+
+        # Filter scale (for wavelet)
+        self.ts_filter_scale_spin = QSpinBox()
+        self.ts_filter_scale_spin.setRange(1, 5)
+        self.ts_filter_scale_spin.setValue(self.parameters.ts_filter_scale)
+        ts_params_layout.addRow("Wavelet Scale:", self.ts_filter_scale_spin)
+
+        # Detector type
+        self.ts_detector_combo = QComboBox()
+        self.ts_detector_combo.addItems(['local_maximum', 'non_maximum_suppression', 'centroid'])
+        self.ts_detector_combo.setCurrentText(self.parameters.ts_detector_type)
+        ts_params_layout.addRow("Detector Type:", self.ts_detector_combo)
+
+        # Threshold expression
+        self.ts_threshold_combo = QComboBox()
+        self.ts_threshold_combo.setEditable(True)
+        self.ts_threshold_combo.addItems(['std(Wave.F1)', '2*std(Wave.F1)', '3*std(Wave.F1)',
+                                          'mean(Wave.F1) + 3*std(Wave.F1)', '100'])
+        self.ts_threshold_combo.setCurrentText(self.parameters.ts_detector_threshold)
+        ts_params_layout.addRow("Detection Threshold:", self.ts_threshold_combo)
+
+        # Fitter type
+        self.ts_fitter_combo = QComboBox()
+        self.ts_fitter_combo.addItems(['gaussian_lsq', 'gaussian_wlsq', 'gaussian_mle',
+                                       'radial_symmetry', 'centroid'])
+        self.ts_fitter_combo.setCurrentText(self.parameters.ts_fitter_type)
+        ts_params_layout.addRow("PSF Fitter:", self.ts_fitter_combo)
+
+        # Fit radius
+        self.ts_fit_radius_spin = QSpinBox()
+        self.ts_fit_radius_spin.setRange(2, 10)
+        self.ts_fit_radius_spin.setValue(self.parameters.ts_fit_radius)
+        self.ts_fit_radius_spin.setSuffix(" pixels")
+        ts_params_layout.addRow("Fit Radius:", self.ts_fit_radius_spin)
+
+        # Initial sigma
+        self.ts_initial_sigma_spin = QDoubleSpinBox()
+        self.ts_initial_sigma_spin.setRange(0.5, 5.0)
+        self.ts_initial_sigma_spin.setDecimals(2)
+        self.ts_initial_sigma_spin.setValue(self.parameters.ts_initial_sigma)
+        self.ts_initial_sigma_spin.setSuffix(" pixels")
+        ts_params_layout.addRow("Initial PSF Sigma:", self.ts_initial_sigma_spin)
+
+        ts_layout.addWidget(ts_params_group)
+
+        # ThunderSTORM description
+        ts_desc = QTextEdit()
+        ts_desc.setReadOnly(True)
+        ts_desc.setMaximumHeight(180)
+        ts_desc.setText("""ThunderSTORM Detection:
+
+• Wavelet Filtering: B-spline wavelet decomposition (recommended)
+• Multiple Detectors: Local maximum, NMS, or centroid
+• Advanced Fitting: LSQ, WLSQ, MLE, or radial symmetry
+• Flexible Thresholding: Expression-based adaptive thresholds
+• High-Quality Localization: Sub-pixel precision fitting
+
+Fitter Comparison:
+• LSQ: Fast, good for general use
+• WLSQ: Better for low SNR
+• MLE: Highest accuracy, slower
+• Radial Symmetry: Very fast, good for preview
+        """)
+        ts_layout.addWidget(ts_desc)
+
+        detection_splitter.addWidget(self.thunderstorm_panel)
+
+        # Set initial splitter sizes
+        detection_splitter.setSizes([400, 400])
+
+        scroll_layout.addWidget(detection_splitter)
+
+        # ========== Output Options ==========
         self.detection_output_group = QGroupBox("Output Options")
         output_layout = QVBoxLayout(self.detection_output_group)
 
@@ -3790,7 +4056,7 @@ class SPTBatchAnalysis(QWidget):
 
         scroll_layout.addWidget(self.detection_output_group)
 
-        # Detection Controls
+        # ========== Detection Controls ==========
         self.detection_controls_group = QGroupBox("Detection Controls")
         controls_layout = QVBoxLayout(self.detection_controls_group)
 
@@ -3812,62 +4078,27 @@ class SPTBatchAnalysis(QWidget):
 
         scroll_layout.addWidget(self.detection_controls_group)
 
-        # Method Description
-        desc_group = QGroupBox("Method Description")
-        desc_layout = QVBoxLayout(desc_group)
-
-        desc_text = QTextEdit()
-        desc_text.setReadOnly(True)
-        desc_text.setMaximumHeight(200)
-        desc_text.setText("""
-U-Track Based Particle Detection:
-
-This detection method implements key components of the U-Track detection pipeline:
-
-1. Background Estimation: Robust background estimation using percentile-based methods
-2. Pre-filtering: Gaussian filtering to match expected PSF size
-3. Local Maxima Detection: Morphological detection of intensity peaks
-4. Statistical Testing: Significance testing against background noise
-5. Sub-pixel Localization: Intensity-weighted centroid refinement
-
-Parameters:
-• PSF Sigma: Expected point spread function width (typically 1.0-2.0 pixels)
-• Significance Threshold: Statistical threshold for detection (0.05 = 95% confidence)
-• Minimum Intensity: Absolute minimum intensity threshold
-
-Integration with Main Analysis:
-When detection is enabled, particle detection will automatically run before tracking
-when you click "Start Analysis". You don't need to manually run detection first.
-
-Output Options:
-• Skip existing: Avoid re-detecting files that already have results
-• Display results: Open images in FLIKA with detection points overlaid
-
-Output Format:
-Results are saved as CSV files with suffix "_locsID.csv" containing:
-• frame: Frame number (1-based)
-• x [nm], y [nm]: Coordinates in nanometers
-• intensity [photon]: Particle intensity
-• id: Unique particle identifier
-
-These files are automatically used by the tracking pipeline.
-        """)
-        desc_layout.addWidget(desc_text)
-
-        scroll_layout.addWidget(desc_group)
-
         # Enable/disable based on initial state
         self.on_detection_enable_toggled()
+        self.on_detection_method_changed()
 
         scroll.setWidget(scroll_widget)
         layout.addWidget(scroll)
 
         self.tab_widget.addTab(tab, "Detection")
 
+
     def on_detection_enable_toggled(self):
         """Handle detection enable/disable"""
         enabled = self.detection_enable_checkbox.isChecked()
-        self.detection_params_group.setEnabled(enabled)
+
+        # Enable/disable both detection panels
+        if hasattr(self, 'utrack_panel'):
+            self.utrack_panel.setEnabled(enabled)
+        if hasattr(self, 'thunderstorm_panel'):
+            self.thunderstorm_panel.setEnabled(enabled)
+
+        # Enable/disable output and controls groups
         self.detection_output_group.setEnabled(enabled)
         self.detection_controls_group.setEnabled(enabled)
 
@@ -3876,6 +4107,29 @@ These files are automatically used by the tracking pipeline.
             self.start_detection_btn.setEnabled(True)
         else:
             self.start_detection_btn.setEnabled(False)
+
+    def on_detection_method_changed(self):
+        """Handle detection method selection change"""
+        is_utrack = self.utrack_method_radio.isChecked()
+        detection_enabled = self.detection_enable_checkbox.isChecked()
+
+        # Enable/disable panels based on selection AND overall detection state
+        # Only enable the selected panel if detection is enabled
+        if detection_enabled:
+            self.utrack_panel.setEnabled(is_utrack)
+            self.thunderstorm_panel.setEnabled(not is_utrack)
+        else:
+            # If detection is disabled, keep both panels disabled
+            self.utrack_panel.setEnabled(False)
+            self.thunderstorm_panel.setEnabled(False)
+
+        # Update visual feedback (highlighting works regardless of enabled state)
+        if is_utrack:
+            self.utrack_panel.setStyleSheet("QWidget { background-color: #f0f8ff; }")
+            self.thunderstorm_panel.setStyleSheet("")
+        else:
+            self.utrack_panel.setStyleSheet("")
+            self.thunderstorm_panel.setStyleSheet("QWidget { background-color: #fff0f5; }")
 
     def select_detection_output_directory(self):
         """Select output directory for detection results"""
@@ -3919,15 +4173,35 @@ These files are automatically used by the tracking pipeline.
 
         # Prepare detector parameters
         detector_params = {
+            # U-Track parameters (always included)
             'psf_sigma': self.detection_psf_sigma_spin.value(),
             'alpha_threshold': self.detection_alpha_spin.value(),
             'min_intensity': self.detection_min_intensity_spin.value()
         }
 
-        # Start detection worker
+        # Add ThunderSTORM parameters if thunderSTORM is selected
+        if hasattr(self, 'ts_filter_combo'):
+            detector_params.update({
+                'ts_filter_type': self.ts_filter_combo.currentText(),
+                'ts_filter_scale': self.ts_filter_scale_spin.value(),
+                'ts_detector_type': self.ts_detector_combo.currentText(),
+                'ts_detector_threshold': self.ts_threshold_combo.currentText(),
+                'ts_fitter_type': self.ts_fitter_combo.currentText(),
+                'ts_fit_radius': self.ts_fit_radius_spin.value(),
+                'ts_initial_sigma': self.ts_initial_sigma_spin.value(),
+                'ts_photons_per_adu': self.parameters.ts_photons_per_adu,
+                'ts_baseline': self.parameters.ts_baseline,
+                'ts_em_gain': self.parameters.ts_em_gain,
+            })
+
+        # Start detection worker with detection method
         self.detection_worker = DetectionWorker(
-            files_to_process, detector_params, output_dir, self.parameters.pixel_size,
-            show_results=self.parameters.detection_show_results
+            files_to_process,
+            detector_params,
+            output_dir,
+            self.parameters.pixel_size,
+            show_results=self.parameters.detection_show_results,
+            detection_method=self.parameters.detection_method  # Pass the selected method
         )
 
         self.detection_worker.progress_update.connect(self.update_detection_status)
@@ -6046,6 +6320,21 @@ directional persistence is important for understanding underlying mechanisms.
         self.parameters.detection_psf_sigma = self.detection_psf_sigma_spin.value()
         self.parameters.detection_alpha_threshold = self.detection_alpha_spin.value()
         self.parameters.detection_min_intensity = self.detection_min_intensity_spin.value()
+
+        # Determine which detection method is selected
+        if hasattr(self, 'utrack_method_radio'):
+            self.parameters.detection_method = 'utrack' if self.utrack_method_radio.isChecked() else 'thunderstorm'
+
+        # ThunderSTORM parameters
+        if hasattr(self, 'ts_filter_combo'):
+            self.parameters.ts_filter_type = self.ts_filter_combo.currentText()
+            self.parameters.ts_filter_scale = self.ts_filter_scale_spin.value()
+            self.parameters.ts_detector_type = self.ts_detector_combo.currentText()
+            self.parameters.ts_detector_threshold = self.ts_threshold_combo.currentText()
+            self.parameters.ts_fitter_type = self.ts_fitter_combo.currentText()
+            self.parameters.ts_fit_radius = self.ts_fit_radius_spin.value()
+            self.parameters.ts_initial_sigma = self.ts_initial_sigma_spin.value()
+
         self.parameters.detection_skip_existing = self.detection_skip_existing_checkbox.isChecked()
         self.parameters.detection_show_results = self.detection_show_results_checkbox.isChecked()
 
