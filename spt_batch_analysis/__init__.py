@@ -8530,6 +8530,10 @@ directional persistence is important for understanding underlying mechanisms.
         self.ts_export_protocol.setChecked(True)
         export_cols_layout.addWidget(self.ts_export_protocol, 3, 0)
 
+        self.ts_export_id = QCheckBox("id")
+        self.ts_export_id.setChecked(True)
+        export_cols_layout.addWidget(self.ts_export_id, 3, 1)
+
         export_layout.addRow(export_cols_layout)
 
         scroll_layout.addWidget(export_group)
@@ -8720,6 +8724,8 @@ directional persistence is important for understanding underlying mechanisms.
             export_cols.append("uncertainty=true")
         if self.ts_export_frame.isChecked():
             export_cols.append("frame=true")
+        if self.ts_export_id.isChecked():
+            export_cols.append("id=true")
 
         export_string = " ".join(export_cols)
 
