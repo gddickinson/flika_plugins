@@ -43,6 +43,11 @@ class ThunderSTORMDetector:
             - fit_radius: fitting radius in pixels
             - pixel_size: camera pixel size in nm
             - initial_sigma: initial PSF sigma estimate
+            - photons_per_adu: photoelectrons per A/D count
+            - baseline: camera baseline offset in ADU
+            - is_em_gain: whether EM gain is enabled
+            - em_gain: EM multiplication gain
+            - quantum_efficiency: sensor quantum efficiency (0-1)
         """
         if not THUNDERSTORM_AVAILABLE:
             raise ImportError("thunderstorm_python package is required for thunderSTORM detection")
@@ -57,9 +62,11 @@ class ThunderSTORMDetector:
             'fit_radius': 3,
             'pixel_size': 108.0,  # nm
             'initial_sigma': 1.3,
-            'photons_per_adu': 1.0,
+            'photons_per_adu': 3.6,
             'baseline': 100.0,
-            'em_gain': 1.0
+            'is_em_gain': True,
+            'em_gain': 100.0,
+            'quantum_efficiency': 1.0,
         }
 
         # Update with provided parameters
@@ -83,7 +90,9 @@ class ThunderSTORMDetector:
         # Create fitter parameters
         fitter_params = {'initial_sigma': self.params['initial_sigma']}
 
-        # Create pipeline
+        # Note: we pass baseline=0 and em_gain=1 to the pipeline because
+        # we handle offset subtraction and photon conversion ourselves
+        # in detect_and_fit() and save_localizations() respectively.
         self.pipeline = ThunderSTORM(
             filter_type=self.params['filter_type'],
             filter_params=filter_params,
@@ -93,13 +102,40 @@ class ThunderSTORMDetector:
             fitter_params=fitter_params,
             threshold_expression=self.params['detector_threshold'],
             pixel_size=self.params['pixel_size'],
-            photons_per_adu=self.params['photons_per_adu'],
-            baseline=self.params['baseline'],
-            em_gain=self.params['em_gain']
+            photons_per_adu=1.0,
+            baseline=0.0,
+            em_gain=1.0
         )
+
+    def _adu_to_photons(self, digital_counts):
+        """Convert digital counts (offset-subtracted ADU) to photons.
+
+        Uses the same formula as thunderSTORM's CameraSetupPlugIn:
+            photons = digital_counts * photons_per_adu / quantum_efficiency / em_gain
+
+        Parameters
+        ----------
+        digital_counts : float or ndarray
+            Intensity values in offset-subtracted ADU
+
+        Returns
+        -------
+        photons : float or ndarray
+        """
+        photons_per_adu = self.params['photons_per_adu']
+        qe = self.params['quantum_efficiency']
+        if self.params.get('is_em_gain', False):
+            em_gain = self.params['em_gain']
+        else:
+            em_gain = 1.0
+        return digital_counts * photons_per_adu / qe / em_gain
 
     def detect_and_fit(self, image_stack, show_progress=True):
         """Detect and fit particles in an image stack
+
+        The camera baseline offset is subtracted from the image before
+        filtering and fitting, matching the behaviour of thunderSTORM
+        in ImageJ.
 
         Parameters
         ----------
@@ -115,8 +151,8 @@ class ThunderSTORMDetector:
             - 'x': x positions in nm
             - 'y': y positions in nm
             - 'frame': frame numbers (0-indexed)
-            - 'intensity': fitted intensities
-            - 'background': local backgrounds
+            - 'intensity': fitted Gaussian amplitude (offset-subtracted ADU)
+            - 'background': local background level (offset-subtracted ADU)
             - 'sigma_x', 'sigma_y': PSF widths in nm
             - 'uncertainty': localization precision in nm
             - 'chi_squared': goodness of fit
@@ -124,6 +160,12 @@ class ThunderSTORMDetector:
         # Ensure 3D stack
         if image_stack.ndim == 2:
             image_stack = image_stack[np.newaxis, ...]
+
+        # Subtract camera baseline offset before fitting
+        # (matches real thunderSTORM which does this in AnalysisPlugIn.java)
+        baseline = self.params['baseline']
+        if baseline != 0:
+            image_stack = image_stack.astype(np.float32) - float(baseline)
 
         # Run thunderSTORM analysis
         localizations = self.pipeline.analyze_stack(
@@ -134,8 +176,64 @@ class ThunderSTORMDetector:
 
         return localizations
 
-    def save_localizations(self, localizations, output_path):
-        """Save localizations in SPT-compatible format
+    def _compute_bkgstd(self, image_stack, localizations):
+        """Compute background standard deviation in the fitting region.
+
+        For each localization, compute the std of pixels in the local
+        ROI of the frame where it was detected. This matches
+        thunderSTORM's bkgstd column.
+
+        Parameters
+        ----------
+        image_stack : ndarray
+            3D image stack (already offset-subtracted)
+        localizations : dict
+            Localization results with 'x', 'y', 'frame' keys (x,y in nm)
+
+        Returns
+        -------
+        bkgstd : ndarray
+            Background standard deviation for each localization
+        """
+        pixel_size = self.params['pixel_size']
+        fit_radius = self.params['fit_radius']
+        n_locs = len(localizations['x'])
+        bkgstd = np.zeros(n_locs)
+
+        for i in range(n_locs):
+            frame_idx = int(localizations['frame'][i])
+            # Convert nm back to pixels for ROI extraction
+            col = localizations['x'][i] / pixel_size
+            row = localizations['y'][i] / pixel_size
+
+            if frame_idx < 0 or frame_idx >= image_stack.shape[0]:
+                continue
+
+            frame = image_stack[frame_idx]
+            h, w = frame.shape
+
+            r0 = max(0, int(row) - fit_radius)
+            r1 = min(h, int(row) + fit_radius + 1)
+            c0 = max(0, int(col) - fit_radius)
+            c1 = min(w, int(col) + fit_radius + 1)
+
+            if r1 > r0 and c1 > c0:
+                roi = frame[r0:r1, c0:c1]
+                bkgstd[i] = float(np.std(roi))
+
+        return bkgstd
+
+    def save_localizations(self, localizations, output_path, image_stack=None):
+        """Save localizations in SPT-compatible format with all thunderSTORM columns.
+
+        Output columns match real thunderSTORM format:
+        - id, frame, x [nm], y [nm], sigma [nm], intensity [AU],
+          intensity [photon], offset [photon], bkgstd [photon],
+          chi2, uncertainty [nm]
+
+        The intensity column uses [AU] (arbitrary units) since these are
+        the raw Gaussian amplitude values from fitting (in offset-subtracted
+        ADU), not calibrated photon counts.
 
         Parameters
         ----------
@@ -143,20 +241,70 @@ class ThunderSTORMDetector:
             Localization results from detect_and_fit
         output_path : str or Path
             Output CSV file path (will add _locsID.csv suffix if not present)
+        image_stack : ndarray, optional
+            Original image stack for computing bkgstd. If None, bkgstd
+            will be estimated from the background values.
         """
         # Prepare output path
         output_path = Path(output_path)
         if not str(output_path).endswith('_locsID.csv'):
             output_path = output_path.parent / (output_path.stem + '_locsID.csv')
 
-        # Create DataFrame in SPT-compatible format
-        # SPT format: frame, x [nm], y [nm], intensity [photon], id
+        n_locs = len(localizations['x'])
+
+        # Compute sigma [nm] — average of sigma_x and sigma_y
+        sigma_x = localizations.get('sigma_x', np.zeros(n_locs))
+        sigma_y = localizations.get('sigma_y', np.zeros(n_locs))
+        if sigma_x is not None and sigma_y is not None:
+            sigma_nm = (sigma_x + sigma_y) / 2.0
+        elif sigma_x is not None:
+            sigma_nm = sigma_x
+        else:
+            sigma_nm = np.zeros(n_locs)
+
+        # intensity [AU] — raw fitted Gaussian amplitude (offset-subtracted ADU)
+        intensity_au = localizations.get('intensity', np.zeros(n_locs))
+
+        # intensity [photon] — fitted amplitude converted to photons
+        intensity_photon = self._adu_to_photons(intensity_au)
+
+        # offset [photon] — local background converted to photons
+        background_adu = localizations.get('background', np.zeros(n_locs))
+        offset_photon = self._adu_to_photons(background_adu)
+
+        # bkgstd [photon] — background standard deviation converted to photons
+        if image_stack is not None:
+            # Subtract baseline for consistency (detect_and_fit already did this)
+            baseline = self.params['baseline']
+            if baseline != 0:
+                stack_for_bkgstd = image_stack.astype(np.float32) - float(baseline)
+            else:
+                stack_for_bkgstd = image_stack
+            bkgstd_adu = self._compute_bkgstd(stack_for_bkgstd, localizations)
+        else:
+            # Estimate from background values if image stack not available
+            bkgstd_adu = np.zeros(n_locs)
+        bkgstd_photon = self._adu_to_photons(bkgstd_adu)
+
+        # chi2 — goodness of fit
+        chi2 = localizations.get('chi_squared', np.zeros(n_locs))
+
+        # uncertainty [nm] — localization precision
+        uncertainty_nm = localizations.get('uncertainty', np.zeros(n_locs))
+
+        # Create DataFrame matching thunderSTORM column format
         df = pd.DataFrame({
-            'frame': localizations['frame'] + 1,  # Convert to 1-indexed for compatibility
+            'id': np.arange(1, n_locs + 1, dtype=float),
+            'frame': localizations['frame'] + 1,  # Convert to 1-indexed
             'x [nm]': localizations['x'],
             'y [nm]': localizations['y'],
-            'intensity [photon]': localizations['intensity'],
-            'id': np.arange(len(localizations['x']))  # Sequential IDs
+            'sigma [nm]': sigma_nm,
+            'intensity [AU]': intensity_au,
+            'intensity [photon]': intensity_photon,
+            'offset [photon]': offset_photon,
+            'bkgstd [photon]': bkgstd_photon,
+            'chi2': chi2,
+            'uncertainty [nm]': uncertainty_nm,
         })
 
         # Save to CSV
@@ -187,9 +335,11 @@ class ThunderSTORMDetector:
             'fit_radius': gui_params.get('ts_fit_radius', 3),
             'pixel_size': gui_params.get('pixel_size', 108.0),
             'initial_sigma': gui_params.get('ts_initial_sigma', 1.3),
-            'photons_per_adu': gui_params.get('ts_photons_per_adu', 1.0),
+            'photons_per_adu': gui_params.get('ts_photons_per_adu', 3.6),
             'baseline': gui_params.get('ts_baseline', 100.0),
-            'em_gain': gui_params.get('ts_em_gain', 1.0)
+            'is_em_gain': gui_params.get('ts_is_em_gain', True),
+            'em_gain': gui_params.get('ts_em_gain', 100.0),
+            'quantum_efficiency': gui_params.get('ts_quantum_efficiency', 1.0),
         }
 
         return ThunderSTORMDetector(parameters=params)

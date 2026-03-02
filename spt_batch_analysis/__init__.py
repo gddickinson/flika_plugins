@@ -564,9 +564,11 @@ class DetectionWorker(QThread):
                     'ts_fit_radius': self.detector_params.get('ts_fit_radius', 3),
                     'pixel_size': self.pixel_size,
                     'ts_initial_sigma': self.detector_params.get('ts_initial_sigma', 1.3),
-                    'ts_photons_per_adu': self.detector_params.get('ts_photons_per_adu', 1.0),
+                    'ts_photons_per_adu': self.detector_params.get('ts_photons_per_adu', 3.6),
                     'ts_baseline': self.detector_params.get('ts_baseline', 100.0),
-                    'ts_em_gain': self.detector_params.get('ts_em_gain', 1.0),
+                    'ts_is_em_gain': self.detector_params.get('ts_is_em_gain', True),
+                    'ts_em_gain': self.detector_params.get('ts_em_gain', 100.0),
+                    'ts_quantum_efficiency': self.detector_params.get('ts_quantum_efficiency', 1.0),
                 }
 
                 detector = ThunderSTORMDetector.create_from_gui_parameters(gui_params)
@@ -580,11 +582,11 @@ class DetectionWorker(QThread):
                 # Update progress after detection
                 self.frame_progress.emit(100)
 
-                # Save results in SPT-compatible format
+                # Save results in SPT-compatible format with all columns
                 base_name = os.path.splitext(os.path.basename(file_path))[0]
                 output_file = os.path.join(self.output_dir, f"{base_name}_locsID.csv")
 
-                detector.save_localizations(localizations, output_file)
+                detector.save_localizations(localizations, output_file, image_stack=images)
 
                 n_detections = len(localizations['x'])
                 self.progress_update.emit(f"ThunderSTORM: Saved {n_detections} detections to {os.path.basename(output_file)}")
@@ -2430,9 +2432,12 @@ class SPTAnalysisParameters:
         self.ts_fitter_type = 'gaussian_lsq'
         self.ts_fit_radius = 3
         self.ts_initial_sigma = 1.3
-        self.ts_photons_per_adu = 1.0
+        # ThunderSTORM camera parameters
+        self.ts_photons_per_adu = 3.6
         self.ts_baseline = 100.0
-        self.ts_em_gain = 1.0
+        self.ts_is_em_gain = True
+        self.ts_em_gain = 100.0
+        self.ts_quantum_efficiency = 1.0
 
 
         # Enhanced U-Track linking parameters (all existing preserved)
@@ -3090,6 +3095,9 @@ class MissingPointsIntegrator:
             if intensities is not None and len(intensities) == len(missing_locs):
                 missing_locs['intensity'] = intensities
                 print(f"    Successfully calculated intensities from image data")
+            elif 'intensity [AU]' in missing_locs.columns:
+                missing_locs['intensity'] = missing_locs['intensity [AU]']
+                print(f"    Using intensity [AU] values from localization file")
             elif 'intensity [photon]' in missing_locs.columns:
                 missing_locs['intensity'] = missing_locs['intensity [photon]']
                 print(f"    Using intensity values from localization file")
@@ -4123,23 +4131,70 @@ Parameters:
 
         ts_layout.addWidget(ts_params_group)
 
+        # Camera Parameters group
+        ts_camera_group = QGroupBox("Camera Parameters")
+        ts_camera_layout = QFormLayout(ts_camera_group)
+
+        self.ts_photons_per_adu_spin = QDoubleSpinBox()
+        self.ts_photons_per_adu_spin.setRange(0.01, 100.0)
+        self.ts_photons_per_adu_spin.setDecimals(2)
+        self.ts_photons_per_adu_spin.setValue(self.parameters.ts_photons_per_adu)
+        self.ts_photons_per_adu_spin.setToolTip("Photoelectrons per A/D count (from camera spec sheet)")
+        ts_camera_layout.addRow("Photons/ADU:", self.ts_photons_per_adu_spin)
+
+        self.ts_baseline_spin = QDoubleSpinBox()
+        self.ts_baseline_spin.setRange(0, 10000)
+        self.ts_baseline_spin.setDecimals(1)
+        self.ts_baseline_spin.setValue(self.parameters.ts_baseline)
+        self.ts_baseline_spin.setSuffix(" ADU")
+        self.ts_baseline_spin.setToolTip("Camera baseline offset in ADU counts (subtracted before fitting)")
+        ts_camera_layout.addRow("Baseline Offset:", self.ts_baseline_spin)
+
+        self.ts_is_em_gain_checkbox = QCheckBox("EM Gain enabled (EMCCD)")
+        self.ts_is_em_gain_checkbox.setChecked(self.parameters.ts_is_em_gain)
+        self.ts_is_em_gain_checkbox.toggled.connect(self.on_ts_em_gain_toggled)
+        ts_camera_layout.addRow(self.ts_is_em_gain_checkbox)
+
+        self.ts_em_gain_spin = QDoubleSpinBox()
+        self.ts_em_gain_spin.setRange(1, 5000)
+        self.ts_em_gain_spin.setDecimals(1)
+        self.ts_em_gain_spin.setValue(self.parameters.ts_em_gain)
+        self.ts_em_gain_spin.setToolTip("EM multiplication gain (for EMCCD cameras)")
+        self.ts_em_gain_spin.setEnabled(self.parameters.ts_is_em_gain)
+        ts_camera_layout.addRow("EM Gain:", self.ts_em_gain_spin)
+
+        self.ts_quantum_efficiency_spin = QDoubleSpinBox()
+        self.ts_quantum_efficiency_spin.setRange(0.01, 1.0)
+        self.ts_quantum_efficiency_spin.setDecimals(2)
+        self.ts_quantum_efficiency_spin.setValue(self.parameters.ts_quantum_efficiency)
+        self.ts_quantum_efficiency_spin.setToolTip("Quantum efficiency of the sensor (0-1)")
+        ts_camera_layout.addRow("Quantum Efficiency:", self.ts_quantum_efficiency_spin)
+
+        camera_info = QLabel(
+            "Set camera parameters for correct photon conversion.\n"
+            "Conversion: photons = (ADU - offset) × photons2ADU / QE / EM_gain\n"
+            "Values from camera spec sheet or photon transfer curve."
+        )
+        camera_info.setStyleSheet("color: #666; font-style: italic; font-size: 9pt;")
+        camera_info.setWordWrap(True)
+        ts_camera_layout.addRow(camera_info)
+
+        ts_layout.addWidget(ts_camera_group)
+
         # ThunderSTORM description
         ts_desc = QTextEdit()
         ts_desc.setReadOnly(True)
-        ts_desc.setMaximumHeight(180)
+        ts_desc.setMaximumHeight(140)
         ts_desc.setText("""ThunderSTORM Detection:
 
 • Wavelet Filtering: B-spline wavelet decomposition (recommended)
 • Multiple Detectors: Local maximum, NMS, or centroid
 • Advanced Fitting: LSQ, WLSQ, MLE, or radial symmetry
 • Flexible Thresholding: Expression-based adaptive thresholds
-• High-Quality Localization: Sub-pixel precision fitting
 
-Fitter Comparison:
-• LSQ: Fast, good for general use
-• WLSQ: Better for low SNR
-• MLE: Highest accuracy, slower
-• Radial Symmetry: Very fast, good for preview
+Output columns: x [nm], y [nm], sigma [nm], intensity [AU],
+  intensity [photon], offset [photon], bkgstd [photon],
+  chi2, uncertainty [nm]
         """)
         ts_layout.addWidget(ts_desc)
 
@@ -4253,6 +4308,10 @@ Fitter Comparison:
             self.utrack_panel.setStyleSheet("")
             self.thunderstorm_panel.setStyleSheet("QWidget { background-color: #fff0f5; }")
 
+    def on_ts_em_gain_toggled(self):
+        """Enable/disable EM gain spinner based on checkbox"""
+        self.ts_em_gain_spin.setEnabled(self.ts_is_em_gain_checkbox.isChecked())
+
     def select_detection_output_directory(self):
         """Select output directory for detection results"""
         directory = QFileDialog.getExistingDirectory(self, "Select Detection Output Directory")
@@ -4311,9 +4370,11 @@ Fitter Comparison:
                 'ts_fitter_type': self.ts_fitter_combo.currentText(),
                 'ts_fit_radius': self.ts_fit_radius_spin.value(),
                 'ts_initial_sigma': self.ts_initial_sigma_spin.value(),
-                'ts_photons_per_adu': self.parameters.ts_photons_per_adu,
-                'ts_baseline': self.parameters.ts_baseline,
-                'ts_em_gain': self.parameters.ts_em_gain,
+                'ts_photons_per_adu': self.ts_photons_per_adu_spin.value(),
+                'ts_baseline': self.ts_baseline_spin.value(),
+                'ts_is_em_gain': self.ts_is_em_gain_checkbox.isChecked(),
+                'ts_em_gain': self.ts_em_gain_spin.value(),
+                'ts_quantum_efficiency': self.ts_quantum_efficiency_spin.value(),
             })
 
         # Start detection worker with detection method
@@ -4487,7 +4548,11 @@ Fitter Comparison:
             images = np.rot90(images, axes=(1,2))
             images = np.fliplr(images)
 
-            # Create detector
+            # Route to appropriate detection method
+            if self.parameters.detection_method == 'thunderstorm' and THUNDERSTORM_AVAILABLE:
+                return self._run_thunderstorm_detection_for_file(images, detection_file, file_path)
+
+            # U-Track detection (default)
             detector = UTrackDetector(
                 psf_sigma=self.parameters.detection_psf_sigma,
                 alpha_threshold=self.parameters.detection_alpha_threshold,
@@ -4533,6 +4598,41 @@ Fitter Comparison:
 
         except Exception as e:
             self.log_message(f"    Detection failed for {os.path.basename(file_path)}: {e}")
+            return False
+
+    def _run_thunderstorm_detection_for_file(self, images, detection_file, file_path):
+        """Run ThunderSTORM detection for a single file during main analysis pipeline"""
+        try:
+            gui_params = {
+                'ts_filter_type': self.parameters.ts_filter_type,
+                'ts_filter_scale': self.parameters.ts_filter_scale,
+                'ts_detector_type': self.parameters.ts_detector_type,
+                'ts_detector_threshold': self.parameters.ts_detector_threshold,
+                'ts_fitter_type': self.parameters.ts_fitter_type,
+                'ts_fit_radius': self.parameters.ts_fit_radius,
+                'pixel_size': self.parameters.pixel_size,
+                'ts_initial_sigma': self.parameters.ts_initial_sigma,
+                'ts_photons_per_adu': self.parameters.ts_photons_per_adu,
+                'ts_baseline': self.parameters.ts_baseline,
+                'ts_is_em_gain': self.parameters.ts_is_em_gain,
+                'ts_em_gain': self.parameters.ts_em_gain,
+                'ts_quantum_efficiency': self.parameters.ts_quantum_efficiency,
+            }
+
+            detector = ThunderSTORMDetector.create_from_gui_parameters(gui_params)
+            localizations = detector.detect_and_fit(images, show_progress=False)
+
+            n_detections = len(localizations.get('x', []))
+            if n_detections > 0:
+                detector.save_localizations(localizations, detection_file, image_stack=images)
+                self.log_message(f"    ThunderSTORM: Saved {n_detections} detections to {os.path.basename(detection_file)}")
+            else:
+                self.log_message(f"    ThunderSTORM: No detections found in {os.path.basename(file_path)}")
+
+            return True
+
+        except Exception as e:
+            self.log_message(f"    ThunderSTORM detection failed: {e}")
             return False
 
 
@@ -6676,6 +6776,14 @@ directional persistence is important for understanding underlying mechanisms.
             self.parameters.ts_fit_radius = self.ts_fit_radius_spin.value()
             self.parameters.ts_initial_sigma = self.ts_initial_sigma_spin.value()
 
+        # ThunderSTORM camera parameters
+        if hasattr(self, 'ts_photons_per_adu_spin'):
+            self.parameters.ts_photons_per_adu = self.ts_photons_per_adu_spin.value()
+            self.parameters.ts_baseline = self.ts_baseline_spin.value()
+            self.parameters.ts_is_em_gain = self.ts_is_em_gain_checkbox.isChecked()
+            self.parameters.ts_em_gain = self.ts_em_gain_spin.value()
+            self.parameters.ts_quantum_efficiency = self.ts_quantum_efficiency_spin.value()
+
         self.parameters.detection_skip_existing = self.detection_skip_existing_checkbox.isChecked()
         self.parameters.detection_show_results = self.detection_show_results_checkbox.isChecked()
 
@@ -7683,6 +7791,15 @@ directional persistence is important for understanding underlying mechanisms.
         self.on_geometric_enable_toggled()
         self.on_autocorr_enable_toggled()
         self.on_full_interpolation_toggled()
+
+        # ThunderSTORM camera parameters
+        if hasattr(self, 'ts_photons_per_adu_spin'):
+            self.ts_photons_per_adu_spin.setValue(self.parameters.ts_photons_per_adu)
+            self.ts_baseline_spin.setValue(self.parameters.ts_baseline)
+            self.ts_is_em_gain_checkbox.setChecked(self.parameters.ts_is_em_gain)
+            self.ts_em_gain_spin.setValue(self.parameters.ts_em_gain)
+            self.ts_quantum_efficiency_spin.setValue(self.parameters.ts_quantum_efficiency)
+            self.on_ts_em_gain_toggled()
 
         # Call the enhanced version with trackpy support
         self.update_gui_from_parameters_with_mixed_motion()
