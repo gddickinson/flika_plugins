@@ -93,19 +93,39 @@ class ThunderSTORMDetector:
         # Note: we pass baseline=0 and em_gain=1 to the pipeline because
         # we handle offset subtraction and photon conversion ourselves
         # in detect_and_fit() and save_localizations() respectively.
-        self.pipeline = ThunderSTORM(
-            filter_type=self.params['filter_type'],
-            filter_params=filter_params,
-            detector_type=self.params['detector_type'],
-            detector_params=detector_params,
-            fitter_type=self.params['fitter_type'],
-            fitter_params=fitter_params,
-            threshold_expression=self.params['detector_threshold'],
-            pixel_size=self.params['pixel_size'],
-            photons_per_adu=1.0,
-            baseline=0.0,
-            em_gain=1.0
-        )
+        is_emccd = self.params.get('is_em_gain', False)
+        try:
+            self.pipeline = ThunderSTORM(
+                filter_type=self.params['filter_type'],
+                filter_params=filter_params,
+                detector_type=self.params['detector_type'],
+                detector_params=detector_params,
+                fitter_type=self.params['fitter_type'],
+                fitter_params=fitter_params,
+                threshold_expression=self.params['detector_threshold'],
+                pixel_size=self.params['pixel_size'],
+                photons_per_adu=1.0,
+                baseline=0.0,
+                em_gain=1.0,
+                is_emccd=is_emccd
+            )
+        except TypeError:
+            # Fallback if ThunderSTORM hasn't been reloaded with is_emccd param
+            self.pipeline = ThunderSTORM(
+                filter_type=self.params['filter_type'],
+                filter_params=filter_params,
+                detector_type=self.params['detector_type'],
+                detector_params=detector_params,
+                fitter_type=self.params['fitter_type'],
+                fitter_params=fitter_params,
+                threshold_expression=self.params['detector_threshold'],
+                pixel_size=self.params['pixel_size'],
+                photons_per_adu=1.0,
+                baseline=0.0,
+                em_gain=1.0
+            )
+        # Set EMCCD flag directly on the fitter (works even if module cached)
+        self.pipeline.fitter.is_emccd = is_emccd
 
     def _adu_to_photons(self, digital_counts):
         """Convert digital counts (offset-subtracted ADU) to photons.

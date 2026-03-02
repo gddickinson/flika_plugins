@@ -39,6 +39,8 @@ class ThunderSTORM:
         Camera baseline offset
     em_gain : float
         EM gain (for EMCCD cameras)
+    is_emccd : bool
+        Whether camera is EMCCD (applies F=2 excess noise to uncertainty)
     border_exclusion : int or None
         Border exclusion width (if None, computed automatically)
     """
@@ -55,6 +57,7 @@ class ThunderSTORM:
                  photons_per_adu=1.0,
                  baseline=100.0,
                  em_gain=1.0,
+                 is_emccd=False,
                  border_exclusion=None):
 
         # Create components
@@ -81,7 +84,8 @@ class ThunderSTORM:
             pixel_size=pixel_size,
             photons_per_adu=photons_per_adu,
             baseline=baseline,
-            em_gain=em_gain
+            em_gain=em_gain,
+            is_emccd=is_emccd
         )
 
         # Border handling
@@ -268,8 +272,11 @@ class ThunderSTORM:
         filtered = self.filter.apply(image)
 
         # Step 2: Compute threshold
+        # For wavelet filters, pass the first detail coefficient (F1 = I - V1)
+        # so that Wave.F1 in threshold expressions refers to the correct data
+        wave_f1 = getattr(self.filter, 'F1', None)
         threshold = filters.compute_threshold_expression(
-            image, filtered, self.threshold_expression
+            image, filtered, self.threshold_expression, wave_f1=wave_f1
         )
 
         # Step 3: Detect molecules

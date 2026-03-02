@@ -3,20 +3,24 @@ PSF Fitting Module with Numba Optimization
 ===========================================
 
 Implements PSF fitting methods:
-- 2D Gaussian (LSQ - Least Squares)
-- 2D Gaussian (WLSQ - Weighted Least Squares)
-- 2D Gaussian (MLE - Maximum Likelihood Estimation)
-- Integrated Gaussian
+- 2D Integrated Gaussian (LSQ - Least Squares)
+- 2D Integrated Gaussian (WLSQ - Weighted Least Squares)
+- 2D Integrated Gaussian (MLE - Maximum Likelihood Estimation)
 - Phasor/Radial Symmetry
 - Centroid
+
+Uses pixel-integrated Gaussian PSF model (erf-based) and true
+Levenberg-Marquardt optimization matching ImageJ thunderSTORM.
 
 This version uses Numba JIT compilation for 10-50x speedup!
 
 Author: George K (with Claude)
 Date: 2025-12-08
 Updated: 2025-12-11 (added WLSQ and MLE fitters)
+Updated: 2026-03-02 (integrated Gaussian PSF + true LM optimizer)
 """
 
+import math
 import numpy as np
 from dataclasses import dataclass
 from typing import Optional, Tuple
@@ -87,13 +91,199 @@ def extract_roi(image, row, col, radius):
     return roi, r0, r1, c0, c1
 
 
+# ============================================================================
+# INTEGRATED GAUSSIAN PSF MODEL (erf-based)
+# ============================================================================
+# Matches ImageJ thunderSTORM: pixel value = integral of Gaussian over pixel area
+# Parameters: [x0, y0, sigma, intensity, offset]
+#   x0, y0  = sub-pixel center position
+#   sigma   = PSF standard deviation (symmetric)
+#   intensity = total molecule intensity (photons under the PSF)
+#   offset  = local background per pixel
+
+SQRT2 = math.sqrt(2.0)
+TWO_SQRT2PI = 2.0 * math.sqrt(2.0 * math.pi)
+
+
+@njit(fastmath=True)
+def integrated_gaussian_value(jj, ii, x0, y0, sigma, intensity, offset):
+    """Compute integrated Gaussian PSF value for pixel (jj, ii).
+
+    Parameters
+    ----------
+    jj : float
+        Pixel column coordinate (x)
+    ii : float
+        Pixel row coordinate (y)
+    x0, y0 : float
+        Sub-pixel PSF center
+    sigma : float
+        PSF standard deviation
+    intensity : float
+        Total molecule intensity
+    offset : float
+        Background per pixel
+
+    Returns
+    -------
+    value : float
+        Expected pixel value
+    """
+    s2 = SQRT2 * sigma
+    ex = 0.5 * (math.erf((jj - x0 + 0.5) / s2) - math.erf((jj - x0 - 0.5) / s2))
+    ey = 0.5 * (math.erf((ii - y0 + 0.5) / s2) - math.erf((ii - y0 - 0.5) / s2))
+    return offset + intensity * ex * ey
+
+
+@njit(fastmath=True)
+def integrated_gaussian_jacobian(jj, ii, x0, y0, sigma, intensity, offset):
+    """Compute Jacobian of integrated Gaussian for pixel (jj, ii).
+
+    Returns partial derivatives with respect to [x0, y0, sigma, intensity, offset].
+
+    Parameters
+    ----------
+    jj, ii : float
+        Pixel coordinates
+    x0, y0, sigma, intensity, offset : float
+        Model parameters
+
+    Returns
+    -------
+    jac : array of 5 floats
+        [dmodel/dx0, dmodel/dy0, dmodel/dsigma, dmodel/dintensity, dmodel/doffset]
+    """
+    jac = np.zeros(5)
+    s2 = SQRT2 * sigma
+
+    # erf terms for x and y
+    erf_xp = math.erf((jj - x0 + 0.5) / s2)
+    erf_xm = math.erf((jj - x0 - 0.5) / s2)
+    erf_yp = math.erf((ii - y0 + 0.5) / s2)
+    erf_ym = math.erf((ii - y0 - 0.5) / s2)
+
+    ex = 0.5 * (erf_xp - erf_xm)
+    ey = 0.5 * (erf_yp - erf_ym)
+
+    # Gaussian terms for derivatives of erf
+    # d/du erf(u) = 2/sqrt(pi) * exp(-u^2)
+    # We need d(erf((jj - x0 + 0.5)/(sqrt(2)*sigma)))/dx0 = -1/(sqrt(2)*sigma) * 2/sqrt(pi) * exp(...)
+    inv_s2 = 1.0 / s2
+    two_over_sqrtpi = 2.0 / math.sqrt(math.pi)
+
+    ux_p = (jj - x0 + 0.5) * inv_s2
+    ux_m = (jj - x0 - 0.5) * inv_s2
+    uy_p = (ii - y0 + 0.5) * inv_s2
+    uy_m = (ii - y0 - 0.5) * inv_s2
+
+    gx_p = two_over_sqrtpi * math.exp(-ux_p * ux_p)
+    gx_m = two_over_sqrtpi * math.exp(-ux_m * ux_m)
+    gy_p = two_over_sqrtpi * math.exp(-uy_p * uy_p)
+    gy_m = two_over_sqrtpi * math.exp(-uy_m * uy_m)
+
+    # d(ex)/dx0 = 0.5 * (-inv_s2 * gx_p - (-inv_s2 * gx_m))
+    #           = 0.5 * inv_s2 * (gx_m - gx_p)
+    dex_dx0 = 0.5 * inv_s2 * (gx_m - gx_p)
+    dey_dy0 = 0.5 * inv_s2 * (gy_m - gy_p)
+
+    # d(ex)/dsigma = 0.5 * (d/dsigma erf_xp - d/dsigma erf_xm)
+    # d/dsigma erf(u) where u = (jj-x0+0.5)/(sqrt(2)*sigma)
+    # du/dsigma = -(jj-x0+0.5)/(sqrt(2)*sigma^2) = -u/sigma
+    dex_dsigma = 0.5 * (-ux_p * gx_p + ux_m * gx_m) / sigma
+    dey_dsigma = 0.5 * (-uy_p * gy_p + uy_m * gy_m) / sigma
+
+    # jac[0] = dmodel/dx0 = intensity * dex_dx0 * ey
+    jac[0] = intensity * dex_dx0 * ey
+
+    # jac[1] = dmodel/dy0 = intensity * ex * dey_dy0
+    jac[1] = intensity * ex * dey_dy0
+
+    # jac[2] = dmodel/dsigma = intensity * (dex_dsigma * ey + ex * dey_dsigma)
+    jac[2] = intensity * (dex_dsigma * ey + ex * dey_dsigma)
+
+    # jac[3] = dmodel/dintensity = ex * ey
+    jac[3] = ex * ey
+
+    # jac[4] = dmodel/doffset = 1.0
+    jac[4] = 1.0
+
+    return jac
+
+
+# ============================================================================
+# 5x5 LINEAR SOLVER (Gaussian elimination with partial pivoting)
+# ============================================================================
+
+@njit(fastmath=True)
+def solve_5x5(A, b):
+    """Solve 5x5 linear system A*x = b via Gaussian elimination with partial pivoting.
+
+    Parameters
+    ----------
+    A : ndarray (5, 5)
+        Coefficient matrix (modified in-place)
+    b : ndarray (5,)
+        Right-hand side (modified in-place)
+
+    Returns
+    -------
+    x : ndarray (5,)
+        Solution vector. All zeros if system is singular.
+    """
+    n = 5
+    x = np.zeros(n)
+
+    # Forward elimination with partial pivoting
+    for k in range(n):
+        # Find pivot
+        max_val = abs(A[k, k])
+        max_row = k
+        for i in range(k + 1, n):
+            if abs(A[i, k]) > max_val:
+                max_val = abs(A[i, k])
+                max_row = i
+
+        if max_val < 1e-30:
+            # Singular matrix
+            return x
+
+        # Swap rows
+        if max_row != k:
+            for j in range(k, n):
+                A[k, j], A[max_row, j] = A[max_row, j], A[k, j]
+            b[k], b[max_row] = b[max_row], b[k]
+
+        # Eliminate below
+        pivot = A[k, k]
+        for i in range(k + 1, n):
+            factor = A[i, k] / pivot
+            for j in range(k + 1, n):
+                A[i, j] -= factor * A[k, j]
+            A[i, k] = 0.0
+            b[i] -= factor * b[k]
+
+    # Back substitution
+    for i in range(n - 1, -1, -1):
+        if abs(A[i, i]) < 1e-30:
+            x[i] = 0.0
+        else:
+            s = b[i]
+            for j in range(i + 1, n):
+                s -= A[i, j] * x[j]
+            x[i] = s / A[i, i]
+
+    return x
+
+
 @njit(parallel=True, fastmath=True)
 def fit_gaussian_lsq_batch_numba(image, positions, fit_radius=3,
-                                  initial_sigma=1.3, max_iterations=20):
+                                  initial_sigma=1.3, max_iterations=50):
     """
-    Fit 2D Gaussians to multiple positions using Least Squares
+    Fit integrated Gaussian PSF to multiple positions using Least Squares
+    with true Levenberg-Marquardt optimization.
 
-    This is the main workhorse - uses Numba for 10-50x speedup!
+    Uses erf-based pixel-integrated Gaussian model matching ImageJ thunderSTORM.
+    5 parameters: [x0, y0, sigma, intensity, offset]
 
     Parameters
     ----------
@@ -111,12 +301,11 @@ def fit_gaussian_lsq_batch_numba(image, positions, fit_radius=3,
     Returns
     -------
     results : ndarray (N, 8)
-        Fitted parameters: [x, y, amplitude, sigma_x, sigma_y, background, chi_sq, success]
+        [x, y, intensity, sigma, sigma, background, chi_sq, success]
     """
     n_fits = len(positions)
     results = np.zeros((n_fits, 8))
 
-    # Parallel fitting!
     for i in prange(n_fits):
         row = int(positions[i, 0])
         col = int(positions[i, 1])
@@ -128,213 +317,121 @@ def fit_gaussian_lsq_batch_numba(image, positions, fit_radius=3,
         c1 = min(image.shape[1], col + fit_radius + 1)
 
         if r1 - r0 < 3 or c1 - c0 < 3:
-            # ROI too small
-            results[i, 7] = 0  # failed
+            results[i, 7] = 0.0
             continue
 
         roi = image[r0:r1, c0:c1]
+        ny = roi.shape[0]
+        nx = roi.shape[1]
+        n_pixels = ny * nx
 
-        # Initial parameters
-        background = np.min(roi)
-        amplitude = np.max(roi) - background
-        x0 = col - c0  # Local coordinates
-        y0 = row - r0
-        sigma_x = initial_sigma
-        sigma_y = initial_sigma
+        # Initial parameter estimates: [x0, y0, sigma, intensity, offset]
+        offset = np.min(roi)
+        peak = np.max(roi) - offset
+        x0 = float(col - c0)
+        y0 = float(row - r0)
+        sigma = initial_sigma
+        intensity = peak * 2.0 * math.pi * sigma * sigma  # Approx total intensity
 
-        # Levenberg-Marquardt optimization
-        lambda_lm = 0.01
+        # Levenberg-Marquardt
+        lambda_lm = 1.0
+
+        # Compute initial chi-squared
+        chi_sq = 0.0
+        for ii in range(ny):
+            for jj in range(nx):
+                model_val = integrated_gaussian_value(float(jj), float(ii), x0, y0, sigma, intensity, offset)
+                r = roi[ii, jj] - model_val
+                chi_sq += r * r
 
         for iteration in range(max_iterations):
-            # Compute residuals
-            chi_sq = 0.0
+            # Build Hessian approximation H = J^T * J and gradient g = J^T * r
+            H = np.zeros((5, 5))
+            g = np.zeros(5)
 
-            # Build Jacobian and gradient
-            # For simplicity, using numerical derivatives
-            eps = 1e-5
+            for ii in range(ny):
+                for jj in range(nx):
+                    fj = float(jj)
+                    fi = float(ii)
+                    model_val = integrated_gaussian_value(fj, fi, x0, y0, sigma, intensity, offset)
+                    residual = roi[ii, jj] - model_val
+                    J = integrated_gaussian_jacobian(fj, fi, x0, y0, sigma, intensity, offset)
 
-            residual_sum = 0.0
-            grad_x = 0.0
-            grad_y = 0.0
-            grad_amp = 0.0
-            grad_sx = 0.0
-            grad_sy = 0.0
-            grad_bg = 0.0
+                    for p in range(5):
+                        g[p] += J[p] * residual
+                        for q in range(5):
+                            H[p][q] += J[p] * J[q]
 
-            for ii in range(roi.shape[0]):
-                for jj in range(roi.shape[1]):
-                    # Model value
-                    x = float(jj)
-                    y = float(ii)
+            # Augment diagonal: H_aug = H + lambda * diag(H)
+            H_aug = H.copy()
+            for p in range(5):
+                H_aug[p][p] *= (1.0 + lambda_lm)
 
-                    dx = (x - x0) / sigma_x
-                    dy = (y - y0) / sigma_y
-                    exp_term = np.exp(-0.5 * (dx*dx + dy*dy))
-                    model = amplitude * exp_term + background
+            # Solve for parameter update
+            g_copy = g.copy()
+            dp = solve_5x5(H_aug, g_copy)
 
-                    # Residual
-                    residual = roi[ii, jj] - model
-                    residual_sum += residual * residual
+            # Candidate parameters
+            x0_new = x0 + dp[0]
+            y0_new = y0 + dp[1]
+            sigma_new = sigma + dp[2]
+            intensity_new = intensity + dp[3]
+            offset_new = offset + dp[4]
 
-                    # Gradients (analytical)
-                    grad_amp -= residual * exp_term
-                    grad_bg -= residual
-                    grad_x -= residual * amplitude * exp_term * dx / sigma_x
-                    grad_y -= residual * amplitude * exp_term * dy / sigma_y
-                    grad_sx -= residual * amplitude * exp_term * dx * dx / sigma_x
-                    grad_sy -= residual * amplitude * exp_term * dy * dy / sigma_y
+            # Constrain
+            sigma_new = max(0.5, min(sigma_new, 10.0))
+            intensity_new = max(1.0, intensity_new)
+            offset_new = max(0.0, offset_new)
 
-            chi_sq = residual_sum
-
-            # Simple gradient descent (simplified LM)
-            step_size = 0.1 / (1.0 + lambda_lm)
-
-            x0_new = x0 - step_size * grad_x
-            y0_new = y0 - step_size * grad_y
-            amplitude_new = amplitude - step_size * grad_amp
-            sigma_x_new = sigma_x - step_size * grad_sx
-            sigma_y_new = sigma_y - step_size * grad_sy
-            background_new = background - step_size * grad_bg
-
-            # Constrain parameters
-            amplitude_new = max(0.1, min(amplitude_new, 1e6))
-            sigma_x_new = max(0.5, min(sigma_x_new, 10.0))
-            sigma_y_new = max(0.5, min(sigma_y_new, 10.0))
-            background_new = max(0.0, background_new)
-
-            # Check improvement
+            # Compute new chi-squared
             chi_sq_new = 0.0
-            for ii in range(roi.shape[0]):
-                for jj in range(roi.shape[1]):
-                    x = float(jj)
-                    y = float(ii)
-                    dx = (x - x0_new) / sigma_x_new
-                    dy = (y - y0_new) / sigma_y_new
-                    model = amplitude_new * np.exp(-0.5 * (dx*dx + dy*dy)) + background_new
-                    residual = roi[ii, jj] - model
-                    chi_sq_new += residual * residual
+            for ii in range(ny):
+                for jj in range(nx):
+                    model_val = integrated_gaussian_value(float(jj), float(ii), x0_new, y0_new, sigma_new, intensity_new, offset_new)
+                    r = roi[ii, jj] - model_val
+                    chi_sq_new += r * r
 
             if chi_sq_new < chi_sq:
                 # Accept step
+                rel_change = abs(chi_sq - chi_sq_new) / max(chi_sq, 1e-30)
                 x0 = x0_new
                 y0 = y0_new
-                amplitude = amplitude_new
-                sigma_x = sigma_x_new
-                sigma_y = sigma_y_new
-                background = background_new
-                lambda_lm *= 0.5
+                sigma = sigma_new
+                intensity = intensity_new
+                offset = offset_new
+                chi_sq = chi_sq_new
+                lambda_lm /= 10.0
+                lambda_lm = max(lambda_lm, 1e-7)
 
-                # Check convergence
-                if abs(chi_sq - chi_sq_new) < 1e-6:
+                if rel_change < 1e-6:
                     break
             else:
                 # Reject step
-                lambda_lm *= 2.0
+                lambda_lm *= 10.0
+                if lambda_lm > 1e10:
+                    break
 
-            if lambda_lm > 1e10:
-                break
-
-        # Convert back to image coordinates
-        results[i, 0] = x0 + c0  # x
-        results[i, 1] = y0 + r0  # y
-        results[i, 2] = amplitude
-        results[i, 3] = sigma_x
-        results[i, 4] = sigma_y
-        results[i, 5] = background
-        results[i, 6] = chi_sq / (roi.shape[0] * roi.shape[1])
-        results[i, 7] = 1  # success
-
-    return results
-
-
-@njit(parallel=True, fastmath=True)
-def fit_integrated_gaussian_numba(image, positions, fit_radius=3, initial_sigma=1.3):
-    """
-    Fit integrated Gaussian (more accurate for low photon counts)
-
-    Accounts for pixel integration instead of point sampling
-    """
-    n_fits = len(positions)
-    results = np.zeros((n_fits, 9))  # Add integrated intensity
-
-    for i in prange(n_fits):
-        row = int(positions[i, 0])
-        col = int(positions[i, 1])
-
-        # Extract ROI
-        r0 = max(0, row - fit_radius)
-        r1 = min(image.shape[0], row + fit_radius + 1)
-        c0 = max(0, col - fit_radius)
-        c1 = min(image.shape[1], col + fit_radius + 1)
-
-        if r1 - r0 < 3 or c1 - c0 < 3:
-            results[i, 7] = 0
-            continue
-
-        roi = image[r0:r1, c0:c1]
-
-        # Compute weighted centroid for initial guess
-        total = 0.0
-        x_sum = 0.0
-        y_sum = 0.0
-
-        for ii in range(roi.shape[0]):
-            for jj in range(roi.shape[1]):
-                val = roi[ii, jj]
-                total += val
-                x_sum += val * jj
-                y_sum += val * ii
-
-        if total > 0:
-            x0 = x_sum / total
-            y0 = y_sum / total
-        else:
-            x0 = roi.shape[1] / 2
-            y0 = roi.shape[0] / 2
-
-        background = np.min(roi)
-        amplitude = np.max(roi) - background
-        sigma = initial_sigma
-
-        # Simple fitting (could be improved with full LM)
-        for iteration in range(10):
-            residual_sum = 0.0
-
-            for ii in range(roi.shape[0]):
-                for jj in range(roi.shape[1]):
-                    dx = (jj - x0) / sigma
-                    dy = (ii - y0) / sigma
-                    model = amplitude * np.exp(-0.5 * (dx*dx + dy*dy)) + background
-                    residual = roi[ii, jj] - model
-                    residual_sum += residual * residual
-
-            if residual_sum < 1e-6:
-                break
-
-        # Compute integrated intensity
-        integrated_intensity = amplitude * 2 * np.pi * sigma * sigma
-
-        results[i, 0] = x0 + c0
-        results[i, 1] = y0 + r0
-        results[i, 2] = amplitude
-        results[i, 3] = sigma
-        results[i, 4] = sigma
-        results[i, 5] = background
-        results[i, 6] = residual_sum / (roi.shape[0] * roi.shape[1])
-        results[i, 7] = 1
-        results[i, 8] = integrated_intensity
+        # Store results: [x, y, intensity, sigma, sigma, background, chi_sq, success]
+        results[i, 0] = x0 + c0   # x in image coordinates
+        results[i, 1] = y0 + r0   # y in image coordinates
+        results[i, 2] = intensity  # total intensity
+        results[i, 3] = sigma      # sigma
+        results[i, 4] = sigma      # sigma (duplicate for backward compat)
+        results[i, 5] = offset     # background
+        results[i, 6] = chi_sq / n_pixels
+        results[i, 7] = 1.0        # success
 
     return results
 
 
 @njit(parallel=True, fastmath=True)
 def fit_gaussian_wlsq_batch_numba(image, positions, fit_radius=3,
-                                   initial_sigma=1.3, max_iterations=20):
+                                   initial_sigma=1.3, max_iterations=50):
     """
-    Fit 2D Gaussians using Weighted Least Squares
+    Fit integrated Gaussian PSF using Weighted Least Squares
+    with true Levenberg-Marquardt optimization.
 
-    Weights residuals by inverse variance (Poisson model: variance = counts)
-    More accurate than LSQ for low photon counts
+    Weights: w = 1/max(data, 1) (Poisson variance model).
 
     Parameters
     ----------
@@ -352,150 +449,128 @@ def fit_gaussian_wlsq_batch_numba(image, positions, fit_radius=3,
     Returns
     -------
     results : ndarray (N, 8)
-        Fitted parameters: [x, y, amplitude, sigma_x, sigma_y, background, chi_sq, success]
+        [x, y, intensity, sigma, sigma, background, chi_sq, success]
     """
     n_fits = len(positions)
     results = np.zeros((n_fits, 8))
 
-    # Parallel fitting
     for i in prange(n_fits):
         row = int(positions[i, 0])
         col = int(positions[i, 1])
 
-        # Extract ROI
         r0 = max(0, row - fit_radius)
         r1 = min(image.shape[0], row + fit_radius + 1)
         c0 = max(0, col - fit_radius)
         c1 = min(image.shape[1], col + fit_radius + 1)
 
         if r1 - r0 < 3 or c1 - c0 < 3:
-            results[i, 7] = 0  # failed
+            results[i, 7] = 0.0
             continue
 
         roi = image[r0:r1, c0:c1]
+        ny = roi.shape[0]
+        nx = roi.shape[1]
+        n_pixels = ny * nx
 
         # Initial parameters
-        background = np.min(roi)
-        amplitude = np.max(roi) - background
-        x0 = col - c0  # Local coordinates
-        y0 = row - r0
-        sigma_x = initial_sigma
-        sigma_y = initial_sigma
+        offset = np.min(roi)
+        peak = np.max(roi) - offset
+        x0 = float(col - c0)
+        y0 = float(row - r0)
+        sigma = initial_sigma
+        intensity = peak * 2.0 * math.pi * sigma * sigma
 
-        # Weighted Levenberg-Marquardt optimization
-        lambda_lm = 0.01
+        lambda_lm = 1.0
+
+        # Compute initial weighted chi-squared
+        chi_sq = 0.0
+        for ii in range(ny):
+            for jj in range(nx):
+                model_val = integrated_gaussian_value(float(jj), float(ii), x0, y0, sigma, intensity, offset)
+                data = roi[ii, jj]
+                r = data - model_val
+                w = 1.0 / max(data, 1.0)
+                chi_sq += w * r * r
 
         for iteration in range(max_iterations):
-            # Compute weighted residuals
-            chi_sq_weighted = 0.0
+            H = np.zeros((5, 5))
+            g = np.zeros(5)
 
-            grad_x = 0.0
-            grad_y = 0.0
-            grad_amp = 0.0
-            grad_sx = 0.0
-            grad_sy = 0.0
-            grad_bg = 0.0
-
-            for ii in range(roi.shape[0]):
-                for jj in range(roi.shape[1]):
-                    x = float(jj)
-                    y = float(ii)
-
-                    # Model value
-                    dx = (x - x0) / sigma_x
-                    dy = (y - y0) / sigma_y
-                    exp_term = np.exp(-0.5 * (dx*dx + dy*dy))
-                    model = amplitude * exp_term + background
-
-                    # Residual
+            for ii in range(ny):
+                for jj in range(nx):
+                    fj = float(jj)
+                    fi = float(ii)
+                    model_val = integrated_gaussian_value(fj, fi, x0, y0, sigma, intensity, offset)
                     data = roi[ii, jj]
-                    residual = data - model
+                    residual = data - model_val
+                    w = 1.0 / max(data, 1.0)
+                    J = integrated_gaussian_jacobian(fj, fi, x0, y0, sigma, intensity, offset)
 
-                    # Weight = 1/variance, variance = max(data, 1) for Poisson
-                    weight = 1.0 / max(data, 1.0)
+                    for p in range(5):
+                        g[p] += w * J[p] * residual
+                        for q in range(5):
+                            H[p][q] += w * J[p] * J[q]
 
-                    # Weighted chi-squared
-                    chi_sq_weighted += weight * residual * residual
+            H_aug = H.copy()
+            for p in range(5):
+                H_aug[p][p] *= (1.0 + lambda_lm)
 
-                    # Weighted gradients
-                    grad_amp -= weight * residual * exp_term
-                    grad_bg -= weight * residual
-                    grad_x -= weight * residual * amplitude * exp_term * dx / sigma_x
-                    grad_y -= weight * residual * amplitude * exp_term * dy / sigma_y
-                    grad_sx -= weight * residual * amplitude * exp_term * dx * dx / sigma_x
-                    grad_sy -= weight * residual * amplitude * exp_term * dy * dy / sigma_y
+            g_copy = g.copy()
+            dp = solve_5x5(H_aug, g_copy)
 
-            # Gradient descent step
-            step_size = 0.1 / (1.0 + lambda_lm)
+            x0_new = x0 + dp[0]
+            y0_new = y0 + dp[1]
+            sigma_new = max(0.5, min(sigma + dp[2], 10.0))
+            intensity_new = max(1.0, intensity + dp[3])
+            offset_new = max(0.0, offset + dp[4])
 
-            x0_new = x0 - step_size * grad_x
-            y0_new = y0 - step_size * grad_y
-            amplitude_new = amplitude - step_size * grad_amp
-            sigma_x_new = sigma_x - step_size * grad_sx
-            sigma_y_new = sigma_y - step_size * grad_sy
-            background_new = background - step_size * grad_bg
-
-            # Constrain parameters
-            amplitude_new = max(0.1, min(amplitude_new, 1e6))
-            sigma_x_new = max(0.5, min(sigma_x_new, 10.0))
-            sigma_y_new = max(0.5, min(sigma_y_new, 10.0))
-            background_new = max(0.0, background_new)
-
-            # Check improvement
             chi_sq_new = 0.0
-            for ii in range(roi.shape[0]):
-                for jj in range(roi.shape[1]):
-                    x = float(jj)
-                    y = float(ii)
-                    dx = (x - x0_new) / sigma_x_new
-                    dy = (y - y0_new) / sigma_y_new
-                    model = amplitude_new * np.exp(-0.5 * (dx*dx + dy*dy)) + background_new
+            for ii in range(ny):
+                for jj in range(nx):
+                    model_val = integrated_gaussian_value(float(jj), float(ii), x0_new, y0_new, sigma_new, intensity_new, offset_new)
                     data = roi[ii, jj]
-                    residual = data - model
-                    weight = 1.0 / max(data, 1.0)
-                    chi_sq_new += weight * residual * residual
+                    r = data - model_val
+                    w = 1.0 / max(data, 1.0)
+                    chi_sq_new += w * r * r
 
-            if chi_sq_new < chi_sq_weighted:
-                # Accept step
+            if chi_sq_new < chi_sq:
+                rel_change = abs(chi_sq - chi_sq_new) / max(chi_sq, 1e-30)
                 x0 = x0_new
                 y0 = y0_new
-                amplitude = amplitude_new
-                sigma_x = sigma_x_new
-                sigma_y = sigma_y_new
-                background = background_new
-                lambda_lm *= 0.5
+                sigma = sigma_new
+                intensity = intensity_new
+                offset = offset_new
+                chi_sq = chi_sq_new
+                lambda_lm /= 10.0
+                lambda_lm = max(lambda_lm, 1e-7)
 
-                # Convergence check
-                if abs(chi_sq_weighted - chi_sq_new) < 1e-6:
+                if rel_change < 1e-6:
                     break
             else:
-                # Reject step
-                lambda_lm *= 2.0
+                lambda_lm *= 10.0
+                if lambda_lm > 1e10:
+                    break
 
-            if lambda_lm > 1e10:
-                break
-
-        # Convert back to image coordinates
-        results[i, 0] = x0 + c0  # x
-        results[i, 1] = y0 + r0  # y
-        results[i, 2] = amplitude
-        results[i, 3] = sigma_x
-        results[i, 4] = sigma_y
-        results[i, 5] = background
-        results[i, 6] = chi_sq_weighted / (roi.shape[0] * roi.shape[1])
-        results[i, 7] = 1  # success
+        results[i, 0] = x0 + c0
+        results[i, 1] = y0 + r0
+        results[i, 2] = intensity
+        results[i, 3] = sigma
+        results[i, 4] = sigma
+        results[i, 5] = offset
+        results[i, 6] = chi_sq / n_pixels
+        results[i, 7] = 1.0
 
     return results
 
 
 @njit(parallel=True, fastmath=True)
 def fit_gaussian_mle_batch_numba(image, positions, fit_radius=3,
-                                  initial_sigma=1.3, max_iterations=20):
+                                  initial_sigma=1.3, max_iterations=50):
     """
-    Fit 2D Gaussians using Maximum Likelihood Estimation
+    Fit integrated Gaussian PSF using Maximum Likelihood Estimation
+    with true Levenberg-Marquardt optimization.
 
-    Assumes Poisson noise model - optimal for SMLM data
-    Uses negative log-likelihood minimization
+    Poisson noise model: -log L = sum(model - data*log(model))
 
     Parameters
     ----------
@@ -513,171 +588,182 @@ def fit_gaussian_mle_batch_numba(image, positions, fit_radius=3,
     Returns
     -------
     results : ndarray (N, 8)
-        Fitted parameters: [x, y, amplitude, sigma_x, sigma_y, background, log_likelihood, success]
+        [x, y, intensity, sigma, sigma, background, neg_log_likelihood, success]
     """
     n_fits = len(positions)
     results = np.zeros((n_fits, 8))
 
-    # Parallel fitting
     for i in prange(n_fits):
         row = int(positions[i, 0])
         col = int(positions[i, 1])
 
-        # Extract ROI
         r0 = max(0, row - fit_radius)
         r1 = min(image.shape[0], row + fit_radius + 1)
         c0 = max(0, col - fit_radius)
         c1 = min(image.shape[1], col + fit_radius + 1)
 
         if r1 - r0 < 3 or c1 - c0 < 3:
-            results[i, 7] = 0  # failed
+            results[i, 7] = 0.0
             continue
 
         roi = image[r0:r1, c0:c1]
+        ny = roi.shape[0]
+        nx = roi.shape[1]
+        n_pixels = ny * nx
 
         # Initial parameters
-        background = np.min(roi)
-        amplitude = np.max(roi) - background
-        x0 = col - c0  # Local coordinates
-        y0 = row - r0
-        sigma_x = initial_sigma
-        sigma_y = initial_sigma
+        offset = max(np.min(roi), 0.1)
+        peak = np.max(roi) - offset
+        x0 = float(col - c0)
+        y0 = float(row - r0)
+        sigma = initial_sigma
+        intensity = max(peak * 2.0 * math.pi * sigma * sigma, 1.0)
 
-        # MLE optimization using gradient ascent on log-likelihood
-        lambda_lm = 0.01
+        lambda_lm = 1.0
+
+        # Initial negative log-likelihood
+        neg_ll = 0.0
+        for ii in range(ny):
+            for jj in range(nx):
+                model_val = integrated_gaussian_value(float(jj), float(ii), x0, y0, sigma, intensity, offset)
+                model_val = max(model_val, 1e-10)
+                data = roi[ii, jj]
+                neg_ll += model_val - data * math.log(model_val)
 
         for iteration in range(max_iterations):
-            # Compute negative log-likelihood and gradients
-            # For Poisson: -log L = sum(model - data*log(model))
-            neg_log_likelihood = 0.0
+            # For MLE with Poisson noise, the Hessian approximation uses
+            # H = J^T * diag(1/model) * J and g = J^T * (1 - data/model)
+            # But we use the Fisher information approximation:
+            # H[p][q] = sum(J_p * J_q / model), g[p] = sum((1 - data/model) * J_p)
+            H = np.zeros((5, 5))
+            g = np.zeros(5)
 
-            grad_x = 0.0
-            grad_y = 0.0
-            grad_amp = 0.0
-            grad_sx = 0.0
-            grad_sy = 0.0
-            grad_bg = 0.0
-
-            for ii in range(roi.shape[0]):
-                for jj in range(roi.shape[1]):
-                    x = float(jj)
-                    y = float(ii)
-
-                    # Model value
-                    dx = (x - x0) / sigma_x
-                    dy = (y - y0) / sigma_y
-                    exp_term = np.exp(-0.5 * (dx*dx + dy*dy))
-                    model = amplitude * exp_term + background
-
-                    # Ensure model > 0 for log
-                    model = max(model, 1e-10)
-
+            for ii in range(ny):
+                for jj in range(nx):
+                    fj = float(jj)
+                    fi = float(ii)
+                    model_val = integrated_gaussian_value(fj, fi, x0, y0, sigma, intensity, offset)
+                    model_val = max(model_val, 1e-10)
                     data = roi[ii, jj]
+                    J = integrated_gaussian_jacobian(fj, fi, x0, y0, sigma, intensity, offset)
 
-                    # Negative log-likelihood (Poisson)
-                    # -log L = model - data*log(model)
-                    neg_log_likelihood += model - data * np.log(model)
+                    # Weight = 1/model (Fisher information)
+                    w = 1.0 / model_val
+                    factor = data / model_val - 1.0  # negative gradient direction
 
-                    # Gradients of negative log-likelihood
-                    # d(-log L)/d(param) = 1 - data/model * d(model)/d(param)
-                    factor = 1.0 - data / model
+                    for p in range(5):
+                        g[p] += factor * J[p]
+                        for q in range(5):
+                            H[p][q] += w * J[p] * J[q]
 
-                    grad_amp += factor * exp_term
-                    grad_bg += factor
-                    grad_x += factor * amplitude * exp_term * dx / sigma_x
-                    grad_y += factor * amplitude * exp_term * dy / sigma_y
-                    grad_sx += factor * amplitude * exp_term * dx * dx / sigma_x
-                    grad_sy += factor * amplitude * exp_term * dy * dy / sigma_y
+            H_aug = H.copy()
+            for p in range(5):
+                H_aug[p][p] *= (1.0 + lambda_lm)
 
-            # Gradient descent on negative log-likelihood
-            step_size = 0.1 / (1.0 + lambda_lm)
+            g_copy = g.copy()
+            dp = solve_5x5(H_aug, g_copy)
 
-            x0_new = x0 - step_size * grad_x
-            y0_new = y0 - step_size * grad_y
-            amplitude_new = amplitude - step_size * grad_amp
-            sigma_x_new = sigma_x - step_size * grad_sx
-            sigma_y_new = sigma_y - step_size * grad_sy
-            background_new = background - step_size * grad_bg
+            x0_new = x0 + dp[0]
+            y0_new = y0 + dp[1]
+            sigma_new = max(0.5, min(sigma + dp[2], 10.0))
+            intensity_new = max(1.0, intensity + dp[3])
+            offset_new = max(0.1, offset + dp[4])
 
-            # Constrain parameters
-            amplitude_new = max(0.1, min(amplitude_new, 1e6))
-            sigma_x_new = max(0.5, min(sigma_x_new, 10.0))
-            sigma_y_new = max(0.5, min(sigma_y_new, 10.0))
-            background_new = max(0.1, background_new)  # Keep > 0 for log
-
-            # Check improvement (lower is better for negative log-likelihood)
             neg_ll_new = 0.0
-            for ii in range(roi.shape[0]):
-                for jj in range(roi.shape[1]):
-                    x = float(jj)
-                    y = float(ii)
-                    dx = (x - x0_new) / sigma_x_new
-                    dy = (y - y0_new) / sigma_y_new
-                    model = amplitude_new * np.exp(-0.5 * (dx*dx + dy*dy)) + background_new
-                    model = max(model, 1e-10)
+            for ii in range(ny):
+                for jj in range(nx):
+                    model_val = integrated_gaussian_value(float(jj), float(ii), x0_new, y0_new, sigma_new, intensity_new, offset_new)
+                    model_val = max(model_val, 1e-10)
                     data = roi[ii, jj]
-                    neg_ll_new += model - data * np.log(model)
+                    neg_ll_new += model_val - data * math.log(model_val)
 
-            if neg_ll_new < neg_log_likelihood:
-                # Accept step
+            if neg_ll_new < neg_ll:
+                rel_change = abs(neg_ll - neg_ll_new) / max(abs(neg_ll), 1e-30)
                 x0 = x0_new
                 y0 = y0_new
-                amplitude = amplitude_new
-                sigma_x = sigma_x_new
-                sigma_y = sigma_y_new
-                background = background_new
-                lambda_lm *= 0.5
+                sigma = sigma_new
+                intensity = intensity_new
+                offset = offset_new
+                neg_ll = neg_ll_new
+                lambda_lm /= 10.0
+                lambda_lm = max(lambda_lm, 1e-7)
 
-                # Convergence check
-                if abs(neg_log_likelihood - neg_ll_new) < 1e-6:
+                if rel_change < 1e-6:
                     break
             else:
-                # Reject step
-                lambda_lm *= 2.0
+                lambda_lm *= 10.0
+                if lambda_lm > 1e10:
+                    break
 
-            if lambda_lm > 1e10:
-                break
-
-        # Convert back to image coordinates
-        results[i, 0] = x0 + c0  # x
-        results[i, 1] = y0 + r0  # y
-        results[i, 2] = amplitude
-        results[i, 3] = sigma_x
-        results[i, 4] = sigma_y
-        results[i, 5] = background
-        results[i, 6] = neg_log_likelihood / (roi.shape[0] * roi.shape[1])
-        results[i, 7] = 1  # success
+        results[i, 0] = x0 + c0
+        results[i, 1] = y0 + r0
+        results[i, 2] = intensity
+        results[i, 3] = sigma
+        results[i, 4] = sigma
+        results[i, 5] = offset
+        results[i, 6] = neg_ll / n_pixels
+        results[i, 7] = 1.0
 
     return results
 
 
-def compute_localization_precision(amplitude, background, sigma, pixel_size):
+def compute_localization_precision(intensity, background, sigma, pixel_size,
+                                    fitting_method='lsq', is_emccd=False):
     """
-    Compute localization precision (Thompson et al., 2002)
+    Compute localization precision using Thompson-Mortensen-Quan formula.
 
-    σ² = (s² + a²/12) / N + (8πs⁴b²) / (a²N²)
+    Base variance (Thompson et al., 2002):
+        σ² = (s² + a²/12) / N + (8π·(s² + a²/12)²·b²) / (a²·N²)
 
-    where:
-    s = PSF standard deviation
-    a = pixel size
-    N = number of photons
-    b = background per pixel
+    Corrections:
+    - Mortensen et al. (2010): multiply by 16/9 for least-squares fitting
+    - EMCCD excess noise: multiply by F=2 (Ulbrich & Bhatt, 2015)
+
+    Parameters
+    ----------
+    intensity : float
+        Total molecule intensity (photons). For integrated Gaussian model
+        this is the total intensity parameter, NOT peak amplitude.
+    background : float
+        Background per pixel
+    sigma : float
+        PSF standard deviation (same units as pixel_size)
+    pixel_size : float
+        Pixel size (set to 1.0 for pixel-unit computation)
+    fitting_method : str
+        Fitting method: 'lsq', 'wlsq', or 'mle'
+    is_emccd : bool
+        Whether camera is EMCCD (applies F=2 excess noise factor)
+
+    Returns
+    -------
+    precision : float
+        Localization precision (sqrt of variance)
     """
-    if amplitude <= 0:
+    if intensity <= 0:
         return np.nan
 
     s = sigma
     a = pixel_size
-    N = amplitude
+    N = intensity
     b = background
 
-    # Term 1: photon noise
-    term1 = (s*s + a*a/12) / N
+    # sa2 = s^2 + a^2/12  (effective variance including pixelation)
+    sa2 = s * s + a * a / 12.0
 
-    # Term 2: background noise
-    term2 = (8 * np.pi * s**4 * b*b) / (a*a * N*N)
-
+    # Base variance (Thompson et al., 2002)
+    # Note: using sa2 in numerator of term2 as per Mortensen formulation
+    term1 = sa2 / N
+    term2 = (8.0 * np.pi * sa2 * sa2 * b * b) / (a * a * N * N)
     variance = term1 + term2
+
+    # Mortensen correction for least-squares fitting (Mortensen 2010, Eq. 6)
+    if fitting_method in ('lsq', 'wlsq'):
+        variance *= 16.0 / 9.0
+
+    # EMCCD excess noise factor F=2
+    if is_emccd:
+        variance *= 2.0
 
     return np.sqrt(variance)
 
@@ -688,7 +774,11 @@ def compute_localization_precision(amplitude, background, sigma, pixel_size):
 
 @dataclass
 class FitResult:
-    """Container for fitting results"""
+    """Container for fitting results.
+
+    Note: With the integrated Gaussian model, 'intensity' is the total
+    molecule intensity (photons under the PSF), NOT peak amplitude.
+    """
     x: np.ndarray
     y: np.ndarray
     intensity: np.ndarray
@@ -698,14 +788,13 @@ class FitResult:
     chi_squared: np.ndarray
     uncertainty: np.ndarray
     success: np.ndarray
-    integrated_intensity: Optional[np.ndarray] = None
 
     def __len__(self):
         return len(self.x)
 
     def to_array(self):
         """Convert to dictionary of arrays"""
-        result = {
+        return {
             'x': self.x,
             'y': self.y,
             'intensity': self.intensity,
@@ -715,11 +804,6 @@ class FitResult:
             'chi_squared': self.chi_squared,
             'uncertainty': self.uncertainty
         }
-
-        if self.integrated_intensity is not None:
-            result['integrated_intensity'] = self.integrated_intensity
-
-        return result
 
 
 # ============================================================================
@@ -735,14 +819,16 @@ class BaseFitter:
         self.photons_per_adu = 1.0
         self.baseline = 0.0
         self.em_gain = 1.0
+        self.is_emccd = False
 
     def set_camera_params(self, pixel_size=100.0, photons_per_adu=1.0,
-                         baseline=0.0, em_gain=1.0):
+                         baseline=0.0, em_gain=1.0, is_emccd=False):
         """Set camera calibration parameters"""
         self.pixel_size = pixel_size
         self.photons_per_adu = photons_per_adu
         self.baseline = baseline
         self.em_gain = em_gain
+        self.is_emccd = is_emccd
 
     def fit(self, image, positions, fit_radius=3):
         """Fit PSF to detected positions
@@ -766,7 +852,8 @@ class BaseFitter:
 
 class GaussianLSQFitter(BaseFitter):
     """
-    2D Gaussian fitting using Least Squares
+    Integrated Gaussian PSF fitting using Least Squares
+    with true Levenberg-Marquardt optimization.
 
     NUMBA-OPTIMIZED for 10-50x speedup!
 
@@ -775,25 +862,23 @@ class GaussianLSQFitter(BaseFitter):
     initial_sigma : float
         Initial guess for sigma
     elliptical : bool
-        Fit elliptical Gaussian (sigma_x != sigma_y)
+        Fit elliptical Gaussian (sigma_x != sigma_y) — not yet supported
     integrated : bool
-        Use integrated Gaussian (more accurate for low photon counts)
+        Ignored (always uses integrated Gaussian model)
     """
 
     def __init__(self, initial_sigma=1.3, elliptical=False, integrated=False):
         super().__init__("GaussianLSQ")
         self.initial_sigma = initial_sigma
         self.elliptical = elliptical
-        self.integrated = integrated
 
         if NUMBA_AVAILABLE:
             self.name += " (Numba)"
 
     def fit(self, image, positions, fit_radius=3):
-        """Fit Gaussian to all positions"""
+        """Fit integrated Gaussian to all positions"""
 
         if len(positions) == 0:
-            # Return empty result
             return FitResult(
                 x=np.array([]),
                 y=np.array([]),
@@ -806,163 +891,36 @@ class GaussianLSQFitter(BaseFitter):
                 success=np.array([])
             )
 
-        # Ensure positions is 2D array
         if positions.ndim == 1:
             positions = positions.reshape(1, -1)
 
-        # Call Numba-optimized function
-        if self.integrated:
-            results = fit_integrated_gaussian_numba(
-                image, positions, fit_radius, self.initial_sigma
-            )
-
-            # Extract results
-            # CRITICAL: Numba function returns [x, y, ...] in results[:, 0:2]
-            # where x is column coordinate and y is row coordinate
-            x = results[:, 0]  # Index 0 is x coordinate (col)
-            y = results[:, 1]  # Index 1 is y coordinate (row)
-            intensity = results[:, 2]
-            sigma_x = results[:, 3]
-            sigma_y = results[:, 4]
-            background = results[:, 5]
-            chi_squared = results[:, 6]
-            success = results[:, 7]
-            integrated_intensity = results[:, 8]
-
-        else:
-            results = fit_gaussian_lsq_batch_numba(
-                image, positions, fit_radius, self.initial_sigma
-            )
-
-            # Extract results
-            # CRITICAL: Numba function returns [x, y, ...] in results[:, 0:2]
-            # where x is column coordinate and y is row coordinate
-            x = results[:, 0]  # Index 0 is x coordinate (col)
-            y = results[:, 1]  # Index 1 is y coordinate (row)
-            intensity = results[:, 2]
-            sigma_x = results[:, 3]
-            sigma_y = results[:, 4]
-            background = results[:, 5]
-            chi_squared = results[:, 6]
-            success = results[:, 7]
-            integrated_intensity = None
-
-        # Filter successful fits
-        mask = success > 0
-
-        # Compute uncertainties
-        uncertainty = np.zeros(len(x))
-        for i in range(len(x)):
-            if mask[i]:
-                uncertainty[i] = compute_localization_precision(
-                    intensity[i], background[i],
-                    (sigma_x[i] + sigma_y[i]) / 2,
-                    1.0  # Pixel units
-                )
-
-        result = FitResult(
-            x=x[mask],
-            y=y[mask],
-            intensity=intensity[mask],
-            background=background[mask],
-            sigma_x=sigma_x[mask],
-            sigma_y=sigma_y[mask],
-            chi_squared=chi_squared[mask],
-            uncertainty=uncertainty[mask],
-            success=success[mask],
-            integrated_intensity=integrated_intensity[mask] if integrated_intensity is not None else None
+        # Call Numba-optimized integrated Gaussian LSQ fitter
+        results = fit_gaussian_lsq_batch_numba(
+            image, positions, fit_radius, self.initial_sigma
         )
 
-        return result
-
-
-class GaussianWLSQFitter(BaseFitter):
-    """
-    2D Gaussian fitting using Weighted Least Squares
-
-    Weights residuals by inverse variance (Poisson model)
-    More accurate than LSQ for low photon counts
-
-    NUMBA-OPTIMIZED for 10-50x speedup!
-
-    Parameters
-    ----------
-    initial_sigma : float
-        Initial guess for sigma
-    elliptical : bool
-        Fit elliptical Gaussian (sigma_x != sigma_y) - currently not implemented
-    integrated : bool
-        Use integrated Gaussian (more accurate for low photon counts)
-    """
-
-    def __init__(self, initial_sigma=1.3, elliptical=False, integrated=False):
-        super().__init__("GaussianWLSQ")
-        self.initial_sigma = initial_sigma
-        self.elliptical = elliptical
-        self.integrated = integrated
-
-        if NUMBA_AVAILABLE:
-            self.name += " (Numba)"
-
-    def fit(self, image, positions, fit_radius=3):
-        """Fit Gaussian using weighted least squares"""
-
-        if len(positions) == 0:
-            return FitResult(
-                x=np.array([]),
-                y=np.array([]),
-                intensity=np.array([]),
-                background=np.array([]),
-                sigma_x=np.array([]),
-                sigma_y=np.array([]),
-                chi_squared=np.array([]),
-                uncertainty=np.array([]),
-                success=np.array([])
-            )
-
-        # Ensure positions is 2D array
-        if positions.ndim == 1:
-            positions = positions.reshape(1, -1)
-
-        # Use integrated version if requested, otherwise use WLSQ
-        if self.integrated:
-            # For now, use integrated LSQ with WLSQ would be here
-            results = fit_integrated_gaussian_numba(
-                image, positions, fit_radius, self.initial_sigma
-            )
-            has_integrated = True
-        else:
-            # Call WLSQ Numba function
-            results = fit_gaussian_wlsq_batch_numba(
-                image, positions, fit_radius, self.initial_sigma
-            )
-            has_integrated = False
-
-        # Extract results
-        x = results[:, 0]  # x coordinate (col)
-        y = results[:, 1]  # y coordinate (row)
+        # Results: [x, y, intensity, sigma, sigma, background, chi_sq, success]
+        x = results[:, 0]
+        y = results[:, 1]
         intensity = results[:, 2]
         sigma_x = results[:, 3]
         sigma_y = results[:, 4]
         background = results[:, 5]
         chi_squared = results[:, 6]
         success = results[:, 7]
-        integrated_intensity = results[:, 8] if has_integrated and results.shape[1] > 8 else None
 
-        # Filter successful fits
         mask = success > 0
 
-        # Compute uncertainties
+        # Compute uncertainties with Mortensen correction
         uncertainty = np.zeros(len(x))
         for i in range(len(x)):
             if mask[i]:
                 uncertainty[i] = compute_localization_precision(
-                    intensity[i], background[i],
-                    (sigma_x[i] + sigma_y[i]) / 2,
-                    1.0  # Pixel units
+                    intensity[i], background[i], sigma_x[i],
+                    1.0, fitting_method='lsq', is_emccd=self.is_emccd
                 )
 
-        result = FitResult(
+        return FitResult(
             x=x[mask],
             y=y[mask],
             intensity=intensity[mask],
@@ -971,19 +929,14 @@ class GaussianWLSQFitter(BaseFitter):
             sigma_y=sigma_y[mask],
             chi_squared=chi_squared[mask],
             uncertainty=uncertainty[mask],
-            success=success[mask],
-            integrated_intensity=integrated_intensity[mask] if integrated_intensity is not None else None
+            success=success[mask]
         )
 
-        return result
 
-
-class GaussianMLEFitter(BaseFitter):
+class GaussianWLSQFitter(BaseFitter):
     """
-    2D Gaussian fitting using Maximum Likelihood Estimation
-
-    Assumes Poisson noise model - optimal for SMLM data
-    Uses negative log-likelihood minimization
+    Integrated Gaussian PSF fitting using Weighted Least Squares
+    with true Levenberg-Marquardt optimization.
 
     NUMBA-OPTIMIZED for 10-50x speedup!
 
@@ -992,7 +945,89 @@ class GaussianMLEFitter(BaseFitter):
     initial_sigma : float
         Initial guess for sigma
     elliptical : bool
-        Fit elliptical Gaussian (sigma_x != sigma_y) - currently not implemented
+        Fit elliptical Gaussian — not yet supported
+    integrated : bool
+        Ignored (always uses integrated Gaussian model)
+    """
+
+    def __init__(self, initial_sigma=1.3, elliptical=False, integrated=False):
+        super().__init__("GaussianWLSQ")
+        self.initial_sigma = initial_sigma
+        self.elliptical = elliptical
+
+        if NUMBA_AVAILABLE:
+            self.name += " (Numba)"
+
+    def fit(self, image, positions, fit_radius=3):
+        """Fit integrated Gaussian using weighted least squares"""
+
+        if len(positions) == 0:
+            return FitResult(
+                x=np.array([]),
+                y=np.array([]),
+                intensity=np.array([]),
+                background=np.array([]),
+                sigma_x=np.array([]),
+                sigma_y=np.array([]),
+                chi_squared=np.array([]),
+                uncertainty=np.array([]),
+                success=np.array([])
+            )
+
+        if positions.ndim == 1:
+            positions = positions.reshape(1, -1)
+
+        results = fit_gaussian_wlsq_batch_numba(
+            image, positions, fit_radius, self.initial_sigma
+        )
+
+        x = results[:, 0]
+        y = results[:, 1]
+        intensity = results[:, 2]
+        sigma_x = results[:, 3]
+        sigma_y = results[:, 4]
+        background = results[:, 5]
+        chi_squared = results[:, 6]
+        success = results[:, 7]
+
+        mask = success > 0
+
+        uncertainty = np.zeros(len(x))
+        for i in range(len(x)):
+            if mask[i]:
+                uncertainty[i] = compute_localization_precision(
+                    intensity[i], background[i], sigma_x[i],
+                    1.0, fitting_method='wlsq', is_emccd=self.is_emccd
+                )
+
+        return FitResult(
+            x=x[mask],
+            y=y[mask],
+            intensity=intensity[mask],
+            background=background[mask],
+            sigma_x=sigma_x[mask],
+            sigma_y=sigma_y[mask],
+            chi_squared=chi_squared[mask],
+            uncertainty=uncertainty[mask],
+            success=success[mask]
+        )
+
+
+class GaussianMLEFitter(BaseFitter):
+    """
+    Integrated Gaussian PSF fitting using Maximum Likelihood Estimation
+    with true Levenberg-Marquardt optimization.
+
+    Assumes Poisson noise model — optimal for SMLM data.
+
+    NUMBA-OPTIMIZED for 10-50x speedup!
+
+    Parameters
+    ----------
+    initial_sigma : float
+        Initial guess for sigma
+    elliptical : bool
+        Fit elliptical Gaussian — not yet supported
     """
 
     def __init__(self, initial_sigma=1.3, elliptical=False):
@@ -1004,7 +1039,7 @@ class GaussianMLEFitter(BaseFitter):
             self.name += " (Numba)"
 
     def fit(self, image, positions, fit_radius=3):
-        """Fit Gaussian using maximum likelihood estimation"""
+        """Fit integrated Gaussian using maximum likelihood estimation"""
 
         if len(positions) == 0:
             return FitResult(
@@ -1019,40 +1054,34 @@ class GaussianMLEFitter(BaseFitter):
                 success=np.array([])
             )
 
-        # Ensure positions is 2D array
         if positions.ndim == 1:
             positions = positions.reshape(1, -1)
 
-        # Call MLE Numba function
         results = fit_gaussian_mle_batch_numba(
             image, positions, fit_radius, self.initial_sigma
         )
 
-        # Extract results
-        x = results[:, 0]  # x coordinate (col)
-        y = results[:, 1]  # y coordinate (row)
+        x = results[:, 0]
+        y = results[:, 1]
         intensity = results[:, 2]
         sigma_x = results[:, 3]
         sigma_y = results[:, 4]
         background = results[:, 5]
-        chi_squared = results[:, 6]  # Actually negative log-likelihood
+        chi_squared = results[:, 6]
         success = results[:, 7]
 
-        # Filter successful fits
         mask = success > 0
 
-        # Compute uncertainties using Cramér-Rao lower bound
-        # For MLE with Poisson noise, uncertainty is similar to WLSQ
+        # MLE: no Mortensen correction (it's for LSQ only)
         uncertainty = np.zeros(len(x))
         for i in range(len(x)):
             if mask[i]:
                 uncertainty[i] = compute_localization_precision(
-                    intensity[i], background[i],
-                    (sigma_x[i] + sigma_y[i]) / 2,
-                    1.0  # Pixel units
+                    intensity[i], background[i], sigma_x[i],
+                    1.0, fitting_method='mle', is_emccd=self.is_emccd
                 )
 
-        result = FitResult(
+        return FitResult(
             x=x[mask],
             y=y[mask],
             intensity=intensity[mask],
@@ -1061,11 +1090,8 @@ class GaussianMLEFitter(BaseFitter):
             sigma_y=sigma_y[mask],
             chi_squared=chi_squared[mask],
             uncertainty=uncertainty[mask],
-            success=success[mask],
-            integrated_intensity=None
+            success=success[mask]
         )
-
-        return result
 
 
 class CentroidFitter(BaseFitter):

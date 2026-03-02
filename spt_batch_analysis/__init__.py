@@ -497,8 +497,10 @@ class DetectionWorker(QThread):
                     combined_detections = pd.concat(all_detections, ignore_index=True)
 
                     # Convert coordinates to nanometers and add required columns
-                    combined_detections['x [nm]'] = combined_detections['x'] * self.pixel_size
-                    combined_detections['y [nm]'] = combined_detections['y'] * self.pixel_size
+                    # Swap x and y to undo the rot90+fliplr transpose applied
+                    # to images before detection, restoring original image coords.
+                    combined_detections['x [nm]'] = combined_detections['y'] * self.pixel_size
+                    combined_detections['y [nm]'] = combined_detections['x'] * self.pixel_size
                     combined_detections['frame'] = combined_detections['frame'] + 1  # 1-based indexing
                     combined_detections['intensity [photon]'] = combined_detections['intensity']
                     combined_detections['id'] = range(len(combined_detections))
@@ -578,6 +580,18 @@ class DetectionWorker(QThread):
                 self.progress_update.emit(f"Running ThunderSTORM on {n_frames} frames...")
 
                 localizations = detector.detect_and_fit(images, show_progress=False)
+
+                # The input images have been rot90+fliplr transformed (which
+                # transposes rows/cols). Swap x and y to restore coordinates
+                # to the original image space.
+                if 'x' in localizations and 'y' in localizations:
+                    localizations['x'], localizations['y'] = (
+                        localizations['y'].copy(), localizations['x'].copy()
+                    )
+                if 'sigma_x' in localizations and 'sigma_y' in localizations:
+                    localizations['sigma_x'], localizations['sigma_y'] = (
+                        localizations['sigma_y'].copy(), localizations['sigma_x'].copy()
+                    )
 
                 # Update progress after detection
                 self.frame_progress.emit(100)
@@ -4575,8 +4589,10 @@ Output columns: x [nm], y [nm], sigma [nm], intensity [AU],
                 combined_detections = pd.concat(all_detections, ignore_index=True)
 
                 # Format for tracking pipeline
-                combined_detections['x [nm]'] = combined_detections['x'] * self.parameters.pixel_size
-                combined_detections['y [nm]'] = combined_detections['y'] * self.parameters.pixel_size
+                # Swap x and y to undo the rot90+fliplr transpose applied
+                # to images before detection, restoring original image coords.
+                combined_detections['x [nm]'] = combined_detections['y'] * self.parameters.pixel_size
+                combined_detections['y [nm]'] = combined_detections['x'] * self.parameters.pixel_size
                 combined_detections['frame'] = combined_detections['frame'] + 1  # 1-based
                 combined_detections['intensity [photon]'] = combined_detections['intensity']
                 combined_detections['id'] = range(len(combined_detections))
@@ -4621,6 +4637,19 @@ Output columns: x [nm], y [nm], sigma [nm], intensity [AU],
 
             detector = ThunderSTORMDetector.create_from_gui_parameters(gui_params)
             localizations = detector.detect_and_fit(images, show_progress=False)
+
+            # The input images have been rot90+fliplr transformed (which
+            # transposes rows/cols). Swap x and y to restore coordinates
+            # to the original image space so that the CSV matches real
+            # thunderSTORM output and is consistent with the tracking pipeline.
+            if 'x' in localizations and 'y' in localizations:
+                localizations['x'], localizations['y'] = (
+                    localizations['y'].copy(), localizations['x'].copy()
+                )
+            if 'sigma_x' in localizations and 'sigma_y' in localizations:
+                localizations['sigma_x'], localizations['sigma_y'] = (
+                    localizations['sigma_y'].copy(), localizations['sigma_x'].copy()
+                )
 
             n_detections = len(localizations.get('x', []))
             if n_detections > 0:

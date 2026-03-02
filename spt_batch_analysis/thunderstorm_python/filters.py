@@ -13,6 +13,7 @@ Implements all filtering methods from thunderSTORM for feature enhancement:
 
 import numpy as np
 from scipy import ndimage
+from scipy.ndimage import convolve1d
 from scipy.signal import convolve2d
 import pywt
 
@@ -77,7 +78,12 @@ class WaveletFilter(BaseFilter):
         self.order = order
 
     def apply(self, image):
-        """Apply wavelet filter using à trous algorithm."""
+        """Apply wavelet filter using à trous algorithm.
+
+        Returns the detail coefficient at self.scale level.
+        Also stores self.F1 (first detail coefficient = I - V1) for
+        use in threshold expressions like 'std(Wave.F1)'.
+        """
         # Implement à trous algorithm for B-spline wavelets
         img = image.astype(float)
 
@@ -94,6 +100,7 @@ class WaveletFilter(BaseFilter):
 
         # Apply à trous algorithm
         approximation = img.copy()
+        self.F1 = None  # First detail coefficient (I - V1)
 
         for j in range(self.scale):
             # Upsampling by inserting zeros
@@ -101,18 +108,18 @@ class WaveletFilter(BaseFilter):
             indices = np.arange(len(h)) * 2**j
             h_upsampled[indices] = h
 
-            # Convolve rows
-            temp = np.zeros_like(img)
-            for i in range(img.shape[0]):
-                temp[i] = np.convolve(approximation[i], h_upsampled, mode='same')
-
-            # Convolve columns
-            approx_new = np.zeros_like(img)
-            for j_col in range(img.shape[1]):
-                approx_new[:, j_col] = np.convolve(temp[:, j_col], h_upsampled, mode='same')
+            # Convolve rows then columns using reflect padding
+            # (matches real thunderSTORM which uses mirror boundary conditions)
+            temp = convolve1d(approximation, h_upsampled, axis=1, mode='reflect')
+            approx_new = convolve1d(temp, h_upsampled, axis=0, mode='reflect')
 
             # Wavelet coefficient is difference
             wavelet = approximation - approx_new
+
+            # Store first detail coefficient for Wave.F1 threshold expressions
+            if j == 0:
+                self.F1 = wavelet
+
             approximation = approx_new
 
         return wavelet
@@ -273,7 +280,7 @@ def create_filter(filter_type, **kwargs):
     return filter_map[filter_type](**kwargs)
 
 
-def compute_threshold_expression(image, filtered_image, expression):
+def compute_threshold_expression(image, filtered_image, expression, wave_f1=None):
     """Evaluate threshold expression.
 
     ThunderSTORM allows threshold specification using expressions like:
@@ -289,6 +296,11 @@ def compute_threshold_expression(image, filtered_image, expression):
         Filtered image
     expression : str or float
         Threshold expression or value
+    wave_f1 : ndarray, optional
+        First wavelet detail coefficient (I - V1). When provided, this
+        is used as Wave.F1 in threshold expressions instead of the
+        final filtered output. This matches real thunderSTORM where
+        Wave.F1 always refers to the first detail coefficient.
 
     Returns
     -------
@@ -302,6 +314,10 @@ def compute_threshold_expression(image, filtered_image, expression):
     # This allows expressions like 'std(Wave.F1)' to work
     expression_parsed = str(expression).replace('Wave.F1', 'F1')
 
+    # Use wave_f1 (first detail coefficient) if available, otherwise
+    # fall back to the filtered image for backward compatibility
+    f1_data = wave_f1 if wave_f1 is not None else filtered_image
+
     # Create namespace for expression evaluation
     namespace = {
         'std': np.std,
@@ -310,7 +326,7 @@ def compute_threshold_expression(image, filtered_image, expression):
         'max': np.max,
         'min': np.min,
         'I1': image,  # Raw image
-        'F1': filtered_image  # Filtered image (Wave.F1 in thunderSTORM)
+        'F1': f1_data  # First detail coefficient (Wave.F1 in thunderSTORM)
     }
 
     try:
