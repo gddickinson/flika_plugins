@@ -1611,6 +1611,119 @@ class ROIBackgroundSubtractor:
         except Exception:
             return 0.0
 
+class AutoBackgroundDetector:
+    """Automatic background ROI detection for TIFF image stacks.
+
+    Finds the region with lowest intensity and highest temporal stability
+    to use as a background ROI. Outputs ROI files in the same format as
+    ROIBackgroundSubtractor.parse_roi_file expects.
+    """
+
+    @staticmethod
+    def load_and_transform_image(file_path):
+        """Load TIFF and apply same transforms as analysis pipeline."""
+        A = skio.imread(file_path, plugin='tifffile')
+        A = np.rot90(A, axes=(1, 2))
+        A = np.fliplr(A)
+        return A
+
+    @staticmethod
+    def compute_max_projection(image_array):
+        """Compute maximum intensity projection across all frames."""
+        return np.max(image_array, axis=0)
+
+    @staticmethod
+    def scan_candidates(max_proj, roi_width, roi_height, stride):
+        """Stage 1: Scan all positions on max projection, rank by mean intensity (ascending).
+
+        Returns list of (mean_intensity, y, x) sorted lowest-first.
+        """
+        h, w = max_proj.shape
+        candidates = []
+        for y in range(0, h - roi_height + 1, stride):
+            for x in range(0, w - roi_width + 1, stride):
+                region = max_proj[y:y + roi_height, x:x + roi_width]
+                candidates.append((float(np.mean(region)), y, x))
+        candidates.sort(key=lambda c: c[0])
+        return candidates
+
+    @staticmethod
+    def verify_temporal_stability(image_array, candidates, roi_width, roi_height, top_n):
+        """Stage 2: From top-N lowest-intensity candidates, pick the one with lowest temporal std.
+
+        Returns (best_candidate, all_evaluated) where best_candidate is
+        (temporal_std, mean_intensity, y, x).
+        """
+        evaluated = []
+        for mean_int, y, x in candidates[:top_n]:
+            roi_stack = image_array[:, y:y + roi_height, x:x + roi_width]
+            frame_means = np.mean(roi_stack, axis=(1, 2))
+            temporal_std = float(np.std(frame_means))
+            evaluated.append((temporal_std, mean_int, y, x))
+        evaluated.sort(key=lambda e: e[0])
+        return evaluated[0], evaluated
+
+    @staticmethod
+    def write_roi_file(output_path, y, x, width, height):
+        """Write ROI file in ROIBackgroundSubtractor.parse_roi_file format.
+
+        Format:
+            rectangle
+            y x
+            width height
+        """
+        with open(output_path, 'w') as f:
+            f.write('rectangle\n')
+            f.write(f'{y} {x}\n')
+            f.write(f'{width} {height}\n')
+
+    @staticmethod
+    def detect_background_roi(file_path, roi_width=5, roi_height=5, stride=5,
+                              top_n=10, enable_temporal_check=True):
+        """Full detection pipeline. Returns result dict and saves ROI file.
+
+        The ROI file is saved as ROI_{basename}.txt in the same directory
+        as the input file, matching the naming convention expected by
+        add_background_subtraction().
+        """
+        image_array = AutoBackgroundDetector.load_and_transform_image(file_path)
+        max_proj = AutoBackgroundDetector.compute_max_projection(image_array)
+
+        candidates = AutoBackgroundDetector.scan_candidates(max_proj, roi_width, roi_height, stride)
+
+        if not candidates:
+            return None
+
+        if enable_temporal_check and len(candidates) > 1:
+            actual_top_n = min(top_n, len(candidates))
+            best, evaluated = AutoBackgroundDetector.verify_temporal_stability(
+                image_array, candidates, roi_width, roi_height, actual_top_n)
+            temporal_std, mean_intensity, best_y, best_x = best
+        else:
+            mean_intensity, best_y, best_x = candidates[0]
+            temporal_std = None
+
+        # Build output path: ROI_{basename}.txt
+        base_name = os.path.splitext(os.path.basename(file_path))[0]
+        output_path = os.path.join(os.path.dirname(file_path), f'ROI_{base_name}.txt')
+
+        AutoBackgroundDetector.write_roi_file(output_path, best_y, best_x, roi_width, roi_height)
+
+        result = {
+            'file_path': file_path,
+            'roi_file': output_path,
+            'y': best_y,
+            'x': best_x,
+            'width': roi_width,
+            'height': roi_height,
+            'mean_intensity': mean_intensity,
+            'temporal_std': temporal_std,
+            'image_shape': image_array.shape,
+            'candidates_scanned': len(candidates),
+        }
+        return result
+
+
 class AutocorrelationAnalyzer:
     """Directional autocorrelation analysis based on Gorelik & Gautreau (2014)"""
 
@@ -2288,6 +2401,14 @@ class SPTAnalysisParameters:
 
         # ROI Background Subtraction parameters (existing preserved)
         self.roi_frame_specific_background = False
+
+        # Auto background detection parameters
+        self.auto_background_detection_mode = 'manual'  # 'manual' or 'auto'
+        self.auto_bg_roi_width = 5
+        self.auto_bg_roi_height = 5
+        self.auto_bg_scan_stride = 5
+        self.auto_bg_top_n = 10
+        self.auto_bg_enable_temporal_check = True
 
         # Output options (existing preserved)
         self.save_intermediate = True
@@ -3808,6 +3929,7 @@ class SPTBatchAnalysis(QWidget):
         self.create_detection_tab()
         self.create_enhanced_parameters_tab()  # Enhanced with linking options
         self.create_analysis_steps_tab()
+        self.create_background_tab()
         self.create_geometric_analysis_tab()
         self.create_autocorrelation_tab()
         self.create_progress_tab()
@@ -5235,6 +5357,123 @@ Fitter Comparison:
 
         self.tab_widget.addTab(tab, "Analysis Steps")
 
+    def create_background_tab(self):
+        """Create the Background ROI detection configuration tab"""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+
+        scroll = QScrollArea()
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout(scroll_widget)
+
+        # --- Mode Selection Group ---
+        mode_group = QGroupBox("Background ROI Mode")
+        mode_layout = QVBoxLayout(mode_group)
+
+        self.bg_mode_button_group = QButtonGroup(self)
+        self.bg_mode_manual_radio = QRadioButton("Manual — use existing ROI files (default)")
+        self.bg_mode_auto_radio = QRadioButton("Auto — detect background ROI automatically")
+        self.bg_mode_button_group.addButton(self.bg_mode_manual_radio)
+        self.bg_mode_button_group.addButton(self.bg_mode_auto_radio)
+        self.bg_mode_manual_radio.setChecked(self.parameters.auto_background_detection_mode == 'manual')
+        self.bg_mode_auto_radio.setChecked(self.parameters.auto_background_detection_mode == 'auto')
+        self.bg_mode_manual_radio.toggled.connect(self.on_bg_mode_changed)
+
+        mode_layout.addWidget(self.bg_mode_manual_radio)
+        mode_layout.addWidget(self.bg_mode_auto_radio)
+        scroll_layout.addWidget(mode_group)
+
+        # --- Detection Parameters Group ---
+        self.bg_auto_params_group = QGroupBox("Auto Detection Parameters")
+        params_layout = QFormLayout(self.bg_auto_params_group)
+
+        self.bg_roi_width_spin = QSpinBox()
+        self.bg_roi_width_spin.setRange(1, 100)
+        self.bg_roi_width_spin.setValue(self.parameters.auto_bg_roi_width)
+        params_layout.addRow("ROI Width (pixels):", self.bg_roi_width_spin)
+
+        self.bg_roi_height_spin = QSpinBox()
+        self.bg_roi_height_spin.setRange(1, 100)
+        self.bg_roi_height_spin.setValue(self.parameters.auto_bg_roi_height)
+        params_layout.addRow("ROI Height (pixels):", self.bg_roi_height_spin)
+
+        self.bg_scan_stride_spin = QSpinBox()
+        self.bg_scan_stride_spin.setRange(1, 50)
+        self.bg_scan_stride_spin.setValue(self.parameters.auto_bg_scan_stride)
+        params_layout.addRow("Scan Stride (pixels):", self.bg_scan_stride_spin)
+
+        self.bg_temporal_check_checkbox = QCheckBox("Enable temporal stability check")
+        self.bg_temporal_check_checkbox.setChecked(self.parameters.auto_bg_enable_temporal_check)
+        self.bg_temporal_check_checkbox.toggled.connect(self.on_bg_temporal_check_toggled)
+        params_layout.addRow(self.bg_temporal_check_checkbox)
+
+        self.bg_top_n_spin = QSpinBox()
+        self.bg_top_n_spin.setRange(1, 100)
+        self.bg_top_n_spin.setValue(self.parameters.auto_bg_top_n)
+        params_layout.addRow("Top-N candidates for temporal check:", self.bg_top_n_spin)
+
+        self.bg_auto_params_group.setEnabled(self.parameters.auto_background_detection_mode == 'auto')
+        scroll_layout.addWidget(self.bg_auto_params_group)
+
+        # --- Test Detection Group ---
+        test_group = QGroupBox("Test Detection")
+        test_layout = QVBoxLayout(test_group)
+
+        file_select_layout = QHBoxLayout()
+        self.bg_test_file_edit = QLineEdit()
+        self.bg_test_file_edit.setPlaceholderText("Select a TIFF file to test detection...")
+        self.bg_test_file_edit.setReadOnly(True)
+        file_select_layout.addWidget(self.bg_test_file_edit)
+
+        self.bg_select_file_btn = QPushButton("Browse...")
+        self.bg_select_file_btn.clicked.connect(self.select_bg_test_file)
+        file_select_layout.addWidget(self.bg_select_file_btn)
+        test_layout.addLayout(file_select_layout)
+
+        btn_layout = QHBoxLayout()
+        self.bg_detect_single_btn = QPushButton("Detect on Selected File")
+        self.bg_detect_single_btn.clicked.connect(self.run_bg_detection_single)
+        btn_layout.addWidget(self.bg_detect_single_btn)
+
+        self.bg_detect_all_btn = QPushButton("Detect on All Files")
+        self.bg_detect_all_btn.clicked.connect(self.run_bg_detection_all)
+        btn_layout.addWidget(self.bg_detect_all_btn)
+        btn_layout.addStretch()
+        test_layout.addLayout(btn_layout)
+
+        self.bg_results_text = QTextEdit()
+        self.bg_results_text.setReadOnly(True)
+        self.bg_results_text.setMaximumHeight(200)
+        test_layout.addWidget(self.bg_results_text)
+
+        scroll_layout.addWidget(test_group)
+
+        # --- Algorithm Description Group ---
+        desc_group = QGroupBox("Algorithm Description")
+        desc_layout = QVBoxLayout(desc_group)
+        desc_text = QTextEdit()
+        desc_text.setReadOnly(True)
+        desc_text.setMaximumHeight(120)
+        desc_text.setText(
+            "The auto-detection algorithm finds the best background region in two stages:\n\n"
+            "Stage 1 — Intensity scan: Computes a max-intensity projection of the image stack, "
+            "then scans all ROI-sized windows at the given stride. Windows are ranked by mean "
+            "intensity (lowest first).\n\n"
+            "Stage 2 — Temporal stability (optional): The top-N lowest-intensity candidates are "
+            "evaluated across all frames. The candidate with the lowest temporal standard deviation "
+            "is selected, ensuring the background region is stable over time.\n\n"
+            "The output ROI file uses the same format as manually created ROI files, so the "
+            "existing background subtraction pipeline picks it up automatically."
+        )
+        desc_layout.addWidget(desc_text)
+        scroll_layout.addWidget(desc_group)
+
+        scroll.setWidget(scroll_widget)
+        scroll.setWidgetResizable(True)
+        layout.addWidget(scroll)
+
+        self.tab_widget.addTab(tab, "Background")
+
     def create_geometric_analysis_tab(self):
         """Create geometric analysis configuration tab"""
         tab = QWidget()
@@ -5966,6 +6205,100 @@ directional persistence is important for understanding underlying mechanisms.
         enabled = self.bg_checkbox.isChecked()
         self.bg_frame_specific_checkbox.setEnabled(enabled)
 
+    def on_bg_mode_changed(self):
+        """Enable/disable auto params group based on mode selection"""
+        is_auto = self.bg_mode_auto_radio.isChecked()
+        self.bg_auto_params_group.setEnabled(is_auto)
+
+    def on_bg_temporal_check_toggled(self):
+        """Enable/disable top-N spinner based on temporal check toggle"""
+        self.bg_top_n_spin.setEnabled(self.bg_temporal_check_checkbox.isChecked())
+
+    def select_bg_test_file(self):
+        """Open file dialog to select a single TIFF for background detection test"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select TIFF File", "", "TIFF Files (*.tif *.tiff)")
+        if file_path:
+            self.bg_test_file_edit.setText(file_path)
+
+    def run_bg_detection_single(self):
+        """Run auto background detection on the selected test file"""
+        file_path = self.bg_test_file_edit.text()
+        if not file_path or not os.path.exists(file_path):
+            self.bg_results_text.setText("Please select a valid TIFF file first.")
+            return
+
+        self.bg_results_text.setText("Running detection...")
+        QApplication.processEvents()
+
+        try:
+            result = AutoBackgroundDetector.detect_background_roi(
+                file_path,
+                roi_width=self.bg_roi_width_spin.value(),
+                roi_height=self.bg_roi_height_spin.value(),
+                stride=self.bg_scan_stride_spin.value(),
+                top_n=self.bg_top_n_spin.value(),
+                enable_temporal_check=self.bg_temporal_check_checkbox.isChecked(),
+            )
+            if result is None:
+                self.bg_results_text.setText("Detection failed — no valid candidates found.")
+                return
+
+            lines = [
+                f"Detection complete for: {os.path.basename(file_path)}",
+                f"Image shape: {result['image_shape']}",
+                f"Candidates scanned: {result['candidates_scanned']}",
+                f"Best ROI position: y={result['y']}, x={result['x']}",
+                f"ROI size: {result['width']} x {result['height']}",
+                f"Mean intensity (max proj): {result['mean_intensity']:.2f}",
+            ]
+            if result['temporal_std'] is not None:
+                lines.append(f"Temporal std: {result['temporal_std']:.4f}")
+            lines.append(f"ROI file saved: {result['roi_file']}")
+            self.bg_results_text.setText('\n'.join(lines))
+
+        except Exception as e:
+            self.bg_results_text.setText(f"Error during detection:\n{str(e)}")
+
+    def run_bg_detection_all(self):
+        """Run auto background detection on all files from the Files tab"""
+        if not hasattr(self, 'file_paths') or not self.file_paths:
+            self.bg_results_text.setText("No files loaded. Add files in the Files tab first.")
+            return
+
+        self.bg_results_text.setText(f"Running detection on {len(self.file_paths)} files...")
+        QApplication.processEvents()
+
+        results_lines = []
+        for i, file_path in enumerate(self.file_paths):
+            try:
+                result = AutoBackgroundDetector.detect_background_roi(
+                    file_path,
+                    roi_width=self.bg_roi_width_spin.value(),
+                    roi_height=self.bg_roi_height_spin.value(),
+                    stride=self.bg_scan_stride_spin.value(),
+                    top_n=self.bg_top_n_spin.value(),
+                    enable_temporal_check=self.bg_temporal_check_checkbox.isChecked(),
+                )
+                if result:
+                    results_lines.append(
+                        f"[{i+1}/{len(self.file_paths)}] {os.path.basename(file_path)}: "
+                        f"y={result['y']}, x={result['x']}, "
+                        f"mean={result['mean_intensity']:.2f}"
+                    )
+                else:
+                    results_lines.append(
+                        f"[{i+1}/{len(self.file_paths)}] {os.path.basename(file_path)}: FAILED"
+                    )
+            except Exception as e:
+                results_lines.append(
+                    f"[{i+1}/{len(self.file_paths)}] {os.path.basename(file_path)}: ERROR - {e}"
+                )
+            QApplication.processEvents()
+
+        results_lines.insert(0, f"Detection complete for {len(self.file_paths)} files:\n")
+        self.bg_results_text.setText('\n'.join(results_lines))
+
     def on_geometric_enable_toggled(self):
         """Handle geometric analysis enable/disable"""
         enabled = self.geometric_enable_checkbox.isChecked()
@@ -6296,6 +6629,14 @@ directional persistence is important for understanding underlying mechanisms.
         # ROI background subtraction options
         self.parameters.roi_frame_specific_background = self.bg_frame_specific_checkbox.isChecked()
 
+        # Auto background detection parameters
+        self.parameters.auto_background_detection_mode = 'auto' if self.bg_mode_auto_radio.isChecked() else 'manual'
+        self.parameters.auto_bg_roi_width = self.bg_roi_width_spin.value()
+        self.parameters.auto_bg_roi_height = self.bg_roi_height_spin.value()
+        self.parameters.auto_bg_scan_stride = self.bg_scan_stride_spin.value()
+        self.parameters.auto_bg_top_n = self.bg_top_n_spin.value()
+        self.parameters.auto_bg_enable_temporal_check = self.bg_temporal_check_checkbox.isChecked()
+
         # Geometric analysis parameters
         self.parameters.enable_geometric_analysis = self.geometric_enable_checkbox.isChecked()
         self.parameters.geometric_rg_method = 'simple' if self.geometric_method_simple.isChecked() else 'tensor'
@@ -6351,8 +6692,11 @@ directional persistence is important for understanding underlying mechanisms.
 
         self.update_parameters()
 
-        # Switch to progress tab
-        self.tab_widget.setCurrentIndex(5)  # Progress tab
+        # Switch to progress tab (find by name to avoid hardcoded index issues)
+        for i in range(self.tab_widget.count()):
+            if self.tab_widget.tabText(i) == "Progress":
+                self.tab_widget.setCurrentIndex(i)
+                break
 
         # Disable start button
         self.start_btn.setEnabled(False)
@@ -6378,6 +6722,36 @@ directional persistence is important for understanding underlying mechanisms.
         try:
             total_files = len(self.file_paths)
             successful_files = []
+
+            # Phase 0: Auto background ROI detection (if enabled)
+            if (self.parameters.enable_background_subtraction and
+                    self.parameters.auto_background_detection_mode == 'auto'):
+                self.log_message("\n" + "="*60)
+                self.log_message("PHASE 0: AUTO BACKGROUND ROI DETECTION")
+                self.log_message("="*60)
+                for i, file_path in enumerate(self.file_paths):
+                    file_name = os.path.basename(file_path)
+                    self.status_label.setText(f"Phase 0: Detecting background ROI for {file_name}")
+                    self.log_message(f"  [{i+1}/{total_files}] {file_name}...")
+                    QApplication.processEvents()
+                    try:
+                        result = AutoBackgroundDetector.detect_background_roi(
+                            file_path,
+                            roi_width=self.parameters.auto_bg_roi_width,
+                            roi_height=self.parameters.auto_bg_roi_height,
+                            stride=self.parameters.auto_bg_scan_stride,
+                            top_n=self.parameters.auto_bg_top_n,
+                            enable_temporal_check=self.parameters.auto_bg_enable_temporal_check,
+                        )
+                        if result:
+                            self.log_message(
+                                f"    ROI at y={result['y']}, x={result['x']}, "
+                                f"mean={result['mean_intensity']:.2f} -> {os.path.basename(result['roi_file'])}")
+                        else:
+                            self.log_message(f"    WARNING: No background ROI found")
+                    except Exception as e:
+                        self.log_message(f"    ERROR: {e}")
+                self.log_message("Phase 0 complete.\n")
 
             # Phase 1: Detection + Main Analysis Pipeline
             self.log_message("\n" + "="*60)
@@ -7274,6 +7648,17 @@ directional persistence is important for understanding underlying mechanisms.
         # ROI background subtraction options
         self.bg_frame_specific_checkbox.setChecked(self.parameters.roi_frame_specific_background)
         self.on_bg_subtraction_toggled()  # Update enable/disable state
+
+        # Auto background detection parameters
+        self.bg_mode_manual_radio.setChecked(self.parameters.auto_background_detection_mode == 'manual')
+        self.bg_mode_auto_radio.setChecked(self.parameters.auto_background_detection_mode == 'auto')
+        self.bg_roi_width_spin.setValue(self.parameters.auto_bg_roi_width)
+        self.bg_roi_height_spin.setValue(self.parameters.auto_bg_roi_height)
+        self.bg_scan_stride_spin.setValue(self.parameters.auto_bg_scan_stride)
+        self.bg_temporal_check_checkbox.setChecked(self.parameters.auto_bg_enable_temporal_check)
+        self.bg_top_n_spin.setValue(self.parameters.auto_bg_top_n)
+        self.on_bg_mode_changed()
+        self.on_bg_temporal_check_toggled()
 
         # Geometric analysis checkboxes
         self.geometric_enable_checkbox.setChecked(self.parameters.enable_geometric_analysis)
