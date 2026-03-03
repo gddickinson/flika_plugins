@@ -92,6 +92,13 @@ class TrackingConfig:
     # LAP solver settings
     lap_solver: str = "scipy"  # "scipy", "lapjv", "lap_package"
 
+    # Confidence ramp-up (U-Track 2.5 timeReachConf)
+    time_reach_conf_b: int = 4  # Frames for Brownian confidence convergence
+    time_reach_conf_l: int = 4  # Frames for linear confidence convergence
+
+    # Drift correction
+    enable_drift_correction: bool = False  # Apply drift correction before tracking
+
     # Intensity-based costs (for merging/splitting)
     use_intensity_costs: bool = True
     intensity_weight: float = 0.1
@@ -130,7 +137,10 @@ class ClassificationConfig:
     # MSD-based classification
     msd_fitting_points: int = 10  # Number of points for MSD fitting
     msd_min_points: int = 5
+    msd_max_lag: int = 0  # Max lag for MSD (0 = auto = track_length // 4)
     diffusion_threshold: float = 0.1  # D coefficient threshold
+    anomalous_alpha_low: float = 0.7   # alpha < this => confined/subdiffusive
+    anomalous_alpha_high: float = 1.3  # alpha > this => directed/superdiffusive
 
     # Velocity-based classification
     velocity_window: int = 5  # Window for velocity calculation

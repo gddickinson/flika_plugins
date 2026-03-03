@@ -823,7 +823,6 @@ class MixedMotionPredictor:
         predictions = {}
 
         if len(state_history) < 1:
-            # Initialize with zero velocity
             state = np.array([0, 0, 0, 0])
             predictions['brownian'] = self._predict_brownian(state, dt)
             predictions['linear'] = self._predict_linear(state, dt)
@@ -832,7 +831,14 @@ class MixedMotionPredictor:
             last_state = state_history[-1]
             predictions['brownian'] = self._predict_brownian(last_state, dt)
             predictions['linear'] = self._predict_linear(last_state, dt)
-            predictions['confined'] = self._predict_confined(last_state, dt)
+
+            # Estimate confinement centre from track history
+            if len(state_history) >= 3:
+                positions = np.array([[s[0], s[1]] for s in state_history])
+                center = positions.mean(axis=0)
+            else:
+                center = None
+            predictions['confined'] = self._predict_confined(last_state, dt, center=center)
 
             # Update model weights based on recent trajectory
             if len(state_history) >= 3:
@@ -841,20 +847,18 @@ class MixedMotionPredictor:
         return predictions
 
     def _predict_brownian(self, state: np.ndarray, dt: float) -> Dict:
-        """Brownian motion prediction"""
+        """Brownian motion prediction (deterministic — noise is in covariance)."""
         x, y, vx, vy = state
-
-        # Brownian motion: position changes with some noise, velocity is random
         noise_scale = self.config.brownian_noise_multiplier
 
+        # Brownian: position propagates with current velocity, no velocity persistence
         predicted_state = np.array([
-            x + vx * dt + np.random.normal(0, noise_scale * dt),
-            y + vy * dt + np.random.normal(0, noise_scale * dt),
-            np.random.normal(0, noise_scale),  # Random velocity
-            np.random.normal(0, noise_scale)
+            x + vx * dt,
+            y + vy * dt,
+            0.0,  # Brownian has no velocity persistence
+            0.0
         ])
 
-        # Covariance matrix (higher uncertainty)
         covariance = np.diag([noise_scale**2 * dt, noise_scale**2 * dt,
                              noise_scale**2, noise_scale**2])
 
@@ -865,21 +869,19 @@ class MixedMotionPredictor:
         }
 
     def _predict_linear(self, state: np.ndarray, dt: float) -> Dict:
-        """Linear/directed motion prediction"""
+        """Linear/directed motion prediction (deterministic)."""
         x, y, vx, vy = state
-
-        # Linear motion: velocity persists with some noise
         velocity_persistence = self.config.linear_velocity_persistence
-        noise_scale = 1.0  # Lower noise for directed motion
+        noise_scale = 1.0
 
+        # Linear: position advances with persistent velocity
         predicted_state = np.array([
             x + vx * dt,
             y + vy * dt,
-            vx * velocity_persistence + np.random.normal(0, noise_scale * 0.1),
-            vy * velocity_persistence + np.random.normal(0, noise_scale * 0.1)
+            vx * velocity_persistence,
+            vy * velocity_persistence
         ])
 
-        # Covariance matrix (lower uncertainty in velocity direction)
         covariance = np.diag([noise_scale * dt, noise_scale * dt,
                              noise_scale * 0.1, noise_scale * 0.1])
 
@@ -889,23 +891,32 @@ class MixedMotionPredictor:
             'likelihood': self.model_weights['linear']
         }
 
-    def _predict_confined(self, state: np.ndarray, dt: float) -> Dict:
-        """Confined motion prediction"""
-        x, y, vx, vy = state
+    def _predict_confined(self, state: np.ndarray, dt: float,
+                          center: Optional[np.ndarray] = None) -> Dict:
+        """Confined motion prediction (deterministic).
 
-        # Confined motion: tends to return to center, velocity decays
+        Parameters
+        ----------
+        center : ndarray, optional
+            Confinement centre [cx, cy].  Estimated from track history
+            when available, otherwise defaults to current position.
+        """
+        x, y, vx, vy = state
         confinement_strength = 0.1
         noise_scale = 2.0
 
-        # Assume confinement center is at (0,0) - could be estimated from track history
+        if center is None:
+            cx, cy = x, y  # default: no restoring force
+        else:
+            cx, cy = center
+
         predicted_state = np.array([
-            x + vx * dt - confinement_strength * x * dt,
-            y + vy * dt - confinement_strength * y * dt,
-            vx * 0.8 - confinement_strength * x,  # Velocity decays and pulls toward center
-            vy * 0.8 - confinement_strength * y
+            x + vx * dt - confinement_strength * (x - cx) * dt,
+            y + vy * dt - confinement_strength * (y - cy) * dt,
+            vx * 0.8 - confinement_strength * (x - cx),
+            vy * 0.8 - confinement_strength * (y - cy)
         ])
 
-        # Covariance matrix
         covariance = np.diag([noise_scale * dt, noise_scale * dt,
                              noise_scale * 0.5, noise_scale * 0.5])
 
@@ -982,30 +993,40 @@ class UTrackLinkerWithMixedMotion:
         self.logger.info(f"U-Track with mixed motion initialized - Model: {self.config.motion_model}")
 
     def track_particles(self, detections: List[pd.DataFrame]) -> pd.DataFrame:
-        """
-        Main tracking function with mixed motion model support
+        """Main tracking function with mixed motion model support.
 
-        Args:
-            detections: List of detection DataFrames, one per frame
-
-        Returns:
-            DataFrame with complete tracks
+        Step 0 (optional): Drift correction on detections.
+        Step 1: Frame-to-frame linking via forward tracking pass (with
+                optional iterative smoothing for mixed-motion mode).
+        Step 2: Gap closing, merge, and split detection via a second LAP,
+                matching the U-Track 2.5 algorithm.
         """
         if len(detections) < 1:
             return pd.DataFrame(columns=['particle_id', 'track_id', 'frame', 'x', 'y', 'intensity'])
 
         total_particles = sum(len(det) for det in detections)
-        self.logger.info(f"Processing {len(detections)} frames with {total_particles} total particles using {self.config.motion_model} motion model")
+        self.logger.info(f"Processing {len(detections)} frames with {total_particles} "
+                         f"total particles using {self.config.motion_model} motion model")
+
+        # Step 0 — optional drift correction
+        if getattr(self.config, 'enable_drift_correction', False):
+            detections = self._apply_drift_correction(detections)
 
         try:
+            # Step 1 — frame-to-frame linking
             if self.config.motion_model == 'mixed' and self.config.enable_iterative_smoothing:
-                return self._track_with_iterative_smoothing(detections)
+                tracks_df = self._track_with_iterative_smoothing(detections)
             else:
-                return self._track_with_single_model(detections)
+                tracks_df = self._track_with_single_model(detections)
+
+            # Step 2 — gap closing / merge / split
+            if len(tracks_df) > 0:
+                tracks_df = self._close_gaps(tracks_df)
+
+            return tracks_df
 
         except Exception as e:
             self.logger.error(f"Mixed motion tracking failed: {e}")
-            # Fallback to simple tracking
             return self._fallback_simple_tracking(detections)
 
     def _track_with_iterative_smoothing(self, detections: List[pd.DataFrame]) -> pd.DataFrame:
@@ -1036,10 +1057,54 @@ class UTrackLinkerWithMixedMotion:
 
         return best_tracks
 
+    def _apply_drift_correction(self, detections: List[pd.DataFrame]) -> List[pd.DataFrame]:
+        """Apply cross-correlation drift correction to detections before tracking.
+
+        Concatenates all frame detections into one DataFrame, computes drift,
+        applies correction, then splits back into per-frame DataFrames.
+        """
+        try:
+            from thunderstorm_python.postprocessing import DriftCorrector
+
+            # Concatenate all detections with frame column
+            all_dets = []
+            for frame_idx, frame_dets in enumerate(detections):
+                if len(frame_dets) == 0:
+                    continue
+                fd = frame_dets.copy()
+                fd['frame'] = frame_idx
+                all_dets.append(fd)
+
+            if not all_dets:
+                return detections
+
+            combined = pd.concat(all_dets, ignore_index=True)
+
+            corrector = DriftCorrector(method='cross_correlation', smoothing=0.25)
+            corrected_df, drift_x, drift_y = corrector.apply_drift_correction_df(combined)
+
+            self._drift_vectors = (drift_x, drift_y)
+            self.logger.info(f"Drift correction applied: max drift = "
+                             f"({np.max(np.abs(drift_x)):.2f}, {np.max(np.abs(drift_y)):.2f})")
+
+            # Split back into per-frame DataFrames
+            corrected_dets = []
+            for frame_idx in range(len(detections)):
+                frame_mask = corrected_df['frame'] == frame_idx
+                frame_data = corrected_df[frame_mask].drop(columns=['frame'], errors='ignore')
+                corrected_dets.append(frame_data.reset_index(drop=True))
+
+            return corrected_dets
+
+        except Exception as e:
+            self.logger.warning(f"Drift correction failed, using uncorrected: {e}")
+            return detections
+
     def _forward_tracking_pass(self, detections: List[pd.DataFrame]) -> pd.DataFrame:
         """Forward tracking pass with mixed motion prediction"""
         tracks = []
         active_tracks: Dict[int, Dict] = {}
+        self.active_tracks = active_tracks  # expose for _solve_assignment_problem
         next_track_id = 1
 
         for frame_idx, frame_detections in enumerate(detections):
@@ -1097,6 +1162,12 @@ class UTrackLinkerWithMixedMotion:
 
                         active_tracks[track_id]['state_history'].append(new_state)
                         active_tracks[track_id]['last_seen'] = frame_idx
+                        active_tracks[track_id]['last_intensity'] = detection.get('intensity', 100.0)
+
+                    # Also update track_histories for Mahalanobis / velocity features
+                    if track_id not in self.track_histories:
+                        self.track_histories[track_id] = []
+                    self.track_histories[track_id].append(new_state)
 
                     unassigned_detections.remove(detection_idx)
 
@@ -1114,10 +1185,13 @@ class UTrackLinkerWithMixedMotion:
                 })
 
                 # Initialize new track
+                init_state = np.array([detection['x'], detection['y'], 0, 0])
                 active_tracks[next_track_id] = {
-                    'state_history': [np.array([detection['x'], detection['y'], 0, 0])],
-                    'last_seen': frame_idx
+                    'state_history': [init_state],
+                    'last_seen': frame_idx,
+                    'last_intensity': detection.get('intensity', 100.0)
                 }
+                self.track_histories[next_track_id] = [init_state]
 
                 next_track_id += 1
 
@@ -1131,40 +1205,179 @@ class UTrackLinkerWithMixedMotion:
 
     def _reverse_tracking_pass(self, detections: List[pd.DataFrame],
                              forward_tracks: pd.DataFrame) -> pd.DataFrame:
-        """Reverse tracking pass to improve track continuity"""
-        if len(forward_tracks) == 0:
+        """Reverse tracking pass to improve track continuity.
+
+        Processes frames from last to first, seeded by the forward-pass
+        tracks.  The reverse pass can extend tracks backward where the
+        forward pass missed the beginning due to initialisation lag.
+        The result is merged with the forward pass by taking the longer
+        version of each track.
+        """
+        if len(forward_tracks) == 0 or len(detections) < 2:
             return forward_tracks
 
-        # Process frames in reverse order
-        reversed_detections = list(reversed(detections))
-        reversed_frame_indices = list(reversed(range(len(detections))))
-
-        # Similar to forward pass but in reverse
+        n_frames = len(detections)
         tracks = []
-        active_tracks = {}
+        active_tracks: Dict[int, Dict] = {}
+        next_track_id = int(forward_tracks['track_id'].max()) + 1
 
-        # Initialize with tracks from forward pass
-        for track_id in forward_tracks['track_id'].unique():
-            track_data = forward_tracks[forward_tracks['track_id'] == track_id].sort_values('frame', ascending=False)
-            if len(track_data) > 0:
-                first_point = track_data.iloc[0]
-                active_tracks[track_id] = {
-                    'state_history': [np.array([first_point['x'], first_point['y'], 0, 0])],
-                    'last_seen': first_point['frame']
+        # Seed active tracks from forward-pass last observations
+        for tid in forward_tracks['track_id'].unique():
+            tdata = forward_tracks[forward_tracks['track_id'] == tid].sort_values('frame')
+            if len(tdata) == 0:
+                continue
+            last_pt = tdata.iloc[-1]
+            # Build state history (reversed, so most recent = first entry)
+            history = []
+            for _, row in tdata.iloc[::-1].iterrows():
+                vx, vy = 0.0, 0.0
+                history.append(np.array([row['x'], row['y'], vx, vy]))
+            # Recompute velocities (backward = negative dt)
+            for k in range(len(history) - 1):
+                history[k][2] = history[k][0] - history[k + 1][0]  # dx backward
+                history[k][3] = history[k][1] - history[k + 1][1]
+
+            active_tracks[tid] = {
+                'state_history': history,
+                'last_seen_reverse': int(last_pt['frame']),
+            }
+
+        # Process frames in reverse
+        for rev_idx in range(n_frames - 1, -1, -1):
+            frame_dets = detections[rev_idx]
+            if len(frame_dets) == 0:
+                continue
+
+            current_dets = frame_dets.copy().reset_index(drop=True)
+
+            # Predict backward for each active track
+            predicted_positions = {}
+            for tid, tinfo in active_tracks.items():
+                if tinfo['state_history']:
+                    last_state = tinfo['state_history'][-1]
+                    if self.config.motion_model == 'mixed':
+                        preds = self.motion_predictor.predict_multiple_models(
+                            tinfo['state_history'], dt=1.0)
+                        predicted_positions[tid] = self._combine_motion_predictions(preds)
+                    else:
+                        predicted_positions[tid] = self._predict_single_model(last_state)
+
+            # Assignment
+            if active_tracks and len(current_dets) > 0:
+                assignments = self._solve_assignment_problem(
+                    predicted_positions, current_dets, rev_idx)
+            else:
+                assignments = {}
+
+            unassigned = set(range(len(current_dets)))
+
+            for tid, det_idx in assignments.items():
+                if det_idx in unassigned:
+                    det = current_dets.iloc[det_idx]
+                    tracks.append({
+                        'particle_id': det.get('particle_id', det_idx),
+                        'track_id': tid,
+                        'frame': rev_idx,
+                        'x': det['x'],
+                        'y': det['y'],
+                        'intensity': det.get('intensity', 100.0),
+                    })
+
+                    new_state = np.array([det['x'], det['y'], 0.0, 0.0])
+                    if tid in active_tracks and active_tracks[tid]['state_history']:
+                        prev = active_tracks[tid]['state_history'][-1]
+                        new_state[2] = det['x'] - prev[0]
+                        new_state[3] = det['y'] - prev[1]
+                    if tid in active_tracks:
+                        active_tracks[tid]['state_history'].append(new_state)
+                        active_tracks[tid]['last_seen_reverse'] = rev_idx
+                    unassigned.remove(det_idx)
+
+            # New tracks for unassigned detections
+            for det_idx in unassigned:
+                det = current_dets.iloc[det_idx]
+                tracks.append({
+                    'particle_id': det.get('particle_id', det_idx),
+                    'track_id': next_track_id,
+                    'frame': rev_idx,
+                    'x': det['x'],
+                    'y': det['y'],
+                    'intensity': det.get('intensity', 100.0),
+                })
+                active_tracks[next_track_id] = {
+                    'state_history': [np.array([det['x'], det['y'], 0.0, 0.0])],
+                    'last_seen_reverse': rev_idx,
                 }
+                next_track_id += 1
 
-        # Process in reverse (implementation similar to forward pass)
-        # ... (detailed implementation would be similar to forward pass but processing frames backward)
+            # Prune tracks not seen recently (in reverse direction)
+            active_tracks = {
+                tid: info for tid, info in active_tracks.items()
+                if abs(rev_idx - info['last_seen_reverse']) <= self.config.max_gap_frames
+            }
 
-        # For now, return forward tracks (simplified implementation)
-        return forward_tracks
+        reverse_df = pd.DataFrame(tracks) if tracks else pd.DataFrame(
+            columns=['particle_id', 'track_id', 'frame', 'x', 'y', 'intensity'])
+
+        # Merge: for each track ID present in both passes, keep the one
+        # with more points; add any reverse-only tracks as new.
+        if len(reverse_df) == 0:
+            return forward_tracks
+
+        fwd_counts = forward_tracks.groupby('track_id').size()
+        rev_counts = reverse_df.groupby('track_id').size()
+
+        result_parts = []
+        all_tids = set(fwd_counts.index) | set(rev_counts.index)
+        for tid in all_tids:
+            fwd_n = fwd_counts.get(tid, 0)
+            rev_n = rev_counts.get(tid, 0)
+            if rev_n > fwd_n:
+                result_parts.append(reverse_df[reverse_df['track_id'] == tid])
+            elif fwd_n > 0:
+                result_parts.append(forward_tracks[forward_tracks['track_id'] == tid])
+            else:
+                result_parts.append(reverse_df[reverse_df['track_id'] == tid])
+
+        return pd.concat(result_parts, ignore_index=True) if result_parts else forward_tracks
 
     def _final_forward_pass(self, detections: List[pd.DataFrame],
                            previous_tracks: pd.DataFrame) -> pd.DataFrame:
-        """Final forward pass incorporating motion regime information"""
-        # This would incorporate regime detection results to improve tracking
-        # For now, return previous tracks with potential improvements
-        return previous_tracks
+        """Final forward pass incorporating motion regime information.
+
+        Uses the regime detector to classify each existing track's motion
+        type, then re-runs the forward pass with per-track motion models
+        selected accordingly.
+        """
+        if len(previous_tracks) == 0:
+            return self._forward_tracking_pass(detections)
+
+        # Detect motion regimes for each track and set model weights
+        for tid in previous_tracks['track_id'].unique():
+            tdata = previous_tracks[previous_tracks['track_id'] == tid].sort_values('frame')
+            if len(tdata) < 4:
+                continue
+            trajectory = tdata[['frame', 'x', 'y']].values
+            regimes = self.regime_detector.detect_motion_regimes(trajectory)
+            # Use the last regime to bias the predictor weights
+            if regimes:
+                last_regime = regimes[-1]['type']
+                # Temporarily boost the detected regime
+                self.motion_predictor.model_weights = {
+                    'brownian': 0.6 if last_regime == 'brownian' else 0.2,
+                    'linear': 0.6 if last_regime == 'linear' else 0.2,
+                    'confined': 0.6 if last_regime == 'confined' else 0.2,
+                }
+
+        # Re-run forward pass with regime-informed weights
+        result = self._forward_tracking_pass(detections)
+
+        # Reset weights to defaults
+        self.motion_predictor.model_weights = {
+            'brownian': 0.4, 'linear': 0.4, 'confined': 0.2
+        }
+
+        return result if len(result) >= len(previous_tracks) else previous_tracks
 
     def _track_with_single_model(self, detections: List[pd.DataFrame]) -> pd.DataFrame:
         """Standard tracking with single motion model"""
@@ -1197,32 +1410,173 @@ class UTrackLinkerWithMixedMotion:
 
     def _solve_assignment_problem(self, predicted_positions: Dict[int, np.ndarray],
                                 detections: pd.DataFrame, frame_idx: int) -> Dict[int, int]:
-        """Solve assignment problem between predictions and detections"""
+        """Solve augmented LAP between predictions and detections.
+
+        Uses the same U-Track 2.5–style augmented cost matrix as
+        UTrackLinker: adaptive birth/death costs based on the 90th
+        percentile of valid linking costs, and local-density–scaled
+        search radii.
+        """
         if not predicted_positions or len(detections) == 0:
             return {}
 
         track_ids = list(predicted_positions.keys())
+        n_tracks = len(track_ids)
+        n_dets = len(detections)
 
-        # Create cost matrix
-        cost_matrix = np.full((len(track_ids), len(detections)), np.inf)
+        max_dist = self.config.max_linking_distance
 
-        for i, track_id in enumerate(track_ids):
-            pred_pos = predicted_positions[track_id][:2]  # [x, y]
+        # Build detection position array for vectorised operations
+        det_pos = detections[['x', 'y']].values  # (n_dets, 2)
 
-            for j, (_, detection) in enumerate(detections.iterrows()):
-                det_pos = np.array([detection['x'], detection['y']])
-                distance = np.linalg.norm(pred_pos - det_pos)
+        # Per-track search radius with confidence ramp-up
+        time_reach_conf = getattr(self.config, 'time_reach_conf_b', 4)
+        per_track_radius = np.full(n_tracks, max_dist)
+        for i, tid in enumerate(track_ids):
+            if tid in self.track_histories:
+                age = len(self.track_histories[tid])
+                if time_reach_conf > 0 and age < time_reach_conf:
+                    # Young track: use wider search radius
+                    confidence = age / time_reach_conf
+                    # Interpolate from max_dist (wide) towards a tighter Kalman-like radius
+                    kalman_radius = max_dist * 0.5  # default Kalman estimate
+                    per_track_radius[i] = (1.0 - confidence) * max_dist + confidence * kalman_radius
 
-                if distance <= self.config.max_linking_distance:
-                    cost_matrix[i, j] = distance ** 2
+        # Local density scaling: compute per-detection NN distance
+        search_limits = np.full(n_dets, max_dist)
+        if n_dets > 1:
+            from scipy.spatial.distance import cdist as _cdist
+            dd = _cdist(det_pos, det_pos)
+            np.fill_diagonal(dd, np.inf)
+            nn_dist = dd.min(axis=1)
+            # Clamp search radius to half NN distance
+            density_limit = np.clip(nn_dist * 0.5, 2.0, max_dist)
+            search_limits = np.minimum(search_limits, density_limit)
 
-        # Solve using LAP
+        # Base cost matrix — Mahalanobis when covariance is available
+        base_cost = np.full((n_tracks, n_dets), np.inf)
+        for i, tid in enumerate(track_ids):
+            pred_xy = predicted_positions[tid][:2]
+            dists = np.linalg.norm(det_pos - pred_xy, axis=1)
+
+            # Check if prediction has covariance info (from mixed motion predictor)
+            pred_cov = None
+            if tid in self.track_histories and len(self.track_histories.get(tid, [])) >= 2:
+                # Estimate covariance from state history variance
+                hist = self.track_histories[tid]
+                if len(hist) >= 3:
+                    recent_pos = np.array([[s[0], s[1]] for s in hist[-min(5, len(hist)):]])
+                    residuals = np.diff(recent_pos, axis=0)
+                    if len(residuals) >= 2:
+                        pred_cov = np.cov(residuals.T)
+                        # Ensure positive definite
+                        eigvals = np.linalg.eigvalsh(pred_cov)
+                        if np.any(eigvals <= 0):
+                            pred_cov = None
+
+            effective_limit = per_track_radius[i]
+            for j in range(n_dets):
+                if dists[j] <= min(search_limits[j], effective_limit):
+                    if pred_cov is not None:
+                        dx = det_pos[j] - pred_xy
+                        try:
+                            S_inv = np.linalg.inv(pred_cov)
+                            base_cost[i, j] = dx @ S_inv @ dx
+                        except np.linalg.LinAlgError:
+                            base_cost[i, j] = dists[j] ** 2
+                    else:
+                        base_cost[i, j] = dists[j] ** 2
+
+        # Intensity-based cost component
+        use_intensity = getattr(self.config, 'use_intensity_costs', False)
+        intensity_weight = getattr(self.config, 'intensity_weight', 0.1)
+        if use_intensity and intensity_weight > 0 and 'intensity' in detections.columns:
+            det_intensity = detections['intensity'].values
+            for i, tid in enumerate(track_ids):
+                # Get track's last known intensity
+                track_intensity = None
+                if tid in self.track_histories and self.track_histories[tid]:
+                    # State history doesn't store intensity directly, use from active tracks
+                    pass  # intensity comparison skipped if not stored
+                if tid in getattr(self, 'active_tracks', {}):
+                    tinfo = self.active_tracks[tid]
+                    if 'last_intensity' in tinfo:
+                        track_intensity = tinfo['last_intensity']
+                if track_intensity is not None and track_intensity > 0:
+                    for j in range(n_dets):
+                        if np.isfinite(base_cost[i, j]) and det_intensity[j] > 0:
+                            log_ratio = abs(np.log(det_intensity[j] / track_intensity))
+                            base_cost[i, j] += intensity_weight * log_ratio
+
+        # Velocity angle constraints for linear motion
+        use_velocity = getattr(self.config, 'use_velocity_costs', False)
+        velocity_weight = getattr(self.config, 'velocity_weight', 0.1)
+        if use_velocity and velocity_weight > 0:
+            for i, tid in enumerate(track_ids):
+                if tid in self.track_histories and len(self.track_histories[tid]) >= 2:
+                    hist = self.track_histories[tid]
+                    prev = hist[-2]
+                    curr = hist[-1]
+                    vel = np.array([curr[0] - prev[0], curr[1] - prev[1]])
+                    speed = np.linalg.norm(vel)
+                    if speed < 1e-6:
+                        continue
+                    pred_xy = predicted_positions[tid][:2]
+                    for j in range(n_dets):
+                        if not np.isfinite(base_cost[i, j]):
+                            continue
+                        displacement = det_pos[j] - pred_xy
+                        disp_norm = np.linalg.norm(displacement)
+                        if disp_norm < 1e-6:
+                            continue
+                        cos_theta = np.dot(vel, displacement) / (speed * disp_norm)
+                        cos_theta = np.clip(cos_theta, -1.0, 1.0)
+                        angle_cost = (1.0 - cos_theta) * speed
+                        base_cost[i, j] += velocity_weight * angle_cost
+
+        # Adaptive birth/death costs (90th percentile of valid costs)
+        valid = base_cost[np.isfinite(base_cost)]
+        if len(valid) > 0:
+            alt_cost = np.percentile(valid, 90) * 1.05
+            alt_cost = max(alt_cost, 4.0)  # minimum 2px^2
+        else:
+            alt_cost = max_dist ** 2
+
+        # Build augmented cost matrix
+        matrix_size = n_tracks + n_dets
+        full_cost = np.full((matrix_size, matrix_size), np.inf)
+
+        # Upper-left: linking costs
+        full_cost[:n_tracks, :n_dets] = base_cost
+
+        # Upper-right: death costs (diagonal)
+        for i in range(n_tracks):
+            full_cost[i, n_dets + i] = alt_cost
+
+        # Lower-left: birth costs (diagonal)
+        for j in range(n_dets):
+            full_cost[n_tracks + j, j] = alt_cost
+
+        # Lower-right: dummy
+        dummy = np.min(valid) if len(valid) > 0 else alt_cost
+        full_cost[n_tracks:, n_dets:] = dummy
+
+        # Solve LAP
         try:
-            row_indices, col_indices = linear_sum_assignment(cost_matrix)
+            # Replace inf with large finite for solver
+            solve_cost = full_cost.copy()
+            inf_mask = np.isinf(solve_cost)
+            if np.any(~inf_mask):
+                max_finite = np.max(solve_cost[~inf_mask])
+                solve_cost[inf_mask] = max_finite * 1000
+            else:
+                solve_cost[inf_mask] = 1e12
+
+            row_ind, col_ind = linear_sum_assignment(solve_cost)
 
             assignments = {}
-            for row, col in zip(row_indices, col_indices):
-                if cost_matrix[row, col] < np.inf:
+            for row, col in zip(row_ind, col_ind):
+                if row < n_tracks and col < n_dets and np.isfinite(base_cost[row, col]):
                     assignments[track_ids[row]] = col
 
             return assignments
@@ -1249,6 +1603,488 @@ class UTrackLinkerWithMixedMotion:
                 track_id += 1
 
         return pd.DataFrame(tracks) if tracks else pd.DataFrame(columns=['particle_id', 'track_id', 'frame', 'x', 'y', 'intensity'])
+
+    # ------------------------------------------------------------------
+    # Step 2: Gap closing / merge / split  (post-processing)
+    # ------------------------------------------------------------------
+
+    def _close_gaps(self, tracks_df: pd.DataFrame) -> pd.DataFrame:
+        """Gap closing, merge, and split detection via a second LAP.
+
+        Takes the DataFrame produced by the forward tracking pass,
+        converts it into track segments, runs a gap-closing LAP (same
+        algorithm as UTrackLinker), and returns a new DataFrame with
+        gap-closed tracks.
+        """
+        time_window = self.config.max_gap_frames
+        max_gap_radius = self.config.max_linking_distance
+        gap_penalty = 1.5
+        min_track_len = getattr(self.config, 'min_track_length', 2)
+
+        # Extract per-track segment info
+        track_ids = sorted(tracks_df['track_id'].unique())
+        segments = []  # list of dicts with start/end frame+pos, and the df subset
+
+        for tid in track_ids:
+            tdata = tracks_df[tracks_df['track_id'] == tid].sort_values('frame')
+            if len(tdata) < min_track_len:
+                continue
+            first = tdata.iloc[0]
+            last = tdata.iloc[-1]
+            segments.append({
+                'tid': tid,
+                'start_frame': int(first['frame']),
+                'end_frame': int(last['frame']),
+                'start_pos': np.array([first['x'], first['y']]),
+                'end_pos': np.array([last['x'], last['y']]),
+                'data': tdata,
+            })
+
+        n_seg = len(segments)
+        if n_seg < 2:
+            return tracks_df
+
+        # Build gap-closing cost matrix
+        gc_cost = np.full((n_seg, n_seg), np.inf)
+        for i in range(n_seg):
+            for j in range(n_seg):
+                if i == j:
+                    continue
+                dt = segments[j]['start_frame'] - segments[i]['end_frame']
+                if dt < 1 or dt > time_window:
+                    continue
+                d2 = np.sum((segments[i]['end_pos'] - segments[j]['start_pos']) ** 2)
+                if np.sqrt(d2) > max_gap_radius * np.sqrt(dt):
+                    continue
+                gc_cost[i, j] = d2 * (gap_penalty ** (dt - 1))
+
+        # Merge/split candidates
+        do_merge = getattr(self.config, 'enable_merging', False)
+        do_split = getattr(self.config, 'enable_splitting', False)
+
+        merge_candidates = []
+        split_candidates = []
+
+        if do_merge or do_split:
+            # Build interior lookup per segment
+            seg_interior = []
+            for seg in segments:
+                interior = {}
+                for _, row in seg['data'].iterrows():
+                    f = int(row['frame'])
+                    interior[f] = np.array([row['x'], row['y']])
+                seg_interior.append(interior)
+
+            if do_merge:
+                for i in range(n_seg):
+                    for j in range(n_seg):
+                        if i == j:
+                            continue
+                        end_f = segments[i]['end_frame']
+                        for abs_f, pos_j in seg_interior[j].items():
+                            dt = abs_f - end_f
+                            if dt < 0 or dt > 1:
+                                continue
+                            d2 = np.sum((segments[i]['end_pos'] - pos_j) ** 2)
+                            if np.sqrt(d2) > max_gap_radius:
+                                continue
+                            merge_candidates.append((i, j, abs_f, d2))
+
+            if do_split:
+                for j in range(n_seg):
+                    for i in range(n_seg):
+                        if i == j:
+                            continue
+                        start_f = segments[j]['start_frame']
+                        for abs_f, pos_i in seg_interior[i].items():
+                            dt = start_f - abs_f
+                            if dt < 0 or dt > 1:
+                                continue
+                            d2 = np.sum((pos_i - segments[j]['start_pos']) ** 2)
+                            if np.sqrt(d2) > max_gap_radius:
+                                continue
+                            split_candidates.append((i, j, abs_f, d2))
+
+        n_merge = len(merge_candidates)
+        n_split = len(split_candidates)
+
+        # Build augmented cost matrix
+        n_rows = n_seg + n_split
+        n_cols = n_seg + n_merge
+        matrix_size = n_rows + n_cols
+        gc_full = np.full((matrix_size, matrix_size), np.inf)
+
+        # Gap closing block
+        gc_full[:n_seg, :n_seg] = gc_cost
+
+        # Merge costs
+        for m_idx, (end_i, _, _, cost) in enumerate(merge_candidates):
+            gc_full[end_i, n_seg + m_idx] = cost
+
+        # Split costs
+        for s_idx, (_, start_j, _, cost) in enumerate(split_candidates):
+            gc_full[n_seg + s_idx, start_j] = cost
+
+        # Adaptive alternative cost
+        all_block = gc_full[:n_rows, :n_cols]
+        valid_costs = all_block[np.isfinite(all_block)]
+
+        if len(valid_costs) > 0:
+            alt_cost = np.percentile(valid_costs, 90) * 1.05
+            alt_cost = max(alt_cost, 4.0)
+        else:
+            # No valid gap-closing candidates — skip
+            return tracks_df
+
+        for r in range(n_rows):
+            gc_full[r, n_cols + r] = alt_cost
+        for c in range(n_cols):
+            gc_full[n_rows + c, c] = alt_cost
+        dummy = np.min(valid_costs) if len(valid_costs) > 0 else alt_cost
+        gc_full[n_rows:, n_cols:] = dummy
+
+        # Solve LAP
+        solve_cost = gc_full.copy()
+        inf_mask = np.isinf(solve_cost)
+        if np.any(~inf_mask):
+            max_finite = np.max(solve_cost[~inf_mask])
+            solve_cost[inf_mask] = max_finite * 1000
+        else:
+            return tracks_df
+
+        try:
+            row_ind, col_ind = linear_sum_assignment(solve_cost)
+        except Exception as e:
+            self.logger.warning(f"Gap closing LAP failed: {e}")
+            return tracks_df
+
+        # Parse gap-closing assignments
+        merge_map = {}  # seg_i -> seg_j (gap close)
+        for row, col in zip(row_ind, col_ind):
+            if row < n_seg and col < n_seg and np.isfinite(gc_cost[row, col]):
+                if row != col:
+                    merge_map[row] = col
+
+        self.logger.debug(f"Gap closing: {len(merge_map)} closures from {n_seg} segments, "
+                          f"{n_merge} merge candidates, {n_split} split candidates")
+
+        if not merge_map:
+            return tracks_df
+
+        # Chain merged segments and renumber tracks
+        merged_into = set(merge_map.values())
+        visited = set()
+        new_tracks = []
+        new_tid = 1
+
+        for seed in range(n_seg):
+            if seed in visited or seed in merged_into:
+                continue
+            chain = [seed]
+            visited.add(seed)
+            current = seed
+            while current in merge_map:
+                nxt = merge_map[current]
+                if nxt in visited:
+                    break
+                chain.append(nxt)
+                visited.add(nxt)
+                current = nxt
+
+            # Combine DataFrames from chain
+            combined = pd.concat([segments[idx]['data'] for idx in chain], ignore_index=True)
+            combined['track_id'] = new_tid
+            new_tracks.append(combined)
+            new_tid += 1
+
+        # Add unvisited (isolated) segments
+        for idx in range(n_seg):
+            if idx not in visited:
+                seg_data = segments[idx]['data'].copy()
+                seg_data['track_id'] = new_tid
+                new_tracks.append(seg_data)
+                new_tid += 1
+                visited.add(idx)
+
+        result = pd.concat(new_tracks, ignore_index=True)
+        self.logger.info(f"Gap closing: {n_seg} segments -> {result['track_id'].nunique()} tracks "
+                         f"({len(merge_map)} gap closures)")
+        return result
+
+    # ------------------------------------------------------------------
+    # Post-tracking analysis methods
+    # ------------------------------------------------------------------
+
+    def add_msd_analysis(self, tracks_df, pixel_size=1.0, frame_interval=1.0,
+                         classification_config=None):
+        """Compute per-track MSD, diffusion coefficient, anomalous exponent.
+
+        Adds columns: D_um2s, alpha, motion_type, msd_r_squared.
+
+        Parameters
+        ----------
+        tracks_df : DataFrame
+            Must contain track_number (or track_id), frame, x, y.
+        pixel_size : float
+            Pixel size in µm (positions are multiplied by this).
+        frame_interval : float
+            Time between frames in seconds.
+        classification_config : dict or None
+            Optional overrides: msd_min_points, msd_fitting_points,
+            anomalous_alpha_low, anomalous_alpha_high.
+
+        Returns
+        -------
+        tracks_df : DataFrame
+            Input DataFrame with new columns added.
+        """
+        cfg = classification_config or {}
+        min_pts = cfg.get('msd_min_points', 5)
+        n_fit = cfg.get('msd_fitting_points', 10)
+        alpha_low = cfg.get('anomalous_alpha_low', 0.7)
+        alpha_high = cfg.get('anomalous_alpha_high', 1.3)
+
+        # Support both track_number (main pipeline) and track_id (U-Track internal)
+        tid_col = 'track_number' if 'track_number' in tracks_df.columns else 'track_id'
+
+        tracks_df = tracks_df.copy()
+        tracks_df['D_um2s'] = np.nan
+        tracks_df['alpha'] = np.nan
+        tracks_df['motion_type'] = 'unknown'
+        tracks_df['msd_r_squared'] = np.nan
+
+        for tid in tracks_df[tid_col].unique():
+            mask = tracks_df[tid_col] == tid
+            tdata = tracks_df.loc[mask].sort_values('frame')
+            if len(tdata) < min_pts:
+                continue
+
+            xy = tdata[['x', 'y']].values * pixel_size
+            n = len(xy)
+
+            # Compute MSD for each lag
+            max_lag = min(n - 1, max(n_fit, 10))
+            lags = np.arange(1, max_lag + 1)
+            msd = np.zeros(len(lags))
+            for i, lag in enumerate(lags):
+                displacements = xy[lag:] - xy[:-lag]
+                msd[i] = np.mean(np.sum(displacements ** 2, axis=1))
+
+            if len(msd) < 3:
+                continue
+
+            # Fit D from linear MSD: MSD = 4*D*t + offset (2D diffusion)
+            tau = lags[:n_fit] * frame_interval
+            msd_fit = msd[:n_fit]
+            if len(tau) >= 2:
+                coeffs = np.polyfit(tau, msd_fit, 1)
+                slope = coeffs[0]
+                D = max(slope / 4.0, 0.0)
+                # R² for linear fit
+                msd_pred = np.polyval(coeffs, tau)
+                ss_res = np.sum((msd_fit - msd_pred) ** 2)
+                ss_tot = np.sum((msd_fit - np.mean(msd_fit)) ** 2)
+                r2_linear = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
+            else:
+                D = 0.0
+                r2_linear = 0.0
+
+            # Fit anomalous exponent: log(MSD) = alpha*log(tau) + log(4*D_alpha)
+            valid = msd[:n_fit] > 0
+            if np.sum(valid) >= 2:
+                log_tau = np.log(tau[valid])
+                log_msd = np.log(msd[:n_fit][valid])
+                coeffs_log = np.polyfit(log_tau, log_msd, 1)
+                alpha_val = coeffs_log[0]
+            else:
+                alpha_val = 1.0
+
+            # Classify motion type
+            if alpha_val < alpha_low:
+                motion = 'confined'
+            elif alpha_val > alpha_high:
+                motion = 'directed'
+            else:
+                motion = 'brownian'
+
+            tracks_df.loc[mask, 'D_um2s'] = D
+            tracks_df.loc[mask, 'alpha'] = alpha_val
+            tracks_df.loc[mask, 'motion_type'] = motion
+            tracks_df.loc[mask, 'msd_r_squared'] = r2_linear
+
+        return tracks_df
+
+    def classify_track_motion(self, tracks_df, method='msd',
+                              pixel_size=1.0, frame_interval=1.0,
+                              classification_config=None):
+        """Classify motion type per track.
+
+        Parameters
+        ----------
+        tracks_df : DataFrame
+        method : str
+            'msd' uses MSDAnalyzer, 'velocity' uses directional persistence.
+        pixel_size, frame_interval : float
+        classification_config : ClassificationConfig or None
+
+        Returns
+        -------
+        tracks_df : DataFrame with 'motion_type' column added/updated.
+        """
+        if method == 'msd':
+            return self.add_msd_analysis(tracks_df, pixel_size, frame_interval,
+                                         classification_config)
+        else:
+            # Existing directional persistence method
+            tid_col = 'track_number' if 'track_number' in tracks_df.columns else 'track_id'
+            tracks_df = tracks_df.copy()
+            for tid in tracks_df[tid_col].unique():
+                mask = tracks_df[tid_col] == tid
+                tdata = tracks_df.loc[mask].sort_values('frame')
+                if len(tdata) < 4:
+                    tracks_df.loc[mask, 'motion_type'] = 'unknown'
+                    continue
+                trajectory = tdata[['frame', 'x', 'y']].values
+                regimes = self.regime_detector.detect_motion_regimes(trajectory)
+                if regimes:
+                    tracks_df.loc[mask, 'motion_type'] = regimes[-1]['type']
+                else:
+                    tracks_df.loc[mask, 'motion_type'] = 'brownian'
+            return tracks_df
+
+    def compute_track_quality(self, tracks_df, classification_config=None):
+        """Compute per-track quality score (0–1).
+
+        Score is based on:
+        - Track length (longer = higher)
+        - Gap fraction (fewer gaps = higher)
+        - Intensity consistency (lower CoV = higher)
+        - MSD fit R² (if available)
+
+        Adds 'quality_score' column.  Optionally filters by min_quality_score.
+        """
+        cfg = classification_config or {}
+        gap_penalty = cfg.get('gap_penalty', 0.1)
+        intensity_w = cfg.get('intensity_consistency_weight', 0.2)
+        min_quality = cfg.get('min_quality_score', 0.0)
+
+        # Support both track_number (main pipeline) and track_id (U-Track internal)
+        tid_col = 'track_number' if 'track_number' in tracks_df.columns else 'track_id'
+
+        tracks_df = tracks_df.copy()
+        tracks_df['quality_score'] = 0.0
+
+        for tid in tracks_df[tid_col].unique():
+            mask = tracks_df[tid_col] == tid
+            tdata = tracks_df.loc[mask].sort_values('frame')
+            n_points = len(tdata)
+
+            if n_points == 0:
+                continue
+
+            # Length score (sigmoid-like, saturates around 20 frames)
+            length_score = min(1.0, n_points / 20.0)
+
+            # Gap fraction score
+            if n_points >= 2:
+                frame_span = tdata['frame'].max() - tdata['frame'].min() + 1
+                gap_frac = 1.0 - n_points / max(frame_span, 1)
+                gap_score = max(0.0, 1.0 - gap_penalty * gap_frac * 10)
+            else:
+                gap_score = 1.0
+
+            # Intensity consistency score
+            intensity_score = 1.0
+            if 'intensity' in tdata.columns and n_points >= 3:
+                intensities = tdata['intensity'].values
+                mean_int = np.mean(intensities)
+                if mean_int > 0:
+                    cov = np.std(intensities) / mean_int
+                    intensity_score = max(0.0, 1.0 - cov)
+
+            # MSD R² score (if available)
+            msd_score = 0.5  # neutral default
+            if 'msd_r_squared' in tdata.columns:
+                r2 = tdata['msd_r_squared'].iloc[0]
+                if not np.isnan(r2):
+                    msd_score = r2
+
+            # Combined weighted score
+            quality = (
+                0.3 * length_score
+                + 0.3 * gap_score
+                + intensity_w * intensity_score
+                + (0.4 - intensity_w) * msd_score
+            )
+            quality = np.clip(quality, 0.0, 1.0)
+            tracks_df.loc[mask, 'quality_score'] = quality
+
+        # Optional filtering
+        if min_quality > 0:
+            keep_tids = tracks_df.groupby(tid_col)['quality_score'].first()
+            keep_tids = keep_tids[keep_tids >= min_quality].index
+            tracks_df = tracks_df[tracks_df[tid_col].isin(keep_tids)].copy()
+
+        return tracks_df
+
+    def add_velocity_persistence(self, tracks_df, pixel_size=1.0):
+        """Add velocity autocorrelation and persistence metrics.
+
+        Adds columns: persistence_ratio, velocity_autocorr_tau1, confinement_ratio.
+        """
+        # Support both track_number (main pipeline) and track_id (U-Track internal)
+        tid_col = 'track_number' if 'track_number' in tracks_df.columns else 'track_id'
+
+        tracks_df = tracks_df.copy()
+        tracks_df['persistence_ratio'] = np.nan
+        tracks_df['velocity_autocorr_tau1'] = np.nan
+        tracks_df['confinement_ratio'] = np.nan
+
+        for tid in tracks_df[tid_col].unique():
+            mask = tracks_df[tid_col] == tid
+            tdata = tracks_df.loc[mask].sort_values('frame')
+            if len(tdata) < 4:
+                continue
+
+            xy = tdata[['x', 'y']].values * pixel_size
+
+            # Directional persistence: mean cos(angle) between consecutive steps
+            steps = np.diff(xy, axis=0)
+            step_norms = np.linalg.norm(steps, axis=1)
+            valid = step_norms > 1e-12
+            if np.sum(valid[:-1] & valid[1:]) > 0:
+                cos_angles = []
+                for i in range(len(steps) - 1):
+                    if step_norms[i] > 1e-12 and step_norms[i + 1] > 1e-12:
+                        cos_a = np.dot(steps[i], steps[i + 1]) / (step_norms[i] * step_norms[i + 1])
+                        cos_angles.append(np.clip(cos_a, -1.0, 1.0))
+                persistence = float(np.mean(cos_angles)) if cos_angles else 0.0
+            else:
+                persistence = 0.0
+
+            # Velocity autocorrelation at lag 1
+            if len(steps) >= 2:
+                v_mean = steps - np.mean(steps, axis=0)
+                v_var = np.sum(v_mean ** 2) / len(v_mean)
+                if v_var > 1e-12:
+                    autocorr_1 = np.sum(v_mean[:-1] * v_mean[1:]) / ((len(v_mean) - 1) * v_var)
+                    tau1 = float(autocorr_1)
+                else:
+                    tau1 = 0.0
+            else:
+                tau1 = 0.0
+
+            # Confinement ratio: max displacement / total path length
+            total_path = np.sum(step_norms)
+            max_disp = np.max(np.linalg.norm(xy - xy[0], axis=1))
+            confinement = float(max_disp / total_path) if total_path > 1e-12 else 0.0
+
+            tracks_df.loc[mask, 'persistence_ratio'] = persistence
+            tracks_df.loc[mask, 'velocity_autocorr_tau1'] = tau1
+            tracks_df.loc[mask, 'confinement_ratio'] = confinement
+
+        return tracks_df
+
 
 class UTrackLinkerAdapter:
     """
@@ -1359,6 +2195,15 @@ class UTrackLinkerAdapter:
         config.transition_probability_linear_to_brownian = getattr(self.parameters, 'utrack_trans_prob_l2b', 0.1)
         config.brownian_noise_multiplier = getattr(self.parameters, 'utrack_brownian_noise_mult', 3.0)
         config.linear_velocity_persistence = getattr(self.parameters, 'utrack_linear_velocity_persist', 0.8)
+
+        # U-Track 2.5 cost and drift parameters
+        config.use_intensity_costs = getattr(self.parameters, 'utrack_use_intensity_costs', True)
+        config.intensity_weight = 0.1
+        config.use_velocity_costs = getattr(self.parameters, 'utrack_use_velocity_costs', False)
+        config.velocity_weight = 0.1
+        config.enable_drift_correction = getattr(self.parameters, 'utrack_enable_drift_correction', False)
+        config.time_reach_conf_b = 4
+        config.time_reach_conf_l = 4
 
         return config
 
@@ -2477,6 +3322,17 @@ class SPTAnalysisParameters:
         self.utrack_trans_prob_l2b = 0.1
         self.utrack_brownian_noise_mult = 3.0
         self.utrack_linear_velocity_persist = 0.8
+
+        # U-Track 2.5 post-tracking analysis parameters
+        self.utrack_enable_msd_analysis = True
+        self.utrack_enable_quality_scoring = True
+        self.utrack_enable_velocity_persistence = True
+        self.utrack_enable_drift_correction = False
+        self.utrack_pixel_size_um = 0.16    # µm per pixel for MSD D calculation
+        self.utrack_frame_interval = 0.05   # seconds between frames
+        self.utrack_use_intensity_costs = True
+        self.utrack_use_velocity_costs = False
+        self.utrack_analysis_available = False  # dynamic flag for export control
 
     def to_dict(self):
         """Convert parameters to dictionary for saving"""
@@ -5063,6 +5919,50 @@ Output columns: x [nm], y [nm], sigma [nm], intensity [AU],
         utrack_advanced_layout.addWidget(self.utrack_enable_splitting_checkbox)
 
         utrack_layout.addWidget(self.utrack_advanced_group)
+
+        # U-Track 2.5 Post-Tracking Analysis
+        self.utrack_analysis_group = QGroupBox("U-Track 2.5 Post-Tracking Analysis")
+        utrack_analysis_layout = QFormLayout(self.utrack_analysis_group)
+
+        self.utrack_msd_checkbox = QCheckBox("MSD Analysis (D, α, motion type)")
+        self.utrack_msd_checkbox.setChecked(self.parameters.utrack_enable_msd_analysis)
+        utrack_analysis_layout.addRow(self.utrack_msd_checkbox)
+
+        self.utrack_quality_checkbox = QCheckBox("Track Quality Scoring")
+        self.utrack_quality_checkbox.setChecked(self.parameters.utrack_enable_quality_scoring)
+        utrack_analysis_layout.addRow(self.utrack_quality_checkbox)
+
+        self.utrack_persistence_checkbox = QCheckBox("Velocity Persistence Analysis")
+        self.utrack_persistence_checkbox.setChecked(self.parameters.utrack_enable_velocity_persistence)
+        utrack_analysis_layout.addRow(self.utrack_persistence_checkbox)
+
+        self.utrack_drift_checkbox = QCheckBox("Drift Correction (before tracking)")
+        self.utrack_drift_checkbox.setChecked(self.parameters.utrack_enable_drift_correction)
+        utrack_analysis_layout.addRow(self.utrack_drift_checkbox)
+
+        self.utrack_pixel_size_spin = QDoubleSpinBox()
+        self.utrack_pixel_size_spin.setRange(0.01, 10.0)
+        self.utrack_pixel_size_spin.setDecimals(3)
+        self.utrack_pixel_size_spin.setValue(self.parameters.utrack_pixel_size_um)
+        self.utrack_pixel_size_spin.setSuffix(" µm")
+        utrack_analysis_layout.addRow("Pixel Size:", self.utrack_pixel_size_spin)
+
+        self.utrack_frame_interval_spin = QDoubleSpinBox()
+        self.utrack_frame_interval_spin.setRange(0.001, 10.0)
+        self.utrack_frame_interval_spin.setDecimals(4)
+        self.utrack_frame_interval_spin.setValue(self.parameters.utrack_frame_interval)
+        self.utrack_frame_interval_spin.setSuffix(" s")
+        utrack_analysis_layout.addRow("Frame Interval:", self.utrack_frame_interval_spin)
+
+        self.utrack_intensity_costs_checkbox = QCheckBox("Use Intensity Costs in Linking")
+        self.utrack_intensity_costs_checkbox.setChecked(self.parameters.utrack_use_intensity_costs)
+        utrack_analysis_layout.addRow(self.utrack_intensity_costs_checkbox)
+
+        self.utrack_velocity_costs_checkbox = QCheckBox("Use Velocity Angle Costs in Linking")
+        self.utrack_velocity_costs_checkbox.setChecked(self.parameters.utrack_use_velocity_costs)
+        utrack_analysis_layout.addRow(self.utrack_velocity_costs_checkbox)
+
+        utrack_layout.addWidget(self.utrack_analysis_group)
         left_layout.addWidget(self.utrack_linking_group)
 
         # Method comparison and descriptions (ENHANCED with algorithm information)
@@ -6057,6 +6957,16 @@ directional persistence is important for understanding underlying mechanisms.
                 'columns': ['nnDist'] + [f'nnCountInFrame_within_{r}_pixels' for r in [3, 5, 10, 20, 30]],
                 'depends_on': 'enable_nearest_neighbors',
                 'description': 'Spatial neighbor analysis within frames'
+            },
+            'U-Track Analysis': {
+                'columns': [
+                    'D_um2s', 'alpha', 'motion_type', 'msd_r_squared',
+                    'quality_score',
+                    'persistence_ratio', 'velocity_autocorr_tau1', 'confinement_ratio',
+                    'linking_method', 'motion_model_used',
+                ],
+                'depends_on': 'utrack_analysis_available',
+                'description': 'U-Track 2.5 MSD analysis, quality scoring, and motion metrics (requires U-Track linking)'
             }
         }
 
@@ -6154,6 +7064,10 @@ directional persistence is important for understanding underlying mechanisms.
     def update_export_control_availability(self):
         """Update availability of export columns based on current analysis settings"""
         self.update_parameters()  # Get current parameters
+
+        # Dynamically set U-Track analysis availability based on linking method
+        self.parameters.utrack_analysis_available = (
+            getattr(self.parameters, 'linking_method', '') == 'utrack')
 
         for category, info in self.column_categories.items():
             category_available = True
@@ -7306,6 +8220,31 @@ directional persistence is important for understanding underlying mechanisms.
                 tracks_df['linking_method'] = self.parameters.linking_method
                 tracks_df['motion_model_used'] = 'single_model'
 
+            # U-Track 2.5 post-tracking analysis
+            if self.parameters.linking_method == 'utrack' and (
+               self.parameters.utrack_enable_msd_analysis or
+               self.parameters.utrack_enable_quality_scoring or
+               self.parameters.utrack_enable_velocity_persistence):
+                self.log_message("  🔬 Running U-Track 2.5 post-tracking analysis...")
+                utrack_linker = UTrackLinkerWithMixedMotion()
+
+                if self.parameters.utrack_enable_msd_analysis:
+                    self.log_message("    📊 Computing MSD analysis...")
+                    tracks_df = utrack_linker.add_msd_analysis(
+                        tracks_df,
+                        pixel_size=self.parameters.utrack_pixel_size_um,
+                        frame_interval=self.parameters.utrack_frame_interval)
+
+                if self.parameters.utrack_enable_quality_scoring:
+                    self.log_message("    ⭐ Computing track quality scores...")
+                    tracks_df = utrack_linker.compute_track_quality(tracks_df)
+
+                if self.parameters.utrack_enable_velocity_persistence:
+                    self.log_message("    🔄 Computing velocity persistence metrics...")
+                    tracks_df = utrack_linker.add_velocity_persistence(
+                        tracks_df,
+                        pixel_size=self.parameters.utrack_pixel_size_um)
+
             # Verify experiment name is still present
             if 'Experiment' in tracks_df.columns:
                 unique_experiments = tracks_df['Experiment'].unique()
@@ -7489,6 +8428,15 @@ directional persistence is important for understanding underlying mechanisms.
                     # Add U-Track specific columns if applicable
                     if self.parameters.linking_method == 'utrack' and self.parameters.utrack_motion_model == 'mixed':
                         core_columns.extend(['pmms_enabled', 'tracking_rounds_used'])
+
+                    if self.parameters.linking_method == 'utrack':
+                        core_columns.extend(['linking_method', 'motion_model_used'])
+                        if getattr(self.parameters, 'utrack_enable_msd_analysis', False):
+                            core_columns.extend(['D_um2s', 'alpha', 'motion_type', 'msd_r_squared'])
+                        if getattr(self.parameters, 'utrack_enable_quality_scoring', False):
+                            core_columns.append('quality_score')
+                        if getattr(self.parameters, 'utrack_enable_velocity_persistence', False):
+                            core_columns.extend(['persistence_ratio', 'velocity_autocorr_tau1', 'confinement_ratio'])
 
                     # Only include columns that exist in the dataframe
                     features_columns = [col for col in core_columns if col in tracks_df.columns]
@@ -8393,6 +9341,16 @@ directional persistence is important for understanding underlying mechanisms.
             self.parameters.utrack_trans_prob_l2b = self.linear_to_brownian_spin.value()
             self.parameters.utrack_brownian_noise_mult = self.brownian_noise_spin.value()
             self.parameters.utrack_linear_velocity_persist = self.velocity_persistence_spin.value()
+
+            # U-Track 2.5 post-tracking analysis
+            self.parameters.utrack_enable_msd_analysis = self.utrack_msd_checkbox.isChecked()
+            self.parameters.utrack_enable_quality_scoring = self.utrack_quality_checkbox.isChecked()
+            self.parameters.utrack_enable_velocity_persistence = self.utrack_persistence_checkbox.isChecked()
+            self.parameters.utrack_enable_drift_correction = self.utrack_drift_checkbox.isChecked()
+            self.parameters.utrack_pixel_size_um = self.utrack_pixel_size_spin.value()
+            self.parameters.utrack_frame_interval = self.utrack_frame_interval_spin.value()
+            self.parameters.utrack_use_intensity_costs = self.utrack_intensity_costs_checkbox.isChecked()
+            self.parameters.utrack_use_velocity_costs = self.utrack_velocity_costs_checkbox.isChecked()
 
     def update_gui_from_parameters_with_mixed_motion(self):
         """Update GUI from parameters including mixed motion and new algorithm options"""

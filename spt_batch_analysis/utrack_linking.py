@@ -74,6 +74,7 @@ class KalmanFilterInfo:
     state_cov: np.ndarray       # Shape: (2*prob_dim, 2*prob_dim, n_particles)
     noise_var: np.ndarray       # Shape: (2*prob_dim, 2*prob_dim, n_particles)
     observation_mat: np.ndarray = None  # Observation matrix H
+    track_ages: np.ndarray = None       # Shape: (n_particles,) - frames since track start
 
 
 @dataclass
@@ -83,6 +84,7 @@ class TrackSegment:
     tracks_coord_amp: np.ndarray    # Coordinates and amplitudes
     n_segments: int = 1             # Number of segments
     n_frames: int = 0              # Number of frames
+    abs_start_frame: int = 0       # Absolute start frame in the movie
 
 
 @dataclass
@@ -298,7 +300,8 @@ class UTrackLinker:
                         tracks_feat_indx=feat_indx,
                         tracks_coord_amp=coord_amp,
                         n_segments=1,
-                        n_frames=1
+                        n_frames=1,
+                        abs_start_frame=frame_idx
                     )
                     segments.append(segment)
 
@@ -321,13 +324,34 @@ class UTrackLinker:
                 )
             else:
                 # Extract coordinates with uncertainties
+                # Use actual detection uncertainty if available
+                n_det = len(frame_detections)
+                default_unc = 0.1
+
+                if 'uncertainty [nm]' in frame_detections.columns:
+                    x_unc = frame_detections['uncertainty [nm]'].values
+                    y_unc = x_unc.copy()
+                elif 'sigma [nm]' in frame_detections.columns:
+                    x_unc = frame_detections['sigma [nm]'].values
+                    y_unc = x_unc.copy()
+                elif 'uncertainty_x' in frame_detections.columns:
+                    x_unc = frame_detections['uncertainty_x'].values
+                    y_unc = frame_detections.get('uncertainty_y', frame_detections['uncertainty_x']).values
+                else:
+                    x_unc = np.full(n_det, default_unc)
+                    y_unc = np.full(n_det, default_unc)
+
+                # Ensure positive uncertainties
+                x_unc = np.maximum(x_unc, 1e-6)
+                y_unc = np.maximum(y_unc, 1e-6)
+
                 x_coord = np.column_stack([
                     frame_detections['x'].values,
-                    np.full(len(frame_detections), 0.1)  # Default uncertainty
+                    x_unc
                 ])
                 y_coord = np.column_stack([
                     frame_detections['y'].values,
-                    np.full(len(frame_detections), 0.1)
+                    y_unc
                 ])
 
                 # Handle intensity column
@@ -418,77 +442,88 @@ class UTrackLinker:
 
     def _assignments_to_tracks_fixed(self, all_assignments: List[np.ndarray],
                                    movie_info: List[MovieInfo], prob_dim: int) -> List[TrackSegment]:
-        """PRACTICAL FIX: Create tracks based on spatial proximity when LAP fails"""
+        """Build multi-frame track segments by chaining frame-to-frame LAP assignments.
+
+        Instead of creating separate 2-frame segments per frame pair (the old bug),
+        this traces connected particle chains across all frames to form proper
+        multi-frame tracks, matching the original U-Track 2.5 behaviour.
+        """
         n_frames = len(movie_info)
 
         if n_frames < 2 or not all_assignments:
             return []
 
-        self.logger.debug(f"Converting assignments to tracks for {n_frames} frames")
+        self.logger.debug(f"Chaining assignments across {n_frames} frames")
 
-        # Process assignments for each frame pair
-        completed_tracks = []
+        # ------------------------------------------------------------------
+        # 1. Build forward-link graph: links[(frame, particle)] = (frame+1, particle)
+        # ------------------------------------------------------------------
+        forward_links = {}   # (frame_idx, particle_1based) -> (frame_idx+1, particle_1based)
+        linked_as_target = set()  # particles that are linked TO (not track starts)
 
         for frame_idx, assignments in enumerate(all_assignments):
             if len(assignments) == 0:
+                # Fallback: spatial proximity matching
+                spatial_links = self._create_spatial_links(
+                    movie_info[frame_idx], movie_info[frame_idx + 1])
+                for src, tgt in spatial_links.items():
+                    forward_links[(frame_idx, src)] = (frame_idx + 1, tgt)
+                    linked_as_target.add((frame_idx + 1, tgt))
                 continue
 
             n_source = movie_info[frame_idx].num
             n_target = movie_info[frame_idx + 1].num
 
-            self.logger.debug(f"Processing frame {frame_idx}->{frame_idx + 1}: {n_source}->{n_target} particles")
-
-            # First try: Extract LAP links
             particle_links = {}
-            for source_particle in range(1, n_source + 1):  # 1-indexed
+            for source_particle in range(1, n_source + 1):
                 if source_particle < len(assignments):
                     target_assignment = assignments[source_particle]
                     if 1 <= target_assignment <= n_target:
                         particle_links[source_particle] = target_assignment
-                        self.logger.debug(f"LAP link: source {source_particle} -> target {target_assignment}")
 
-            self.logger.debug(f"Found {len(particle_links)} LAP particle links")
-
-            # PRACTICAL FIX: If LAP found no links but particles are close, create spatial links
+            # Fallback to spatial if LAP found nothing
             if len(particle_links) == 0:
-                self.logger.debug("No LAP links found, trying spatial proximity matching...")
-                particle_links = self._create_spatial_links(movie_info[frame_idx], movie_info[frame_idx + 1])
-                self.logger.debug(f"Created {len(particle_links)} spatial links")
+                particle_links = self._create_spatial_links(
+                    movie_info[frame_idx], movie_info[frame_idx + 1])
 
-            # Create tracks from links
-            for source_p, target_p in particle_links.items():
-                track_data = {
-                    'frames': [frame_idx, frame_idx + 1],
-                    'particles': [source_p, target_p]
-                }
+            for src, tgt in particle_links.items():
+                forward_links[(frame_idx, src)] = (frame_idx + 1, tgt)
+                linked_as_target.add((frame_idx + 1, tgt))
+
+        # ------------------------------------------------------------------
+        # 2. Find chain starts: any (frame, particle) that is NOT a link target
+        # ------------------------------------------------------------------
+        all_particles = set()
+        for frame_idx in range(n_frames):
+            for p in range(1, movie_info[frame_idx].num + 1):
+                all_particles.add((frame_idx, p))
+
+        chain_starts = all_particles - linked_as_target
+
+        # ------------------------------------------------------------------
+        # 3. Trace each chain to build multi-frame track segments
+        # ------------------------------------------------------------------
+        completed_tracks = []
+        visited = set()
+
+        for start in sorted(chain_starts):
+            frames_list = []
+            particles_list = []
+            current = start
+
+            while current is not None and current not in visited:
+                visited.add(current)
+                frames_list.append(current[0])
+                particles_list.append(current[1])
+                current = forward_links.get(current, None)
+
+            if len(frames_list) > 0:
+                track_data = {'frames': frames_list, 'particles': particles_list}
                 segment = self._build_track_segment_from_data(track_data, movie_info, prob_dim)
                 if segment is not None:
                     completed_tracks.append(segment)
-                    self.logger.debug(f"Created 2-frame track: {source_p} -> {target_p}")
 
-            # Create single-frame tracks for unlinked particles
-            linked_sources = set(particle_links.keys())
-            linked_targets = set(particle_links.values())
-
-            # Unlinked source particles (deaths)
-            for source_p in range(1, n_source + 1):
-                if source_p not in linked_sources:
-                    track_data = {'frames': [frame_idx], 'particles': [source_p]}
-                    segment = self._build_track_segment_from_data(track_data, movie_info, prob_dim)
-                    if segment is not None:
-                        completed_tracks.append(segment)
-                        self.logger.debug(f"Death track: source {source_p}")
-
-            # Unlinked target particles (births)
-            for target_p in range(1, n_target + 1):
-                if target_p not in linked_targets:
-                    track_data = {'frames': [frame_idx + 1], 'particles': [target_p]}
-                    segment = self._build_track_segment_from_data(track_data, movie_info, prob_dim)
-                    if segment is not None:
-                        completed_tracks.append(segment)
-                        self.logger.debug(f"Birth track: target {target_p}")
-
-        self.logger.debug(f"Created {len(completed_tracks)} total track segments")
+        self.logger.debug(f"Created {len(completed_tracks)} chained track segments")
         return completed_tracks
 
     def _create_spatial_links(self, frame1_info: MovieInfo, frame2_info: MovieInfo) -> Dict[int, int]:
@@ -585,250 +620,434 @@ class UTrackLinker:
             tracks_feat_indx=feat_indx,
             tracks_coord_amp=coord_amp,
             n_segments=1,
-            n_frames=n_frames_total
+            n_frames=n_frames_total,
+            abs_start_frame=start_frame
         )
-
-    # def _build_track_segment_fixed(self, track_data: Dict, movie_info: List[MovieInfo],
-    #                              prob_dim: int) -> Optional[TrackSegment]:
-    #     """FIXED: Build a TrackSegment from track data"""
-    #     frames = track_data['frames']
-    #     particles = track_data['particles']
-
-    #     if len(frames) == 0:
-    #         return None
-
-    #     start_frame = min(frames)
-    #     end_frame = max(frames)
-    #     n_frames_total = end_frame - start_frame + 1
-
-    #     # Initialize arrays
-    #     feat_indx = np.zeros(n_frames_total)
-    #     coord_amp = np.full(n_frames_total * 8, np.nan)
-
-    #     # Fill in track data
-    #     for i, (frame, particle) in enumerate(zip(frames, particles)):
-    #         relative_frame = frame - start_frame
-    #         feat_indx[relative_frame] = particle
-
-    #         # Get coordinates and amplitude
-    #         if frame < len(movie_info) and particle <= movie_info[frame].num:
-    #             frame_info = movie_info[frame]
-    #             particle_idx = particle - 1  # Convert to 0-indexed
-
-    #             base_idx = relative_frame * 8
-
-    #             # Fill coordinates (handle potential missing data)
-    #             if particle_idx < len(frame_info.all_coord):
-    #                 coord_amp[base_idx:base_idx+2] = frame_info.all_coord[particle_idx, 0:2]    # x, dx
-    #                 coord_amp[base_idx+2:base_idx+4] = frame_info.all_coord[particle_idx, 2:4]  # y, dy
-    #                 coord_amp[base_idx+6:base_idx+8] = frame_info.all_coord[particle_idx, 4:6]  # amp, damp
-
-    #     return TrackSegment(
-    #         tracks_feat_indx=feat_indx,
-    #         tracks_coord_amp=coord_amp,
-    #         n_segments=1,
-    #         n_frames=n_frames_total
-    #     )
 
     def _close_gaps_kalman_sparse(self, track_segments: List[TrackSegment],
                                 kalman_info: List[KalmanFilterInfo],
                                 prob_dim: int) -> List[CompoundTrack]:
-        """
-        FIXED: Step 2: Gap closing and merge/split detection
+        """Step 2: Gap closing, merge, and split detection via a second LAP.
+
+        Implements the full U-Track 2.5 Step 2 algorithm:
+        - Gap closing: connect segment end → segment start across gaps
+        - Merge: segment end merges into the middle of another segment
+        - Split: segment start splits from the middle of another segment
+        The cost matrix is augmented with adaptive birth/death alternatives.
         """
         # Filter short tracks
-        min_track_len = max(1, self.gap_close_params.min_track_len - 1)  # Be more lenient for 2-frame sequences
+        min_track_len = max(1, self.gap_close_params.min_track_len - 1)
         long_segments = []
 
         for segment in track_segments:
             valid_count = np.sum(segment.tracks_feat_indx > 0)
             if valid_count >= min_track_len:
                 long_segments.append(segment)
-            else:
-                self.logger.debug(f"Filtered out track with {valid_count} points (< {min_track_len})")
 
-        self.logger.debug(f"Kept {len(long_segments)} segments after length filtering")
+        self.logger.debug(f"Kept {len(long_segments)} segments after length filtering "
+                          f"(min_track_len={min_track_len})")
 
         if not long_segments:
             return []
 
-        # For now, convert each segment to a compound track directly
-        # In full implementation, this would involve gap closing LAP
+        time_window = self.gap_close_params.time_window
+        gap_penalty = self.cost_params_gap.gap_penalty
+        max_gap_radius = self.cost_params_gap.max_search_radius
+
+        # ------------------------------------------------------------------
+        # 1. Extract segment end / start / interior information
+        # ------------------------------------------------------------------
+        n_seg = len(long_segments)
+        seg_end_frame = np.zeros(n_seg, dtype=int)
+        seg_end_pos = np.zeros((n_seg, prob_dim))
+        seg_start_frame = np.zeros(n_seg, dtype=int)
+        seg_start_pos = np.zeros((n_seg, prob_dim))
+
+        # For merge/split: per-segment dict of {abs_frame: position}
+        seg_interior = [{}] * n_seg  # abs_frame -> (x, y) for interior points
+
+        for idx, seg in enumerate(long_segments):
+            valid_frames = np.where(seg.tracks_feat_indx > 0)[0]
+            if len(valid_frames) == 0:
+                continue
+
+            abs_offset = seg.abs_start_frame
+
+            # Start info (absolute frame)
+            sf = valid_frames[0]
+            seg_start_frame[idx] = abs_offset + sf
+            base = sf * 8
+            seg_start_pos[idx, 0] = seg.tracks_coord_amp[base]
+            seg_start_pos[idx, 1] = seg.tracks_coord_amp[base + 1]
+
+            # End info (absolute frame)
+            ef = valid_frames[-1]
+            seg_end_frame[idx] = abs_offset + ef
+            base = ef * 8
+            seg_end_pos[idx, 0] = seg.tracks_coord_amp[base]
+            seg_end_pos[idx, 1] = seg.tracks_coord_amp[base + 1]
+
+            # Interior points (all valid frames except first and last)
+            interior = {}
+            for vf in valid_frames:
+                abs_f = abs_offset + vf
+                b = vf * 8
+                interior[abs_f] = (seg.tracks_coord_amp[b], seg.tracks_coord_amp[b + 1])
+            seg_interior[idx] = interior
+
+        # ------------------------------------------------------------------
+        # 2. Determine merge/split mode
+        # ------------------------------------------------------------------
+        ms_mode = self.gap_close_params.merge_split
+        do_merge = ms_mode in (1, 2)
+        do_split = ms_mode in (1, 3)
+
+        # ------------------------------------------------------------------
+        # 3. Build merge candidates: seg_end -> interior of another segment
+        #    A merge means segment i ends, and its last position is close to
+        #    some interior frame of segment j (the particle merged into j).
+        # ------------------------------------------------------------------
+        merge_candidates = []  # (end_seg_i, target_seg_j, target_abs_frame, cost)
+        if do_merge:
+            for i in range(n_seg):
+                for j in range(n_seg):
+                    if i == j:
+                        continue
+                    end_f = seg_end_frame[i]
+                    # The merge must happen at or just after the end frame
+                    for abs_f, pos_j in seg_interior[j].items():
+                        dt = abs_f - end_f
+                        if dt < 0 or dt > 1:
+                            continue  # merge must be at frame end or end+1
+                        d2 = (seg_end_pos[i, 0] - pos_j[0]) ** 2 + (seg_end_pos[i, 1] - pos_j[1]) ** 2
+                        if np.sqrt(d2) > max_gap_radius:
+                            continue
+                        merge_candidates.append((i, j, abs_f, d2))
+
+        n_merge = len(merge_candidates)
+
+        # ------------------------------------------------------------------
+        # 4. Build split candidates: interior of a segment -> seg_start
+        #    A split means segment j starts, and its first position is close
+        #    to some interior frame of segment i (the particle split from i).
+        # ------------------------------------------------------------------
+        split_candidates = []  # (source_seg_i, start_seg_j, source_abs_frame, cost)
+        if do_split:
+            for j in range(n_seg):
+                for i in range(n_seg):
+                    if i == j:
+                        continue
+                    start_f = seg_start_frame[j]
+                    for abs_f, pos_i in seg_interior[i].items():
+                        dt = start_f - abs_f
+                        if dt < 0 or dt > 1:
+                            continue
+                        d2 = (pos_i[0] - seg_start_pos[j, 0]) ** 2 + (pos_i[1] - seg_start_pos[j, 1]) ** 2
+                        if np.sqrt(d2) > max_gap_radius:
+                            continue
+                        split_candidates.append((i, j, abs_f, d2))
+
+        n_split = len(split_candidates)
+
+        self.logger.debug(f"Gap close candidates: {n_seg} segments, "
+                          f"{n_merge} merge candidates, {n_split} split candidates")
+
+        # ------------------------------------------------------------------
+        # 5. Build gap-closing cost sub-matrix (n_seg x n_seg)
+        # ------------------------------------------------------------------
+        gc_cost = np.full((n_seg, n_seg), np.inf)
+
+        for i in range(n_seg):
+            for j in range(n_seg):
+                if i == j:
+                    continue
+                dt = seg_start_frame[j] - seg_end_frame[i]
+                if dt < 1 or dt > time_window:
+                    continue
+                d2 = np.sum((seg_end_pos[i] - seg_start_pos[j]) ** 2)
+                if np.sqrt(d2) > max_gap_radius * np.sqrt(dt):
+                    continue
+                gc_cost[i, j] = d2 * (gap_penalty ** (dt - 1))
+
+        # ------------------------------------------------------------------
+        # 6. Build augmented cost matrix
+        #    Layout (U-Track 2.5 style with merge/split):
+        #
+        #    Rows:    [seg_ends (n_seg)] [split_sources (n_split)]
+        #    Cols:    [seg_starts (n_seg)] [merge_targets (n_merge)]
+        #    + birth/death alternative blocks
+        #
+        #    Total rows = n_seg + n_split + n_seg + n_merge  (with alternatives)
+        #    Total cols = n_seg + n_merge + n_seg + n_split  (with alternatives)
+        #
+        #    Simplified: we use the standard augmented LAP format:
+        #      n_rows_real = n_seg + n_split
+        #      n_cols_real = n_seg + n_merge
+        #      matrix_size = n_rows_real + n_cols_real
+        # ------------------------------------------------------------------
+        n_rows = n_seg + n_split  # end segments + split sources
+        n_cols = n_seg + n_merge  # start segments + merge targets
+
+        matrix_size = n_rows + n_cols
+        gc_full = np.full((matrix_size, matrix_size), np.inf)
+
+        # (a) Upper-left: linking costs
+        # Gap closing: rows 0..n_seg-1 (ends) × cols 0..n_seg-1 (starts)
+        gc_full[:n_seg, :n_seg] = gc_cost
+
+        # Merge costs: rows 0..n_seg-1 (ends) × cols n_seg..n_seg+n_merge-1
+        for m_idx, (end_i, _, _, cost) in enumerate(merge_candidates):
+            gc_full[end_i, n_seg + m_idx] = cost
+
+        # Split costs: rows n_seg..n_seg+n_split-1 × cols 0..n_seg-1 (starts)
+        for s_idx, (_, start_j, _, cost) in enumerate(split_candidates):
+            gc_full[n_seg + s_idx, start_j] = cost
+
+        # Collect all valid costs for adaptive thresholds
+        all_valid = gc_full[:n_rows, :n_cols]
+        valid_costs = all_valid[np.isfinite(all_valid)]
+
+        if len(valid_costs) > 0:
+            alt_cost_factor = self.cost_params_gap.alternative_cost_factor
+            alt_cost = np.percentile(valid_costs, 90) * alt_cost_factor
+            alt_cost = max(alt_cost, self.cost_params_gap.min_search_radius ** 2)
+        else:
+            alt_cost = max_gap_radius ** 2
+
+        # (b) Upper-right: death alternative (n_rows × n_rows diagonal)
+        for r in range(n_rows):
+            gc_full[r, n_cols + r] = alt_cost
+
+        # (c) Lower-left: birth alternative (n_cols × n_cols diagonal)
+        for c in range(n_cols):
+            gc_full[n_rows + c, c] = alt_cost
+
+        # (d) Lower-right: dummy costs
+        dummy_cost = np.min(valid_costs) if len(valid_costs) > 0 else alt_cost
+        gc_full[n_rows:, n_cols:] = dummy_cost
+
+        # ------------------------------------------------------------------
+        # 7. Solve the gap-closing LAP
+        # ------------------------------------------------------------------
+        gc_assignments = self._solve_lap(gc_full, nonlink_marker=-1)
+
+        # Parse assignments
+        merge_map = {}       # end_seg_idx -> start_seg_idx (gap closing)
+        merge_events = []    # (end_seg, target_seg, abs_frame)
+        split_events = []    # (source_seg, start_seg, abs_frame)
+
+        for row_1idx in range(1, n_rows + 1):
+            if row_1idx >= len(gc_assignments):
+                continue
+            col_1idx = gc_assignments[row_1idx]
+            if col_1idx < 1:
+                continue
+
+            row = row_1idx - 1  # 0-indexed
+            col = col_1idx - 1  # 0-indexed
+
+            if col >= n_cols:
+                continue  # assigned to death alternative
+
+            if row < n_seg and col < n_seg:
+                # Gap closing: segment row's end → segment col's start
+                if row != col:
+                    merge_map[row] = col
+            elif row < n_seg and col >= n_seg:
+                # Merge: segment row's end merges into another segment
+                m_idx = col - n_seg
+                if m_idx < n_merge:
+                    end_i, target_j, abs_f, _ = merge_candidates[m_idx]
+                    merge_events.append((end_i, target_j, abs_f))
+            elif row >= n_seg and col < n_seg:
+                # Split: a segment splits to become segment col
+                s_idx = row - n_seg
+                if s_idx < n_split:
+                    source_i, start_j, abs_f, _ = split_candidates[s_idx]
+                    split_events.append((source_i, start_j, abs_f))
+
+        n_gc = len(merge_map)
+        self.logger.debug(f"Gap closing: {n_gc} closures, "
+                          f"{len(merge_events)} merges, {len(split_events)} splits")
+
+        # ------------------------------------------------------------------
+        # 8. Chain merged segments into compound tracks
+        # ------------------------------------------------------------------
+        merged_into = set(merge_map.values())
+        visited_seg = set()
         compound_tracks = []
-        for segment_idx, segment in enumerate(long_segments):
-            # Create sequence of events
-            valid_frames = np.where(segment.tracks_feat_indx > 0)[0]
-            if len(valid_frames) > 0:
-                start_frame = valid_frames[0] + 1  # Convert to 1-indexed
-                end_frame = valid_frames[-1] + 1
 
-                seq_of_events = np.array([
-                    [start_frame, 1, 1, np.nan],  # Start event
-                    [end_frame, 2, 1, np.nan]     # End event
-                ])
+        for seed in range(n_seg):
+            if seed in visited_seg or seed in merged_into:
+                continue
 
-                compound_track = CompoundTrack(
-                    tracks_feat_indx_cg=segment.tracks_feat_indx,
-                    tracks_coord_amp_cg=segment.tracks_coord_amp,
-                    seq_of_events=seq_of_events
-                )
-                compound_tracks.append(compound_track)
-                self.logger.debug(f"Created compound track {segment_idx}: frames {start_frame}-{end_frame}")
+            chain = [seed]
+            visited_seg.add(seed)
+            current = seed
+            while current in merge_map:
+                nxt = merge_map[current]
+                if nxt in visited_seg:
+                    break
+                chain.append(nxt)
+                visited_seg.add(nxt)
+                current = nxt
 
+            ct = self._merge_segments_to_compound_track(chain, long_segments)
+            if ct is not None:
+                # Record merge/split events in seq_of_events
+                ct = self._add_merge_split_events(
+                    ct, chain, long_segments, merge_events, split_events)
+                compound_tracks.append(ct)
+
+        # Emit remaining unvisited segments
+        for idx in range(n_seg):
+            if idx not in visited_seg:
+                ct = self._merge_segments_to_compound_track([idx], long_segments)
+                if ct is not None:
+                    compound_tracks.append(ct)
+
+        self.logger.debug(f"Gap closing produced {len(compound_tracks)} compound tracks "
+                          f"from {n_seg} segments ({n_gc} gap closures)")
         return compound_tracks
 
-    # def _convert_compound_tracks_to_dataframe_fixed(self, compound_tracks: List[CompoundTrack],
-    #                                               original_detections: List[pd.DataFrame]) -> pd.DataFrame:
-    #     """CORRECTED: Convert compound tracks back to standard DataFrame format"""
-    #     if not compound_tracks:
-    #         return pd.DataFrame(columns=['particle_id', 'track_id', 'frame', 'x', 'y', 'intensity'])
+    def _merge_segments_to_compound_track(self, seg_indices: List[int],
+                                          segments: List[TrackSegment]) -> Optional[CompoundTrack]:
+        """Merge a chain of gap-closed segments into a single CompoundTrack."""
+        if not seg_indices:
+            return None
 
-    #     data = []
+        # Collect valid segments with their absolute start frames
+        seg_info = []  # (abs_start, segment)
+        for idx in seg_indices:
+            seg = segments[idx]
+            if np.sum(seg.tracks_feat_indx > 0) == 0:
+                continue
+            seg_info.append((seg.abs_start_frame, seg))
 
-    #     for track_id, track in enumerate(compound_tracks):
-    #         try:
-    #             # Get the length based on tracks_feat_indx_cg
-    #             if hasattr(track, 'tracks_feat_indx_cg') and len(track.tracks_feat_indx_cg) > 0:
-    #                 n_frames = len(track.tracks_feat_indx_cg)
-    #             elif hasattr(track, 'n_frames') and track.n_frames > 0:
-    #                 n_frames = track.n_frames
-    #             else:
-    #                 # Try to infer from coordinate data
-    #                 coord_length = len(track.tracks_coord_amp_cg) if hasattr(track, 'tracks_coord_amp_cg') else 0
-    #                 n_frames = coord_length // 8  # 8 elements per time point
+        if not seg_info:
+            return None
 
-    #             if n_frames <= 0:
-    #                 self.logger.debug(f"Track {track_id}: no valid frames")
-    #                 continue
+        # Compute global frame range
+        global_start = min(s for s, _ in seg_info)
+        global_end = max(s + seg.n_frames - 1 for s, seg in seg_info)
+        total_frames = global_end - global_start + 1
 
-    #             # CORRECTED: tracksCoordAmpCG is a 1D array with 8 elements per time point
-    #             coords_1d = track.tracks_coord_amp_cg
+        combined_feat = np.zeros(total_frames)
+        combined_coord = np.full(total_frames * 8, np.nan)
 
-    #             if len(coords_1d) < n_frames * 8:
-    #                 self.logger.debug(f"Track {track_id}: insufficient coordinate data")
-    #                 continue
+        for abs_start, seg in seg_info:
+            offset = abs_start - global_start
+            for f in range(seg.n_frames):
+                dest_f = offset + f
+                if 0 <= dest_f < total_frames and seg.tracks_feat_indx[f] > 0:
+                    combined_feat[dest_f] = seg.tracks_feat_indx[f]
+                    src_base = f * 8
+                    dst_base = dest_f * 8
+                    combined_coord[dst_base:dst_base + 8] = seg.tracks_coord_amp[src_base:src_base + 8]
 
-    #             self.logger.debug(f"Track {track_id}: processing {n_frames} frames")
+        valid = np.where(combined_feat > 0)[0]
+        if len(valid) == 0:
+            return None
 
-    #             for frame_idx in range(n_frames):
-    #                 # Check if this frame has a valid particle
-    #                 particle_id = track.tracks_feat_indx_cg[frame_idx] if frame_idx < len(track.tracks_feat_indx_cg) else 0
+        start_1idx = valid[0] + global_start + 1
+        end_1idx = valid[-1] + global_start + 1
 
-    #                 if particle_id > 0:  # Valid particle (1-based indexing, 0 = gap)
-    #                     # Extract coordinates for this time point
-    #                     base_idx = frame_idx * 8
+        seq_of_events = np.array([
+            [start_1idx, 1, len(seg_info), np.nan],
+            [end_1idx, 2, len(seg_info), np.nan]
+        ])
 
-    #                     # CORRECTED: Extract from 1D array
-    #                     x_coord = coords_1d[base_idx] if not np.isnan(coords_1d[base_idx]) else 0.0
-    #                     y_coord = coords_1d[base_idx + 1] if not np.isnan(coords_1d[base_idx + 1]) else 0.0
-    #                     # Skip z_coord (index 2) since we're working in 2D
-    #                     intensity = coords_1d[base_idx + 3] if not np.isnan(coords_1d[base_idx + 3]) else 100.0
+        return CompoundTrack(
+            tracks_feat_indx_cg=combined_feat,
+            tracks_coord_amp_cg=combined_coord,
+            seq_of_events=seq_of_events
+        )
 
-    #                     data.append({
-    #                         'particle_id': int(particle_id),
-    #                         'track_id': track_id + 1,  # 1-indexed
-    #                         'frame': frame_idx,
-    #                         'x': x_coord,
-    #                         'y': y_coord,
-    #                         'intensity': intensity
-    #                     })
+    def _add_merge_split_events(self, compound_track: CompoundTrack,
+                                 chain: List[int],
+                                 segments: List[TrackSegment],
+                                 merge_events: List[Tuple],
+                                 split_events: List[Tuple]) -> CompoundTrack:
+        """Add merge/split event rows to a compound track's seq_of_events.
 
-    #         except Exception as e:
-    #             self.logger.warning(f"Error processing track {track_id}: {e}")
-    #             self.logger.debug(f"Track structure: feat_indx length={len(track.tracks_feat_indx_cg) if hasattr(track, 'tracks_feat_indx_cg') else 'N/A'}, "
-    #                             f"coord_amp length={len(track.tracks_coord_amp_cg) if hasattr(track, 'tracks_coord_amp_cg') else 'N/A'}")
-    #             continue
+        U-Track seq_of_events format per row: [frame(1-idx), event_type, segment_idx, other_track_idx]
+        Event types: 1=start, 2=end, 3=merge, 4=split
+        """
+        soe_rows = list(compound_track.seq_of_events)
+        chain_set = set(chain)
 
-    #     if data:
-    #         result_df = pd.DataFrame(data)
-    #         self.logger.info(f"Successfully converted {len(compound_tracks)} compound tracks to {len(result_df)} track points")
-    #         return result_df
-    #     else:
-    #         self.logger.warning("No valid track data could be extracted from compound tracks")
-    #         return pd.DataFrame(columns=['particle_id', 'track_id', 'frame', 'x', 'y', 'intensity'])
+        for end_seg, target_seg, abs_frame in merge_events:
+            if end_seg in chain_set:
+                # This track's segment merged into target_seg
+                soe_rows.append([abs_frame + 1, 3, 1, target_seg + 1])
+
+        for source_seg, start_seg, abs_frame in split_events:
+            if start_seg in chain_set:
+                # This track's segment split from source_seg
+                soe_rows.append([abs_frame + 1, 4, 1, source_seg + 1])
+
+        # Sort events by frame
+        soe_rows.sort(key=lambda r: r[0])
+
+        compound_track.seq_of_events = np.array(soe_rows)
+        return compound_track
 
     def _convert_compound_tracks_to_dataframe_fixed(self, compound_tracks: List[CompoundTrack],
                                                   original_detections: List[pd.DataFrame]) -> pd.DataFrame:
-        """DEBUG VERSION: Convert compound tracks with detailed logging"""
+        """Convert compound tracks back to standard DataFrame format."""
         if not compound_tracks:
             return pd.DataFrame(columns=['particle_id', 'track_id', 'frame', 'x', 'y', 'intensity'])
 
         data = []
 
-        for track_id, track in enumerate(compound_tracks[:3]):  # Only process first 3 tracks for debugging
+        for track_id, track in enumerate(compound_tracks):
             try:
-                self.logger.info(f"=== DEBUGGING TRACK {track_id} ===")
-
-                # Get the length based on tracks_feat_indx_cg
-                if hasattr(track, 'tracks_feat_indx_cg') and len(track.tracks_feat_indx_cg) > 0:
-                    n_frames = len(track.tracks_feat_indx_cg)
-                    self.logger.info(f"Track {track_id}: n_frames from feat_indx = {n_frames}")
-                    self.logger.info(f"Track {track_id}: feat_indx = {track.tracks_feat_indx_cg}")
-                else:
-                    self.logger.warning(f"Track {track_id}: No valid feat_indx")
+                if not hasattr(track, 'tracks_feat_indx_cg') or len(track.tracks_feat_indx_cg) == 0:
                     continue
 
-                # DETAILED COORDINATE ARRAY INSPECTION
+                n_frames = len(track.tracks_feat_indx_cg)
                 coords_1d = track.tracks_coord_amp_cg
-                self.logger.info(f"Track {track_id}: coords_1d length = {len(coords_1d)}")
-                self.logger.info(f"Track {track_id}: coords_1d type = {type(coords_1d)}")
-
-                # Show the entire coordinate array for first track
-                if track_id == 0:
-                    self.logger.info(f"Track {track_id}: FULL coords_1d = {coords_1d}")
 
                 if len(coords_1d) < n_frames * 8:
-                    self.logger.warning(f"Track {track_id}: insufficient coordinate data ({len(coords_1d)} < {n_frames * 8})")
+                    self.logger.debug(f"Track {track_id}: insufficient coordinate data")
                     continue
 
-                # Process each frame with detailed logging
-                for frame_idx in range(min(n_frames, 3)):  # Only first 3 frames for debugging
-                    particle_id = track.tracks_feat_indx_cg[frame_idx] if frame_idx < len(track.tracks_feat_indx_cg) else 0
+                # Determine the absolute start frame from seq_of_events
+                start_frame_abs = 0
+                if hasattr(track, 'seq_of_events') and track.seq_of_events is not None:
+                    soe = track.seq_of_events
+                    if len(soe) > 0:
+                        start_frame_abs = int(soe[0, 0]) - 1  # Convert 1-indexed to 0-indexed
 
-                    self.logger.info(f"  Frame {frame_idx}: particle_id = {particle_id}")
+                for frame_idx in range(n_frames):
+                    particle_id = track.tracks_feat_indx_cg[frame_idx]
 
-                    if particle_id > 0:  # Valid particle
+                    if particle_id > 0:
                         base_idx = frame_idx * 8
-                        self.logger.info(f"  Frame {frame_idx}: base_idx = {base_idx}")
 
-                        # Extract and log each coordinate component
                         if base_idx + 7 < len(coords_1d):
-                            raw_coords = coords_1d[base_idx:base_idx+8]
-                            self.logger.info(f"  Frame {frame_idx}: raw 8 values = {raw_coords}")
+                            raw_coords = coords_1d[base_idx:base_idx + 8]
 
                             x_coord = raw_coords[0] if not np.isnan(raw_coords[0]) else 0.0
                             y_coord = raw_coords[1] if not np.isnan(raw_coords[1]) else 0.0
-                            z_coord = raw_coords[2] if not np.isnan(raw_coords[2]) else 0.0
                             intensity = raw_coords[3] if not np.isnan(raw_coords[3]) else 100.0
-                            dx = raw_coords[4] if not np.isnan(raw_coords[4]) else 0.1
-                            dy = raw_coords[5] if not np.isnan(raw_coords[5]) else 0.1
-                            dz = raw_coords[6] if not np.isnan(raw_coords[6]) else 0.1
-                            damp = raw_coords[7] if not np.isnan(raw_coords[7]) else 0.1
-
-                            self.logger.info(f"  Frame {frame_idx}: extracted x={x_coord}, y={y_coord}, z={z_coord}, amp={intensity}")
-                            self.logger.info(f"  Frame {frame_idx}: uncertainties dx={dx}, dy={dy}, dz={dz}, damp={damp}")
 
                             data.append({
                                 'particle_id': int(particle_id),
                                 'track_id': track_id + 1,
-                                'frame': frame_idx,
+                                'frame': start_frame_abs + frame_idx,
                                 'x': x_coord,
                                 'y': y_coord,
                                 'intensity': intensity
                             })
-                        else:
-                            self.logger.warning(f"  Frame {frame_idx}: base_idx {base_idx} would exceed array bounds")
 
             except Exception as e:
-                self.logger.error(f"Error processing track {track_id}: {e}")
-                import traceback
-                self.logger.debug(f"Full traceback: {traceback.format_exc()}")
+                self.logger.warning(f"Error processing track {track_id}: {e}")
                 continue
 
         if data:
             result_df = pd.DataFrame(data)
-            self.logger.info(f"DEBUG: Generated DataFrame with {len(result_df)} rows")
-            self.logger.info(f"DEBUG: DataFrame sample:\n{result_df.head()}")
+            self.logger.info(f"Converted {len(compound_tracks)} compound tracks to {len(result_df)} track points")
             return result_df
         else:
             self.logger.warning("No valid track data could be extracted")
@@ -909,8 +1128,14 @@ class UTrackLinker:
         noise_var = np.zeros((2 * prob_dim, 2 * prob_dim, num_features))
 
         for i in range(num_features):
-            # Position uncertainties from detection
-            pos_var = np.array([0.1, 0.1])  # Default uncertainty
+            # Position uncertainties from actual detection data
+            if i < len(frame_info.x_coord) and frame_info.x_coord.shape[1] > 1:
+                pos_var = np.array([
+                    max(frame_info.x_coord[i, 1] ** 2, 1e-6),
+                    max(frame_info.y_coord[i, 1] ** 2, 1e-6)
+                ])
+            else:
+                pos_var = np.array([0.01, 0.01])  # Default variance
             vel_var = np.full(prob_dim, 4.0)  # Large initial velocity uncertainty
 
             # Create diagonal covariance matrix
@@ -928,7 +1153,8 @@ class UTrackLinker:
             state_vec=state_vec,
             state_cov=state_cov,
             noise_var=noise_var,
-            observation_mat=observation_mat
+            observation_mat=observation_mat,
+            track_ages=np.ones(num_features, dtype=int)  # All start at age 1
         )
 
     def _kalman_gain_linear_motion(self, kalman_info_prev: KalmanFilterInfo,
@@ -983,7 +1209,14 @@ class UTrackLinker:
 
             # Update with observation
             z = frame_info.all_coord[i, [0, 2]] if i < len(frame_info.all_coord) else np.zeros(2)
-            R = np.diag([0.1, 0.1])  # Observation noise
+
+            # Use actual detection uncertainty for observation noise R
+            if i < len(frame_info.x_coord) and frame_info.x_coord.shape[1] > 1:
+                r_x = max(frame_info.x_coord[i, 1] ** 2, 1e-6)
+                r_y = max(frame_info.y_coord[i, 1] ** 2, 1e-6)
+            else:
+                r_x, r_y = 0.01, 0.01
+            R = np.diag([r_x, r_y])
 
             # Innovation
             y = z - H @ state_pred
@@ -1007,11 +1240,19 @@ class UTrackLinker:
             noise_scale = max(innovation_norm / np.sqrt(prob_dim), 0.1)
             noise_var[:, :, i] = np.diag(np.full(2 * prob_dim, noise_scale ** 2))
 
+        # Track ages: increment for existing tracks, start at 1 for new ones
+        track_ages = np.ones(num_features, dtype=int)
+        prev_ages = kalman_info_prev.track_ages
+        if prev_ages is not None:
+            for i in range(min(num_prev, num_features)):
+                track_ages[i] = prev_ages[i] + 1 if i < len(prev_ages) else 1
+
         return KalmanFilterInfo(
             state_vec=state_vec,
             state_cov=state_cov,
             noise_var=noise_var,
-            observation_mat=H
+            observation_mat=H,
+            track_ages=track_ages
         )
 
     def _cost_mat_linking(self, frame1_info: MovieInfo, frame2_info: MovieInfo,
@@ -1041,12 +1282,48 @@ class UTrackLinker:
             pos1 = frame1_info.all_coord[:, [0, 2]]  # x, y positions
             pos2 = frame2_info.all_coord[:, [0, 2]]
 
-            # Calculate pairwise distances
-            from scipy.spatial.distance import cdist
-            dist_mat = cdist(pos1, pos2, metric='euclidean')
+            # Use Mahalanobis distance when Kalman covariance is available
+            use_mahalanobis = (
+                kalman_info is not None
+                and kalman_info.state_cov.ndim == 3
+                and kalman_info.state_cov.shape[2] >= n1
+                and kalman_info.observation_mat is not None
+            )
 
-            # Base cost matrix (squared distances)
-            base_cost_mat = dist_mat ** 2
+            if use_mahalanobis:
+                H = kalman_info.observation_mat  # (prob_dim, 2*prob_dim)
+                base_cost_mat = np.full((n1, n2), np.inf)
+
+                for i in range(n1):
+                    # Innovation covariance: S = H @ P @ H^T + R
+                    P_i = kalman_info.state_cov[:, :, i]
+                    # Observation noise from detection uncertainties
+                    if i < len(frame1_info.x_coord) and frame1_info.x_coord.shape[1] > 1:
+                        r_x = max(frame1_info.x_coord[i, 1] ** 2, 1e-6)
+                        r_y = max(frame1_info.y_coord[i, 1] ** 2, 1e-6)
+                    else:
+                        r_x, r_y = 0.01, 0.01
+                    R_i = np.diag([r_x, r_y])
+
+                    S_i = H @ P_i @ H.T + R_i  # (prob_dim, prob_dim)
+                    try:
+                        S_inv = np.linalg.inv(S_i)
+                    except np.linalg.LinAlgError:
+                        S_inv = np.linalg.pinv(S_i)
+
+                    # Predicted position from Kalman state
+                    pred_pos_i = kalman_info.state_vec[i, :prob_dim] if i < len(kalman_info.state_vec) else pos1[i]
+
+                    for j in range(n2):
+                        dx = pos2[j] - pred_pos_i
+                        base_cost_mat[i, j] = dx @ S_inv @ dx  # Mahalanobis distance squared
+
+                # Also compute Euclidean distances for search radius gating
+                dist_mat = cdist(pos1, pos2, metric='euclidean')
+            else:
+                # Fallback to Euclidean (e.g. first frame, no Kalman info)
+                dist_mat = cdist(pos1, pos2, metric='euclidean')
+                base_cost_mat = dist_mat ** 2
 
             # Calculate adaptive search radii
             search_radii = self._calculate_search_radii(frame1_info, kalman_info, prob_dim)
@@ -1057,6 +1334,46 @@ class UTrackLinker:
                     mask = dist_mat[i, :] > search_radii[i]
                     base_cost_mat[i, mask] = np.inf
 
+            # Intensity-based cost component (log-ratio penalty)
+            use_intensity = getattr(self.config, 'use_intensity_costs', False)
+            intensity_weight = getattr(self.config, 'intensity_weight', 0.1)
+            if use_intensity and intensity_weight > 0:
+                # Extract intensities from all_coord (column 4 = amplitude)
+                amp1 = frame1_info.all_coord[:, 4] if frame1_info.all_coord.shape[1] > 4 else None
+                amp2 = frame2_info.all_coord[:, 4] if frame2_info.all_coord.shape[1] > 4 else None
+                if amp1 is not None and amp2 is not None:
+                    for i in range(n1):
+                        if amp1[i] <= 0:
+                            continue
+                        for j in range(n2):
+                            if np.isfinite(base_cost_mat[i, j]) and amp2[j] > 0:
+                                log_ratio = abs(np.log(amp2[j] / amp1[i]))
+                                base_cost_mat[i, j] += intensity_weight * log_ratio
+
+            # Velocity angle constraints for linear motion
+            use_velocity = getattr(self.config, 'use_velocity_costs', False)
+            velocity_weight = getattr(self.config, 'velocity_weight', 0.1)
+            if use_velocity and velocity_weight > 0 and kalman_info is not None:
+                if kalman_info.state_vec.shape[1] > prob_dim:
+                    # Kalman state has velocity components
+                    for i in range(min(n1, len(kalman_info.state_vec))):
+                        vel_i = kalman_info.state_vec[i, prob_dim:2*prob_dim]
+                        speed_i = np.linalg.norm(vel_i)
+                        if speed_i < 1e-6:
+                            continue  # no velocity info for stationary particles
+                        pred_pos_i = kalman_info.state_vec[i, :prob_dim]
+                        for j in range(n2):
+                            if not np.isfinite(base_cost_mat[i, j]):
+                                continue
+                            displacement = pos2[j] - pred_pos_i
+                            disp_norm = np.linalg.norm(displacement)
+                            if disp_norm < 1e-6:
+                                continue
+                            cos_theta = np.dot(vel_i, displacement) / (speed_i * disp_norm)
+                            cos_theta = np.clip(cos_theta, -1.0, 1.0)
+                            angle_cost = (1.0 - cos_theta) * speed_i
+                            base_cost_mat[i, j] += velocity_weight * angle_cost
+
             # Create augmented cost matrix for LAP
             matrix_size = n1 + n2
             cost_mat_full = np.full((matrix_size, matrix_size), np.inf)
@@ -1064,20 +1381,35 @@ class UTrackLinker:
             # Upper-left: linking costs
             cost_mat_full[:n1, :n2] = base_cost_mat
 
-            # Calculate birth and death costs
-            death_costs = np.full(n1, 100.0)
-            birth_costs = np.full(n2, 100.0)
+            # Adaptive birth/death costs (U-Track 2.5 style)
+            # Use percentile of valid linking costs as the alternative cost
+            valid_costs = base_cost_mat[np.isfinite(base_cost_mat)]
+            if len(valid_costs) > 0:
+                alt_cost_factor = self.cost_params_link.alternative_cost_factor
+                percentile_cost = np.percentile(valid_costs, 90) * alt_cost_factor
+                # Ensure a reasonable minimum so very sparse frames still work
+                min_alt_cost = self.cost_params_link.min_search_radius ** 2
+                alt_cost = max(percentile_cost, min_alt_cost)
+            else:
+                # No valid links at all — use search radius squared as fallback
+                alt_cost = self.cost_params_link.max_search_radius ** 2
+
+            death_costs = np.full(n1, alt_cost)
+            birth_costs = np.full(n2, alt_cost)
 
             # Upper-right: death costs (diagonal)
-            if n1 <= matrix_size - n2:
-                cost_mat_full[:n1, n2:n2+n1] = np.diag(death_costs)
+            cost_mat_full[:n1, n2:n2 + n1] = np.diag(death_costs)
 
             # Lower-left: birth costs (diagonal)
-            if n2 <= matrix_size - n1:
-                cost_mat_full[n1:n1+n2, :n2] = np.diag(birth_costs)
+            cost_mat_full[n1:n1 + n2, :n2] = np.diag(birth_costs)
 
-            # Lower-right: dummy costs
-            cost_mat_full[n1:, n2:] = 200.0
+            # Lower-right: dummy costs (must be <= min of row/col alternative cost
+            # for LAP to produce valid results — use smallest valid link cost)
+            if len(valid_costs) > 0:
+                dummy_cost = np.min(valid_costs)
+            else:
+                dummy_cost = alt_cost
+            cost_mat_full[n1:, n2:] = dummy_cost
 
             return cost_mat_full, -1
 
@@ -1090,7 +1422,17 @@ class UTrackLinker:
 
     def _calculate_search_radii(self, frame_info: MovieInfo,
                               kalman_info: KalmanFilterInfo, prob_dim: int) -> np.ndarray:
-        """Calculate adaptive search radii for each particle"""
+        """Calculate adaptive search radii for each particle.
+
+        Uses Kalman filter uncertainty when available.  When
+        ``use_local_density`` is enabled, scales each particle's radius
+        down in dense regions so that the search area doesn't overlap
+        too many neighbours (matching U-Track 2.5 behaviour).
+
+        Applies confidence ramp-up (U-Track 2.5 timeReachConf): young
+        tracks use wider search radii that narrow as the Kalman filter
+        converges.
+        """
         n_particles = frame_info.num
 
         if n_particles == 0:
@@ -1099,20 +1441,44 @@ class UTrackLinker:
         max_radius = self.cost_params_link.max_search_radius
         min_radius = self.cost_params_link.min_search_radius
         brown_std_mult = self.cost_params_link.brown_std_mult
+        time_reach_conf = self.cost_params_link.time_reach_conf_b
 
         if kalman_info is not None and kalman_info.noise_var.shape[2] >= n_particles:
             # Use Kalman filter uncertainty
-            search_radii = np.zeros(n_particles)
+            kalman_radii = np.zeros(n_particles)
             for i in range(n_particles):
                 pos_var = np.diag(kalman_info.noise_var[:prob_dim, :prob_dim, i])
                 search_std = np.sqrt(np.mean(pos_var))
-                search_radii[i] = brown_std_mult * search_std
+                kalman_radii[i] = brown_std_mult * search_std
+
+            # Confidence ramp-up: interpolate between max_radius and Kalman radius
+            # based on track age.  confidence = min(1, age / time_reach_conf)
+            if kalman_info.track_ages is not None and time_reach_conf > 0:
+                search_radii = np.zeros(n_particles)
+                for i in range(n_particles):
+                    age = kalman_info.track_ages[i] if i < len(kalman_info.track_ages) else 1
+                    confidence = min(1.0, age / time_reach_conf)
+                    # Interpolate: low confidence → max_radius, high confidence → Kalman radius
+                    search_radii[i] = (1.0 - confidence) * max_radius + confidence * kalman_radii[i]
+            else:
+                search_radii = kalman_radii
         else:
             # Default uniform search radius
             search_radii = np.full(n_particles, max_radius)
 
         # Apply bounds
         search_radii = np.clip(search_radii, min_radius, max_radius)
+
+        # Local density scaling (U-Track 2.5 style)
+        # In dense regions, reduce search radius so it doesn't extend
+        # beyond half the nearest-neighbour distance.
+        if self.cost_params_link.use_local_density and n_particles > 1:
+            nn_dist = frame_info.nn_dist
+            if nn_dist is not None and len(nn_dist) == n_particles:
+                # Clamp search radius to half the nearest-neighbour distance
+                density_limit = nn_dist * 0.5
+                density_limit = np.clip(density_limit, min_radius, max_radius)
+                search_radii = np.minimum(search_radii, density_limit)
 
         return search_radii
 

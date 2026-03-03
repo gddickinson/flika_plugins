@@ -197,25 +197,29 @@ class DriftCorrector:
         return corrected
         
     def _reconstruct_image(self, localizations, frames, pixel_size, image_size):
-        """Reconstruct super-resolution image from localizations."""
-        img = np.zeros(image_size)
-        
+        """Reconstruct super-resolution image from localizations.
+
+        image_size is (width, height) i.e. (n_cols, n_rows).
+        """
+        width, height = image_size
+        img = np.zeros((height, width))
+
         for frame in frames:
             mask = localizations['frame'] == frame
             x_coords = (localizations['x'][mask] / pixel_size).astype(int)
             y_coords = (localizations['y'][mask] / pixel_size).astype(int)
-            
+
             # Clip to image bounds
-            valid = ((x_coords >= 0) & (x_coords < image_size[0]) &
-                    (y_coords >= 0) & (y_coords < image_size[1]))
-            
+            valid = ((x_coords >= 0) & (x_coords < width) &
+                    (y_coords >= 0) & (y_coords < height))
+
             x_coords = x_coords[valid]
             y_coords = y_coords[valid]
-            
+
             # Accumulate
             for x, y in zip(x_coords, y_coords):
                 img[y, x] += 1
-        
+
         return img
         
     def _smooth_trajectory(self, trajectory):
@@ -224,22 +228,68 @@ class DriftCorrector:
         if window < 3:
             window = 3
         sigma = window / 6.0
-        
+
         # Handle NaN values
         valid = ~np.isnan(trajectory)
         if not np.any(valid):
             return trajectory
-            
+
         # Interpolate NaN values
         interp_traj = np.copy(trajectory)
         if not np.all(valid):
             indices = np.arange(len(trajectory))
             interp_traj = np.interp(indices, indices[valid], trajectory[valid])
-        
+
         # Smooth
         smoothed = ndimage.gaussian_filter1d(interp_traj, sigma)
-        
+
         return smoothed
+
+    def apply_drift_correction_df(self, df, x_col='x', y_col='y', frame_col='frame'):
+        """Apply drift correction to a pandas DataFrame.
+
+        Convenience adapter that converts DataFrame ↔ dict format
+        used by the existing compute/apply methods.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            Must contain x, y, frame columns.
+        x_col, y_col, frame_col : str
+            Column names.
+
+        Returns
+        -------
+        corrected_df : DataFrame
+            Drift-corrected copy of the input.
+        drift_x, drift_y : ndarray
+            Drift vectors per frame.
+        """
+        import pandas as pd
+
+        localizations = {
+            'x': df[x_col].values.copy().astype(float),
+            'y': df[y_col].values.copy().astype(float),
+            'frame': df[frame_col].values.copy().astype(float),
+        }
+
+        frames = np.arange(int(localizations['frame'].min()),
+                           int(localizations['frame'].max()) + 1)
+
+        # Compute drift if not already done
+        if self.drift_x is None:
+            if self.method == 'fiducial':
+                raise ValueError("Fiducial method requires fiducial_region; "
+                                 "call compute_drift_fiducial first.")
+            self.compute_drift_xcorr(localizations, frames)
+
+        corrected = self.apply_drift_correction(localizations)
+
+        corrected_df = df.copy()
+        corrected_df[x_col] = corrected['x']
+        corrected_df[y_col] = corrected['y']
+
+        return corrected_df, self.drift_x, self.drift_y
 
 
 class MolecularMerger:
@@ -538,6 +588,268 @@ class DuplicateRemover:
                 unique[key] = value
                 
         return unique
+
+
+class MSDAnalyzer:
+    """Mean Squared Displacement analysis for single-particle trajectories.
+
+    Computes per-track MSD curves, fits diffusion coefficients and
+    anomalous exponents, and classifies motion type.
+
+    Parameters
+    ----------
+    max_lag : int or None
+        Maximum lag (in frames) for MSD computation.
+        None or 0 = auto (track_length // 4).
+    n_fit_points : int
+        Number of initial MSD points used for linear D fit.
+    anomalous_alpha_low : float
+        Alpha below this is classified as confined/subdiffusive.
+    anomalous_alpha_high : float
+        Alpha above this is classified as directed/superdiffusive.
+    """
+
+    def __init__(self, max_lag=None, n_fit_points=4,
+                 anomalous_alpha_low=0.7, anomalous_alpha_high=1.3):
+        self.max_lag = max_lag
+        self.n_fit_points = n_fit_points
+        self.anomalous_alpha_low = anomalous_alpha_low
+        self.anomalous_alpha_high = anomalous_alpha_high
+
+    # ------------------------------------------------------------------
+    # Core MSD computation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def compute_msd(track_xy, max_lag=None):
+        """Compute time-averaged MSD for a single track.
+
+        Parameters
+        ----------
+        track_xy : ndarray, shape (N, 2)
+            XY positions sorted by time.
+        max_lag : int or None
+            Maximum lag in frames.  None = N // 4.
+
+        Returns
+        -------
+        msd : ndarray, shape (max_lag,)
+            MSD values for lags 1 .. max_lag.
+        n_pairs : ndarray, shape (max_lag,)
+            Number of displacement pairs averaged at each lag.
+        """
+        N = len(track_xy)
+        if max_lag is None or max_lag <= 0:
+            max_lag = max(1, N // 4)
+        max_lag = min(max_lag, N - 1)
+
+        msd = np.zeros(max_lag)
+        n_pairs = np.zeros(max_lag, dtype=int)
+
+        for tau in range(1, max_lag + 1):
+            displacements = track_xy[tau:] - track_xy[:-tau]
+            sq_disp = np.sum(displacements ** 2, axis=1)
+            msd[tau - 1] = np.mean(sq_disp)
+            n_pairs[tau - 1] = len(sq_disp)
+
+        return msd, n_pairs
+
+    def fit_diffusion_coefficient(self, msd_values, dt, n_fit_points=None):
+        """Fit diffusion coefficient from MSD curve.
+
+        Linear fit to first *n_fit_points*:
+            MSD = 4 * D * t + 4 * sigma^2   (2-D)
+
+        Parameters
+        ----------
+        msd_values : ndarray
+            MSD values (lags 1 .. N).
+        dt : float
+            Frame interval in seconds.
+        n_fit_points : int or None
+            Points to fit.  None = self.n_fit_points.
+
+        Returns
+        -------
+        D : float
+            Diffusion coefficient (same spatial units^2 / s).
+        sigma : float
+            Localization error estimate (same spatial units).
+        r_squared : float
+            R^2 of the linear fit.
+        """
+        if n_fit_points is None:
+            n_fit_points = self.n_fit_points
+        n_fit_points = min(n_fit_points, len(msd_values))
+        if n_fit_points < 2:
+            return 0.0, 0.0, 0.0
+
+        t = np.arange(1, n_fit_points + 1) * dt
+        y = msd_values[:n_fit_points]
+
+        # Linear least-squares: y = 4*D*t + offset
+        A = np.column_stack([t, np.ones(n_fit_points)])
+        result, residuals, _, _ = np.linalg.lstsq(A, y, rcond=None)
+        slope, intercept = result
+
+        D = slope / 4.0
+        sigma = np.sqrt(max(intercept / 4.0, 0.0))
+
+        # R-squared
+        ss_res = np.sum((y - (slope * t + intercept)) ** 2)
+        ss_tot = np.sum((y - np.mean(y)) ** 2)
+        r_squared = 1.0 - ss_res / max(ss_tot, 1e-30)
+
+        return max(D, 0.0), sigma, r_squared
+
+    def fit_anomalous_exponent(self, msd_values, dt):
+        """Fit anomalous diffusion exponent via log-log regression.
+
+        Model: MSD = 4 * D * t^alpha
+        => log(MSD) = log(4D) + alpha * log(t)
+
+        Parameters
+        ----------
+        msd_values : ndarray
+            MSD values.
+        dt : float
+            Frame interval.
+
+        Returns
+        -------
+        alpha : float
+            Anomalous exponent (< 1 subdiffusive, 1 Brownian, > 1 superdiffusive).
+        D_alpha : float
+            Generalised diffusion coefficient.
+        r_squared : float
+            R^2 of the log-log fit.
+        """
+        n = len(msd_values)
+        if n < 3:
+            return 1.0, 0.0, 0.0
+
+        # Use points where MSD > 0
+        t = np.arange(1, n + 1) * dt
+        valid = msd_values > 0
+        if np.sum(valid) < 3:
+            return 1.0, 0.0, 0.0
+
+        log_t = np.log(t[valid])
+        log_msd = np.log(msd_values[valid])
+
+        # Linear fit in log-log space
+        A = np.column_stack([log_t, np.ones(len(log_t))])
+        result, _, _, _ = np.linalg.lstsq(A, log_msd, rcond=None)
+        alpha, log_4D = result
+
+        D_alpha = np.exp(log_4D) / 4.0
+
+        # R-squared
+        y_pred = alpha * log_t + log_4D
+        ss_res = np.sum((log_msd - y_pred) ** 2)
+        ss_tot = np.sum((log_msd - np.mean(log_msd)) ** 2)
+        r_squared = 1.0 - ss_res / max(ss_tot, 1e-30)
+
+        return alpha, max(D_alpha, 0.0), r_squared
+
+    def classify_motion_from_msd(self, alpha, D):
+        """Classify motion type from anomalous exponent and D.
+
+        Returns
+        -------
+        motion_type : str
+            'confined', 'brownian', 'directed', or 'anomalous'
+        """
+        if alpha < self.anomalous_alpha_low:
+            return 'confined'
+        elif alpha > self.anomalous_alpha_high:
+            return 'directed'
+        else:
+            return 'brownian'
+
+
+class VelocityPersistenceAnalyzer:
+    """Velocity autocorrelation and directional persistence metrics."""
+
+    @staticmethod
+    def compute_velocity_autocorrelation(track_xy, max_lag=10):
+        """Normalised velocity autocorrelation C(tau).
+
+        C(tau) = <v(t) . v(t+tau)> / <|v|^2>
+
+        Parameters
+        ----------
+        track_xy : ndarray, shape (N, 2)
+        max_lag : int
+
+        Returns
+        -------
+        autocorr : ndarray, shape (max_lag,)
+            C(tau) for tau = 1 .. max_lag.
+        """
+        velocities = np.diff(track_xy, axis=0)  # (N-1, 2)
+        N = len(velocities)
+        if N < 2:
+            return np.zeros(max_lag)
+
+        max_lag = min(max_lag, N - 1)
+        mean_v2 = np.mean(np.sum(velocities ** 2, axis=1))
+        if mean_v2 < 1e-30:
+            return np.zeros(max_lag)
+
+        autocorr = np.zeros(max_lag)
+        for tau in range(1, max_lag + 1):
+            dots = np.sum(velocities[:N - tau] * velocities[tau:], axis=1)
+            autocorr[tau - 1] = np.mean(dots) / mean_v2
+
+        return autocorr
+
+    @staticmethod
+    def compute_directional_persistence(track_xy):
+        """End-to-end distance / total path length.
+
+        Returns 0 for stationary, ~1 for directed motion.
+        """
+        if len(track_xy) < 2:
+            return 0.0
+
+        end_to_end = np.linalg.norm(track_xy[-1] - track_xy[0])
+        step_lengths = np.linalg.norm(np.diff(track_xy, axis=0), axis=1)
+        total_path = np.sum(step_lengths)
+
+        if total_path < 1e-30:
+            return 0.0
+        return end_to_end / total_path
+
+    @staticmethod
+    def compute_confinement_ratio(track_xy, window=10):
+        """Sliding-window confinement ratio.
+
+        For each window of *window* frames, computes
+        max_displacement / window_displacement.  Returns the mean.
+        A value close to 1 indicates confinement; close to 0 indicates
+        directed motion.
+        """
+        N = len(track_xy)
+        if N < window + 1:
+            return 0.0
+
+        ratios = []
+        for start in range(N - window):
+            segment = track_xy[start:start + window + 1]
+            max_disp = 0.0
+            for i in range(len(segment)):
+                for j in range(i + 1, len(segment)):
+                    d = np.linalg.norm(segment[j] - segment[i])
+                    if d > max_disp:
+                        max_disp = d
+            window_disp = np.linalg.norm(segment[-1] - segment[0])
+            if max_disp > 1e-30:
+                ratios.append(window_disp / max_disp)
+            else:
+                ratios.append(1.0)
+
+        return np.mean(ratios) if ratios else 0.0
 
 
 def z_stage_offset_correction(localizations, z_stage_positions, frame_to_zstage):
