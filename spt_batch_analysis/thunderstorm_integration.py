@@ -18,6 +18,12 @@ if str(current_dir) not in sys.path:
 
 try:
     # Try to import thunderSTORM Python package
+    # Force reload of submodules to pick up code changes without restarting FLIKA
+    import importlib
+    import thunderstorm_python
+    from thunderstorm_python import filters, detection, fitting
+    for _mod in [filters, detection, fitting, thunderstorm_python]:
+        importlib.reload(_mod)
     from thunderstorm_python import ThunderSTORM, create_default_pipeline, filters, detection, fitting
     THUNDERSTORM_AVAILABLE = True
 except ImportError:
@@ -67,6 +73,10 @@ class ThunderSTORMDetector:
             'is_em_gain': True,
             'em_gain': 100.0,
             'quantum_efficiency': 1.0,
+            'use_watershed': True,
+            'multi_emitter_enabled': False,
+            'multi_emitter_max': 5,
+            'multi_emitter_pvalue': 1e-6,
         }
 
         # Update with provided parameters
@@ -86,9 +96,21 @@ class ThunderSTORMDetector:
 
         # Create detector parameters
         detector_params = {}
+        if self.params['detector_type'] == 'centroid':
+            detector_params['use_watershed'] = self.params.get('use_watershed', True)
+
+        # Determine effective fitter type
+        # If multi-emitter fitting is enabled, use the multi_emitter fitter
+        # which wraps the base fitter internally
+        fitter_type = self.params['fitter_type']
+        if self.params.get('multi_emitter_enabled', False):
+            fitter_type = 'multi_emitter'
 
         # Create fitter parameters
         fitter_params = {'initial_sigma': self.params['initial_sigma']}
+        if fitter_type == 'multi_emitter':
+            fitter_params['max_emitters'] = self.params.get('multi_emitter_max', 5)
+            fitter_params['p_value_threshold'] = self.params.get('multi_emitter_pvalue', 1e-6)
 
         # Note: we pass baseline=0 and em_gain=1 to the pipeline because
         # we handle offset subtraction and photon conversion ourselves
@@ -100,7 +122,7 @@ class ThunderSTORMDetector:
                 filter_params=filter_params,
                 detector_type=self.params['detector_type'],
                 detector_params=detector_params,
-                fitter_type=self.params['fitter_type'],
+                fitter_type=fitter_type,
                 fitter_params=fitter_params,
                 threshold_expression=self.params['detector_threshold'],
                 pixel_size=self.params['pixel_size'],
@@ -116,7 +138,7 @@ class ThunderSTORMDetector:
                 filter_params=filter_params,
                 detector_type=self.params['detector_type'],
                 detector_params=detector_params,
-                fitter_type=self.params['fitter_type'],
+                fitter_type=fitter_type,
                 fitter_params=fitter_params,
                 threshold_expression=self.params['detector_threshold'],
                 pixel_size=self.params['pixel_size'],
@@ -360,6 +382,10 @@ class ThunderSTORMDetector:
             'is_em_gain': gui_params.get('ts_is_em_gain', True),
             'em_gain': gui_params.get('ts_em_gain', 100.0),
             'quantum_efficiency': gui_params.get('ts_quantum_efficiency', 1.0),
+            'use_watershed': gui_params.get('ts_use_watershed', True),
+            'multi_emitter_enabled': gui_params.get('ts_multi_emitter_enabled', False),
+            'multi_emitter_max': gui_params.get('ts_multi_emitter_max', 5),
+            'multi_emitter_pvalue': gui_params.get('ts_multi_emitter_pvalue', 1e-6),
         }
 
         return ThunderSTORMDetector(parameters=params)
@@ -382,7 +408,9 @@ def get_available_detectors():
 
 def get_available_fitters():
     """Get list of available PSF fitters"""
-    return ['gaussian_lsq', 'gaussian_wlsq', 'gaussian_mle', 'radial_symmetry', 'centroid']
+    return ['gaussian_lsq', 'gaussian_wlsq', 'gaussian_mle',
+            'elliptical_gaussian_mle', 'multi_emitter', 'phasor',
+            'radial_symmetry', 'centroid']
 
 
 def get_default_threshold_expressions():

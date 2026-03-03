@@ -377,14 +377,28 @@ class MolecularMerger:
         # Keep only localizations that are either:
         # 1. Not merged (merged_into == -1)
         # 2. Are the target of a merge
-        
+
         keep_mask = merged_into == -1
-        
+
+        # Count how many detections were merged into each kept localization
+        # Start with 1 (the detection itself)
+        detections_count = np.ones(len(x), dtype=int)
+        for i in range(len(merged_into)):
+            target = merged_into[i]
+            if target >= 0:
+                # Walk chain to find root target
+                while merged_into[target] >= 0:
+                    target = merged_into[target]
+                detections_count[target] += 1
+
         merged = {}
         for key in localizations:
             if key in ['x', 'y', 'intensity', 'background', 'sigma_x', 'sigma_y', 'frame']:
                 merged[key] = localizations[key][sort_idx][keep_mask]
-        
+
+        # Add detections count column (matches thunderSTORM's 'detections' column)
+        merged['detections'] = detections_count[keep_mask]
+
         return merged
 
 

@@ -108,10 +108,10 @@ class WaveletFilter(BaseFilter):
             indices = np.arange(len(h)) * 2**j
             h_upsampled[indices] = h
 
-            # Convolve rows then columns using reflect padding
-            # (matches real thunderSTORM which uses mirror boundary conditions)
-            temp = convolve1d(approximation, h_upsampled, axis=1, mode='reflect')
-            approx_new = convolve1d(temp, h_upsampled, axis=0, mode='reflect')
+            # Convolve rows then columns using nearest (replicate) padding
+            # (matches real thunderSTORM which uses BORDER_REPLICATE boundary)
+            temp = convolve1d(approximation, h_upsampled, axis=1, mode='nearest')
+            approx_new = convolve1d(temp, h_upsampled, axis=0, mode='nearest')
 
             # Wavelet coefficient is difference
             wavelet = approximation - approx_new

@@ -14,6 +14,7 @@ import numpy as np
 from scipy import ndimage
 from skimage import measure, morphology
 from skimage.feature import peak_local_max
+from skimage.segmentation import watershed
 
 
 def safe_border_width(fit_radius):
@@ -153,6 +154,9 @@ class CentroidDetector(BaseDetector):
     """Centroid of connected components detector.
 
     Segments image and finds centroids of connected regions.
+    Optionally uses watershed segmentation to separate overlapping
+    molecules, matching thunderSTORM's centroid-of-connected-components
+    detection method.
 
     Parameters
     ----------
@@ -162,21 +166,34 @@ class CentroidDetector(BaseDetector):
         Minimum area of components to keep
     exclude_border : int or bool
         Border exclusion width
+    use_watershed : bool
+        If True, apply watershed segmentation to split touching regions.
+        This matches the original thunderSTORM implementation where
+        the centroid detector uses distance-transform watershed to
+        separate overlapping PSFs.
     """
 
-    def __init__(self, connectivity=2, min_area=1, exclude_border=True):
+    def __init__(self, connectivity=2, min_area=1, exclude_border=True,
+                 use_watershed=True):
         super().__init__("Centroid")
         self.connectivity = connectivity
         self.min_area = min_area
         self.exclude_border = exclude_border
+        self.use_watershed = use_watershed
 
     def detect(self, image, threshold):
         """Detect centroids of connected components."""
         # Threshold image
         binary = image > threshold
 
-        # Label connected components
-        labeled = measure.label(binary, connectivity=self.connectivity)
+        if self.use_watershed:
+            # Watershed segmentation to split touching molecules
+            # Uses the filtered image intensity as the landscape
+            # (inverted so peaks become basins for watershed)
+            labeled = self._watershed_segment(image, binary)
+        else:
+            # Simple connected component labeling
+            labeled = measure.label(binary, connectivity=self.connectivity)
 
         # Get region properties
         regions = measure.regionprops(labeled, intensity_image=image)
@@ -204,6 +221,43 @@ class CentroidDetector(BaseDetector):
             )
 
         return coordinates
+
+    def _watershed_segment(self, image, binary):
+        """Apply watershed segmentation to split touching molecules.
+
+        Uses local maxima of the image as seeds/markers and the inverted
+        image as the landscape, restricted to the thresholded binary mask.
+
+        Parameters
+        ----------
+        image : ndarray
+            Filtered image (intensities)
+        binary : ndarray
+            Thresholded binary mask
+
+        Returns
+        -------
+        labeled : ndarray
+            Labeled image with watershed-separated regions
+        """
+        # Find local maxima as watershed seeds
+        # Use distance transform peaks for more robust separation
+        distance = ndimage.distance_transform_edt(binary)
+
+        # Find seeds: local maxima of either distance transform or intensity
+        # Using intensity maxima gives better separation for SMLM data
+        struct = ndimage.generate_binary_structure(2, self.connectivity)
+        dilated = ndimage.grey_dilation(image, footprint=struct)
+        local_max = (image == dilated) & binary
+
+        # Label the seeds
+        markers = measure.label(local_max, connectivity=self.connectivity)
+
+        # Apply watershed on inverted image (peaks become valleys)
+        labeled = watershed(-image, markers, mask=binary,
+                           connectivity=self.connectivity)
+
+        return labeled
 
 
 class GridDetector(BaseDetector):

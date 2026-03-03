@@ -571,6 +571,10 @@ class DetectionWorker(QThread):
                     'ts_is_em_gain': self.detector_params.get('ts_is_em_gain', True),
                     'ts_em_gain': self.detector_params.get('ts_em_gain', 100.0),
                     'ts_quantum_efficiency': self.detector_params.get('ts_quantum_efficiency', 1.0),
+                    'ts_use_watershed': self.detector_params.get('ts_use_watershed', True),
+                    'ts_multi_emitter_enabled': self.detector_params.get('ts_multi_emitter_enabled', False),
+                    'ts_multi_emitter_max': self.detector_params.get('ts_multi_emitter_max', 5),
+                    'ts_multi_emitter_pvalue': self.detector_params.get('ts_multi_emitter_pvalue', 1e-6),
                 }
 
                 detector = ThunderSTORMDetector.create_from_gui_parameters(gui_params)
@@ -3816,6 +3820,11 @@ class SPTAnalysisParameters:
         self.ts_fitter_type = 'gaussian_lsq'
         self.ts_fit_radius = 3
         self.ts_initial_sigma = 1.3
+        # Advanced ThunderSTORM options
+        self.ts_use_watershed = True  # watershed segmentation for centroid detector
+        self.ts_multi_emitter_enabled = False  # multi-emitter fitting
+        self.ts_multi_emitter_max = 5  # max emitters per region
+        self.ts_multi_emitter_pvalue = 1e-6  # model selection p-value
         # ThunderSTORM camera parameters
         self.ts_photons_per_adu = 3.6
         self.ts_baseline = 100.0
@@ -5505,8 +5514,16 @@ Parameters:
         # Fitter type
         self.ts_fitter_combo = QComboBox()
         self.ts_fitter_combo.addItems(['gaussian_lsq', 'gaussian_wlsq', 'gaussian_mle',
+                                       'elliptical_gaussian_mle', 'phasor',
                                        'radial_symmetry', 'centroid'])
         self.ts_fitter_combo.setCurrentText(self.parameters.ts_fitter_type)
+        self.ts_fitter_combo.setToolTip(
+            "gaussian_lsq/wlsq/mle: Symmetric Gaussian PSF (LSQ, Weighted LSQ, or MLE)\n"
+            "elliptical_gaussian_mle: Elliptical Gaussian for astigmatism-based 3D\n"
+            "phasor: Fast Fourier-based phasor localization\n"
+            "radial_symmetry: Parthasarathy 2012 radial symmetry method\n"
+            "centroid: Simple intensity-weighted centroid"
+        )
         ts_params_layout.addRow("PSF Fitter:", self.ts_fitter_combo)
 
         # Fit radius
@@ -5525,6 +5542,50 @@ Parameters:
         ts_params_layout.addRow("Initial PSF Sigma:", self.ts_initial_sigma_spin)
 
         ts_layout.addWidget(ts_params_group)
+
+        # Advanced Options group
+        ts_advanced_group = QGroupBox("Advanced Options")
+        ts_advanced_layout = QFormLayout(ts_advanced_group)
+
+        # Watershed segmentation for centroid detector
+        self.ts_use_watershed_checkbox = QCheckBox("Use watershed segmentation")
+        self.ts_use_watershed_checkbox.setChecked(self.parameters.ts_use_watershed)
+        self.ts_use_watershed_checkbox.setToolTip(
+            "Split touching molecules in centroid detector using watershed.\n"
+            "Matches original thunderSTORM behavior. Only applies when\n"
+            "detector type is 'centroid'."
+        )
+        ts_advanced_layout.addRow(self.ts_use_watershed_checkbox)
+
+        # Multi-emitter fitting
+        self.ts_multi_emitter_checkbox = QCheckBox("Enable multi-emitter fitting (MFA)")
+        self.ts_multi_emitter_checkbox.setChecked(self.parameters.ts_multi_emitter_enabled)
+        self.ts_multi_emitter_checkbox.setToolTip(
+            "After initial single-PSF fit, attempt to fit multiple overlapping\n"
+            "emitters in each ROI using chi-squared log-likelihood ratio test.\n"
+            "Improves detection in high-density regions but is slower."
+        )
+        self.ts_multi_emitter_checkbox.toggled.connect(self._on_ts_multi_emitter_toggled)
+        ts_advanced_layout.addRow(self.ts_multi_emitter_checkbox)
+
+        self.ts_multi_emitter_max_spin = QSpinBox()
+        self.ts_multi_emitter_max_spin.setRange(2, 10)
+        self.ts_multi_emitter_max_spin.setValue(self.parameters.ts_multi_emitter_max)
+        self.ts_multi_emitter_max_spin.setToolTip("Maximum number of emitters to fit per region")
+        self.ts_multi_emitter_max_spin.setEnabled(self.parameters.ts_multi_emitter_enabled)
+        ts_advanced_layout.addRow("Max Emitters:", self.ts_multi_emitter_max_spin)
+
+        self.ts_multi_emitter_pvalue_combo = QComboBox()
+        self.ts_multi_emitter_pvalue_combo.addItems(['1e-6', '1e-4', '1e-3', '0.01', '0.05'])
+        self.ts_multi_emitter_pvalue_combo.setCurrentText(str(self.parameters.ts_multi_emitter_pvalue))
+        self.ts_multi_emitter_pvalue_combo.setToolTip(
+            "p-value threshold for chi-squared model selection.\n"
+            "Lower = more conservative (fewer multi-emitter fits)."
+        )
+        self.ts_multi_emitter_pvalue_combo.setEnabled(self.parameters.ts_multi_emitter_enabled)
+        ts_advanced_layout.addRow("MFA p-value:", self.ts_multi_emitter_pvalue_combo)
+
+        ts_layout.addWidget(ts_advanced_group)
 
         # Camera Parameters group
         ts_camera_group = QGroupBox("Camera Parameters")
@@ -5707,6 +5768,11 @@ Output columns: x [nm], y [nm], sigma [nm], intensity [AU],
         """Enable/disable EM gain spinner based on checkbox"""
         self.ts_em_gain_spin.setEnabled(self.ts_is_em_gain_checkbox.isChecked())
 
+    def _on_ts_multi_emitter_toggled(self, checked):
+        """Enable/disable multi-emitter fitting options based on checkbox"""
+        self.ts_multi_emitter_max_spin.setEnabled(checked)
+        self.ts_multi_emitter_pvalue_combo.setEnabled(checked)
+
     def select_detection_output_directory(self):
         """Select output directory for detection results"""
         directory = QFileDialog.getExistingDirectory(self, "Select Detection Output Directory")
@@ -5770,6 +5836,10 @@ Output columns: x [nm], y [nm], sigma [nm], intensity [AU],
                 'ts_is_em_gain': self.ts_is_em_gain_checkbox.isChecked(),
                 'ts_em_gain': self.ts_em_gain_spin.value(),
                 'ts_quantum_efficiency': self.ts_quantum_efficiency_spin.value(),
+                'ts_use_watershed': self.ts_use_watershed_checkbox.isChecked(),
+                'ts_multi_emitter_enabled': self.ts_multi_emitter_checkbox.isChecked(),
+                'ts_multi_emitter_max': self.ts_multi_emitter_max_spin.value(),
+                'ts_multi_emitter_pvalue': float(self.ts_multi_emitter_pvalue_combo.currentText()),
             })
 
         # Start detection worker with detection method
@@ -5878,8 +5948,8 @@ Output columns: x [nm], y [nm], sigma [nm], intensity [AU],
                         try:
                             # Ensure coordinates are within image bounds
                             if 0 <= x < img_width and 0 <= y < img_height:
-                                # FLIKA addPoint format: [frame, y, x]
-                                window.addPoint([int(frame), float(y), float(x)])
+                                # FLIKA addPoint format: [frame, x, y]
+                                window.addPoint([int(frame), float(x), float(y)])
                                 points_added += 1
                             else:
                                 print(f"Point ({x:.1f}, {y:.1f}) outside image bounds ({img_width}, {img_height})")
@@ -6014,6 +6084,10 @@ Output columns: x [nm], y [nm], sigma [nm], intensity [AU],
                 'ts_is_em_gain': self.parameters.ts_is_em_gain,
                 'ts_em_gain': self.parameters.ts_em_gain,
                 'ts_quantum_efficiency': self.parameters.ts_quantum_efficiency,
+                'ts_use_watershed': self.parameters.ts_use_watershed,
+                'ts_multi_emitter_enabled': self.parameters.ts_multi_emitter_enabled,
+                'ts_multi_emitter_max': self.parameters.ts_multi_emitter_max,
+                'ts_multi_emitter_pvalue': self.parameters.ts_multi_emitter_pvalue,
             }
 
             detector = ThunderSTORMDetector.create_from_gui_parameters(gui_params)
@@ -8244,6 +8318,16 @@ directional persistence is important for understanding underlying mechanisms.
             self.parameters.ts_fit_radius = self.ts_fit_radius_spin.value()
             self.parameters.ts_initial_sigma = self.ts_initial_sigma_spin.value()
 
+        # ThunderSTORM advanced options
+        if hasattr(self, 'ts_use_watershed_checkbox'):
+            self.parameters.ts_use_watershed = self.ts_use_watershed_checkbox.isChecked()
+            self.parameters.ts_multi_emitter_enabled = self.ts_multi_emitter_checkbox.isChecked()
+            self.parameters.ts_multi_emitter_max = self.ts_multi_emitter_max_spin.value()
+            try:
+                self.parameters.ts_multi_emitter_pvalue = float(self.ts_multi_emitter_pvalue_combo.currentText())
+            except ValueError:
+                self.parameters.ts_multi_emitter_pvalue = 1e-6
+
         # ThunderSTORM camera parameters
         if hasattr(self, 'ts_photons_per_adu_spin'):
             self.parameters.ts_photons_per_adu = self.ts_photons_per_adu_spin.value()
@@ -8285,7 +8369,8 @@ directional persistence is important for understanding underlying mechanisms.
         self.log_message(f"📁 Processing {len(self.file_paths)} files")
 
         if self.parameters.enable_detection:
-            self.log_message("🔍 Detection enabled - will run U-Track detection first")
+            detection_method_name = "ThunderSTORM" if self.parameters.detection_method == 'thunderstorm' else "U-Track"
+            self.log_message(f"🔍 Detection enabled - will run {detection_method_name} detection first")
 
         if self.parameters.enable_autocorrelation_analysis:
             self.log_message("📊 Autocorrelation analysis enabled - will analyze tracks after main pipeline")
@@ -8344,7 +8429,8 @@ directional persistence is important for understanding underlying mechanisms.
 
                 # Step 1: Run detection if enabled
                 if self.parameters.enable_detection:
-                    self.log_message("  🔍 Running U-Track particle detection...")
+                    detection_method_name = "ThunderSTORM" if self.parameters.detection_method == 'thunderstorm' else "U-Track"
+                    self.log_message(f"  🔍 Running {detection_method_name} particle detection...")
                     detection_success = self.run_detection_for_file(file_path)
                     if not detection_success:
                         self.log_message(f"  ❌ Detection failed for {file_name}")
@@ -9047,11 +9133,29 @@ directional persistence is important for understanding underlying mechanisms.
     def load_localization_data(self, file_path):
         """Load localization data from CSV - UPDATED to preserve ID column"""
         try:
-            locs_file = file_path.replace('.tif', '_locsID.csv')
-            if not os.path.exists(locs_file):
-                locs_file = file_path.replace('.tif', '_locs.csv')
+            base_name = os.path.splitext(os.path.basename(file_path))[0]
 
-            if not os.path.exists(locs_file):
+            # Search for localization file in multiple locations:
+            # 1. Custom detection output directory (if set)
+            # 2. Same directory as the image file
+            search_dirs = []
+            if (hasattr(self, 'parameters') and
+                    self.parameters.detection_output_directory):
+                search_dirs.append(self.parameters.detection_output_directory)
+            search_dirs.append(os.path.dirname(file_path))
+
+            locs_file = None
+            for search_dir in search_dirs:
+                candidate = os.path.join(search_dir, f"{base_name}_locsID.csv")
+                if os.path.exists(candidate):
+                    locs_file = candidate
+                    break
+                candidate = os.path.join(search_dir, f"{base_name}_locs.csv")
+                if os.path.exists(candidate):
+                    locs_file = candidate
+                    break
+
+            if locs_file is None:
                 self.log_message(f"    No localization file found for {os.path.basename(file_path)}")
                 return None
 

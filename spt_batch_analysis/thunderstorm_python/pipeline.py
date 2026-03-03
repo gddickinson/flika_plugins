@@ -26,7 +26,9 @@ class ThunderSTORM:
     detector_params : dict
         Detector parameters
     fitter_type : str
-        PSF fitter type ('gaussian_lsq', 'gaussian_mle', 'radial_symmetry', 'centroid')
+        PSF fitter type: 'gaussian_lsq', 'gaussian_wlsq', 'gaussian_mle',
+        'elliptical_gaussian_mle', 'multi_emitter', 'radial_symmetry',
+        'phasor', or 'centroid'
     fitter_params : dict
         Fitter parameters
     threshold_expression : str or float
@@ -177,7 +179,8 @@ class ThunderSTORM:
             'sigma_y': np.array([]),
             'frame': np.array([]),
             'uncertainty': np.array([]),
-            'chi_squared': np.array([])
+            'chi_squared': np.array([]),
+            'detections': np.array([])
         }
 
     def _validate_localizations(self, localizations, image_shape):
