@@ -644,6 +644,22 @@ class TrackingConfig:
     brownian_noise_multiplier: float = 3.0
     linear_velocity_persistence: float = 0.8
 
+    # Kalman filter parameters
+    measurement_noise_std: float = 1.0
+    process_noise_std_brownian: float = 3.0
+    process_noise_std_linear: float = 1.0
+    process_noise_std_confined: float = 2.0
+
+    # Adaptive gating
+    gating_n_sigma: float = 3.0
+
+    # Merge/split intensity validation
+    merge_split_intensity_validation: bool = True
+    intensity_ratio_penalty_weight: float = 2.0
+
+    # Gap-closing mobility scaling
+    gap_closing_use_mobility_scaling: bool = True
+
 def get_config():
     """Simple config provider for U-Track compatibility"""
     class SimpleConfig:
@@ -778,17 +794,174 @@ class MotionRegimeDetector:
 
         return merged_regimes
 
+
+class KalmanFilter2D:
+    """Standard 2-D Kalman filter with state [x, y, vx, vy].
+
+    Supports three motion types via different transition matrices:
+    - **brownian**: velocity decays to zero each step (random walk).
+    - **linear**: constant-velocity model with persistence.
+    - **confined**: Ornstein-Uhlenbeck restoring force towards a centre.
+    """
+
+    def __init__(self, motion_type: str = 'brownian',
+                 process_noise_std: float = 3.0,
+                 measurement_noise_std: float = 1.0,
+                 dt: float = 1.0,
+                 velocity_persistence: float = 0.8,
+                 confinement_strength: float = 0.1):
+        self.motion_type = motion_type
+        self.dt = dt
+        self.velocity_persistence = velocity_persistence
+        self.confinement_strength = confinement_strength
+        self.confinement_center: Optional[np.ndarray] = None
+
+        # State and covariance
+        self.x = np.zeros(4)          # [x, y, vx, vy]
+        self.P = np.eye(4) * 100.0    # large initial uncertainty
+
+        # Measurement model: observe [x, y]
+        self.H = np.zeros((2, 4))
+        self.H[0, 0] = 1.0
+        self.H[1, 1] = 1.0
+
+        # Measurement noise
+        self.R = np.eye(2) * measurement_noise_std ** 2
+
+        # Process noise
+        q = process_noise_std ** 2
+        self.Q = np.diag([q * dt, q * dt, q, q])
+
+        # Cached prediction state
+        self._x_pred: Optional[np.ndarray] = None
+        self._P_pred: Optional[np.ndarray] = None
+
+    def _get_transition_matrix(self) -> np.ndarray:
+        """Build the state transition matrix F for the current motion type."""
+        dt = self.dt
+        F = np.eye(4)
+
+        if self.motion_type == 'brownian':
+            # Position propagates, velocity → 0
+            F[0, 2] = dt
+            F[1, 3] = dt
+            F[2, 2] = 0.0
+            F[3, 3] = 0.0
+
+        elif self.motion_type == 'linear':
+            # Constant velocity with persistence
+            F[0, 2] = dt
+            F[1, 3] = dt
+            F[2, 2] = self.velocity_persistence
+            F[3, 3] = self.velocity_persistence
+
+        elif self.motion_type == 'confined':
+            k = self.confinement_strength
+            F[0, 2] = dt
+            F[1, 3] = dt
+            F[2, 2] = 0.8  # velocity damping
+            F[3, 3] = 0.8
+            # Restoring force towards confinement centre
+            if self.confinement_center is not None:
+                # The restoring term is handled as a control input in predict()
+                pass
+            F[0, 0] = 1.0 - k * dt
+            F[1, 1] = 1.0 - k * dt
+
+        return F
+
+    def initialize(self, z: np.ndarray):
+        """Initialize state from first measurement [x, y]."""
+        self.x = np.array([z[0], z[1], 0.0, 0.0])
+        self.P = np.eye(4) * 100.0
+
+    def predict(self) -> Tuple[np.ndarray, np.ndarray]:
+        """Standard Kalman predict step.  Returns (x_pred, P_pred)."""
+        F = self._get_transition_matrix()
+        self._x_pred = F @ self.x
+
+        # Confined model: add restoring force control input
+        if self.motion_type == 'confined' and self.confinement_center is not None:
+            k = self.confinement_strength
+            cx, cy = self.confinement_center
+            self._x_pred[0] += k * self.dt * cx  # counterpart to -(k*dt)*x in F
+            self._x_pred[1] += k * self.dt * cy
+            self._x_pred[2] -= k * (self.x[0] - cx)
+            self._x_pred[3] -= k * (self.x[1] - cy)
+
+        self._P_pred = F @ self.P @ F.T + self.Q
+        return self._x_pred.copy(), self._P_pred.copy()
+
+    def innovation(self, z: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Compute innovation residual y and covariance S."""
+        if self._x_pred is None:
+            self.predict()
+        y = z - self.H @ self._x_pred
+        S = self.H @ self._P_pred @ self.H.T + self.R
+        return y, S
+
+    def innovation_likelihood(self, z: np.ndarray) -> float:
+        """Gaussian likelihood N(y; 0, S) for GPB1 model selection."""
+        y, S = self.innovation(z)
+        try:
+            sign, logdet = np.linalg.slogdet(S)
+            if sign <= 0:
+                return 1e-300
+            S_inv = np.linalg.inv(S)
+            mahal = float(y @ S_inv @ y)
+            log_lik = -0.5 * (logdet + mahal + 2 * np.log(2 * np.pi))
+            return max(np.exp(log_lik), 1e-300)
+        except np.linalg.LinAlgError:
+            return 1e-300
+
+    def update(self, z: np.ndarray) -> np.ndarray:
+        """Standard Kalman update.  Returns updated state."""
+        if self._x_pred is None:
+            self.predict()
+        y, S = self.innovation(z)
+        try:
+            K = self._P_pred @ self.H.T @ np.linalg.inv(S)
+        except np.linalg.LinAlgError:
+            K = np.zeros((4, 2))
+        self.x = self._x_pred + K @ y
+        I_KH = np.eye(4) - K @ self.H
+        self.P = I_KH @ self._P_pred @ I_KH.T + K @ self.R @ K.T  # Joseph form
+        # Clear prediction cache
+        self._x_pred = None
+        self._P_pred = None
+        return self.x.copy()
+
+    def get_search_radius(self, n_sigma: float = 3.0) -> float:
+        """Return adaptive search radius from innovation covariance S."""
+        if self._P_pred is None:
+            return n_sigma * 5.0  # fallback
+        S = self.H @ self._P_pred @ self.H.T + self.R
+        try:
+            eigvals = np.linalg.eigvalsh(S)
+            return n_sigma * np.sqrt(max(eigvals.max(), 0.01))
+        except np.linalg.LinAlgError:
+            return n_sigma * 5.0
+
+    def copy(self) -> 'KalmanFilter2D':
+        """Deep copy for parallel filter banks."""
+        import copy as _copy
+        return _copy.deepcopy(self)
+
+
 class MixedMotionPredictor:
     """
-    Multi-model motion predictor that maintains multiple motion hypotheses
-    Inspired by PMMS and Interacting Multiple Models (IMM)
+    Multi-model motion predictor with GPB1 (Generalised Pseudo-Bayesian
+    first-order) model selection and legacy heuristic fallback.
+
+    Maintains per-track filter banks (3 parallel KalmanFilter2D instances)
+    that are updated at each frame via GPB1 probability mixing.
     """
 
     def __init__(self, config: TrackingConfig):
         self.config = config
         self.logger = get_logger('mixed_motion_predictor')
 
-        # Motion model weights
+        # Default (global) model weights — used by legacy path
         self.model_weights = {
             'brownian': 0.4,
             'linear': 0.4,
@@ -808,18 +981,164 @@ class MixedMotionPredictor:
             ('confined', 'linear'): 0.05,
         }
 
+        # B1: Per-track GPB1 filter banks
+        self._track_filters: Dict[int, Dict[str, 'KalmanFilter2D']] = {}
+        self._track_model_probs: Dict[int, Dict[str, float]] = {}
+        self._track_prev_model: Dict[int, str] = {}
+
+    # ------------------------------------------------------------------
+    # B2: GPB1 filter initialisation
+    # ------------------------------------------------------------------
+
+    def init_track_filters(self, track_id: int, z: np.ndarray):
+        """Create 3 parallel KalmanFilter2D instances for a new track.
+
+        Parameters
+        ----------
+        track_id : int
+            Unique track identifier.
+        z : ndarray shape (2,)
+            First measurement [x, y].
+        """
+        meas_noise = getattr(self.config, 'measurement_noise_std', 1.0)
+        q_brownian = getattr(self.config, 'process_noise_std_brownian', 3.0)
+        q_linear = getattr(self.config, 'process_noise_std_linear', 1.0)
+        q_confined = getattr(self.config, 'process_noise_std_confined', 2.0)
+        vel_persist = self.config.linear_velocity_persistence
+
+        filters = {}
+        for mtype, q_std in [('brownian', q_brownian),
+                              ('linear', q_linear),
+                              ('confined', q_confined)]:
+            kf = KalmanFilter2D(
+                motion_type=mtype,
+                process_noise_std=q_std,
+                measurement_noise_std=meas_noise,
+                dt=1.0,
+                velocity_persistence=vel_persist,
+                confinement_strength=0.1,
+            )
+            kf.initialize(z)
+            filters[mtype] = kf
+
+        self._track_filters[track_id] = filters
+        self._track_model_probs[track_id] = {
+            'brownian': 0.4, 'linear': 0.4, 'confined': 0.2
+        }
+        self._track_prev_model[track_id] = 'brownian'
+
+    # ------------------------------------------------------------------
+    # B3: GPB1 predict
+    # ------------------------------------------------------------------
+
+    def predict_gpb1(self, track_id: int,
+                     confinement_center: Optional[np.ndarray] = None) -> Dict[str, Dict]:
+        """Run predict() on all 3 filters and return predictions dict.
+
+        Each entry has keys 'state', 'covariance', 'likelihood' (model
+        probability) and an extra 'kf' reference to the KalmanFilter2D
+        for downstream use.
+        """
+        filters = self._track_filters[track_id]
+        probs = self._track_model_probs[track_id]
+        predictions = {}
+
+        for mtype, kf in filters.items():
+            if mtype == 'confined' and confinement_center is not None:
+                kf.confinement_center = confinement_center
+            x_pred, P_pred = kf.predict()
+            predictions[mtype] = {
+                'state': x_pred.copy(),
+                'covariance': P_pred.copy(),
+                'likelihood': probs.get(mtype, 0.33),
+                'kf': kf,
+            }
+
+        return predictions
+
+    # ------------------------------------------------------------------
+    # B4: GPB1 update
+    # ------------------------------------------------------------------
+
+    def update_gpb1(self, track_id: int,
+                    z: np.ndarray) -> Tuple[str, np.ndarray, np.ndarray]:
+        """GPB1 measurement update for all 3 filters.
+
+        Returns
+        -------
+        best_model : str
+        best_state : ndarray shape (4,)
+        best_P     : ndarray shape (4, 4)
+        """
+        filters = self._track_filters[track_id]
+        probs = self._track_model_probs[track_id]
+        models = list(filters.keys())
+
+        # Compute innovation likelihoods
+        likelihoods = {}
+        for mtype in models:
+            likelihoods[mtype] = filters[mtype].innovation_likelihood(z)
+
+        # GPB1 probability update
+        new_probs = {}
+        for j in models:
+            mixed = 0.0
+            for i in models:
+                tp = self.transition_probs.get((i, j), 0.0)
+                mixed += tp * probs.get(i, 0.33)
+            new_probs[j] = mixed * likelihoods[j]
+
+        total = sum(new_probs.values())
+        if total > 0:
+            for j in models:
+                new_probs[j] /= total
+        else:
+            new_probs = {m: 1.0 / len(models) for m in models}
+
+        self._track_model_probs[track_id] = new_probs
+
+        # Update all filters with measurement
+        for mtype in models:
+            filters[mtype].update(z)
+
+        # Best model
+        best_model = max(new_probs, key=new_probs.get)
+
+        # Regime change detection: reinitialize non-winning filters
+        prev_model = self._track_prev_model.get(track_id)
+        if prev_model is not None and best_model != prev_model:
+            winner_kf = filters[best_model]
+            for mtype in models:
+                if mtype != best_model:
+                    filters[mtype].x = winner_kf.x.copy()
+                    filters[mtype].P = winner_kf.P.copy()
+        self._track_prev_model[track_id] = best_model
+
+        best_kf = filters[best_model]
+        return best_model, best_kf.x.copy(), best_kf.P.copy()
+
+    # ------------------------------------------------------------------
+    # B5: predict_multiple_models — GPB1 delegation with legacy fallback
+    # ------------------------------------------------------------------
+
     def predict_multiple_models(self, state_history: List[np.ndarray],
-                              dt: float = 1.0) -> Dict[str, Dict]:
-        """
-        Generate predictions from multiple motion models
+                              dt: float = 1.0,
+                              track_id: Optional[int] = None) -> Dict[str, Dict]:
+        """Generate predictions from multiple motion models.
 
-        Args:
-            state_history: List of previous states [x, y, vx, vy]
-            dt: Time step
-
-        Returns:
-            Dict of predictions for each motion model
+        When *track_id* is provided and GPB1 filters exist for it, the
+        GPB1 path is used.  Otherwise falls through to legacy heuristic.
         """
+        # GPB1 path
+        if track_id is not None and track_id in self._track_filters:
+            if len(state_history) >= 3:
+                positions = np.array([[s[0], s[1]] for s in state_history])
+                center = positions.mean(axis=0)
+            else:
+                center = None
+            return self.predict_gpb1(track_id, confinement_center=center)
+
+        # Legacy heuristic path
         predictions = {}
 
         if len(state_history) < 1:
@@ -832,7 +1151,6 @@ class MixedMotionPredictor:
             predictions['brownian'] = self._predict_brownian(last_state, dt)
             predictions['linear'] = self._predict_linear(last_state, dt)
 
-            # Estimate confinement centre from track history
             if len(state_history) >= 3:
                 positions = np.array([[s[0], s[1]] for s in state_history])
                 center = positions.mean(axis=0)
@@ -840,22 +1158,34 @@ class MixedMotionPredictor:
                 center = None
             predictions['confined'] = self._predict_confined(last_state, dt, center=center)
 
-            # Update model weights based on recent trajectory
             if len(state_history) >= 3:
                 self._update_model_weights(state_history)
 
         return predictions
+
+    # ------------------------------------------------------------------
+    # B6: cleanup
+    # ------------------------------------------------------------------
+
+    def cleanup_track(self, track_id: int):
+        """Remove GPB1 state for a pruned track."""
+        self._track_filters.pop(track_id, None)
+        self._track_model_probs.pop(track_id, None)
+        self._track_prev_model.pop(track_id, None)
+
+    # ------------------------------------------------------------------
+    # B7: Legacy prediction helpers (unchanged)
+    # ------------------------------------------------------------------
 
     def _predict_brownian(self, state: np.ndarray, dt: float) -> Dict:
         """Brownian motion prediction (deterministic — noise is in covariance)."""
         x, y, vx, vy = state
         noise_scale = self.config.brownian_noise_multiplier
 
-        # Brownian: position propagates with current velocity, no velocity persistence
         predicted_state = np.array([
             x + vx * dt,
             y + vy * dt,
-            0.0,  # Brownian has no velocity persistence
+            0.0,
             0.0
         ])
 
@@ -874,7 +1204,6 @@ class MixedMotionPredictor:
         velocity_persistence = self.config.linear_velocity_persistence
         noise_scale = 1.0
 
-        # Linear: position advances with persistent velocity
         predicted_state = np.array([
             x + vx * dt,
             y + vy * dt,
@@ -893,20 +1222,13 @@ class MixedMotionPredictor:
 
     def _predict_confined(self, state: np.ndarray, dt: float,
                           center: Optional[np.ndarray] = None) -> Dict:
-        """Confined motion prediction (deterministic).
-
-        Parameters
-        ----------
-        center : ndarray, optional
-            Confinement centre [cx, cy].  Estimated from track history
-            when available, otherwise defaults to current position.
-        """
+        """Confined motion prediction (deterministic)."""
         x, y, vx, vy = state
         confinement_strength = 0.1
         noise_scale = 2.0
 
         if center is None:
-            cx, cy = x, y  # default: no restoring force
+            cx, cy = x, y
         else:
             cx, cy = center
 
@@ -927,14 +1249,11 @@ class MixedMotionPredictor:
         }
 
     def _update_model_weights(self, state_history: List[np.ndarray]):
-        """Update model weights based on recent motion patterns"""
+        """Update model weights based on recent motion patterns (legacy)."""
         if len(state_history) < 3:
             return
 
-        # Analyze recent motion to update model probabilities
         recent_states = state_history[-3:]
-
-        # Calculate motion characteristics
         velocities = []
         for i in range(len(recent_states)-1):
             dx = recent_states[i+1][0] - recent_states[i][0]
@@ -944,18 +1263,15 @@ class MixedMotionPredictor:
         velocities = np.array(velocities)
 
         if len(velocities) >= 2:
-            # Velocity consistency (for linear motion)
             velocity_consistency = np.mean([
                 np.dot(velocities[i], velocities[i+1]) /
                 (np.linalg.norm(velocities[i]) * np.linalg.norm(velocities[i+1]) + 1e-6)
                 for i in range(len(velocities)-1)
             ])
 
-            # Speed variability (for Brownian vs confined)
             speeds = np.linalg.norm(velocities, axis=1)
             speed_variability = np.std(speeds) / (np.mean(speeds) + 1e-6)
 
-            # Update weights based on observations
             if velocity_consistency > 0.5:
                 self.model_weights['linear'] *= 1.2
             else:
@@ -966,7 +1282,6 @@ class MixedMotionPredictor:
             else:
                 self.model_weights['brownian'] *= 0.9
 
-            # Normalize weights
             total_weight = sum(self.model_weights.values())
             for key in self.model_weights:
                 self.model_weights[key] /= total_weight
@@ -1032,21 +1347,23 @@ class UTrackLinkerWithMixedMotion:
     def _track_with_iterative_smoothing(self, detections: List[pd.DataFrame]) -> pd.DataFrame:
         """
         PMMS-style tracking with iterative smoothing (Forward-Reverse-Forward)
+        and Fraser-Potter fusion between forward and backward passes.
         """
         self.logger.info("Running PMMS-style tracking with iterative smoothing")
 
-        # Initialize with empty tracks
         best_tracks = pd.DataFrame(columns=['particle_id', 'track_id', 'frame', 'x', 'y', 'intensity'])
 
         for round_num in range(self.config.num_tracking_rounds):
             self.logger.debug(f"Tracking round {round_num + 1}/{self.config.num_tracking_rounds}")
 
             if round_num == 0:
-                # Forward pass
-                tracks = self._forward_tracking_pass(detections)
+                # F1: Forward pass — store filter estimates for fusion
+                tracks = self._forward_tracking_pass(detections, store_filter_estimates=True)
             elif round_num == 1:
-                # Reverse pass
-                tracks = self._reverse_tracking_pass(detections, best_tracks)
+                # F1: Reverse pass — store filter estimates, then fuse
+                tracks = self._reverse_tracking_pass(
+                    detections, best_tracks, store_filter_estimates=True)
+                tracks = self._fuse_forward_backward(tracks)
             else:
                 # Final forward pass with regime information
                 tracks = self._final_forward_pass(detections, best_tracks)
@@ -1056,6 +1373,48 @@ class UTrackLinkerWithMixedMotion:
                 self.logger.debug(f"Improved tracks: {len(tracks)} points")
 
         return best_tracks
+
+    def _fuse_forward_backward(self, tracks_df: pd.DataFrame) -> pd.DataFrame:
+        """Fraser-Potter covariance-intersection fusion of forward and backward estimates.
+
+        For each (track_id, frame) where both forward and backward Kalman
+        estimates exist, compute:
+            P_fused = (P_f^-1 + P_b^-1)^-1
+            x_fused = P_fused @ (P_f^-1 @ x_f + P_b^-1 @ x_b)
+        and update x, y in the tracks DataFrame.
+        """
+        fwd = getattr(self, '_forward_estimates', {})
+        bwd = getattr(self, '_backward_estimates', {})
+        if not fwd or not bwd:
+            return tracks_df
+
+        tracks_df = tracks_df.copy()
+        fused_count = 0
+
+        for key in fwd:
+            if key not in bwd:
+                continue
+            tid, frame = key
+            x_f, P_f = fwd[key]
+            x_b, P_b = bwd[key]
+
+            try:
+                P_f_inv = np.linalg.inv(P_f)
+                P_b_inv = np.linalg.inv(P_b)
+                P_fused = np.linalg.inv(P_f_inv + P_b_inv)
+                x_fused = P_fused @ (P_f_inv @ x_f + P_b_inv @ x_b)
+
+                # Update x, y in tracks_df for this (track_id, frame)
+                mask = (tracks_df['track_id'] == tid) & (tracks_df['frame'] == frame)
+                if mask.any():
+                    tracks_df.loc[mask, 'x'] = x_fused[0]
+                    tracks_df.loc[mask, 'y'] = x_fused[1]
+                    fused_count += 1
+            except np.linalg.LinAlgError:
+                continue
+
+        self.logger.debug(f"Fraser-Potter fusion: {fused_count} points fused")
+        return tracks_df
 
     def _apply_drift_correction(self, detections: List[pd.DataFrame]) -> List[pd.DataFrame]:
         """Apply cross-correlation drift correction to detections before tracking.
@@ -1100,12 +1459,24 @@ class UTrackLinkerWithMixedMotion:
             self.logger.warning(f"Drift correction failed, using uncorrected: {e}")
             return detections
 
-    def _forward_tracking_pass(self, detections: List[pd.DataFrame]) -> pd.DataFrame:
-        """Forward tracking pass with mixed motion prediction"""
+    def _forward_tracking_pass(self, detections: List[pd.DataFrame],
+                              store_filter_estimates: bool = False) -> pd.DataFrame:
+        """Forward tracking pass with mixed motion prediction.
+
+        When *store_filter_estimates* is True the per-(track, frame) Kalman
+        state and covariance are stored in ``self._forward_estimates`` for
+        subsequent Fraser-Potter fusion.
+        """
+        use_gpb1 = (self.config.motion_model == 'mixed')
+        n_sigma = getattr(self.config, 'gating_n_sigma', 3.0)
+
         tracks = []
         active_tracks: Dict[int, Dict] = {}
         self.active_tracks = active_tracks  # expose for _solve_assignment_problem
         next_track_id = 1
+
+        if store_filter_estimates:
+            self._forward_estimates: Dict[Tuple[int, int], Tuple[np.ndarray, np.ndarray]] = {}
 
         for frame_idx, frame_detections in enumerate(detections):
             if len(frame_detections) == 0:
@@ -1116,23 +1487,36 @@ class UTrackLinkerWithMixedMotion:
 
             # Predict existing track positions using mixed motion models
             predicted_positions = {}
+            track_search_radii = {}
             for track_id, track_info in active_tracks.items():
-                if self.config.motion_model == 'mixed':
+                if use_gpb1 and track_id in getattr(self.motion_predictor, '_track_filters', {}):
+                    # GPB1 Kalman prediction path
+                    positions = np.array([[s[0], s[1]] for s in track_info['state_history']])
+                    center = positions.mean(axis=0) if len(positions) >= 3 else None
+                    predictions = self.motion_predictor.predict_gpb1(track_id, confinement_center=center)
+                    combined_prediction = self._combine_motion_predictions(predictions)
+                    predicted_positions[track_id] = combined_prediction
+                    # Extract Kalman search radius from best model's filter
+                    best_probs = self.motion_predictor._track_model_probs.get(track_id, {})
+                    if best_probs:
+                        best_m = max(best_probs, key=best_probs.get)
+                        kf = self.motion_predictor._track_filters[track_id].get(best_m)
+                        if kf is not None:
+                            track_search_radii[track_id] = kf.get_search_radius(n_sigma)
+                elif self.config.motion_model == 'mixed':
                     predictions = self.motion_predictor.predict_multiple_models(
                         track_info['state_history'])
-
-                    # Use weighted combination of predictions
                     combined_prediction = self._combine_motion_predictions(predictions)
                     predicted_positions[track_id] = combined_prediction
                 else:
-                    # Single model prediction
                     last_state = track_info['state_history'][-1] if track_info['state_history'] else np.array([0, 0, 0, 0])
                     predicted_positions[track_id] = self._predict_single_model(last_state)
 
             # Assignment using LAP
             if active_tracks and len(current_detections) > 0:
                 assignments = self._solve_assignment_problem(
-                    predicted_positions, current_detections, frame_idx)
+                    predicted_positions, current_detections, frame_idx,
+                    track_search_radii=track_search_radii if track_search_radii else None)
                 frame_assignments.update(assignments)
 
             # Update existing tracks and create new ones
@@ -1152,19 +1536,27 @@ class UTrackLinkerWithMixedMotion:
                         'intensity': detection.get('intensity', 100.0)
                     })
 
-                    # Update state history
-                    new_state = np.array([detection['x'], detection['y'], 0, 0])
-                    if track_id in active_tracks:
-                        if len(active_tracks[track_id]['state_history']) > 0:
-                            prev_state = active_tracks[track_id]['state_history'][-1]
-                            new_state[2] = detection['x'] - prev_state[0]  # vx
-                            new_state[3] = detection['y'] - prev_state[1]  # vy
+                    z = np.array([detection['x'], detection['y']])
 
+                    # GPB1 Kalman update or legacy heuristic
+                    if use_gpb1 and track_id in getattr(self.motion_predictor, '_track_filters', {}):
+                        best_model, best_state, best_P = self.motion_predictor.update_gpb1(track_id, z)
+                        new_state = best_state.copy()
+                        if store_filter_estimates:
+                            self._forward_estimates[(track_id, frame_idx)] = (best_state.copy(), best_P.copy())
+                    else:
+                        new_state = np.array([detection['x'], detection['y'], 0, 0])
+                        if track_id in active_tracks:
+                            if len(active_tracks[track_id]['state_history']) > 0:
+                                prev_state = active_tracks[track_id]['state_history'][-1]
+                                new_state[2] = detection['x'] - prev_state[0]
+                                new_state[3] = detection['y'] - prev_state[1]
+
+                    if track_id in active_tracks:
                         active_tracks[track_id]['state_history'].append(new_state)
                         active_tracks[track_id]['last_seen'] = frame_idx
                         active_tracks[track_id]['last_intensity'] = detection.get('intensity', 100.0)
 
-                    # Also update track_histories for Mahalanobis / velocity features
                     if track_id not in self.track_histories:
                         self.track_histories[track_id] = []
                     self.track_histories[track_id].append(new_state)
@@ -1184,7 +1576,6 @@ class UTrackLinkerWithMixedMotion:
                     'intensity': detection.get('intensity', 100.0)
                 })
 
-                # Initialize new track
                 init_state = np.array([detection['x'], detection['y'], 0, 0])
                 active_tracks[next_track_id] = {
                     'state_history': [init_state],
@@ -1193,33 +1584,49 @@ class UTrackLinkerWithMixedMotion:
                 }
                 self.track_histories[next_track_id] = [init_state]
 
+                # Initialize GPB1 filters for new track
+                if use_gpb1:
+                    self.motion_predictor.init_track_filters(
+                        next_track_id, np.array([detection['x'], detection['y']]))
+
                 next_track_id += 1
 
             # Remove old tracks
-            active_tracks = {
-                track_id: info for track_id, info in active_tracks.items()
-                if frame_idx - info['last_seen'] <= self.config.max_gap_frames
-            }
+            pruned_tids = [tid for tid, info in active_tracks.items()
+                           if frame_idx - info['last_seen'] > self.config.max_gap_frames]
+            for tid in pruned_tids:
+                if use_gpb1:
+                    self.motion_predictor.cleanup_track(tid)
+                del active_tracks[tid]
 
         return pd.DataFrame(tracks) if tracks else pd.DataFrame(columns=['particle_id', 'track_id', 'frame', 'x', 'y', 'intensity'])
 
     def _reverse_tracking_pass(self, detections: List[pd.DataFrame],
-                             forward_tracks: pd.DataFrame) -> pd.DataFrame:
+                             forward_tracks: pd.DataFrame,
+                             store_filter_estimates: bool = False) -> pd.DataFrame:
         """Reverse tracking pass to improve track continuity.
 
         Processes frames from last to first, seeded by the forward-pass
-        tracks.  The reverse pass can extend tracks backward where the
-        forward pass missed the beginning due to initialisation lag.
-        The result is merged with the forward pass by taking the longer
-        version of each track.
+        tracks.  When *store_filter_estimates* is True, stores per-(track,
+        frame) Kalman state and covariance in ``self._backward_estimates``
+        for subsequent Fraser-Potter fusion.
         """
         if len(forward_tracks) == 0 or len(detections) < 2:
             return forward_tracks
+
+        use_gpb1 = (self.config.motion_model == 'mixed')
+        n_sigma = getattr(self.config, 'gating_n_sigma', 3.0)
 
         n_frames = len(detections)
         tracks = []
         active_tracks: Dict[int, Dict] = {}
         next_track_id = int(forward_tracks['track_id'].max()) + 1
+
+        if store_filter_estimates:
+            self._backward_estimates: Dict[Tuple[int, int], Tuple[np.ndarray, np.ndarray]] = {}
+
+        # Initialize a fresh backward predictor with its own GPB1 banks
+        bwd_predictor = MixedMotionPredictor(self.config)
 
         # Seed active tracks from forward-pass last observations
         for tid in forward_tracks['track_id'].unique():
@@ -1232,15 +1639,20 @@ class UTrackLinkerWithMixedMotion:
             for _, row in tdata.iloc[::-1].iterrows():
                 vx, vy = 0.0, 0.0
                 history.append(np.array([row['x'], row['y'], vx, vy]))
-            # Recompute velocities (backward = negative dt)
             for k in range(len(history) - 1):
-                history[k][2] = history[k][0] - history[k + 1][0]  # dx backward
+                history[k][2] = history[k][0] - history[k + 1][0]
                 history[k][3] = history[k][1] - history[k + 1][1]
 
             active_tracks[tid] = {
                 'state_history': history,
                 'last_seen_reverse': int(last_pt['frame']),
+                'last_intensity': float(last_pt.get('intensity', 100.0)),
             }
+
+            # Initialize GPB1 filters for backward direction
+            if use_gpb1:
+                z = np.array([last_pt['x'], last_pt['y']])
+                bwd_predictor.init_track_filters(tid, z)
 
         # Process frames in reverse
         for rev_idx in range(n_frames - 1, -1, -1):
@@ -1252,20 +1664,35 @@ class UTrackLinkerWithMixedMotion:
 
             # Predict backward for each active track
             predicted_positions = {}
+            track_search_radii = {}
             for tid, tinfo in active_tracks.items():
-                if tinfo['state_history']:
-                    last_state = tinfo['state_history'][-1]
-                    if self.config.motion_model == 'mixed':
-                        preds = self.motion_predictor.predict_multiple_models(
-                            tinfo['state_history'], dt=1.0)
-                        predicted_positions[tid] = self._combine_motion_predictions(preds)
-                    else:
-                        predicted_positions[tid] = self._predict_single_model(last_state)
+                if not tinfo['state_history']:
+                    continue
+                last_state = tinfo['state_history'][-1]
+                if use_gpb1 and tid in getattr(bwd_predictor, '_track_filters', {}):
+                    positions = np.array([[s[0], s[1]] for s in tinfo['state_history']])
+                    center = positions.mean(axis=0) if len(positions) >= 3 else None
+                    preds = bwd_predictor.predict_gpb1(tid, confinement_center=center)
+                    predicted_positions[tid] = self._combine_motion_predictions(preds)
+                    # Extract Kalman search radius
+                    best_probs = bwd_predictor._track_model_probs.get(tid, {})
+                    if best_probs:
+                        best_m = max(best_probs, key=best_probs.get)
+                        kf = bwd_predictor._track_filters[tid].get(best_m)
+                        if kf is not None:
+                            track_search_radii[tid] = kf.get_search_radius(n_sigma)
+                elif self.config.motion_model == 'mixed':
+                    preds = bwd_predictor.predict_multiple_models(
+                        tinfo['state_history'], dt=1.0)
+                    predicted_positions[tid] = self._combine_motion_predictions(preds)
+                else:
+                    predicted_positions[tid] = self._predict_single_model(last_state)
 
             # Assignment
             if active_tracks and len(current_dets) > 0:
                 assignments = self._solve_assignment_problem(
-                    predicted_positions, current_dets, rev_idx)
+                    predicted_positions, current_dets, rev_idx,
+                    track_search_radii=track_search_radii if track_search_radii else None)
             else:
                 assignments = {}
 
@@ -1283,14 +1710,24 @@ class UTrackLinkerWithMixedMotion:
                         'intensity': det.get('intensity', 100.0),
                     })
 
-                    new_state = np.array([det['x'], det['y'], 0.0, 0.0])
-                    if tid in active_tracks and active_tracks[tid]['state_history']:
-                        prev = active_tracks[tid]['state_history'][-1]
-                        new_state[2] = det['x'] - prev[0]
-                        new_state[3] = det['y'] - prev[1]
+                    z = np.array([det['x'], det['y']])
+
+                    if use_gpb1 and tid in getattr(bwd_predictor, '_track_filters', {}):
+                        best_model, best_state, best_P = bwd_predictor.update_gpb1(tid, z)
+                        new_state = best_state.copy()
+                        if store_filter_estimates:
+                            self._backward_estimates[(tid, rev_idx)] = (best_state.copy(), best_P.copy())
+                    else:
+                        new_state = np.array([det['x'], det['y'], 0.0, 0.0])
+                        if tid in active_tracks and active_tracks[tid]['state_history']:
+                            prev = active_tracks[tid]['state_history'][-1]
+                            new_state[2] = det['x'] - prev[0]
+                            new_state[3] = det['y'] - prev[1]
+
                     if tid in active_tracks:
                         active_tracks[tid]['state_history'].append(new_state)
                         active_tracks[tid]['last_seen_reverse'] = rev_idx
+                        active_tracks[tid]['last_intensity'] = det.get('intensity', 100.0)
                     unassigned.remove(det_idx)
 
             # New tracks for unassigned detections
@@ -1304,17 +1741,23 @@ class UTrackLinkerWithMixedMotion:
                     'y': det['y'],
                     'intensity': det.get('intensity', 100.0),
                 })
+                init_state = np.array([det['x'], det['y'], 0.0, 0.0])
                 active_tracks[next_track_id] = {
-                    'state_history': [np.array([det['x'], det['y'], 0.0, 0.0])],
+                    'state_history': [init_state],
                     'last_seen_reverse': rev_idx,
+                    'last_intensity': det.get('intensity', 100.0),
                 }
+                if use_gpb1:
+                    bwd_predictor.init_track_filters(next_track_id, np.array([det['x'], det['y']]))
                 next_track_id += 1
 
             # Prune tracks not seen recently (in reverse direction)
-            active_tracks = {
-                tid: info for tid, info in active_tracks.items()
-                if abs(rev_idx - info['last_seen_reverse']) <= self.config.max_gap_frames
-            }
+            pruned_tids = [tid for tid, info in active_tracks.items()
+                           if abs(rev_idx - info['last_seen_reverse']) > self.config.max_gap_frames]
+            for tid in pruned_tids:
+                if use_gpb1:
+                    bwd_predictor.cleanup_track(tid)
+                del active_tracks[tid]
 
         reverse_df = pd.DataFrame(tracks) if tracks else pd.DataFrame(
             columns=['particle_id', 'track_id', 'frame', 'x', 'y', 'intensity'])
@@ -1345,29 +1788,39 @@ class UTrackLinkerWithMixedMotion:
                            previous_tracks: pd.DataFrame) -> pd.DataFrame:
         """Final forward pass incorporating motion regime information.
 
-        Uses the regime detector to classify each existing track's motion
-        type, then re-runs the forward pass with per-track motion models
-        selected accordingly.
+        Uses GPB1 model probabilities (when available) to bias per-track
+        weights, falling back to sliding-window MotionRegimeDetector for
+        tracks without GPB1 state.
         """
         if len(previous_tracks) == 0:
             return self._forward_tracking_pass(detections)
 
         # Detect motion regimes for each track and set model weights
         for tid in previous_tracks['track_id'].unique():
-            tdata = previous_tracks[previous_tracks['track_id'] == tid].sort_values('frame')
-            if len(tdata) < 4:
-                continue
-            trajectory = tdata[['frame', 'x', 'y']].values
-            regimes = self.regime_detector.detect_motion_regimes(trajectory)
-            # Use the last regime to bias the predictor weights
-            if regimes:
-                last_regime = regimes[-1]['type']
-                # Temporarily boost the detected regime
+            # Group I: prefer GPB1 probabilities when available
+            gpb1_probs = getattr(self.motion_predictor, '_track_model_probs', {})
+            if tid in gpb1_probs:
+                probs = gpb1_probs[tid]
+                best_model = max(probs, key=probs.get)
                 self.motion_predictor.model_weights = {
-                    'brownian': 0.6 if last_regime == 'brownian' else 0.2,
-                    'linear': 0.6 if last_regime == 'linear' else 0.2,
-                    'confined': 0.6 if last_regime == 'confined' else 0.2,
+                    'brownian': 0.6 if best_model == 'brownian' else 0.2,
+                    'linear': 0.6 if best_model == 'linear' else 0.2,
+                    'confined': 0.6 if best_model == 'confined' else 0.2,
                 }
+            else:
+                # Fallback to sliding-window regime detector
+                tdata = previous_tracks[previous_tracks['track_id'] == tid].sort_values('frame')
+                if len(tdata) < 4:
+                    continue
+                trajectory = tdata[['frame', 'x', 'y']].values
+                regimes = self.regime_detector.detect_motion_regimes(trajectory)
+                if regimes:
+                    last_regime = regimes[-1]['type']
+                    self.motion_predictor.model_weights = {
+                        'brownian': 0.6 if last_regime == 'brownian' else 0.2,
+                        'linear': 0.6 if last_regime == 'linear' else 0.2,
+                        'confined': 0.6 if last_regime == 'confined' else 0.2,
+                    }
 
         # Re-run forward pass with regime-informed weights
         result = self._forward_tracking_pass(detections)
@@ -1409,13 +1862,15 @@ class UTrackLinkerWithMixedMotion:
             return self.motion_predictor._predict_confined(state, dt)['state']
 
     def _solve_assignment_problem(self, predicted_positions: Dict[int, np.ndarray],
-                                detections: pd.DataFrame, frame_idx: int) -> Dict[int, int]:
+                                detections: pd.DataFrame, frame_idx: int,
+                                track_search_radii: Optional[Dict[int, float]] = None) -> Dict[int, int]:
         """Solve augmented LAP between predictions and detections.
 
-        Uses the same U-Track 2.5–style augmented cost matrix as
+        Uses the same U-Track 2.5-style augmented cost matrix as
         UTrackLinker: adaptive birth/death costs based on the 90th
-        percentile of valid linking costs, and local-density–scaled
-        search radii.
+        percentile of valid linking costs, and local-density-scaled
+        search radii.  When *track_search_radii* is provided (from
+        Kalman innovation covariance), those radii take precedence.
         """
         if not predicted_positions or len(detections) == 0:
             return {}
@@ -1429,17 +1884,18 @@ class UTrackLinkerWithMixedMotion:
         # Build detection position array for vectorised operations
         det_pos = detections[['x', 'y']].values  # (n_dets, 2)
 
-        # Per-track search radius with confidence ramp-up
+        # G2: Per-track search radius — Kalman-derived when available
         time_reach_conf = getattr(self.config, 'time_reach_conf_b', 4)
         per_track_radius = np.full(n_tracks, max_dist)
         for i, tid in enumerate(track_ids):
-            if tid in self.track_histories:
+            if track_search_radii is not None and tid in track_search_radii:
+                # Use Kalman-derived radius, clamped to [2.0, max_dist]
+                per_track_radius[i] = np.clip(track_search_radii[tid], 2.0, max_dist)
+            elif tid in self.track_histories:
                 age = len(self.track_histories[tid])
                 if time_reach_conf > 0 and age < time_reach_conf:
-                    # Young track: use wider search radius
                     confidence = age / time_reach_conf
-                    # Interpolate from max_dist (wide) towards a tighter Kalman-like radius
-                    kalman_radius = max_dist * 0.5  # default Kalman estimate
+                    kalman_radius = max_dist * 0.5
                     per_track_radius[i] = (1.0 - confidence) * max_dist + confidence * kalman_radius
 
         # Local density scaling: compute per-detection NN distance
@@ -1453,26 +1909,39 @@ class UTrackLinkerWithMixedMotion:
             density_limit = np.clip(nn_dist * 0.5, 2.0, max_dist)
             search_limits = np.minimum(search_limits, density_limit)
 
-        # Base cost matrix — Mahalanobis when covariance is available
+        # G3: Base cost matrix — Kalman innovation covariance when GPB1 available
         base_cost = np.full((n_tracks, n_dets), np.inf)
+        gpb1_filters = getattr(self.motion_predictor, '_track_filters', {})
+
         for i, tid in enumerate(track_ids):
             pred_xy = predicted_positions[tid][:2]
             dists = np.linalg.norm(det_pos - pred_xy, axis=1)
 
-            # Check if prediction has covariance info (from mixed motion predictor)
+            # Try to get innovation covariance S from GPB1 Kalman filters
             pred_cov = None
-            if tid in self.track_histories and len(self.track_histories.get(tid, [])) >= 2:
-                # Estimate covariance from state history variance
+            if tid in gpb1_filters:
+                # Use the best model's predicted innovation covariance
+                best_model_probs = getattr(self.motion_predictor, '_track_model_probs', {}).get(tid, {})
+                if best_model_probs:
+                    best_model = max(best_model_probs, key=best_model_probs.get)
+                    kf = gpb1_filters[tid].get(best_model)
+                    if kf is not None and hasattr(kf, '_P_pred') and kf._P_pred is not None:
+                        H = kf.H
+                        S = H @ kf._P_pred @ H.T + kf.R
+                        eigvals = np.linalg.eigvalsh(S)
+                        if np.all(eigvals > 0):
+                            pred_cov = S
+
+            # Fallback: empirical covariance from position history
+            if pred_cov is None and tid in self.track_histories and len(self.track_histories.get(tid, [])) >= 3:
                 hist = self.track_histories[tid]
-                if len(hist) >= 3:
-                    recent_pos = np.array([[s[0], s[1]] for s in hist[-min(5, len(hist)):]])
-                    residuals = np.diff(recent_pos, axis=0)
-                    if len(residuals) >= 2:
-                        pred_cov = np.cov(residuals.T)
-                        # Ensure positive definite
-                        eigvals = np.linalg.eigvalsh(pred_cov)
-                        if np.any(eigvals <= 0):
-                            pred_cov = None
+                recent_pos = np.array([[s[0], s[1]] for s in hist[-min(5, len(hist)):]])
+                residuals = np.diff(recent_pos, axis=0)
+                if len(residuals) >= 2:
+                    cov_est = np.cov(residuals.T)
+                    eigvals = np.linalg.eigvalsh(cov_est)
+                    if np.all(eigvals > 0):
+                        pred_cov = cov_est
 
             effective_limit = per_track_radius[i]
             for j in range(n_dets):
@@ -1631,12 +2100,30 @@ class UTrackLinkerWithMixedMotion:
                 continue
             first = tdata.iloc[0]
             last = tdata.iloc[-1]
+
+            # H1: compute start/end intensity and mean step size
+            n_pts = len(tdata)
+            intensities = tdata['intensity'].values if 'intensity' in tdata.columns else np.full(n_pts, 100.0)
+            start_intensity = float(np.mean(intensities[:min(3, n_pts)]))
+            end_intensity = float(np.mean(intensities[max(0, n_pts - 3):]))
+
+            positions = tdata[['x', 'y']].values
+            if n_pts >= 2:
+                steps = np.linalg.norm(np.diff(positions, axis=0), axis=1)
+                mean_step = float(np.mean(steps)) if len(steps) > 0 else 1.0
+            else:
+                mean_step = 1.0
+            mean_step = max(mean_step, 0.1)  # avoid division by zero
+
             segments.append({
                 'tid': tid,
                 'start_frame': int(first['frame']),
                 'end_frame': int(last['frame']),
                 'start_pos': np.array([first['x'], first['y']]),
                 'end_pos': np.array([last['x'], last['y']]),
+                'start_intensity': start_intensity,
+                'end_intensity': end_intensity,
+                'mean_step': mean_step,
                 'data': tdata,
             })
 
@@ -1644,7 +2131,8 @@ class UTrackLinkerWithMixedMotion:
         if n_seg < 2:
             return tracks_df
 
-        # Build gap-closing cost matrix
+        # H2: Build gap-closing cost matrix with mobility scaling
+        use_mobility = getattr(self.config, 'gap_closing_use_mobility_scaling', False)
         gc_cost = np.full((n_seg, n_seg), np.inf)
         for i in range(n_seg):
             for j in range(n_seg):
@@ -1653,10 +2141,15 @@ class UTrackLinkerWithMixedMotion:
                 dt = segments[j]['start_frame'] - segments[i]['end_frame']
                 if dt < 1 or dt > time_window:
                     continue
-                d2 = np.sum((segments[i]['end_pos'] - segments[j]['start_pos']) ** 2)
-                if np.sqrt(d2) > max_gap_radius * np.sqrt(dt):
+                d = np.sqrt(np.sum((segments[i]['end_pos'] - segments[j]['start_pos']) ** 2))
+                if d > max_gap_radius * np.sqrt(dt):
                     continue
-                gc_cost[i, j] = d2 * (gap_penalty ** (dt - 1))
+                if use_mobility:
+                    avg_step = 0.5 * (segments[i]['mean_step'] + segments[j]['mean_step'])
+                    avg_step = max(avg_step, 0.1)
+                    gc_cost[i, j] = (d / avg_step) ** 2 * (gap_penalty ** (dt - 1))
+                else:
+                    gc_cost[i, j] = d ** 2 * (gap_penalty ** (dt - 1))
 
         # Merge/split candidates
         do_merge = getattr(self.config, 'enable_merging', False)
@@ -1675,6 +2168,19 @@ class UTrackLinkerWithMixedMotion:
                     interior[f] = np.array([row['x'], row['y']])
                 seg_interior.append(interior)
 
+            # H3/H4: intensity validation for merge/split
+            do_intensity_val = getattr(self.config, 'merge_split_intensity_validation', False)
+            intensity_penalty_w = getattr(self.config, 'intensity_ratio_penalty_weight', 2.0)
+
+            # Build per-segment per-frame intensity lookup
+            seg_intensity = []
+            for seg in segments:
+                frame_int = {}
+                for _, row in seg['data'].iterrows():
+                    f = int(row['frame'])
+                    frame_int[f] = float(row.get('intensity', 100.0))
+                seg_intensity.append(frame_int)
+
             if do_merge:
                 for i in range(n_seg):
                     for j in range(n_seg):
@@ -1688,7 +2194,17 @@ class UTrackLinkerWithMixedMotion:
                             d2 = np.sum((segments[i]['end_pos'] - pos_j) ** 2)
                             if np.sqrt(d2) > max_gap_radius:
                                 continue
-                            merge_candidates.append((i, j, abs_f, d2))
+                            cost = d2
+                            # H3: merge intensity validation
+                            if do_intensity_val:
+                                I_seg_i_end = segments[i]['end_intensity']
+                                I_seg_j_at_merge = seg_intensity[j].get(abs_f, 100.0)
+                                I_after = seg_intensity[j].get(abs_f, 100.0)
+                                expected = I_seg_i_end + I_seg_j_at_merge
+                                if expected > 0:
+                                    rho = I_after / expected
+                                    cost *= 1.0 + intensity_penalty_w * abs(rho - 1.0)
+                            merge_candidates.append((i, j, abs_f, cost))
 
             if do_split:
                 for j in range(n_seg):
@@ -1703,7 +2219,16 @@ class UTrackLinkerWithMixedMotion:
                             d2 = np.sum((pos_i - segments[j]['start_pos']) ** 2)
                             if np.sqrt(d2) > max_gap_radius:
                                 continue
-                            split_candidates.append((i, j, abs_f, d2))
+                            cost = d2
+                            # H4: split intensity validation
+                            if do_intensity_val:
+                                I_before = seg_intensity[i].get(abs_f, 100.0)
+                                I_i_after = seg_intensity[i].get(abs_f + 1, segments[i]['end_intensity'])
+                                I_j_start = segments[j]['start_intensity']
+                                if I_before > 0:
+                                    rho = (I_i_after + I_j_start) / I_before
+                                    cost *= 1.0 + intensity_penalty_w * abs(rho - 1.0)
+                            split_candidates.append((i, j, abs_f, cost))
 
         n_merge = len(merge_candidates)
         n_split = len(split_candidates)
