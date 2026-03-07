@@ -15,10 +15,10 @@ Algorithm:
 import numpy as np
 import os
 import json, codecs
-from distutils.version import StrictVersion
+from packaging.version import Version
 from qtpy.QtCore import QUrl, QRect, QPointF, Qt
 from qtpy.QtGui import QDesktopServices, QIcon, QPainterPath, QPen, QColor
-from qtpy.QtWidgets import QHBoxLayout, QGraphicsPathItem, qApp
+from qtpy.QtWidgets import QHBoxLayout, QGraphicsPathItem, QApplication
 from qtpy import uic
 
 import flika
@@ -27,7 +27,7 @@ from flika.window import Window
 from flika.process.file_ import save_file_gui, open_file_gui
 
 flika_version = flika.__version__
-if StrictVersion(flika_version) < StrictVersion('0.2.23'):
+if Version(flika_version) < Version('0.2.23'):
     from flika.process.BaseProcess import BaseProcess, WindowSelector, SliderLabel, CheckBox
 else:
     from flika.utils.BaseProcess import BaseProcess, WindowSelector, SliderLabel, CheckBox
@@ -170,7 +170,7 @@ def refine_pts(pts, blur_window, sigma, amplitude):
         if old_frame != new_frame:
             old_frame = new_frame
             blur_window.imageview.setCurrentIndex(old_frame)
-            qApp.processEvents()
+            QApplication.processEvents()
             if halt_current_computation:
                 halt_current_computation = False
                 return new_pts, False

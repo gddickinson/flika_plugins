@@ -1,3 +1,4 @@
+<?xml version='1.0' encoding='utf-8'?>
 <plugin name="locsAndTracksPlotter">
 	<directory>
 		locsAndTracksPlotter
@@ -10,9 +11,21 @@
 	</author>
 	<url>
 	</url>
-	<dependencies>
-	</dependencies>
 	<menu_layout>
 		<action location="locsAndTracksPlotter" function="locsAndTracksPlotter.gui">locsAndTracksPlotter</action>
 	</menu_layout>
+	<dependencies>
+		<dependency name="numpy" />
+		<dependency name="pyqtgraph" />
+		<dependency name="scipy" />
+		<dependency name="pandas" />
+		<dependency name="matplotlib" />
+		<dependency name="scikit-image" />
+		<dependency name="scikit-learn" />
+		<dependency name="trackpy" />
+		<dependency name="tqdm" />
+		<dependency name="cv2" optional="true" />
+		<dependency name="numba" optional="true" />
+		<dependency name="packaging" />
+	</dependencies>
 </plugin>

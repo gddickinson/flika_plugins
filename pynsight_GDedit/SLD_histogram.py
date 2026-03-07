@@ -3,14 +3,14 @@ import os
 from scipy.optimize import curve_fit
 import pyqtgraph as pg
 from qtpy import QtCore, QtGui, QtWidgets
-from distutils.version import StrictVersion
+from packaging.version import Version
 
 import flika
 from flika import global_vars as g
 from flika.utils.misc import save_file_gui
 
 flika_version = flika.__version__
-if StrictVersion(flika_version) < StrictVersion('0.2.23'):
+if Version(flika_version) < Version('0.2.23'):
     from flika.process.BaseProcess import BaseDialog, SliderLabel
 else:
     from flika.utils.BaseProcess import BaseDialog, SliderLabel

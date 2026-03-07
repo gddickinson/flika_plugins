@@ -11,7 +11,7 @@ import pyqtgraph as pg
 import os
 #from os import listdir
 #from os.path import expanduser, isfile, join
-from distutils.version import StrictVersion
+from packaging.version import Version
 #from copy import deepcopy
 #from numpy import moveaxis
 #from skimage.transform import rescale
@@ -27,7 +27,7 @@ from qtpy.QtCore import Signal
 from scipy.ndimage import gaussian_filter
 
 flika_version = flika.__version__
-if StrictVersion(flika_version) < StrictVersion('0.2.23'):
+if Version(flika_version) < Version('0.2.23'):
     from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, FileSelector
 else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, FileSelector

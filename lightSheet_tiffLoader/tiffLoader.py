@@ -43,7 +43,12 @@ class Load_tiff ():
             A = Tiff.asarray()
             Tiff.close()
             
-            axes = [tifffile.AXES_LABELS[ax] for ax in Tiff.series[0].axes]
+            _axes_labels = {
+                'X': 'width', 'Y': 'height', 'Z': 'depth',
+                'S': 'sample', 'T': 'time', 'C': 'channel',
+                'I': 'series', 'Q': 'other',
+            }
+            axes = [_axes_labels.get(ax, ax) for ax in Tiff.series[0].axes]
             
         elif ext == '.czi':
             #import czifile

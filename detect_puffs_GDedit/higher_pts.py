@@ -5,10 +5,10 @@ Created on Mon Jan 04 15:17:57 2016
 @author: Kyle Ellefsen
 """
 import numpy as np
-from qtpy.QtWidgets import qApp
+from qtpy.QtWidgets import QApplication
 from scipy import spatial
 import time
-from distutils.version import StrictVersion
+from packaging.version import Version
 
 
 import flika
@@ -16,7 +16,7 @@ try:
     v = flika.__version__
 except AttributeError:
     v = '0.0.0'
-if StrictVersion(v) < StrictVersion('0.1.0'):
+if Version(v) < Version('0.1.0'):
     import global_vars as g
     from process.progress_bar import ProgressBar
 else:
@@ -238,13 +238,13 @@ def getHigherPointSingleProcess(args, remander):
     progressBar1 = g.m.puffAnalyzer.algorithm_gui.higherPtsProgress1
     progressBar2 = g.m.puffAnalyzer.algorithm_gui.higherPtsProgress2
     progressBar1.setValue(0)
-    progressBar2.setValue(0); qApp.processEvents()
+    progressBar2.setValue(0); QApplication.processEvents()
     nTotal_pts, C, idxs, densities_jittered, C_idx, time_factor=args
     mt,mx,my=C.shape
     higher_pts=np.zeros((nTotal_pts,3)) #['Distance to next highest point, index of higher point, value of current point']
     for r in np.arange(3,45,2):
         print(r)
-        progressBar2.setValue(100*r/45); qApp.processEvents()
+        progressBar2.setValue(100*r/45); QApplication.processEvents()
         mask,center=getMask(r,r,r)
         oldremander=remander
         remander=[]
@@ -254,12 +254,12 @@ def getHigherPointSingleProcess(args, remander):
             if r==3:
                 if percent<int(100*ii/len(oldremander)):
                     percent=int(100*ii/len(oldremander))
-                    progressBar1.setValue(percent); qApp.processEvents()
+                    progressBar1.setValue(percent); QApplication.processEvents()
                     toc=time.time()-tic
                     tic=time.time()
                     print('Calculating Higher Points Radius {}.  {}%  {}s'.format(r,percent, toc))
             else:
-                progressBar1.setValue(100); qApp.processEvents()
+                progressBar1.setValue(100); QApplication.processEvents()
             idx=idxs[ii]
             density=densities_jittered[ii]
             posi=idx-center
@@ -306,6 +306,6 @@ def getHigherPointSingleProcess(args, remander):
                 higher_pt=C_idx[higher_pt[0],higher_pt[1],higher_pt[2]]
                 higher_pt=[np.min(distances), higher_pt, density]
                 higher_pts[ii]=higher_pt
-    progressBar2.setValue(100); qApp.processEvents()
+    progressBar2.setValue(100); QApplication.processEvents()
     return higher_pts
 

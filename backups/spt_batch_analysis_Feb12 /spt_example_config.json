@@ -1,0 +1,356 @@
+{
+  "_plugin_info": {
+    "name": "SPT Batch Analysis - Complete",
+    "version": "2025.01.20",
+    "description": "Complete configuration file for SPT batch analysis with all available parameters and analysis steps"
+  },
+
+  "_core_parameters": {
+    "pixel_size": 108,
+    "frame_length": 1.0,
+    "min_track_segments": 4,
+    "max_gap_frames": 36,
+    "max_link_distance": 3,
+    "nn_radii": [3, 5, 10, 20, 30],
+    "rg_mobility_threshold": 2.11,
+    "training_data_path": "",
+    "experiment_name": "Example_Experiment",
+    "save_intermediate": true
+  },
+
+  "_analysis_step_toggles": {
+    "enable_nearest_neighbors": true,
+    "enable_svm_classification": false,
+    "enable_velocity_analysis": true,
+    "enable_diffusion_analysis": true,
+    "enable_background_subtraction": false,
+    "enable_localization_error": true,
+    "enable_straightness_analysis": true
+  },
+
+  "_complete_default_config": {
+    "pixel_size": 108,
+    "frame_length": 1.0,
+    "min_track_segments": 4,
+    "max_gap_frames": 36,
+    "max_link_distance": 3,
+    "nn_radii": [3, 5, 10, 20, 30],
+    "rg_mobility_threshold": 2.11,
+    "training_data_path": "",
+    "experiment_name": "Default_Experiment",
+    "enable_nearest_neighbors": true,
+    "enable_svm_classification": false,
+    "enable_velocity_analysis": true,
+    "enable_diffusion_analysis": true,
+    "enable_background_subtraction": false,
+    "enable_localization_error": true,
+    "enable_straightness_analysis": true,
+    "save_intermediate": true
+  },
+
+  "_parameter_descriptions": {
+    "pixel_size": "Physical size of image pixels in nanometers. Super-resolution: 100-200 nm, Conventional: 60-160 nm",
+    "frame_length": "Time between consecutive frames in seconds. Fast imaging: 0.01-0.05 s, Standard: 0.1-1.0 s",
+    "min_track_segments": "Minimum number of detections required for a valid track. Feature calculation: ≥4, Statistical analysis: ≥10",
+    "max_gap_frames": "Maximum number of frames a particle can disappear before link is broken. Fast particles: 5-20, Slow/stationary: 20-50",
+    "max_link_distance": "Maximum distance in pixels between detections to be linked. Dense samples: 1.5-3, Sparse samples: 3-8",
+    "nn_radii": "Radii in pixels for nearest neighbor analysis. Adjust based on typical inter-particle distances",
+    "rg_mobility_threshold": "Threshold for radius of gyration mobility classification (Golan & Sherman 2017: 2.11)",
+    "training_data_path": "Path to CSV file containing training data for SVM classification with Elected_Label column",
+    "experiment_name": "Name to identify this experiment in output files and classification",
+    "enable_nearest_neighbors": "Calculate spatial relationships and clustering metrics",
+    "enable_svm_classification": "Classify tracks as Mobile/Intermediate/Trapped using machine learning",
+    "enable_velocity_analysis": "Calculate instantaneous and mean velocities, directional analysis",
+    "enable_diffusion_analysis": "Analyze displacement patterns and diffusion metrics",
+    "enable_background_subtraction": "Subtract background using ROI measurements (requires ROI files)",
+    "enable_localization_error": "Calculate precision metrics and distance from track center",
+    "enable_straightness_analysis": "Calculate path straightness and directional persistence",
+    "save_intermediate": "Save intermediate files (tracks.csv, features.csv) in addition to complete results"
+  },
+
+  "_expert_configurations": {
+    "fast_membrane_proteins": {
+      "description": "Optimized for rapidly diffusing membrane proteins",
+      "pixel_size": 108,
+      "frame_length": 0.01,
+      "max_gap_frames": 10,
+      "max_link_distance": 5,
+      "min_track_segments": 5,
+      "nn_radii": [2, 3, 5, 8, 12],
+      "rg_mobility_threshold": 2.5,
+      "enable_nearest_neighbors": true,
+      "enable_velocity_analysis": true,
+      "enable_diffusion_analysis": true,
+      "enable_straightness_analysis": true,
+      "enable_localization_error": false,
+      "enable_svm_classification": true,
+      "enable_background_subtraction": false
+    },
+
+    "slow_confined_proteins": {
+      "description": "Optimized for slowly diffusing or confined membrane proteins",
+      "pixel_size": 108,
+      "frame_length": 0.1,
+      "max_gap_frames": 5,
+      "max_link_distance": 2,
+      "min_track_segments": 10,
+      "nn_radii": [1, 2, 3, 5, 8],
+      "rg_mobility_threshold": 1.8,
+      "enable_nearest_neighbors": true,
+      "enable_velocity_analysis": true,
+      "enable_diffusion_analysis": true,
+      "enable_straightness_analysis": true,
+      "enable_localization_error": true,
+      "enable_svm_classification": true,
+      "enable_background_subtraction": true
+    },
+
+    "vesicle_trafficking": {
+      "description": "Optimized for vesicle and organelle tracking",
+      "pixel_size": 160,
+      "frame_length": 0.05,
+      "max_gap_frames": 20,
+      "max_link_distance": 8,
+      "min_track_segments": 3,
+      "nn_radii": [5, 8, 12, 20, 30],
+      "rg_mobility_threshold": 3.0,
+      "enable_nearest_neighbors": true,
+      "enable_velocity_analysis": true,
+      "enable_diffusion_analysis": true,
+      "enable_straightness_analysis": true,
+      "enable_localization_error": false,
+      "enable_svm_classification": true,
+      "enable_background_subtraction": false
+    },
+
+    "high_density_puncta": {
+      "description": "Optimized for high-density punctate structures",
+      "pixel_size": 108,
+      "frame_length": 0.01,
+      "max_gap_frames": 5,
+      "max_link_distance": 1.5,
+      "min_track_segments": 8,
+      "nn_radii": [1, 2, 3, 4, 6],
+      "rg_mobility_threshold": 1.5,
+      "enable_nearest_neighbors": true,
+      "enable_velocity_analysis": false,
+      "enable_diffusion_analysis": false,
+      "enable_straightness_analysis": false,
+      "enable_localization_error": true,
+      "enable_svm_classification": true,
+      "enable_background_subtraction": true
+    },
+
+    "single_molecule_tracking": {
+      "description": "Optimized for single molecule studies",
+      "pixel_size": 120,
+      "frame_length": 0.02,
+      "max_gap_frames": 3,
+      "max_link_distance": 4,
+      "min_track_segments": 6,
+      "nn_radii": [3, 5, 8, 12, 18],
+      "rg_mobility_threshold": 2.2,
+      "enable_nearest_neighbors": true,
+      "enable_velocity_analysis": true,
+      "enable_diffusion_analysis": true,
+      "enable_straightness_analysis": true,
+      "enable_localization_error": true,
+      "enable_svm_classification": true,
+      "enable_background_subtraction": true
+    },
+
+    "viral_particle_tracking": {
+      "description": "Optimized for viral particle entry and trafficking",
+      "pixel_size": 150,
+      "frame_length": 0.1,
+      "max_gap_frames": 15,
+      "max_link_distance": 6,
+      "min_track_segments": 4,
+      "nn_radii": [4, 6, 10, 15, 25],
+      "rg_mobility_threshold": 2.8,
+      "enable_nearest_neighbors": true,
+      "enable_velocity_analysis": true,
+      "enable_diffusion_analysis": true,
+      "enable_straightness_analysis": true,
+      "enable_localization_error": false,
+      "enable_svm_classification": true,
+      "enable_background_subtraction": false
+    }
+  },
+
+  "_analysis_step_combinations": {
+    "basic_tracking": {
+      "description": "Basic tracking with essential features only",
+      "enable_nearest_neighbors": false,
+      "enable_svm_classification": false,
+      "enable_velocity_analysis": false,
+      "enable_diffusion_analysis": false,
+      "enable_background_subtraction": false,
+      "enable_localization_error": false,
+      "enable_straightness_analysis": true
+    },
+
+    "spatial_analysis_focus": {
+      "description": "Emphasizes spatial relationships and clustering",
+      "enable_nearest_neighbors": true,
+      "enable_svm_classification": false,
+      "enable_velocity_analysis": false,
+      "enable_diffusion_analysis": false,
+      "enable_background_subtraction": false,
+      "enable_localization_error": true,
+      "enable_straightness_analysis": false
+    },
+
+    "motion_analysis_focus": {
+      "description": "Emphasizes motion and diffusion characteristics",
+      "enable_nearest_neighbors": false,
+      "enable_svm_classification": false,
+      "enable_velocity_analysis": true,
+      "enable_diffusion_analysis": true,
+      "enable_background_subtraction": false,
+      "enable_localization_error": false,
+      "enable_straightness_analysis": true
+    },
+
+    "classification_focus": {
+      "description": "Full pipeline for track classification",
+      "enable_nearest_neighbors": true,
+      "enable_svm_classification": true,
+      "enable_velocity_analysis": true,
+      "enable_diffusion_analysis": true,
+      "enable_background_subtraction": false,
+      "enable_localization_error": false,
+      "enable_straightness_analysis": true
+    },
+
+    "comprehensive_analysis": {
+      "description": "All analysis steps enabled for complete characterization",
+      "enable_nearest_neighbors": true,
+      "enable_svm_classification": true,
+      "enable_velocity_analysis": true,
+      "enable_diffusion_analysis": true,
+      "enable_background_subtraction": true,
+      "enable_localization_error": true,
+      "enable_straightness_analysis": true
+    },
+
+    "publication_ready": {
+      "description": "Comprehensive analysis suitable for publication",
+      "enable_nearest_neighbors": true,
+      "enable_svm_classification": true,
+      "enable_velocity_analysis": true,
+      "enable_diffusion_analysis": true,
+      "enable_background_subtraction": true,
+      "enable_localization_error": true,
+      "enable_straightness_analysis": true,
+      "save_intermediate": true
+    }
+  },
+
+  "_performance_configurations": {
+    "speed_optimized": {
+      "description": "Fastest analysis, minimal features",
+      "min_track_segments": 3,
+      "max_gap_frames": 10,
+      "nn_radii": [3, 5, 10],
+      "enable_nearest_neighbors": true,
+      "enable_svm_classification": false,
+      "enable_velocity_analysis": false,
+      "enable_diffusion_analysis": false,
+      "enable_background_subtraction": false,
+      "enable_localization_error": false,
+      "enable_straightness_analysis": false
+    },
+
+    "memory_efficient": {
+      "description": "Reduced memory usage for large datasets",
+      "nn_radii": [3, 10],
+      "enable_nearest_neighbors": true,
+      "enable_svm_classification": false,
+      "enable_velocity_analysis": true,
+      "enable_diffusion_analysis": false,
+      "enable_background_subtraction": false,
+      "enable_localization_error": false,
+      "enable_straightness_analysis": true,
+      "save_intermediate": false
+    },
+
+    "quality_focused": {
+      "description": "Maximum quality analysis, slower processing",
+      "min_track_segments": 10,
+      "max_gap_frames": 50,
+      "nn_radii": [1, 2, 3, 5, 8, 12, 20, 30],
+      "enable_nearest_neighbors": true,
+      "enable_svm_classification": true,
+      "enable_velocity_analysis": true,
+      "enable_diffusion_analysis": true,
+      "enable_background_subtraction": true,
+      "enable_localization_error": true,
+      "enable_straightness_analysis": true,
+      "save_intermediate": true
+    }
+  },
+
+  "_file_organization_examples": {
+    "standard_naming": {
+      "image_file": "experiment_condition_replicate.tif",
+      "localization_file": "experiment_condition_replicate_locs.csv",
+      "roi_file": "experiment_condition_replicate_ROI.txt",
+      "training_data": "training_dataset_features.csv"
+    },
+
+    "thunderstorm_output": {
+      "localization_file_columns": ["frame", "x [nm]", "y [nm]", "sigma [nm]", "intensity [photon]", "offset [photon]", "bkgstd [photon]", "chi2", "uncertainty [nm]"],
+      "required_columns": ["frame", "x [nm]", "y [nm]", "id"],
+      "optional_columns": ["intensity [photon]", "sigma [nm]", "uncertainty [nm]"]
+    },
+
+    "svm_training_data": {
+      "required_columns": ["NetDispl", "Straight", "Asymmetry", "radiusGyration", "Kurtosis", "fracDimension", "Elected_Label"],
+      "label_values": ["mobile", "confined", "trapped"],
+      "optional_columns": ["Experiment", "TrackID", "notes"]
+    }
+  },
+
+  "_troubleshooting_configs": {
+    "recursion_error_fix": {
+      "description": "Use when encountering recursion errors",
+      "max_gap_frames": 10,
+      "max_link_distance": 2,
+      "min_track_segments": 5
+    },
+
+    "memory_error_fix": {
+      "description": "Use when encountering memory errors",
+      "nn_radii": [3, 10],
+      "enable_nearest_neighbors": true,
+      "enable_svm_classification": false,
+      "enable_velocity_analysis": false,
+      "enable_diffusion_analysis": false,
+      "save_intermediate": false
+    },
+
+    "poor_linking_fix": {
+      "description": "Use when tracks are poorly linked",
+      "max_gap_frames": 5,
+      "max_link_distance": 1.5,
+      "min_track_segments": 8
+    },
+
+    "classification_error_fix": {
+      "description": "Use when SVM classification fails",
+      "enable_svm_classification": false,
+      "enable_nearest_neighbors": true,
+      "enable_velocity_analysis": true,
+      "enable_straightness_analysis": true
+    }
+  },
+
+  "_version_info": {
+    "config_version": "2025.01.20",
+    "plugin_version": "2025.01.20",
+    "last_updated": "2025-01-20",
+    "compatibility": "FLIKA 0.2.25+",
+    "notes": "Complete configuration file with all analysis steps and expert presets"
+  }
+}

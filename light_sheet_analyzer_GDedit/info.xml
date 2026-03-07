@@ -1,3 +1,4 @@
+<?xml version='1.0' encoding='utf-8'?>
 <plugin name="Light Sheet Analyzer GDedits">
 	<author>
 		Kyle Ellefsen
@@ -14,4 +15,11 @@
 		<action location="light_sheet_analyzer" function="light_sheet_analyzer.gui">Light Sheet Analyzer Dialog</action>
 		<action location="light_sheet_analyzer" function="ratio_by_baseline.gui">Ratio by Baseline</action>
 	</menu_layout>
+	<dependencies>
+		<dependency name="numpy" />
+		<dependency name="pyqtgraph" />
+		<dependency name="scipy" />
+		<dependency name="scikit-image" />
+		<dependency name="packaging" />
+	</dependencies>
 </plugin>

@@ -12,11 +12,11 @@ from time import time
 import os
 from os import listdir
 from os.path import expanduser, isfile, join
-from distutils.version import StrictVersion
+from packaging.version import Version
 import re
 
 flika_version = flika.__version__
-if StrictVersion(flika_version) < StrictVersion('0.2.23'):
+if Version(flika_version) < Version('0.2.23'):
     from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow
 else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow
@@ -306,7 +306,12 @@ class MainGUI(QtWidgets.QDialog):
         #2-channel 
         
             with tifffile.TiffFile(self.fileName) as tif:
-                axes = [tifffile.AXES_LABELS[ax] for ax in tif.series[0].axes]
+                _axes_labels = {
+                    'X': 'width', 'Y': 'height', 'Z': 'depth',
+                    'S': 'sample', 'T': 'time', 'C': 'channel',
+                    'I': 'series', 'Q': 'other',
+                }
+                axes = [_axes_labels.get(ax, ax) for ax in tif.series[0].axes]
                 print(axes)
                 initiated_0 = False
                 initiated_1 = False
@@ -349,7 +354,12 @@ class MainGUI(QtWidgets.QDialog):
         #2-channel 
         
             with tifffile.TiffFile(self.fileName) as tif:
-                axes = [tifffile.AXES_LABELS[ax] for ax in tif.series[0].axes]
+                _axes_labels = {
+                    'X': 'width', 'Y': 'height', 'Z': 'depth',
+                    'S': 'sample', 'T': 'time', 'C': 'channel',
+                    'I': 'series', 'Q': 'other',
+                }
+                axes = [_axes_labels.get(ax, ax) for ax in tif.series[0].axes]
                 print(axes)
                 initiated_0 = False
                 initiated_1 = False

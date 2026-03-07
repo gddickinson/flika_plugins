@@ -12,9 +12,9 @@ import numpy as np
 from qtpy import QtWidgets, QtCore, QtGui
 from scipy import ndimage
 import flika
-from distutils.version import StrictVersion
+from packaging.version import Version
 flika_version = flika.__version__
-if StrictVersion(flika_version) < StrictVersion('0.2.23'):
+if Version(flika_version) < Version('0.2.23'):
     from flika.process.BaseProcess import BaseProcess, WindowSelector, SliderLabel, CheckBox, ComboBox
 else:
     from flika.utils.BaseProcess import BaseProcess, WindowSelector, SliderLabel, CheckBox, ComboBox

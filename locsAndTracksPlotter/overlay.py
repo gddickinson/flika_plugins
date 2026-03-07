@@ -61,11 +61,11 @@ import flika
 from flika.window import Window
 from flika.process.file_ import open_tiff
 import flika.global_vars as g
-from distutils.version import StrictVersion
+from packaging.version import Version
 
 # Version-specific imports
 flika_version = flika.__version__
-if StrictVersion(flika_version) < StrictVersion('0.2.23'):
+if Version(flika_version) < Version('0.2.23'):
     from flika.process.BaseProcess import (BaseProcess, SliderLabel, CheckBox,
                                          ComboBox, BaseProcess_noPriorWindow,
                                          WindowSelector, save_file_gui)

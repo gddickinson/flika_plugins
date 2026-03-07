@@ -1,3 +1,4 @@
+<?xml version='1.0' encoding='utf-8'?>
 <plugin name="lightSheet_tiffLoader">
 	<directory>
 		lightSheet_tiffLoader
@@ -10,9 +11,11 @@
 	</author>
 	<url>
 	</url>
-	<dependencies>
-	</dependencies>
 	<menu_layout>
 		<action location="tiffLoader" function="load_tiff.gui">Load Tiff</action>
 	</menu_layout>
+	<dependencies>
+		<dependency name="numpy" />
+		<dependency name="tifffile" />
+	</dependencies>
 </plugin>

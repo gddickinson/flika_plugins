@@ -5,11 +5,11 @@ Created on Fri Apr 22 10:58:29 2016
 @author: kyle
 """
 import numpy as np
-from distutils.version import StrictVersion
+from packaging.version import Version
 from qtpy.QtGui import *
 from qtpy.QtCore import *
 from qtpy.QtWidgets import *
-from qtpy.QtWidgets import qApp
+from qtpy.QtWidgets import QApplication
 import pyqtgraph as pg
 import matplotlib
 import matplotlib.cm
@@ -21,7 +21,7 @@ try:
     v = flika.__version__
 except AttributeError:
     v = '0.0.0'
-if StrictVersion(v) < StrictVersion('0.1.0'):
+if Version(v) < Version('0.1.0'):
     import global_vars as g
     from window import Window
 else:
@@ -157,7 +157,7 @@ class Clusters():
         self.scatterPlot.addPoints(pos=pts_outsideROI, brush=pg.mkBrush([0,0,255,255]))
         pts_centers_with_large_cluster=np.array([self.higher_pts[centers, 2], np.log(self.higher_pts[centers,0])]).T
         self.scatterPlot.addPoints(pos=pts_centers_with_large_cluster, brush=pg.mkBrush([0, 255, 0, 255]))
-        qApp.processEvents()
+        QApplication.processEvents()
         if len(centers) == 0:
             self.puffAnalyzer.generatingClusterMovie = False
             return None

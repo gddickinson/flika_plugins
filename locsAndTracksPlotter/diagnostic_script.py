@@ -231,11 +231,11 @@ def provide_recommendations(pg_version, has_setData, has_setPoints, has_addPoint
     # Specific version recommendations
     if pg_version != "unknown":
         try:
-            from distutils.version import StrictVersion
-            if StrictVersion(pg_version) < StrictVersion('0.11.0'):
+            from packaging.version import Version
+            if Version(pg_version) < Version('0.11.0'):
                 print("\n⚠ PyQtGraph version is too old")
                 print("  Action: Upgrade with: pip install --upgrade pyqtgraph==0.11.1")
-            elif StrictVersion(pg_version) >= StrictVersion('0.13.0'):
+            elif Version(pg_version) >= Version('0.13.0'):
                 print("\n⚠ PyQtGraph version may be too new")
                 print("  Action: Downgrade with: pip install pyqtgraph==0.11.1")
         except:

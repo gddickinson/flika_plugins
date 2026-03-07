@@ -6,7 +6,7 @@ from numpy import moveaxis
 from scipy.ndimage.interpolation import zoom
 from qtpy import QtGui, QtWidgets, QtCore
 from time import time
-from distutils.version import StrictVersion
+from packaging.version import Version
 import pyqtgraph as pg
 import flika
 from flika import global_vars as g
@@ -16,7 +16,7 @@ from flika.images import image_path
 from skimage.transform import rescale
 
 flika_version = flika.__version__
-if StrictVersion(flika_version) < StrictVersion('0.2.23'):
+if Version(flika_version) < Version('0.2.23'):
     from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox
 else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox
@@ -435,6 +435,6 @@ class Volume_Viewer(QtWidgets.QWidget):
                 A=np.transpose(A,(0,2,1)) # This keeps the x and the y the same as in FIJI
             elif len(A.shape)==2:
                 A=np.transpose(A,(1,0))
-            tifffile.imsave(filename, A)
+            tifffile.imwrite(filename, A)
 
 #v=Volume_Viewer(g.m.currentWindow)

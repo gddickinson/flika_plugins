@@ -1,3 +1,4 @@
+<?xml version='1.0' encoding='utf-8'?>
 <plugin name="Kymograph Analyzer">
 	<author>
 		Claude (for Medha Pathak Lab, UCI)
@@ -14,4 +15,11 @@
 	<menu_layout>
 		<action location="kymograph_analyzer" function="kymograph_analyzer.gui">Kymograph Analyzer</action>
 	</menu_layout>
+	<dependencies>
+		<dependency name="numpy" />
+		<dependency name="pyqtgraph" />
+		<dependency name="scipy" />
+		<dependency name="matplotlib" />
+		<dependency name="packaging" />
+	</dependencies>
 </plugin>

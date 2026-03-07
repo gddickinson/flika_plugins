@@ -5,7 +5,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d, median_filter
 from scipy.signal import find_peaks, peak_widths
 from scipy.stats import zscore
-from distutils.version import StrictVersion
+from packaging.version import Version
 import flika
 from flika.window import Window
 import flika.global_vars as g
@@ -16,7 +16,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 
 flika_version = flika.__version__
-if StrictVersion(flika_version) < StrictVersion('0.2.23'):
+if Version(flika_version) < Version('0.2.23'):
     from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector
     from flika.roi import ROI_Drawing, makeROI
 else:

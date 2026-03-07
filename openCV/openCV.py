@@ -12,11 +12,11 @@ from flika.process.file_ import get_permutation_tuple
 from flika.utils.misc import open_file_gui
 import pyqtgraph as pg
 import time
-from distutils.version import StrictVersion
+from packaging.version import Version
 
 
 flika_version = flika.__version__
-if StrictVersion(flika_version) < StrictVersion('0.2.23'):
+if Version(flika_version) < Version('0.2.23'):
     from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox
 else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox

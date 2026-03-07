@@ -1,3 +1,4 @@
+<?xml version='1.0' encoding='utf-8'?>
 <plugin name="openCV">
 	<directory>
 		openCV
@@ -10,11 +11,14 @@
 	</author>
 	<url>
 	</url>
-	<dependencies>
-	<dependency name='cv2'></dependency>
-	</dependencies>
 	<menu_layout>
 		<action location="openCV" function="openCVcam.startCamera">Start Camera</action>
-        <action location="openCV" function="openFile.startFileOpener">Open File</action>
+		<action location="openCV" function="openFile.startFileOpener">Open File</action>
 	</menu_layout>
+	<dependencies>
+		<dependency name="numpy" />
+		<dependency name="pyqtgraph" />
+		<dependency name="opencv-python" />
+		<dependency name="packaging" />
+	</dependencies>
 </plugin>

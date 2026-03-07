@@ -1,3 +1,4 @@
+<?xml version='1.0' encoding='utf-8'?>
 <plugin name="Annotator">
 	<directory>
 		annotator
@@ -10,9 +11,13 @@
 	</author>
 	<url>
 	</url>
-	<dependencies>
-	</dependencies>
 	<menu_layout>
 		<action location="annotator" function="annotator.gui">annotator</action>
 	</menu_layout>
+	<dependencies>
+		<dependency name="numpy" />
+		<dependency name="pyqtgraph" />
+		<dependency name="Pillow" />
+		<dependency name="packaging" />
+	</dependencies>
 </plugin>

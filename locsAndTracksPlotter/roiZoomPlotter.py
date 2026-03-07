@@ -10,7 +10,7 @@ import pyqtgraph as pg
 from qtpy.QtCore import *
 from qtpy.QtGui import *
 from qtpy.QtWidgets import *
-from distutils.version import StrictVersion
+from packaging.version import Version
 import os, shutil, subprocess
 import errno
 
@@ -20,7 +20,7 @@ import flika.global_vars as g
 
 # determine which version of flika to use
 flika_version = flika.__version__
-if StrictVersion(flika_version) < StrictVersion('0.2.23'):
+if Version(flika_version) < Version('0.2.23'):
     from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, save_file_gui
 else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, save_file_gui
@@ -256,7 +256,7 @@ class CheckableComboBox(QComboBox):
         self.setEditable(True)
         self.lineEdit().setReadOnly(True)
         # Make the lineedit the same color as QPushButton
-        palette = qApp.palette()
+        palette = QApplication.instance().palette()
         palette.setBrush(QPalette.Base, palette.button())
         self.lineEdit().setPalette(palette)
 
@@ -1218,7 +1218,7 @@ class ROIPLOT():
             exporter0.export(os.path.join(os.path.join(tmpdir, 'main'), '{:03}.jpg'.format(n)))
             exporter1.export(os.path.join(os.path.join(tmpdir, 'zoom'), '{:03}.jpg'.format(n)))
             exporter2.export(os.path.join(os.path.join(tmpdir, 'trace'), '{:03}.jpg'.format(n)))
-            qApp.processEvents()
+            QApplication.instance().processEvents()
 
         print('temp movie files saved to {}'.format(tmpdir))
 

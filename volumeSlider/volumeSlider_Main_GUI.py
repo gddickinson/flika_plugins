@@ -4,7 +4,7 @@ from qtpy import QtWidgets, QtCore, QtGui
 import flika
 from flika import global_vars as g
 import os
-from distutils.version import StrictVersion
+from packaging.version import Version
 from pyqtgraph.dockarea import *
 from OpenGL.GL import *
 import pyqtgraph as pg
@@ -12,7 +12,7 @@ import time
 
 import logging
 flika_version = flika.__version__
-if StrictVersion(flika_version) < StrictVersion('0.2.23'):
+if Version(flika_version) < Version('0.2.23'):
     from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, FileSelector
 else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, FileSelector

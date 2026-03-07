@@ -1,3 +1,4 @@
+<?xml version='1.0' encoding='utf-8'?>
 <plugin name="Advanced Beam Splitter">
 	<author>
 		Claude (based on BeamSplitter by Brett Settle)
@@ -14,4 +15,10 @@
 	<menu_layout>
 		<action location="advanced_beam_splitter" function="advanced_beam_splitter.gui">Advanced Beam Splitter</action>
 	</menu_layout>
+	<dependencies>
+		<dependency name="numpy" />
+		<dependency name="pyqtgraph" />
+		<dependency name="scipy" />
+		<dependency name="packaging" />
+	</dependencies>
 </plugin>

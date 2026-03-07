@@ -7,7 +7,7 @@ Created on Tue Apr 05 16:19:30 2016
 from numpy import random
 import numpy as np
 import sys, os
-from distutils.version import StrictVersion
+from packaging.version import Version
 from qtpy import QtWidgets, QtGui, QtCore
 import flika
 from flika import global_vars as g
@@ -15,7 +15,7 @@ from .gaussianFitting import gaussian  # from plugins.pynsight.gaussianFitting i
 from .pynsight import Points  # from plugins.pynsight.pynsight import Points
 
 flika_version = flika.__version__
-if StrictVersion(flika_version) < StrictVersion('0.2.23'):
+if Version(flika_version) < Version('0.2.23'):
     from flika.process.BaseProcess import BaseProcess_noPriorWindow, WindowSelector, SliderLabel, CheckBox
 else:
     from flika.utils.BaseProcess import BaseProcess_noPriorWindow, WindowSelector, SliderLabel, CheckBox

@@ -5,11 +5,11 @@ from flika import global_vars as g
 from flika.utils.io import tifffile
 from flika.process.file_ import get_permutation_tuple
 from flika.utils.misc import open_file_gui
-from distutils.version import StrictVersion
+from packaging.version import Version
 from flika.window import Window
 
 flika_version = flika.__version__
-if StrictVersion(flika_version) < StrictVersion('0.2.23'):
+if Version(flika_version) < Version('0.2.23'):
     from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, FileSelector
 else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, FileSelector
@@ -23,7 +23,12 @@ def openTiff(filename):
     B = []
     C = []
     Tiff.close()
-    axes = [tifffile.AXES_LABELS[ax] for ax in Tiff.series[0].axes]
+    _axes_labels = {
+        'X': 'width', 'Y': 'height', 'Z': 'depth',
+        'S': 'sample', 'T': 'time', 'C': 'channel',
+        'I': 'series', 'Q': 'other',
+    }
+    axes = [_axes_labels.get(ax, ax) for ax in Tiff.series[0].axes]
     print(axes)
 
     if set(axes) == set(['time', 'depth', 'height', 'width']):  # single channel, multi-volume

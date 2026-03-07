@@ -1,3 +1,4 @@
+<?xml version='1.0' encoding='utf-8'?>
 <plugin name="Volume slider">
 	<directory>
 		volumeSlider
@@ -10,10 +11,19 @@
 	</author>
 	<url>
 	</url>
-	<dependencies>
-	</dependencies>
 	<menu_layout>
 		<action location="volumeSlider_Start" function="volumeSliderBase.gui">volume slider</action>
-        
 	</menu_layout>
+	<dependencies>
+		<dependency name="numpy" />
+		<dependency name="pyqtgraph" />
+		<dependency name="scipy" />
+		<dependency name="pandas" />
+		<dependency name="matplotlib" />
+		<dependency name="scikit-image" />
+		<dependency name="tifffile" />
+		<dependency name="PyOpenGL" />
+		<dependency name="h5py" optional="true" />
+		<dependency name="packaging" />
+	</dependencies>
 </plugin>

@@ -34,7 +34,7 @@ from qtpy.QtWidgets import (QMainWindow, QLabel, QPushButton, QLineEdit,
                            QFileDialog, QMessageBox, QGraphicsPathItem)
 from scipy.stats import skew, kurtosis
 from scipy.optimize import curve_fit
-from distutils.version import StrictVersion
+from packaging.version import Version
 
 # FLIKA imports
 import flika
@@ -43,7 +43,7 @@ import flika.global_vars as g
 
 # Version-specific imports
 flika_version = flika.__version__
-if StrictVersion(flika_version) < StrictVersion('0.2.23'):
+if Version(flika_version) < Version('0.2.23'):
     from flika.process.BaseProcess import (BaseProcess, SliderLabel, CheckBox,
                                          ComboBox, BaseProcess_noPriorWindow,
                                          WindowSelector, save_file_gui)

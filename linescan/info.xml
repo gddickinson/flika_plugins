@@ -1,3 +1,4 @@
+<?xml version='1.0' encoding='utf-8'?>
 <plugin name="Linescan">
 	<directory>
 		linescan
@@ -10,9 +11,12 @@
 	</author>
 	<url>
 	</url>
-	<dependencies>
-	</dependencies>
 	<menu_layout>
 		<action location="linescan" function="linescan.gui">linescan</action>
 	</menu_layout>
+	<dependencies>
+		<dependency name="numpy" />
+		<dependency name="pyqtgraph" />
+		<dependency name="packaging" />
+	</dependencies>
 </plugin>

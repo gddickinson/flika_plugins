@@ -1,3 +1,4 @@
+<?xml version='1.0' encoding='utf-8'?>
 <plugin name="scaledAverageSubtract">
 	<directory>
 		scaledAverageSubtract
@@ -10,9 +11,12 @@
 	</author>
 	<url>
 	</url>
-	<dependencies>
-	</dependencies>
 	<menu_layout>
 		<action location="scaledAverageSubtract" function="scaledAverageSubtract.gui">scaledAverageSubtract</action>
 	</menu_layout>
+	<dependencies>
+		<dependency name="numpy" />
+		<dependency name="pyqtgraph" />
+		<dependency name="packaging" />
+	</dependencies>
 </plugin>

@@ -1,3 +1,4 @@
+<?xml version='1.0' encoding='utf-8'?>
 <plugin name="centerSurroundROI">
 	<directory>
 		centerSurroundROI
@@ -10,9 +11,13 @@
 	</author>
 	<url>
 	</url>
-	<dependencies>
-	</dependencies>
 	<menu_layout>
 		<action location="centerSurroundROI" function="centerSurroundROI.gui">centerSurroundROI</action>
 	</menu_layout>
+	<dependencies>
+		<dependency name="numpy" />
+		<dependency name="pyqtgraph" />
+		<dependency name="scipy" />
+		<dependency name="packaging" />
+	</dependencies>
 </plugin>

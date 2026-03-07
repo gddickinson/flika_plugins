@@ -4,7 +4,7 @@ from qtpy.QtWidgets import *
 import numpy as np
 from scipy.ndimage import shift, rotate, zoom
 from scipy.optimize import minimize
-from distutils.version import StrictVersion
+from packaging.version import Version
 import flika
 from flika.window import Window
 import flika.global_vars as g
@@ -13,7 +13,7 @@ from time import time
 from copy import deepcopy
 
 flika_version = flika.__version__
-if StrictVersion(flika_version) < StrictVersion('0.2.23'):
+if Version(flika_version) < Version('0.2.23'):
     from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector
 else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector

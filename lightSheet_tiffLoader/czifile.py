@@ -205,10 +205,124 @@ except ImportError:
     except ImportError:
         imagecodecs = None
 
-from tifffile import (
-    FileHandle, memmap, lazyattr, repeat_nd, product, stripnull, format_size,
-    squeeze_axes, create_output, xml2dict, pformat, imshow, askopenfilename,
-    nullfunc, Timer)
+from tifffile import FileHandle, memmap
+
+# Compatibility shims for functions removed from modern tifffile
+import functools
+import time as _time
+from itertools import product
+from xml.etree import ElementTree as _ET
+
+def lazyattr(func):
+    """Lazy attribute decorator (cached property)."""
+    name = func.__name__
+    @functools.wraps(func)
+    def wrapper(self):
+        try:
+            return self.__dict__[name]
+        except KeyError:
+            value = func(self)
+            self.__dict__[name] = value
+            return value
+    return property(wrapper)
+
+def repeat_nd(a, repeats):
+    """Repeat array along each axis by given factors."""
+    import numpy as np
+    for i, r in enumerate(repeats):
+        if r > 1:
+            a = np.repeat(a, r, axis=i)
+    return a
+
+def stripnull(s):
+    """Strip null bytes from end of string or bytes."""
+    if isinstance(s, bytes):
+        return s.split(b'\x00', 1)[0]
+    return s.split('\x00', 1)[0]
+
+def format_size(size):
+    """Return file size as human-readable string."""
+    for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
+        if size < 1024:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} PB"
+
+def squeeze_axes(shape, axes, skip=''):
+    """Remove single-dimensional entries from shape and axes."""
+    new_shape = []
+    new_axes = []
+    for s, a in zip(shape, axes):
+        if s > 1 or a in skip:
+            new_shape.append(s)
+            new_axes.append(a)
+    return tuple(new_shape), ''.join(new_axes)
+
+def create_output(out, shape, dtype):
+    """Create output array if out is None."""
+    import numpy as np
+    if out is None:
+        return np.zeros(shape, dtype)
+    return out
+
+def _xml2dict_elem(elem):
+    """Recursively convert an XML element to a dict."""
+    d = {}
+    if elem.attrib:
+        d.update(elem.attrib)
+    for child in elem:
+        tag = child.tag.split('}', 1)[-1] if '}' in child.tag else child.tag
+        child_d = _xml2dict_elem(child)
+        if tag in d:
+            if not isinstance(d[tag], list):
+                d[tag] = [d[tag]]
+            d[tag].append(child_d)
+        else:
+            d[tag] = child_d
+    if elem.text and elem.text.strip():
+        if d:
+            d['_text'] = elem.text.strip()
+        else:
+            return elem.text.strip()
+    return d
+
+def xml2dict(xml):
+    """Parse XML string and return as dict."""
+    if isinstance(xml, bytes):
+        xml = xml.decode('utf-8', errors='ignore')
+    root = _ET.fromstring(xml)
+    tag = root.tag.split('}', 1)[-1] if '}' in root.tag else root.tag
+    return {tag: _xml2dict_elem(root)}
+
+def pformat(obj, indent=1, width=80):
+    """Pretty-format object."""
+    import pprint
+    return pprint.pformat(obj, indent=indent, width=width)
+
+try:
+    from tifffile import imshow
+except ImportError:
+    def imshow(*args, **kwargs):
+        raise NotImplementedError("imshow not available in this tifffile version")
+
+try:
+    from tkinter.filedialog import askopenfilename
+except ImportError:
+    def askopenfilename(**kwargs):
+        raise NotImplementedError("askopenfilename requires tkinter")
+
+def nullfunc(*args, **kwargs):
+    """Do nothing."""
+    pass
+
+class Timer:
+    """Simple timer."""
+    def __init__(self):
+        self._start = _time.perf_counter()
+    def stop(self):
+        return _time.perf_counter() - self._start
+    def __str__(self):
+        return f"{self.stop():.3f}s"
 
 
 def imread(filename, *args, **kwargs):

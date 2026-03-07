@@ -24,7 +24,7 @@ from flika.window import Window
 import flika.global_vars as g
 import pyqtgraph as pg
 from time import time
-from distutils.version import StrictVersion
+from packaging.version import Version
 import flika
 from flika import global_vars as g
 from os.path import expanduser
@@ -55,7 +55,7 @@ from math import cos, sin, degrees
 
 # determine which version of flika to use
 flika_version = flika.__version__
-if StrictVersion(flika_version) < StrictVersion('0.2.23'):
+if Version(flika_version) < Version('0.2.23'):
     from flika.process.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, save_file_gui
 else:
     from flika.utils.BaseProcess import BaseProcess, SliderLabel, CheckBox, ComboBox, BaseProcess_noPriorWindow, WindowSelector, save_file_gui

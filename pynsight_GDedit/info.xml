@@ -1,5 +1,6 @@
+<?xml version='1.0' encoding='utf-8'?>
 <plugin name="Pynsight_GDedit">
-    <directory>
+	<directory>
         pynsight_GDedit
     </directory>
 	<version>
@@ -11,11 +12,17 @@
 	<url>
 		https://github.com/kyleellefsen/pynsight/archive/master.zip
 	</url>
-	<dependencies>
-	</dependencies>
 	<menu_layout>
 		<action location="pynsight" function="pynsight.gui">Pynsight_GDedit</action>
 		<action location="particle_simulator" function="particle_simulator.gui">Simulate Particles</action>
 		<action location="pynsight" function="launch_docs">Docs</action>
 	</menu_layout>
+	<dependencies>
+		<dependency name="numpy" />
+		<dependency name="pyqtgraph" />
+		<dependency name="pandas" />
+		<dependency name="scipy" />
+		<dependency name="leastsqbound" />
+		<dependency name="packaging" />
+	</dependencies>
 </plugin>

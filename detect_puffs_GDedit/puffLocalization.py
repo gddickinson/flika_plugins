@@ -14,7 +14,7 @@ from qtpy.QtGui import *
 from qtpy.QtWidgets import *
 from matplotlib import cm
 
-from distutils.version import StrictVersion
+from packaging.version import Version
 
 
 import flika
@@ -22,7 +22,7 @@ try:
     v = flika.__version__
 except AttributeError:
     v = '0.0.0'
-if StrictVersion(v) < StrictVersion('0.1.0'):
+if Version(v) < Version('0.1.0'):
     import global_vars as g
 else:
     from flika import global_vars as g

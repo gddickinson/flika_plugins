@@ -13,7 +13,7 @@ from qtpy.QtCore import *
 import inspect
 import numpy.random as random
 import shutil
-from distutils.version import StrictVersion
+from packaging.version import Version
 
 
 import flika
@@ -21,7 +21,7 @@ try:
     flika_version = flika.__version__
 except AttributeError:
     flika_version = '0.0.0'
-if StrictVersion(flika_version) < StrictVersion('0.1.0'):
+if Version(flika_version) < Version('0.1.0'):
     import global_vars as g
     from window import Window
     from process.file_ import close
@@ -43,7 +43,7 @@ else:
     from flika.roi import makeROI
     from flika.utils.io import tifffile
     from ..threshold_cluster import threshold_cluster
-    if StrictVersion(flika_version) < StrictVersion('0.2.23'):
+    if Version(flika_version) < Version('0.2.23'):
         from flika.process.BaseProcess import SliderLabel, BaseProcess_noPriorWindow, FileSelector, CheckBox
     else:
         from flika.utils.BaseProcess import SliderLabel, BaseProcess_noPriorWindow, FileSelector, CheckBox

@@ -21,14 +21,14 @@ import pickle
 import bz2
 import ntpath
 import itertools
-from distutils.version import StrictVersion
+from packaging.version import Version
 import os, inspect,sys
 import numpy as np
 from qtpy import QtWidgets, QtGui, QtCore
 from qtpy.QtWidgets import *
 from qtpy.QtGui import *
 from qtpy.QtCore import *
-from qtpy.QtWidgets import qApp
+from qtpy.QtWidgets import QApplication
 from qtpy import uic
 import pyqtgraph as pg
 from scipy import ndimage
@@ -44,7 +44,7 @@ try:
     flika_version = flika.__version__
 except AttributeError:
     flika_version = '0.0.0'
-if StrictVersion(flika_version) < StrictVersion('0.1.0'):
+if Version(flika_version) < Version('0.1.0'):
     import global_vars as g
     from process.BaseProcess import BaseProcess, WindowSelector, SliderLabel, CheckBox
     from window import Window
@@ -59,7 +59,7 @@ else:
     from flika.utils.misc import open_file_gui
     from flika.process import *
     from flika.utils.misc import save_file_gui
-    if StrictVersion(flika_version) < StrictVersion('0.2.23'):
+    if Version(flika_version) < Version('0.2.23'):
         from flika.process.BaseProcess import BaseProcess, WindowSelector, SliderLabel, CheckBox
     else:
         from flika.utils.BaseProcess import BaseProcess, WindowSelector, SliderLabel, CheckBox
@@ -69,7 +69,7 @@ from .groups import GroupAnalyzer, Group, Groups
 from .higher_pts import getHigherPoints
 from .clusters import Clusters, ClusterViewBox, ROI
 
-if StrictVersion(flika_version) < StrictVersion('0.1.0'):
+if Version(flika_version) < Version('0.1.0'):
     flika_icon = QIcon('images/favicon.png')
     threshold_cluster_ui = os.path.join(os.getcwd(), 'plugins', 'detect_puffs', 'threshold_cluster.ui')
 else:
@@ -559,10 +559,10 @@ class PuffAnalyzer(QWidget):
         blurred = self.blurred_window.image
         higher_pts, idxs = getHigherPoints(blurred, self.udc)
         self.algorithm_gui.tabWidget.setCurrentIndex(1)
-        qApp.processEvents()
+        QApplication.processEvents()
         self.clusters = Clusters(higher_pts, idxs, blurred.shape, self)
         self.algorithm_gui.tabWidget.setCurrentIndex(1)
-        qApp.processEvents()
+        QApplication.processEvents()
         self.gettingClusters = False
 
     def loadPersistentInfo(self, persistentInfo):
@@ -1193,7 +1193,7 @@ class PuffAnalyzer(QWidget):
         ''' This function saves out all the info about the puffs in an Excel spreadsheet.      
         '''
         import openpyxl
-        if StrictVersion(openpyxl.__version__) < StrictVersion('2.5.2'):
+        if Version(openpyxl.__version__) < Version('2.5.2'):
             g.alert('You are using openpyxl version {}. Upgrade to at least version 2.5.2 to export Excel file.'.format(openpyxl.__version__))
             return None
         from openpyxl import Workbook

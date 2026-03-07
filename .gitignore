@@ -13,3 +13,10 @@ NanotubeDetection/
 /volumeSlider_2/io/__pycache__
 *.pyc
 *.log
+*.pyc
+*.pyc
+/advanced_beam_splitter/__pycache__
+/kymograph_analyzer/__pycache__
+/lightSheet_tiffLoader/__pycache__
+/locsAndTracksPlotter/__pycache__
+/volumeSlider/__pycache__
