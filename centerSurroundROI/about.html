@@ -1,3 +1,36 @@
-<div>
-	This sample plugin demonstrates how to specify dependencies, how to connect a menu to multiple functions, and how to subclass the 'BaseProcess'. 
-</div>
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.5; }
+  h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 8px; }
+  h2 { color: #2980b9; }
+</style>
+</head>
+<body>
+<h1>Center-Surround ROI</h1>
+<p>Creates linked center and surround ROIs for local background subtraction.
+Displays center trace, surround trace, and center-minus-surround in real time.
+Essential for calcium imaging and fluorescence measurements where local
+background correction is needed.</p>
+
+<h2>Features</h2>
+<ul>
+  <li>Linked center and surround ROI regions</li>
+  <li>Real-time trace display (center, surround, and difference)</li>
+  <li>Adjustable center and surround sizes</li>
+  <li>Configurable ROI shape (circle, ellipse, square)</li>
+  <li>Live background-subtracted signal</li>
+</ul>
+
+<h2>Usage</h2>
+<ol>
+  <li>Open a time-series image in flika</li>
+  <li>Go to <b>Plugins &gt; Center-Surround ROI</b></li>
+  <li>Click <b>Start</b> to place the ROI on the image</li>
+  <li>Drag the ROI to the region of interest</li>
+  <li>Adjust center/surround widths using the sliders</li>
+  <li>The trace plots update in real time</li>
+</ol>
+</body>
+</html>

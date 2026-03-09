@@ -1,1 +1,38 @@
-Advanced Kymograph Analysis plugin for studying spatiotemporal dynamics in TIRF microscopy. Perfect for analyzing Ca2+ flickers, PIEZO1 dynamics, membrane protein movements, vesicle trafficking, and wave propagation. Features automatic event detection, velocity measurements, statistical analysis, and comprehensive visualization tools.
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.5; }
+  h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 8px; }
+  h2 { color: #2980b9; }
+</style>
+</head>
+<body>
+<h1>Kymograph Analyzer</h1>
+<p>Generates kymographs (space-time intensity maps) from line ROIs drawn on 3D
+time-series image stacks. Features automatic event detection, velocity measurement,
+statistical analysis, and comprehensive visualization.</p>
+
+<h2>Features</h2>
+<ul>
+  <li><b>Kymograph generation</b> &mdash; from line ROIs with configurable width</li>
+  <li><b>Event detection</b> &mdash; peak, threshold, and z-score methods</li>
+  <li><b>Velocity measurement</b> &mdash; gradient-based velocity estimation</li>
+  <li><b>Statistical analysis</b> &mdash; event amplitude, duration, frequency</li>
+  <li><b>Visualization</b> &mdash; matplotlib-based plots with export</li>
+  <li><b>Export</b> &mdash; CSV and NPY output formats</li>
+</ul>
+
+<h2>Usage</h2>
+<ol>
+  <li>Open a 3D image stack in flika</li>
+  <li>Draw a line ROI across the region of interest</li>
+  <li>Go to <b>Plugins &gt; Kymograph Analyzer</b></li>
+  <li>The kymograph is generated along the ROI</li>
+  <li>Use the analysis tools to detect events and measure velocities</li>
+</ol>
+
+<p>Ideal for Ca<sup>2+</sup> flickers, membrane protein dynamics, vesicle trafficking,
+and wave propagation studies.</p>
+</body>
+</html>

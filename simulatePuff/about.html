@@ -1,1 +1,33 @@
-Puff Simulator
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.5; }
+  h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 8px; }
+  h2 { color: #2980b9; }
+</style>
+</head>
+<body>
+<h1>Puff Simulator</h1>
+<p>Adds synthetic calcium puffs (2D Gaussian blips) to image stacks at controlled
+positions, times, amplitudes, and durations. Supports single puffs, random puff trains
+at single sites, and multi-site random distributions within an ROI.</p>
+
+<h2>Features</h2>
+<ul>
+  <li><b>Single puff</b> &mdash; add one puff at a specified position and time</li>
+  <li><b>Random puff train</b> &mdash; generate multiple puffs at one site with random timing</li>
+  <li><b>Multi-site random</b> &mdash; distribute puffs across multiple sites within an ROI</li>
+  <li><b>Full simulation</b> &mdash; generate a complete synthetic test movie with known ground truth</li>
+  <li>Configurable amplitude, sigma, and duration</li>
+</ul>
+
+<h2>Usage</h2>
+<ol>
+  <li>Open an image stack (or create a blank one)</li>
+  <li>Go to <b>Plugins &gt; Simulate Puff</b></li>
+  <li>Choose simulation mode and set parameters</li>
+  <li>Click to add puffs or run batch simulation</li>
+</ol>
+</body>
+</html>

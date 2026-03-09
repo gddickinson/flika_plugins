@@ -1,3 +1,34 @@
-<div>
-	fft_Chunker Plugin. 
-</div>
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.5; }
+  h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 8px; }
+  h2 { color: #2980b9; }
+</style>
+</head>
+<body>
+<h1>FFT Chunker</h1>
+<p>Loads CSV time-series data, splits traces into chunks, performs FFT on each chunk,
+averages power spectra across user-defined groups (baseline and up to 4 experimental
+conditions), and exports log10-transformed results for frequency analysis.</p>
+
+<h2>Features</h2>
+<ul>
+  <li>Load time-series data from CSV files</li>
+  <li>Split traces into configurable chunk sizes</li>
+  <li>Compute FFT power spectra per chunk</li>
+  <li>Average spectra across baseline and experimental groups</li>
+  <li>Export log10-transformed power spectra</li>
+</ul>
+
+<h2>Usage</h2>
+<ol>
+  <li>Go to <b>Plugins &gt; FFT Chunker</b></li>
+  <li>Load a CSV file with time-series data</li>
+  <li>Set chunk size and group boundaries</li>
+  <li>Run the FFT analysis</li>
+  <li>Export results to CSV</li>
+</ol>
+</body>
+</html>

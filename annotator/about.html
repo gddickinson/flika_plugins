@@ -1,3 +1,34 @@
-<div>
-	This sample plugin demonstrates how to specify dependencies, how to connect a menu to multiple functions, and how to subclass the 'BaseProcess'. 
-</div>
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.5; }
+  h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 8px; }
+  h2 { color: #2980b9; }
+</style>
+</head>
+<body>
+<h1>Annotator</h1>
+<p>Burns frame-number text annotations into each frame of a 3D image stack.
+Useful for creating labeled image sequences for presentations or publications.</p>
+
+<h2>Features</h2>
+<ul>
+  <li>Renders frame index (0, 1, 2, ...) as text on each frame</li>
+  <li>Uses PIL/Pillow for high-quality text rendering</li>
+  <li>Creates a new annotated window (non-destructive)</li>
+</ul>
+
+<h2>Usage</h2>
+<ol>
+  <li>Open a 3D image stack in flika</li>
+  <li>Go to <b>Plugins &gt; Annotator</b></li>
+  <li>The plugin creates a new window with frame numbers burned in</li>
+</ol>
+
+<h2>Requirements</h2>
+<ul>
+  <li><b>Pillow</b> (PIL) for text rendering</li>
+</ul>
+</body>
+</html>

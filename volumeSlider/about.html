@@ -1,3 +1,48 @@
-<div>
-	This sample plugin demonstrates how to specify dependencies, how to connect a menu to multiple functions, and how to subclass the 'BaseProcess'. 
-</div>
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.5; }
+  h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 8px; }
+  h2 { color: #2980b9; }
+  .param { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
+</style>
+</head>
+<body>
+<h1>Volume Slider</h1>
+
+<p>A comprehensive 4D volume viewer for light-sheet and volumetric microscopy data.
+Reshapes 3D stacks (frames &times; height &times; width) into 4D volumes
+(volumes &times; slices &times; height &times; width) and provides interactive
+slice-by-slice navigation.</p>
+
+<h2>Features</h2>
+<ul>
+  <li><b>4D volume reshaping</b> &mdash; converts 3D stacks to 4D volumes with configurable slices-per-volume</li>
+  <li><b>Slice slider</b> &mdash; navigate through Z slices within each volume</li>
+  <li><b>&Delta;F/F<sub>0</sub> ratio</b> &mdash; compute fluorescence change relative to baseline</li>
+  <li><b>Baseline subtraction</b> &mdash; configurable baseline window</li>
+  <li><b>Data type conversion</b> &mdash; convert between float16, float32, float64</li>
+  <li><b>3D OpenGL visualization</b> &mdash; interactive 3D volume rendering</li>
+  <li><b>Max/mean projection</b> &mdash; project volumes along the Z axis</li>
+  <li><b>Batch processing</b> &mdash; process multiple files with the same settings</li>
+  <li><b>Overlay support</b> &mdash; overlay multiple volume channels</li>
+  <li><b>Export</b> &mdash; save to numpy arrays or new flika windows</li>
+</ul>
+
+<h2>Usage</h2>
+<ol>
+  <li>Open a 3D image stack in flika</li>
+  <li>Go to <b>Plugins &gt; Volume Slider</b></li>
+  <li>Set the number of Z slices per volume</li>
+  <li>Use the slice slider to navigate through the volume</li>
+  <li>Apply &Delta;F/F<sub>0</sub> or other processing as needed</li>
+</ol>
+
+<h2>Requirements</h2>
+<ul>
+  <li><b>PyOpenGL</b> (optional, for 3D viewer)</li>
+</ul>
+
+</body>
+</html>

@@ -1,1 +1,36 @@
-Puff detection and analysis algorithms.
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.5; }
+  h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 8px; }
+  h2 { color: #2980b9; }
+</style>
+</head>
+<body>
+<h1>Detect Puffs (GD Edit)</h1>
+<p>Comprehensive calcium puff detection and analysis pipeline. Detects, characterizes,
+and quantifies calcium release events (puffs) in fluorescence microscopy data.</p>
+
+<h2>Features</h2>
+<ul>
+  <li><b>Detection pipeline</b> &mdash; threshold supra-threshold pixels in blurred movies</li>
+  <li><b>Clustering</b> &mdash; connected component analysis to group events</li>
+  <li><b>Gaussian fitting</b> &mdash; 2D Gaussian fit for sub-pixel localization</li>
+  <li><b>Spatial grouping</b> &mdash; group events into release sites</li>
+  <li><b>Per-site statistics</b> &mdash; amplitude, duration, frequency analysis</li>
+  <li><b>Manual selection</b> &mdash; interactive event selection and validation</li>
+  <li><b>Puff simulator</b> &mdash; generate synthetic test data</li>
+</ul>
+
+<h2>Usage</h2>
+<ol>
+  <li>Open a calcium imaging time series in flika</li>
+  <li>Go to <b>Plugins &gt; Detect Puffs</b></li>
+  <li>Configure detection parameters (threshold, blur sigma)</li>
+  <li>Run detection to identify events</li>
+  <li>Review and classify detected puffs</li>
+  <li>Export results and statistics</li>
+</ol>
+</body>
+</html>

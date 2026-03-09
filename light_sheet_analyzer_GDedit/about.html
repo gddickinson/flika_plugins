@@ -1,1 +1,35 @@
-Creates 4D images from a tiff stack.
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.5; }
+  h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 8px; }
+  h2 { color: #2980b9; }
+</style>
+</head>
+<body>
+<h1>Light Sheet Analyzer (GD Edit)</h1>
+<p>Converts 3D image stacks acquired by light-sheet microscopy into proper 4D volumes
+(time x Z x Y x X). Supports shear correction, volume projection, dF/F0 computation,
+and interactive 3D volume viewing.</p>
+
+<h2>Features</h2>
+<ul>
+  <li><b>3D to 4D reshaping</b> &mdash; specify number of Z steps per volume</li>
+  <li><b>Shear transform correction</b> &mdash; correct for oblique light-sheet geometry</li>
+  <li><b>Volume projection</b> &mdash; max or mean intensity projection</li>
+  <li><b>dF/F0</b> &mdash; compute fluorescence ratio relative to baseline</li>
+  <li><b>Volume Viewer</b> &mdash; interactive 3D visualization with slice navigation</li>
+  <li><b>Frame trimming</b> &mdash; remove incomplete volumes at end of acquisition</li>
+</ul>
+
+<h2>Usage</h2>
+<ol>
+  <li>Open a light-sheet TIFF stack in flika</li>
+  <li>Go to <b>Plugins &gt; Light Sheet Analyzer</b></li>
+  <li>Set the number of Z steps per volume</li>
+  <li>Apply shear correction if needed</li>
+  <li>Generate projections or open the Volume Viewer</li>
+</ol>
+</body>
+</html>

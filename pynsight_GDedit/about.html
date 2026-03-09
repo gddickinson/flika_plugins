@@ -1,1 +1,36 @@
-A clone of Insight2 in Python.  This can be used to analyze 2D STORM microscopy movies.
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.5; }
+  h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 8px; }
+  h2 { color: #2980b9; }
+</style>
+</head>
+<body>
+<h1>Pynsight (GD Edit)</h1>
+<p>A Python clone of Insight2 for analyzing 2D STORM super-resolution microscopy movies.
+Provides a complete pipeline from detection through linking and analysis, including
+Gaussian refinement, track linking, SLD histograms, MSD analysis, and CDF fitting.</p>
+
+<h2>Features</h2>
+<ul>
+  <li><b>Detection</b> &mdash; identify bright spots in STORM frames</li>
+  <li><b>Gaussian refinement</b> &mdash; sub-pixel localization via 2D Gaussian fitting</li>
+  <li><b>Track linking</b> &mdash; connect localizations across frames into tracks</li>
+  <li><b>SLD analysis</b> &mdash; step length distribution histograms</li>
+  <li><b>MSD analysis</b> &mdash; mean squared displacement for diffusion characterization</li>
+  <li><b>CDF fitting</b> &mdash; cumulative distribution function analysis</li>
+  <li><b>Visualization</b> &mdash; reconstructed images, track overlays, analysis plots</li>
+</ul>
+
+<h2>Usage</h2>
+<ol>
+  <li>Open a STORM movie in flika</li>
+  <li>Go to <b>Plugins &gt; Pynsight</b></li>
+  <li>Run detection to find spots</li>
+  <li>Refine with Gaussian fitting</li>
+  <li>Link into tracks and analyze</li>
+</ol>
+</body>
+</html>

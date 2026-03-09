@@ -1,3 +1,32 @@
-<div>
-	This plugin removes frames from tiff stacks
-</div>
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.5; }
+  h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 8px; }
+  h2 { color: #2980b9; }
+</style>
+</head>
+<body>
+<h1>Frame Remover</h1>
+<p>Removes periodic blocks of frames from image stacks. Given a start frame, end frame,
+block length, and interval, it deletes frames at regular intervals throughout the
+specified range. Useful for removing stimulus frames or other periodic artifacts.</p>
+
+<h2>Parameters</h2>
+<ul>
+  <li><b>Start frame</b> &mdash; first frame to begin removing</li>
+  <li><b>End frame</b> &mdash; last frame in the removal range</li>
+  <li><b>Block length</b> &mdash; number of consecutive frames to remove per interval</li>
+  <li><b>Interval</b> &mdash; spacing between removal blocks</li>
+</ul>
+
+<h2>Usage</h2>
+<ol>
+  <li>Open a 3D image stack in flika</li>
+  <li>Go to <b>Plugins &gt; Frame Remover</b></li>
+  <li>Set the start, end, block length, and interval</li>
+  <li>Click OK to generate a new stack with frames removed</li>
+</ol>
+</body>
+</html>

@@ -1,3 +1,32 @@
-<div>
-	FLIKA plugin for subtracting averaged image from calcium imaging stack 
-</div>
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.5; }
+  h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 8px; }
+  h2 { color: #2980b9; }
+</style>
+</head>
+<body>
+<h1>Scaled Average Subtract</h1>
+<p>Removes the global calcium response from imaging stacks. Detects the peak frame
+via rolling average, creates a template image from peak frames, and subtracts a
+scaled version from every frame. Essential for isolating local calcium events
+(puffs, sparks) from the global calcium transient.</p>
+
+<h2>Parameters</h2>
+<ul>
+  <li><b>Window size</b> &mdash; rolling average window for peak detection</li>
+  <li><b>Average size</b> &mdash; number of frames around the peak to average for the template</li>
+</ul>
+
+<h2>Usage</h2>
+<ol>
+  <li>Open a calcium imaging time series in flika</li>
+  <li>Optionally draw an ROI to define the analysis region</li>
+  <li>Go to <b>Plugins &gt; Scaled Average Subtract</b></li>
+  <li>Set window size and average size</li>
+  <li>Click OK to generate the subtracted stack</li>
+</ol>
+</body>
+</html>

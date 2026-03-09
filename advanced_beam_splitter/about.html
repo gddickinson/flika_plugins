@@ -1,1 +1,35 @@
-Advanced Beam Splitter plugin for comprehensive dual-channel TIRF microscopy image alignment and processing. Features include geometric transformations (translation, rotation, scaling), background subtraction, photobleaching correction, intensity normalization, auto-alignment, and live preview with keyboard shortcuts.
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.5; }
+  h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 8px; }
+  h2 { color: #2980b9; }
+</style>
+</head>
+<body>
+<h1>Advanced Beam Splitter</h1>
+<p>Comprehensive dual-channel TIRF microscopy image alignment and processing plugin.
+Designed for experiments using a beam splitter to simultaneously image two channels
+(e.g., red/green fluorescence) on the same camera sensor.</p>
+
+<h2>Features</h2>
+<ul>
+  <li><b>Geometric transformations</b> &mdash; XY translation, rotation, and scaling to align channels</li>
+  <li><b>Background subtraction</b> &mdash; rolling ball, Gaussian, and manual ROI methods</li>
+  <li><b>Photobleaching correction</b> &mdash; exponential fit and histogram matching</li>
+  <li><b>Intensity normalization</b> &mdash; match channel intensities for overlay</li>
+  <li><b>Auto-alignment</b> &mdash; phase cross-correlation for automatic registration</li>
+  <li><b>Live preview</b> &mdash; real-time red/green overlay with keyboard controls</li>
+</ul>
+
+<h2>Usage</h2>
+<ol>
+  <li>Open a dual-channel image (split left/right or top/bottom)</li>
+  <li>Go to <b>Plugins &gt; Advanced Beam Splitter</b></li>
+  <li>Adjust alignment using arrow keys or auto-align</li>
+  <li>Apply background subtraction and bleaching correction</li>
+  <li>Export aligned channels</li>
+</ol>
+</body>
+</html>

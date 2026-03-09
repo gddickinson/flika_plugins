@@ -1,3 +1,31 @@
-<div>
-	This sample plugin demonstrates how to specify dependencies, how to connect a menu to multiple functions, and how to subclass the 'BaseProcess'. 
-</div>
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.5; }
+  h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 8px; }
+  h2 { color: #2980b9; }
+</style>
+</head>
+<body>
+<h1>Light Sheet TIFF Loader</h1>
+<p>Specialized file loader for multi-channel light-sheet microscopy TIFF and CZI files.
+Automatically detects axis ordering and splits interleaved channels into separate
+flika windows.</p>
+
+<h2>Features</h2>
+<ul>
+  <li>Load multi-channel TIFF stacks with automatic axis detection</li>
+  <li>Load Zeiss CZI files via bundled czifile reader</li>
+  <li>Split interleaved channels into separate windows</li>
+  <li>Handle up to 5D data (T, Z, C, Y, X)</li>
+</ul>
+
+<h2>Usage</h2>
+<ol>
+  <li>Go to <b>Plugins &gt; Light Sheet TIFF Loader</b></li>
+  <li>Select a TIFF or CZI file</li>
+  <li>Channels are automatically split into separate flika windows</li>
+</ol>
+</body>
+</html>

@@ -1,3 +1,39 @@
-<div>
-	This sample plugin demonstrates how to specify dependencies, how to connect a menu to multiple functions, and how to subclass the 'BaseProcess'. 
-</div>
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.5; }
+  h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 8px; }
+  h2 { color: #2980b9; }
+  .param { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
+</style>
+</head>
+<body>
+<h1>Timestamp</h1>
+
+<p>Adds a dynamic elapsed-time label (in milliseconds) to any flika image window.
+The timestamp updates automatically as you scroll through frames, using the
+window's frame rate and current frame index to compute elapsed time.</p>
+
+<h2>Features</h2>
+<ul>
+  <li>Adds a text overlay showing elapsed time in milliseconds</li>
+  <li>Automatically updates as you navigate through frames</li>
+  <li>Uses the window's configured frame rate for accurate timing</li>
+  <li>Connects to the window's <span class="param">sigTimeChanged</span> signal for live updates</li>
+</ul>
+
+<h2>Usage</h2>
+<ol>
+  <li>Open a 3D image stack (time series) in flika</li>
+  <li>Go to <b>Plugins &gt; Timestamp</b></li>
+  <li>The timestamp overlay will appear on the current window</li>
+  <li>Scroll through frames to see the timestamp update</li>
+</ol>
+
+<h2>Notes</h2>
+<p>The frame rate is read from the window's settings. Make sure the frame rate
+is correctly set (via <b>File &gt; Settings</b>) for accurate time display.</p>
+
+</body>
+</html>

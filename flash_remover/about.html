@@ -1,3 +1,33 @@
-<div>
-	This sample plugin demonstrates how to specify dependencies, how to connect a menu to multiple functions, and how to subclass the 'BaseProcess'. 
-</div>
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.5; }
+  h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 8px; }
+  h2 { color: #2980b9; }
+</style>
+</head>
+<body>
+<h1>Flash Remover</h1>
+<p>Removes flash artifacts (e.g., UV uncaging flashes) from image stacks using linear
+interpolation or noise-based intensity scaling. Supports automatic flash detection
+via moving average peak detection and manual flash boundary specification.</p>
+
+<h2>Features</h2>
+<ul>
+  <li><b>Automatic flash detection</b> &mdash; moving average peak detection</li>
+  <li><b>Linear interpolation</b> &mdash; smoothly interpolate across flash frames</li>
+  <li><b>Noise-based correction</b> &mdash; intensity scaling using pre-flash statistics</li>
+  <li><b>Manual boundaries</b> &mdash; specify flash start/end frames manually</li>
+</ul>
+
+<h2>Usage</h2>
+<ol>
+  <li>Open an image stack containing flash artifacts</li>
+  <li>Go to <b>Plugins &gt; Flash Remover</b></li>
+  <li>Choose detection mode (automatic or manual)</li>
+  <li>Select removal method (interpolation or noise scaling)</li>
+  <li>Apply to generate a corrected stack</li>
+</ol>
+</body>
+</html>
