@@ -57,7 +57,7 @@ from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
                            QGroupBox, QGridLayout, QFormLayout, QFileDialog,
                            QListWidget, QFrame, QApplication, QSplitter,
                            QScrollArea, QSlider, QButtonGroup, QRadioButton,
-                           QLineEdit, QMessageBox)
+                           QLineEdit, QMessageBox, QTextBrowser)
 from qtpy.QtCore import Qt, QThread, Signal
 from qtpy.QtGui import QFont
 
@@ -1047,6 +1047,16 @@ class ValidationWorker(QThread):
 
         all_gt_results = []
         count = 0
+
+        # Look for ImageJ results in the standard location
+        imagej_dir = results_dir / "imagej_results"
+        if not imagej_dir.exists():
+            # Also check the tests directory as a fallback
+            imagej_dir = Path(__file__).parent / 'tests' / 'synthetic' / 'results' / 'imagej_results'
+        has_imagej = imagej_dir.exists() and any(imagej_dir.glob("*_imagej.csv"))
+        if has_imagej:
+            self.progress_update.emit(f"  Found ImageJ results at {imagej_dir}")
+
         for ds_name, ds_cfg in dataset_configs.items():
             optics = MAGNIFICATION_PRESETS[ds_cfg['optics']]
             gt_csv = data_dir / f"{ds_name}_ground_truth.csv"
@@ -1056,6 +1066,8 @@ class ValidationWorker(QThread):
             for algo_name in algo_configs:
                 test_name = f"{ds_name}__{algo_name}"
                 count += 1
+
+                # Compare FLIKA results
                 for suffix in ['_flika.csv', '_flika_locsID.csv']:
                     flika_csv = flika_dir / f"{test_name}{suffix}"
                     if flika_csv.exists():
@@ -1068,6 +1080,18 @@ class ValidationWorker(QThread):
                         stats['dataset'] = ds_name
                         stats['algorithm'] = algo_name
                         all_gt_results.append(stats)
+
+                # Compare ImageJ results if available
+                if has_imagej:
+                    imagej_csv = imagej_dir / f"{test_name}_imagej.csv"
+                    if imagej_csv.exists():
+                        stats = compare_to_ground_truth(
+                            test_name, str(imagej_csv), str(gt_csv),
+                            optics['pixel_size_nm'], match_radius_nm=match_radius, label='ImageJ')
+                        if stats:
+                            stats['dataset'] = ds_name
+                            stats['algorithm'] = algo_name
+                            all_gt_results.append(stats)
 
         with open(str(analysis_dir / "ground_truth_comparison.json"), 'w') as fp:
             json.dump(all_gt_results, fp, indent=2)
@@ -1122,107 +1146,302 @@ class ValidationWorker(QThread):
             import matplotlib.pyplot as plt
 
             flika_results = [r for r in all_results if r.get('label') == 'FLIKA']
+            imagej_results = [r for r in all_results if r.get('label') == 'ImageJ']
             if not flika_results:
                 return
+            has_imagej = len(imagej_results) > 0
+
+            # Build lookup for ImageJ results by (dataset, algorithm)
+            ij_lookup = {}
+            for r in imagej_results:
+                key = (r.get('dataset', ''), r.get('algorithm', ''))
+                ij_lookup[key] = r
 
             # Group by algorithm
-            algo_f1 = {}
+            algo_f1_flika = {}
+            algo_f1_imagej = {}
             for r in flika_results:
                 algo = r.get('algorithm', 'unknown')
-                algo_f1.setdefault(algo, []).append(r['f1'])
+                algo_f1_flika.setdefault(algo, []).append(r['f1'])
+            for r in imagej_results:
+                algo = r.get('algorithm', 'unknown')
+                algo_f1_imagej.setdefault(algo, []).append(r['f1'])
 
-            # Figure 1: F1 by algorithm (box plot)
-            fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-            fig.suptitle('Ground Truth Validation Summary', fontsize=14, fontweight='bold')
+            # ============================================================
+            # 4-panel summary figure
+            # ============================================================
+            from matplotlib.patches import Patch
+            from matplotlib.lines import Line2D
 
+            fig, axes = plt.subplots(2, 2, figsize=(16, 13))
+            fig.suptitle('Ground Truth Validation Summary', fontsize=14, fontweight='bold', y=0.98)
+
+            # --- Panel 1: F1 by algorithm (box plot, FLIKA vs ImageJ) ---
             ax = axes[0, 0]
-            algo_names_sorted = sorted(algo_f1.keys(), key=lambda k: np.mean(algo_f1[k]), reverse=True)
-            data = [algo_f1[a] for a in algo_names_sorted]
-            bp = ax.boxplot(data, labels=algo_names_sorted, vert=True, patch_artist=True)
-            for patch in bp['boxes']:
+            algo_names_sorted = sorted(algo_f1_flika.keys(),
+                                       key=lambda k: np.mean(algo_f1_flika[k]), reverse=True)
+            n_algos = len(algo_names_sorted)
+            positions_f = np.arange(n_algos) * 2.0
+            if has_imagej:
+                positions_i = positions_f + 0.7
+                width = 0.6
+            else:
+                positions_i = None
+                width = 1.0
+
+            data_f = [algo_f1_flika[a] for a in algo_names_sorted]
+            bp_f = ax.boxplot(data_f, positions=positions_f, widths=width,
+                              vert=True, patch_artist=True, manage_ticks=False)
+            for patch in bp_f['boxes']:
                 patch.set_facecolor('#4CAF50')
                 patch.set_alpha(0.7)
+
+            if has_imagej:
+                data_i = [algo_f1_imagej.get(a, [np.nan]) for a in algo_names_sorted]
+                bp_i = ax.boxplot(data_i, positions=positions_i, widths=width,
+                                  vert=True, patch_artist=True, manage_ticks=False)
+                for patch in bp_i['boxes']:
+                    patch.set_facecolor('#FF9800')
+                    patch.set_alpha(0.7)
+
+            tick_pos = positions_f + (0.35 if has_imagej else 0)
+            ax.set_xticks(tick_pos)
+            ax.set_xticklabels(algo_names_sorted, rotation=45, ha='right', fontsize=8)
             ax.set_ylabel('F1 Score')
             ax.set_title('F1 Score by Algorithm')
-            ax.set_xticklabels(algo_names_sorted, rotation=45, ha='right', fontsize=8)
-            ax.axhline(y=0.95, color='orange', linestyle='--', alpha=0.5, label='0.95')
-            ax.axhline(y=0.99, color='green', linestyle='--', alpha=0.5, label='0.99')
-            ax.legend(fontsize=8)
+            ax.axhline(y=0.95, color='gray', linestyle='--', alpha=0.4, linewidth=0.8)
+            # Legend with box plot annotation
+            legend_items = [
+                Patch(facecolor='#4CAF50', alpha=0.7, label='FLIKA'),
+            ]
+            if has_imagej:
+                legend_items.append(Patch(facecolor='#FF9800', alpha=0.7, label='ImageJ'))
+            legend_items.extend([
+                Line2D([0], [0], color='gray', linestyle='--', alpha=0.4, label='F1 = 0.95 threshold'),
+            ])
+            ax.legend(handles=legend_items, fontsize=7, loc='lower left')
+            # Annotate box plot elements
+            ax.annotate('Box: IQR (25th-75th percentile)\n'
+                        'Line in box: median\n'
+                        'Whiskers: 1.5x IQR\n'
+                        'Circles: outliers',
+                        xy=(0.98, 0.02), xycoords='axes fraction',
+                        fontsize=6, color='#666', ha='right', va='bottom',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8, edgecolor='#ccc'))
 
-            # Figure 2: F1 by dataset
+            # --- Panel 2: F1 by dataset (box plot, FLIKA vs ImageJ) ---
             ax = axes[0, 1]
-            ds_f1 = {}
+            ds_f1_flika = {}
+            ds_f1_imagej = {}
             for r in flika_results:
                 ds = r.get('dataset', 'unknown')
-                ds_f1.setdefault(ds, []).append(r['f1'])
-            ds_sorted = sorted(ds_f1.keys())
-            data = [ds_f1[d] for d in ds_sorted]
-            bp = ax.boxplot(data, labels=ds_sorted, vert=True, patch_artist=True)
-            for patch in bp['boxes']:
-                patch.set_facecolor('#2196F3')
+                ds_f1_flika.setdefault(ds, []).append(r['f1'])
+            for r in imagej_results:
+                ds = r.get('dataset', 'unknown')
+                ds_f1_imagej.setdefault(ds, []).append(r['f1'])
+            ds_sorted = sorted(ds_f1_flika.keys())
+            n_ds = len(ds_sorted)
+            positions_f = np.arange(n_ds) * 2.0
+            if has_imagej:
+                positions_i = positions_f + 0.7
+                width = 0.6
+            else:
+                positions_i = None
+                width = 1.0
+
+            data_f = [ds_f1_flika[d] for d in ds_sorted]
+            bp_f = ax.boxplot(data_f, positions=positions_f, widths=width,
+                              vert=True, patch_artist=True, manage_ticks=False)
+            for patch in bp_f['boxes']:
+                patch.set_facecolor('#4CAF50')
                 patch.set_alpha(0.7)
+
+            if has_imagej:
+                data_i = [ds_f1_imagej.get(d, [np.nan]) for d in ds_sorted]
+                bp_i = ax.boxplot(data_i, positions=positions_i, widths=width,
+                                  vert=True, patch_artist=True, manage_ticks=False)
+                for patch in bp_i['boxes']:
+                    patch.set_facecolor('#FF9800')
+                    patch.set_alpha(0.7)
+
+            tick_pos = positions_f + (0.35 if has_imagej else 0)
+            ax.set_xticks(tick_pos)
+            ax.set_xticklabels(ds_sorted, rotation=45, ha='right', fontsize=8)
             ax.set_ylabel('F1 Score')
             ax.set_title('F1 Score by Dataset')
-            ax.set_xticklabels(ds_sorted, rotation=45, ha='right', fontsize=8)
+            legend_items = [Patch(facecolor='#4CAF50', alpha=0.7, label='FLIKA')]
+            if has_imagej:
+                legend_items.append(Patch(facecolor='#FF9800', alpha=0.7, label='ImageJ'))
+            ax.legend(handles=legend_items, fontsize=7, loc='lower left')
 
-            # Figure 3: RMSE distribution
+            # --- Panel 3: RMSE distribution (FLIKA vs ImageJ) ---
             ax = axes[1, 0]
-            rmse_vals = [r['rmse_nm'] for r in flika_results if not np.isnan(r.get('rmse_nm', float('nan')))]
-            if rmse_vals:
-                ax.hist(rmse_vals, bins=30, edgecolor='black', alpha=0.7, color='#FF9800')
-                ax.axvline(np.median(rmse_vals), color='red', linestyle='--',
-                           label=f'median={np.median(rmse_vals):.1f}nm')
+            rmse_flika = [r['rmse_nm'] for r in flika_results
+                          if not np.isnan(r.get('rmse_nm', float('nan')))]
+            rmse_imagej = [r['rmse_nm'] for r in imagej_results
+                           if not np.isnan(r.get('rmse_nm', float('nan')))]
+            if rmse_flika:
+                all_rmse = rmse_flika + (rmse_imagej if rmse_imagej else [])
+                bins = np.linspace(min(all_rmse), max(all_rmse), 30)
+                ax.hist(rmse_flika, bins=bins, edgecolor='black', alpha=0.6,
+                        color='#4CAF50', label=f'FLIKA (median={np.median(rmse_flika):.1f} nm)')
+                if rmse_imagej:
+                    ax.hist(rmse_imagej, bins=bins, edgecolor='black', alpha=0.5,
+                            color='#FF9800', label=f'ImageJ (median={np.median(rmse_imagej):.1f} nm)')
                 ax.set_xlabel('RMSE (nm)')
-                ax.set_ylabel('Count')
+                ax.set_ylabel('Number of tests')
                 ax.set_title('Position RMSE Distribution')
-                ax.legend()
+                ax.legend(fontsize=7)
+                ax.annotate('Each bar = number of dataset/algorithm\n'
+                            'combinations with that RMSE range',
+                            xy=(0.98, 0.98), xycoords='axes fraction',
+                            fontsize=6, color='#666', ha='right', va='top',
+                            bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8, edgecolor='#ccc'))
 
-            # Figure 4: Precision vs Recall scatter
+            # --- Panel 4: Precision vs Recall scatter (FLIKA vs ImageJ) ---
             ax = axes[1, 1]
-            prec = [r['precision'] for r in flika_results]
-            rec = [r['recall'] for r in flika_results]
-            ax.scatter(rec, prec, s=15, alpha=0.5, c='#9C27B0')
+            prec_f = [r['precision'] for r in flika_results]
+            rec_f = [r['recall'] for r in flika_results]
+            ax.scatter(rec_f, prec_f, s=20, alpha=0.6, c='#4CAF50',
+                       edgecolors='#2E7D32', linewidths=0.5,
+                       label=f'FLIKA (n={len(prec_f)})')
+            if has_imagej:
+                prec_i = [r['precision'] for r in imagej_results]
+                rec_i = [r['recall'] for r in imagej_results]
+                ax.scatter(rec_i, prec_i, s=20, alpha=0.6, c='#FF9800',
+                           marker='D', edgecolors='#E65100', linewidths=0.5,
+                           label=f'ImageJ (n={len(prec_i)})')
             ax.set_xlabel('Recall')
             ax.set_ylabel('Precision')
             ax.set_title('Precision vs Recall')
             ax.set_xlim(0, 1.05)
             ax.set_ylim(0, 1.05)
-            ax.plot([0, 1], [0, 1], 'k--', alpha=0.2)
+            ax.plot([0, 1], [0, 1], 'k--', alpha=0.2, label='P = R line')
+            legend_items = [
+                Line2D([0], [0], marker='o', color='w', markerfacecolor='#4CAF50',
+                       markeredgecolor='#2E7D32', markersize=6, label=f'FLIKA (n={len(prec_f)})'),
+            ]
+            if has_imagej:
+                legend_items.append(
+                    Line2D([0], [0], marker='D', color='w', markerfacecolor='#FF9800',
+                           markeredgecolor='#E65100', markersize=6, label=f'ImageJ (n={len(prec_i)})'))
+            legend_items.append(Line2D([0], [0], color='black', linestyle='--', alpha=0.2, label='P = R line'))
+            ax.legend(handles=legend_items, fontsize=7, loc='lower left')
+            ax.annotate('Each point = one dataset/algorithm test\n'
+                        'Circles = FLIKA, Diamonds = ImageJ\n'
+                        'Top-right corner = perfect detection',
+                        xy=(0.98, 0.02), xycoords='axes fraction',
+                        fontsize=6, color='#666', ha='right', va='bottom',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8, edgecolor='#ccc'))
 
-            plt.tight_layout()
+            plt.tight_layout(rect=[0, 0, 1, 0.96])
             fig_path = output_dir / "ground_truth_summary.png"
             plt.savefig(str(fig_path), dpi=150, bbox_inches='tight')
             plt.close()
 
-            # Heatmap: F1 by dataset x algorithm
-            fig, ax = plt.subplots(figsize=(14, 8))
+            # ============================================================
+            # Heatmap: F1 by dataset x algorithm (FLIKA)
+            # ============================================================
             datasets = sorted(set(r.get('dataset', '') for r in flika_results))
             algorithms = sorted(set(r.get('algorithm', '') for r in flika_results))
-            f1_matrix = np.full((len(datasets), len(algorithms)), np.nan)
-            for r in flika_results:
-                di = datasets.index(r.get('dataset', ''))
-                ai = algorithms.index(r.get('algorithm', ''))
-                f1_matrix[di, ai] = r['f1']
 
-            im = ax.imshow(f1_matrix, cmap='RdYlGn', vmin=0.5, vmax=1.0, aspect='auto')
-            ax.set_xticks(range(len(algorithms)))
-            ax.set_xticklabels(algorithms, rotation=45, ha='right', fontsize=8)
-            ax.set_yticks(range(len(datasets)))
-            ax.set_yticklabels(datasets, fontsize=9)
-            ax.set_title('F1 Score Heatmap: Dataset x Algorithm')
-            plt.colorbar(im, ax=ax, label='F1 Score')
-            # Add text annotations
-            for i in range(len(datasets)):
-                for j in range(len(algorithms)):
-                    val = f1_matrix[i, j]
-                    if not np.isnan(val):
-                        color = 'white' if val < 0.7 else 'black'
-                        ax.text(j, i, f'{val:.2f}', ha='center', va='center',
-                                fontsize=7, color=color)
-            plt.tight_layout()
+            if has_imagej:
+                # Side-by-side heatmaps with colorbar on the right
+                fig, (ax1, ax2, cax) = plt.subplots(1, 3, figsize=(28, 8),
+                    gridspec_kw={'width_ratios': [1, 1, 0.04], 'wspace': 0.3})
+
+                for ax, results, title in [
+                    (ax1, flika_results, 'FLIKA'),
+                    (ax2, imagej_results, 'ImageJ')
+                ]:
+                    f1_matrix = np.full((len(datasets), len(algorithms)), np.nan)
+                    for r in results:
+                        ds = r.get('dataset', '')
+                        algo = r.get('algorithm', '')
+                        if ds in datasets and algo in algorithms:
+                            f1_matrix[datasets.index(ds), algorithms.index(algo)] = r['f1']
+
+                    im = ax.imshow(f1_matrix, cmap='RdYlGn', vmin=0.5, vmax=1.0, aspect='auto')
+                    ax.set_xticks(range(len(algorithms)))
+                    ax.set_xticklabels(algorithms, rotation=45, ha='right', fontsize=8)
+                    ax.set_yticks(range(len(datasets)))
+                    ax.set_yticklabels(datasets, fontsize=9)
+                    ax.set_title(f'F1 Score: {title}', fontsize=12, fontweight='bold')
+                    for i in range(len(datasets)):
+                        for j in range(len(algorithms)):
+                            val = f1_matrix[i, j]
+                            if not np.isnan(val):
+                                color = 'white' if val < 0.7 else 'black'
+                                ax.text(j, i, f'{val:.2f}', ha='center', va='center',
+                                        fontsize=7, color=color)
+
+                fig.colorbar(im, cax=cax, label='F1 Score')
+                fig.suptitle('F1 Score Heatmap: Dataset x Algorithm', fontsize=14, fontweight='bold')
+                plt.tight_layout(rect=[0, 0, 1, 0.96])
+            else:
+                # FLIKA only
+                fig, ax = plt.subplots(figsize=(14, 8))
+                f1_matrix = np.full((len(datasets), len(algorithms)), np.nan)
+                for r in flika_results:
+                    di = datasets.index(r.get('dataset', ''))
+                    ai = algorithms.index(r.get('algorithm', ''))
+                    f1_matrix[di, ai] = r['f1']
+
+                im = ax.imshow(f1_matrix, cmap='RdYlGn', vmin=0.5, vmax=1.0, aspect='auto')
+                ax.set_xticks(range(len(algorithms)))
+                ax.set_xticklabels(algorithms, rotation=45, ha='right', fontsize=8)
+                ax.set_yticks(range(len(datasets)))
+                ax.set_yticklabels(datasets, fontsize=9)
+                ax.set_title('F1 Score Heatmap: Dataset x Algorithm (FLIKA)')
+                plt.colorbar(im, ax=ax, label='F1 Score')
+                for i in range(len(datasets)):
+                    for j in range(len(algorithms)):
+                        val = f1_matrix[i, j]
+                        if not np.isnan(val):
+                            color = 'white' if val < 0.7 else 'black'
+                            ax.text(j, i, f'{val:.2f}', ha='center', va='center',
+                                    fontsize=7, color=color)
+                plt.tight_layout()
+
             fig_path = output_dir / "ground_truth_heatmap.png"
             plt.savefig(str(fig_path), dpi=150, bbox_inches='tight')
             plt.close()
+
+            # ============================================================
+            # F1 difference heatmap (FLIKA - ImageJ) if both available
+            # ============================================================
+            if has_imagej:
+                fig, (ax, cax) = plt.subplots(1, 2, figsize=(16, 8),
+                    gridspec_kw={'width_ratios': [1, 0.03], 'wspace': 0.05})
+                diff_matrix = np.full((len(datasets), len(algorithms)), np.nan)
+                for r in flika_results:
+                    ds = r.get('dataset', '')
+                    algo = r.get('algorithm', '')
+                    key = (ds, algo)
+                    if key in ij_lookup:
+                        diff_matrix[datasets.index(ds), algorithms.index(algo)] = \
+                            r['f1'] - ij_lookup[key]['f1']
+
+                vmax = max(0.05, np.nanmax(np.abs(diff_matrix)))
+                im = ax.imshow(diff_matrix, cmap='RdBu', vmin=-vmax, vmax=vmax, aspect='auto')
+                ax.set_xticks(range(len(algorithms)))
+                ax.set_xticklabels(algorithms, rotation=45, ha='right', fontsize=8)
+                ax.set_yticks(range(len(datasets)))
+                ax.set_yticklabels(datasets, fontsize=9)
+                ax.set_title('F1 Difference (FLIKA - ImageJ)', fontsize=12, fontweight='bold')
+                cb = fig.colorbar(im, cax=cax)
+                cb.set_label('F1 Difference\n(blue = FLIKA better,\nred = ImageJ better)', fontsize=9)
+                for i in range(len(datasets)):
+                    for j in range(len(algorithms)):
+                        val = diff_matrix[i, j]
+                        if not np.isnan(val):
+                            color = 'black' if abs(val) < vmax * 0.6 else 'white'
+                            ax.text(j, i, f'{val:+.3f}', ha='center', va='center',
+                                    fontsize=6, color=color)
+                plt.tight_layout()
+                fig_path = output_dir / "ground_truth_f1_difference.png"
+                plt.savefig(str(fig_path), dpi=150, bbox_inches='tight')
+                plt.close()
 
         except Exception as e:
             self.progress_update.emit(f"Warning: Could not generate plots: {e}")
@@ -1328,7 +1547,7 @@ class ValidationWorker(QThread):
                 html.append('</table>')
 
                 # Embed figures
-                for fig_name in ['ground_truth_summary.png', 'ground_truth_heatmap.png']:
+                for fig_name in ['ground_truth_summary.png', 'ground_truth_heatmap.png', 'ground_truth_f1_difference.png']:
                     fig_path = output_dir / fig_name
                     if fig_path.exists():
                         import base64
@@ -1408,20 +1627,44 @@ class ValidationWorker(QThread):
             # Ground truth section
             if gt_results:
                 flika_gt = [r for r in gt_results if r.get('label') == 'FLIKA']
+                imagej_gt = [r for r in gt_results if r.get('label') == 'ImageJ']
                 html.append('<h2>Synthetic Data - Ground Truth Comparison</h2>')
                 f1_scores = [r['f1'] for r in flika_gt]
                 if f1_scores:
                     html.append('<div class="summary-box">')
+                    html.append(f'<h3>FLIKA</h3>')
                     html.append(f'<p><strong>Tests:</strong> {len(flika_gt)}</p>')
                     html.append(f'<p><strong>Mean F1:</strong> {np.mean(f1_scores):.3f}</p>')
                     within_001 = sum(1 for f in f1_scores if f >= 0.99)
                     within_005 = sum(1 for f in f1_scores if f >= 0.95)
                     html.append(f'<p><strong>F1 >= 0.99:</strong> {within_001}/{len(f1_scores)}</p>')
                     html.append(f'<p><strong>F1 >= 0.95:</strong> {within_005}/{len(f1_scores)}</p>')
+                    if imagej_gt:
+                        ij_f1 = [r['f1'] for r in imagej_gt]
+                        ij_001 = sum(1 for f in ij_f1 if f >= 0.99)
+                        ij_005 = sum(1 for f in ij_f1 if f >= 0.95)
+                        html.append(f'<h3>ImageJ</h3>')
+                        html.append(f'<p><strong>Tests:</strong> {len(imagej_gt)}</p>')
+                        html.append(f'<p><strong>Mean F1:</strong> {np.mean(ij_f1):.3f}</p>')
+                        html.append(f'<p><strong>F1 >= 0.99:</strong> {ij_001}/{len(ij_f1)}</p>')
+                        html.append(f'<p><strong>F1 >= 0.95:</strong> {ij_005}/{len(ij_f1)}</p>')
                     html.append('</div>')
 
+                # Per-test results table
+                html.append('<h3>Per-Test Results</h3>')
+                html.append('<table><tr><th>Dataset</th><th>Algorithm</th><th>Source</th><th>F1</th><th>Precision</th><th>Recall</th><th>RMSE (nm)</th><th>Detected</th><th>Ground Truth</th></tr>')
+                for r in sorted(gt_results, key=lambda x: (x.get('dataset', ''), x.get('algorithm', ''), x.get('label', ''))):
+                    f1 = r['f1']
+                    f1_class = 'good' if f1 >= 0.95 else 'warn' if f1 >= 0.8 else 'bad'
+                    html.append(f'<tr><td>{r.get("dataset", "")}</td><td>{r.get("algorithm", "")}</td>'
+                                f'<td>{r.get("label", "")}</td><td class="{f1_class}">{f1:.3f}</td>'
+                                f'<td>{r["precision"]:.3f}</td><td>{r["recall"]:.3f}</td>'
+                                f'<td>{r["rmse_nm"]:.1f}</td>'
+                                f'<td>{r["n_detected"]}</td><td>{r["n_ground_truth"]}</td></tr>')
+                html.append('</table>')
+
                 # Embed ground truth figures
-                for fig_name in ['ground_truth_summary.png', 'ground_truth_heatmap.png']:
+                for fig_name in ['ground_truth_summary.png', 'ground_truth_heatmap.png', 'ground_truth_f1_difference.png']:
                     fig_path = analysis_dir / fig_name
                     if fig_path.exists():
                         import base64
@@ -9660,6 +9903,61 @@ directional persistence is important for understanding underlying mechanisms.
             detection_method_name = "ThunderSTORM" if self.parameters.detection_method == 'thunderstorm' else "U-Track"
             self.log_message(f"🔍 Detection enabled - will run {detection_method_name} detection first")
 
+            # Log detailed detection parameters
+            if self.parameters.detection_method == 'thunderstorm':
+                self.log_message("  --- ThunderSTORM Detection Configuration ---")
+                # Filter
+                filter_type = getattr(self.parameters, 'ts_filter_type', 'N/A')
+                self.log_message(f"  Filter: {filter_type}")
+                if 'wavelet' in filter_type.lower():
+                    self.log_message(f"    Scale: {getattr(self.parameters, 'ts_filter_scale', 'N/A')}, Order: {getattr(self.parameters, 'ts_filter_order', 'N/A')}")
+                elif 'gaussian' in filter_type.lower() and 'difference' not in filter_type.lower():
+                    self.log_message(f"    Sigma: {getattr(self.parameters, 'ts_filter_sigma', 'N/A')}")
+                elif 'difference' in filter_type.lower():
+                    self.log_message(f"    Sigma1: {getattr(self.parameters, 'ts_filter_sigma1', 'N/A')}, Sigma2: {getattr(self.parameters, 'ts_filter_sigma2', 'N/A')}")
+                elif 'median' in filter_type.lower() or 'box' in filter_type.lower():
+                    self.log_message(f"    Pattern: {getattr(self.parameters, 'ts_filter_pattern', 'N/A')}, Size: {getattr(self.parameters, 'ts_filter_size1', 'N/A')}x{getattr(self.parameters, 'ts_filter_size2', 'N/A')}")
+
+                # Detector
+                detector_type = getattr(self.parameters, 'ts_detector_type', 'N/A')
+                threshold = getattr(self.parameters, 'ts_detector_threshold', 'N/A')
+                self.log_message(f"  Detector: {detector_type}")
+                self.log_message(f"    Threshold: {threshold}")
+                if 'local' in detector_type.lower():
+                    self.log_message(f"    Connectivity: {getattr(self.parameters, 'ts_detector_connectivity', 'N/A')}")
+                elif 'non-maximum' in detector_type.lower():
+                    self.log_message(f"    Radius: {getattr(self.parameters, 'ts_detector_radius', 'N/A')}")
+
+                # Fitter
+                fitter_type = getattr(self.parameters, 'ts_fitter_type', 'N/A')
+                fitting_method = getattr(self.parameters, 'ts_fitting_method', 'N/A')
+                psf_model = getattr(self.parameters, 'ts_psf_model', 'N/A')
+                self.log_message(f"  Fitter: {fitter_type} (method: {fitting_method}, PSF: {psf_model})")
+                self.log_message(f"    Fit radius: {getattr(self.parameters, 'ts_fit_radius', 'N/A')} px, Initial sigma: {getattr(self.parameters, 'ts_initial_sigma', 'N/A')} px")
+                sigma_min = getattr(self.parameters, 'ts_sigma_min', None)
+                sigma_max = getattr(self.parameters, 'ts_sigma_max', None)
+                if sigma_min or sigma_max:
+                    self.log_message(f"    Sigma range: [{sigma_min or 'none'}, {sigma_max or 'none'}]")
+
+                # Multi-emitter
+                if getattr(self.parameters, 'ts_multi_emitter_enabled', False):
+                    self.log_message(f"  Multi-emitter analysis: ENABLED")
+                    self.log_message(f"    Max emitters: {getattr(self.parameters, 'ts_multi_emitter_max', 'N/A')}, P-value: {getattr(self.parameters, 'ts_multi_emitter_pvalue', 'N/A')}")
+                    self.log_message(f"    MFA method: {getattr(self.parameters, 'ts_mfa_fitting_method', 'N/A')}, Iterations: {getattr(self.parameters, 'ts_mfa_model_selection_iterations', 'N/A')}")
+
+                # Camera
+                self.log_message(f"  Camera: {getattr(self.parameters, 'ts_photons_per_adu', 'N/A')} photons/ADU, baseline: {getattr(self.parameters, 'ts_baseline', 'N/A')}")
+                if getattr(self.parameters, 'ts_is_em_gain', False):
+                    self.log_message(f"    EM gain: {getattr(self.parameters, 'ts_em_gain', 'N/A')}, QE: {getattr(self.parameters, 'ts_quantum_efficiency', 'N/A')}")
+                self.log_message("  -----------------------------------------")
+            else:
+                # U-Track parameters
+                self.log_message("  --- U-Track Detection Configuration ---")
+                self.log_message(f"  PSF sigma: {getattr(self.parameters, 'detection_psf_sigma', 'N/A')}")
+                self.log_message(f"  Alpha threshold: {getattr(self.parameters, 'detection_alpha_threshold', 'N/A')}")
+                self.log_message(f"  Min intensity: {getattr(self.parameters, 'detection_min_intensity', 'N/A')}")
+                self.log_message("  ---------------------------------------")
+
         if self.parameters.enable_autocorrelation_analysis:
             self.log_message("📊 Autocorrelation analysis enabled - will analyze tracks after main pipeline")
 
@@ -12572,6 +12870,7 @@ class ThunderSTORMValidation(QWidget):
         self._create_real_comparison_tab()
         self._create_ground_truth_tab()
         self._create_full_validation_tab()
+        self._create_report_tab()
 
         # Shared progress and log area at the bottom
         bottom = QWidget()
@@ -13313,6 +13612,81 @@ class ThunderSTORMValidation(QWidget):
         layout.addStretch()
 
     # ========================================================================
+    # TAB 6: Report - Display validation results in-GUI
+    # ========================================================================
+
+    def _create_report_tab(self):
+        """Create a Report tab for displaying HTML validation reports in the GUI."""
+        tab = QWidget()
+        tab_layout = QVBoxLayout(tab)
+        tab_layout.setContentsMargins(5, 5, 5, 5)
+
+        # Toolbar
+        toolbar = QHBoxLayout()
+        self.report_status_label = QLabel("No report loaded")
+        self.report_status_label.setStyleSheet("color: #666; font-style: italic;")
+        toolbar.addWidget(self.report_status_label, 1)
+
+        load_report_btn = QPushButton("Load Report...")
+        load_report_btn.setFixedWidth(120)
+        load_report_btn.clicked.connect(self._browse_and_load_report)
+        toolbar.addWidget(load_report_btn)
+
+        open_external_btn = QPushButton("Open in Browser")
+        open_external_btn.setFixedWidth(130)
+        open_external_btn.clicked.connect(self._open_report_in_browser)
+        toolbar.addWidget(open_external_btn)
+
+        tab_layout.addLayout(toolbar)
+
+        # HTML viewer using QTextBrowser (supports HTML with embedded images)
+        self.report_viewer = QTextBrowser()
+        self.report_viewer.setOpenExternalLinks(True)
+        self.report_viewer.setMinimumHeight(400)
+
+        tab_layout.addWidget(self.report_viewer)
+        self.tab_widget.addTab(tab, "Report")
+
+    def _load_report_in_tab(self, report_path):
+        """Load an HTML report into the Report tab viewer."""
+        report_path = Path(report_path)
+        if not report_path.exists():
+            return
+
+        self._last_report_path = str(report_path)
+
+        # QTextBrowser needs a search path to resolve relative image references
+        self.report_viewer.setSearchPaths([str(report_path.parent.resolve())])
+        with open(str(report_path), 'r') as f:
+            html_content = f.read()
+        self.report_viewer.setHtml(html_content)
+
+        self.report_status_label.setText(f"Report: {report_path.name}")
+        self.report_status_label.setStyleSheet("color: #2c5aa0; font-weight: bold;")
+
+        # Switch to Report tab
+        for i in range(self.tab_widget.count()):
+            if self.tab_widget.tabText(i) == "Report":
+                self.tab_widget.setCurrentIndex(i)
+                break
+
+    def _open_report_in_browser(self):
+        """Open the currently loaded report in an external browser."""
+        if self._last_report_path and Path(self._last_report_path).exists():
+            self._open_path(self._last_report_path)
+
+    def _browse_and_load_report(self):
+        """Open a file dialog to select and load an existing HTML report."""
+        start_dir = ''
+        if self._last_report_path:
+            start_dir = str(Path(self._last_report_path).parent)
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open Validation Report", start_dir,
+            "HTML Reports (*.html);;All Files (*)")
+        if file_path:
+            self._load_report_in_tab(file_path)
+
+    # ========================================================================
     # Helpers
     # ========================================================================
 
@@ -13763,9 +14137,9 @@ class ThunderSTORMValidation(QWidget):
                 self.view_figures_btn.setEnabled(True)
                 self._last_figures_dir = str(output_dir)
 
-        # Auto-open HTML report in browser for tasks that generate one
+        # Display report in the Report tab
         if report_path and Path(report_path).exists():
-            self._open_path(report_path)
+            self._load_report_in_tab(report_path)
 
     def _on_error(self, error_msg):
         self._set_running(False)
@@ -13780,7 +14154,7 @@ class ThunderSTORMValidation(QWidget):
 
     def _view_report(self):
         if self._last_report_path and Path(self._last_report_path).exists():
-            self._open_path(self._last_report_path)
+            self._load_report_in_tab(self._last_report_path)
 
     def _open_output_dir(self):
         if self._last_output_dir and Path(self._last_output_dir).exists():

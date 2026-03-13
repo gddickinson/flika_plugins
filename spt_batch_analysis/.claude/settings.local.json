@@ -106,7 +106,8 @@
       "Bash(/tmp/audit_summary.txt:*)",
       "Read(//tmp/**)",
       "Bash(python -c \"import py_compile; py_compile.compile\\('__init__.py', doraise=True\\); print\\('OK'\\)\" 2>&1)",
-      "Bash(python -c \"import ast; ast.parse\\(open\\('__init__.py'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")"
+      "Bash(python -c \"import ast; ast.parse\\(open\\('__init__.py'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
+      "Bash(python3 -c \"import py_compile; py_compile.compile\\('__init__.py', doraise=True\\)\" 2>&1)"
     ]
   }
 }

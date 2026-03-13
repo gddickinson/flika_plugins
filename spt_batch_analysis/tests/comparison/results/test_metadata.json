@@ -1,5 +1,5 @@
 {
-  "input_file": "/Users/george/claude_test/spt_batch_analysis/test_data/real/Endothelial_NonBapta_bin10_crop.tif",
+  "input_file": "/Users/george/.FLIKA/plugins/spt_batch_analysis/test_data/real/Endothelial_NonBapta_bin10_crop.tif",
   "camera": {
     "pixel_size": 108.0,
     "photons_per_adu": 3.6,
@@ -387,5 +387,5 @@
       }
     }
   },
-  "generated_at": "2026-03-12 23:23:57"
+  "generated_at": "2026-03-13 11:48:30"
 }

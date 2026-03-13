@@ -1,67 +1,67 @@
 {
   "wavelet_default": {
     "n_locs": 3689,
-    "time_s": 0.42826175689697266,
-    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/wavelet_default_flika_locsID.csv"
+    "time_s": 0.21380829811096191,
+    "csv_path": "/Users/george/.FLIKA/plugins/spt_batch_analysis/tests/comparison/results/flika_results/wavelet_default_flika_locsID.csv"
   },
   "wavelet_scale4_order5": {
     "n_locs": 1147,
-    "time_s": 0.16883420944213867,
-    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/wavelet_scale4_order5_flika_locsID.csv"
+    "time_s": 0.16640591621398926,
+    "csv_path": "/Users/george/.FLIKA/plugins/spt_batch_analysis/tests/comparison/results/flika_results/wavelet_scale4_order5_flika_locsID.csv"
   },
   "dog_filter": {
     "n_locs": 2709,
-    "time_s": 0.1944417953491211,
-    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/dog_filter_flika_locsID.csv"
+    "time_s": 0.18410587310791016,
+    "csv_path": "/Users/george/.FLIKA/plugins/spt_batch_analysis/tests/comparison/results/flika_results/dog_filter_flika_locsID.csv"
   },
   "gaussian_filter": {
     "n_locs": 2597,
-    "time_s": 0.34691500663757324,
-    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/gaussian_filter_flika_locsID.csv"
+    "time_s": 0.33603978157043457,
+    "csv_path": "/Users/george/.FLIKA/plugins/spt_batch_analysis/tests/comparison/results/flika_results/gaussian_filter_flika_locsID.csv"
   },
   "nms_detector": {
     "n_locs": 3578,
-    "time_s": 0.17644405364990234,
-    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/nms_detector_flika_locsID.csv"
+    "time_s": 0.16456389427185059,
+    "csv_path": "/Users/george/.FLIKA/plugins/spt_batch_analysis/tests/comparison/results/flika_results/nms_detector_flika_locsID.csv"
   },
   "centroid_detector": {
     "n_locs": 3360,
-    "time_s": 0.22484874725341797,
-    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/centroid_detector_flika_locsID.csv"
+    "time_s": 0.19805693626403809,
+    "csv_path": "/Users/george/.FLIKA/plugins/spt_batch_analysis/tests/comparison/results/flika_results/centroid_detector_flika_locsID.csv"
   },
   "lsq_fitting": {
     "n_locs": 3577,
-    "time_s": 0.23433208465576172,
-    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/lsq_fitting_flika_locsID.csv"
+    "time_s": 0.21201705932617188,
+    "csv_path": "/Users/george/.FLIKA/plugins/spt_batch_analysis/tests/comparison/results/flika_results/lsq_fitting_flika_locsID.csv"
   },
   "mle_fitting": {
     "n_locs": 3578,
-    "time_s": 0.22329282760620117,
-    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/mle_fitting_flika_locsID.csv"
+    "time_s": 0.19239187240600586,
+    "csv_path": "/Users/george/.FLIKA/plugins/spt_batch_analysis/tests/comparison/results/flika_results/mle_fitting_flika_locsID.csv"
   },
   "psf_gaussian": {
     "n_locs": 3578,
-    "time_s": 0.22910523414611816,
-    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/psf_gaussian_flika_locsID.csv"
+    "time_s": 0.21564221382141113,
+    "csv_path": "/Users/george/.FLIKA/plugins/spt_batch_analysis/tests/comparison/results/flika_results/psf_gaussian_flika_locsID.csv"
   },
   "radial_symmetry": {
     "n_locs": 3578,
-    "time_s": 0.1382761001586914,
-    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/radial_symmetry_flika_locsID.csv"
+    "time_s": 0.1192319393157959,
+    "csv_path": "/Users/george/.FLIKA/plugins/spt_batch_analysis/tests/comparison/results/flika_results/radial_symmetry_flika_locsID.csv"
   },
   "mfa_enabled": {
     "n_locs": 3580,
-    "time_s": 9.23166012763977,
-    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/mfa_enabled_flika_locsID.csv"
+    "time_s": 8.923961162567139,
+    "csv_path": "/Users/george/.FLIKA/plugins/spt_batch_analysis/tests/comparison/results/flika_results/mfa_enabled_flika_locsID.csv"
   },
   "high_threshold": {
     "n_locs": 2367,
-    "time_s": 0.15650725364685059,
-    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/high_threshold_flika_locsID.csv"
+    "time_s": 0.14644098281860352,
+    "csv_path": "/Users/george/.FLIKA/plugins/spt_batch_analysis/tests/comparison/results/flika_results/high_threshold_flika_locsID.csv"
   },
   "fitradius_5": {
     "n_locs": 3186,
-    "time_s": 0.5569350719451904,
-    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/fitradius_5_flika_locsID.csv"
+    "time_s": 0.5276279449462891,
+    "csv_path": "/Users/george/.FLIKA/plugins/spt_batch_analysis/tests/comparison/results/flika_results/fitradius_5_flika_locsID.csv"
   }
 }
