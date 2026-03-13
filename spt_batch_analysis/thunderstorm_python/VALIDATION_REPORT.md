@@ -13,8 +13,10 @@ This report documents the systematic validation of the FLIKA ThunderSTORM Python
 **Key results:**
 - Mean F1 score vs ImageJ: **0.995** (real data, 13 test configurations)
 - Mean position error: **0.7 nm** (real data)
-- Synthetic test agreement: **107/117** tests within 0.01 F1 of ImageJ
+- Synthetic test agreement: **107/117** tests within 0.01 F1 of ImageJ (mean |ΔF1| = 0.004)
+- Absolute ground truth performance: mean F1 = **0.771**, mean precision = **0.946** (117 tests)
 - Speed: **Every configuration faster than ImageJ**, up to 410x for MLE fitting
+- **Validation GUI** included for one-click reproduction of all results with auto-generated HTML reports
 
 ---
 
@@ -233,6 +235,36 @@ The remaining differences are concentrated in multi-emitter fitting (MFA), which
 | Recall | 0.443 | 0.441 |
 | RMSE | 117.9 nm | 117.9 nm |
 
+### 3.5 Absolute Ground Truth Performance (FLIKA)
+
+In addition to matching ImageJ, FLIKA's absolute detection performance against known ground truth positions (117 tests across 9 datasets and 13 algorithms):
+
+| Metric | Value |
+|---|---|
+| Mean F1 | 0.771 |
+| Mean Precision | 0.946 |
+| Mean Recall | 0.689 |
+| Mean RMSE | 73.7 nm |
+| Tests with F1 >= 0.9 | 37 / 117 (31.6%) |
+| Tests with F1 >= 0.8 | 67 / 117 (57.3%) |
+| Tests with F1 >= 0.5 | 105 / 117 (89.7%) |
+
+#### Per-Dataset Mean F1 (averaged across 13 algorithms)
+
+| Dataset | Mean F1 | Description |
+|---|---|---|
+| sparse_150x | 0.941 | Sparse, 150x TIRF |
+| sparse_108nm | 0.926 | Sparse, 108nm pixel |
+| sparse_100x | 0.905 | Sparse, 100x oil |
+| high_snr_108nm | 0.858 | High SNR |
+| sparse_60x | 0.852 | Sparse, 60x oil |
+| medium_108nm | 0.729 | Medium density |
+| medium_scmos_100x | 0.679 | Medium density, sCMOS |
+| low_snr_108nm | 0.586 | Low SNR |
+| dense_108nm | 0.463 | Dense (overlapping PSFs) |
+
+Performance is primarily limited by recall on dense and low-SNR datasets, where overlapping PSFs and weak signals make detection inherently challenging. Precision remains consistently high (>0.94) across all conditions, indicating very low false positive rates.
+
 ---
 
 ## 4. Architecture and Implementation Details
@@ -313,7 +345,26 @@ The Numba JIT compiler translates Python/NumPy code to optimized machine code at
 
 ## 6. Reproducing These Results
 
-### 6.1 Real Data Comparison
+### 6.1 Validation GUI (Recommended)
+
+The easiest way to reproduce all validation results is through the built-in Validation GUI:
+
+1. Launch FLIKA
+2. Navigate to `Plugins → SPT Batch Analysis → Launch Validation`
+3. Go to the **Full Validation** tab
+4. Click **Run Full Validation Suite**
+
+The GUI runs all four phases automatically:
+- Phase 1: Generate 9 synthetic datasets (skipped if data already exists)
+- Phase 2: Run all 13 algorithm configurations on each dataset (117 tests)
+- Phase 3: Compare detections to ground truth (F1, precision, recall, RMSE)
+- Phase 4: Compare against ImageJ ThunderSTORM (if ImageJ results available)
+
+An HTML report with embedded figures auto-opens in the browser on completion.
+
+For individual steps, use the **Simulation**, **ImageJ Macros**, **Real Data Comparison**, and **Ground Truth** tabs. The Simulation tab also supports custom dataset generation with user-defined optics, camera, blinking dynamics, and molecule density parameters.
+
+### 6.2 Command Line
 
 ```bash
 # Run FLIKA analysis on test data
@@ -322,8 +373,6 @@ python tests/comparison/generate_comparison_macros.py --flika-only
 # Compare against ImageJ reference results
 python tests/comparison/compare_results.py -d tests/comparison/results
 ```
-
-### 6.2 Synthetic Data Comparison
 
 ```bash
 # Generate synthetic data and run both FLIKA and cached ImageJ results
@@ -339,6 +388,7 @@ python tests/synthetic/generate_synthetic_data.py
 - Numba >= 0.55 (optional but recommended for 10-400x speedup)
 - tifffile (for TIFF I/O)
 - tqdm (for progress bars)
+- FLIKA (for Validation GUI)
 
 ---
 
@@ -354,4 +404,4 @@ python tests/synthetic/generate_synthetic_data.py
 
 ---
 
-*Report generated March 2026. All benchmarks run on Apple M-series (10-core) with Numba 0.60, Python 3.11.*
+*Report updated March 13, 2026. All benchmarks run on Apple M-series (10-core) with Numba 0.60, Python 3.11. Validation GUI available in FLIKA plugin v2026.03.13.*
