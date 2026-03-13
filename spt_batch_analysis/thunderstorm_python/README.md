@@ -50,6 +50,7 @@ See [VALIDATION_REPORT.md](VALIDATION_REPORT.md) for full comparison data, metho
 - **Blinking Simulation**: Realistic fluorophore dynamics
 - **Performance Evaluation**: Precision/recall, F1 score, RMSE analysis
 - **Comparison Testing**: Automated comparison against ImageJ ThunderSTORM results
+- **Validation GUI**: Standalone interface for running all validation tests from within FLIKA (`Plugins → SPT Batch Analysis → Launch Validation`), including synthetic data generation with custom parameters, ImageJ macro generation, ground truth comparison, and a one-click full validation suite with auto-generated HTML reports
 
 ## Installation
 

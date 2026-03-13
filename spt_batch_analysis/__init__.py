@@ -618,6 +618,7 @@ class ValidationWorker(QThread):
 
     def __init__(self, task_type, **kwargs):
         super().__init__()
+        self.setStackSize(16 * 1024 * 1024)  # 16 MB — needed for OpenBLAS/numpy linalg ops
         self.task_type = task_type  # 'comparison', 'synthetic_generate', 'synthetic_run', 'ground_truth', 'full_validation'
         self.kwargs = kwargs
         self._cancelled = False
@@ -740,9 +741,10 @@ class ValidationWorker(QThread):
                                               CAMERA_PRESETS, generate_synthetic_dataset)
 
         output_dir.mkdir(parents=True, exist_ok=True)
-        dataset_configs = dict(SYNTHETIC_CONFIGS)
-        if config_names:
-            dataset_configs = {k: v for k, v in dataset_configs.items() if k in config_names}
+        if config_names is not None:
+            dataset_configs = {k: v for k, v in SYNTHETIC_CONFIGS.items() if k in config_names}
+        else:
+            dataset_configs = dict(SYNTHETIC_CONFIGS)
 
         # Add custom configs — register any inline optics/camera presets
         if custom_configs:
@@ -968,21 +970,39 @@ class ValidationWorker(QThread):
         from compare_results import run_comparison
 
         # Phase 1: Generate synthetic data (20%)
-        self.progress_update.emit("Phase 1/4: Generating synthetic data...")
         data_dir.mkdir(parents=True, exist_ok=True)
         dataset_configs = SYNTHETIC_CONFIGS
         if config_names:
             dataset_configs = {k: v for k, v in dataset_configs.items() if k in config_names}
 
-        all_meta = {}
-        for i, (name, cfg) in enumerate(dataset_configs.items()):
-            if self._cancelled:
-                return
-            self.progress_update.emit(f"  Generating {name}...")
-            meta = generate_synthetic_dataset(name, cfg, data_dir, seed=seed)
-            all_meta[name] = meta
-        with open(str(data_dir / "all_metadata.json"), 'w') as fp:
-            json.dump(all_meta, fp, indent=2)
+        skip_existing = self.kwargs.get('skip_existing_synthetic', False)
+        all_exist = False
+        if skip_existing:
+            all_exist = all(
+                (data_dir / f"{name}.tif").exists() and
+                (data_dir / f"{name}_ground_truth.csv").exists()
+                for name in dataset_configs
+            )
+
+        if all_exist:
+            self.progress_update.emit("Phase 1/4: Synthetic data already exists — skipping generation")
+            # Load existing metadata if available
+            all_meta = {}
+            meta_path = data_dir / "all_metadata.json"
+            if meta_path.exists():
+                with open(str(meta_path)) as fp:
+                    all_meta = json.load(fp)
+        else:
+            self.progress_update.emit("Phase 1/4: Generating synthetic data...")
+            all_meta = {}
+            for i, (name, cfg) in enumerate(dataset_configs.items()):
+                if self._cancelled:
+                    return
+                self.progress_update.emit(f"  Generating {name}...")
+                meta = generate_synthetic_dataset(name, cfg, data_dir, seed=seed)
+                all_meta[name] = meta
+            with open(str(data_dir / "all_metadata.json"), 'w') as fp:
+                json.dump(all_meta, fp, indent=2)
         self.step_progress.emit(20)
 
         # Phase 2: Run FLIKA on synthetic (60%)
@@ -1071,9 +1091,10 @@ class ValidationWorker(QThread):
                 import shutil
                 ij_dest = real_output / "imagej_results"
                 ij_dest.mkdir(exist_ok=True)
-                for f in Path(imagej_dir_path).glob("*"):
-                    if f.is_file():
-                        shutil.copy2(f, ij_dest / f.name)
+                if Path(imagej_dir_path).resolve() != ij_dest.resolve():
+                    for f in Path(imagej_dir_path).glob("*"):
+                        if f.is_file():
+                            shutil.copy2(f, ij_dest / f.name)
 
             real_stats = run_comparison(str(real_output), do_plot=True)
 
@@ -13268,6 +13289,19 @@ class ThunderSTORMValidation(QWidget):
         s_layout.addRow(paths_info)
         layout.addWidget(settings)
 
+        # Options
+        opts_group = QGroupBox("Options")
+        opts_layout = QVBoxLayout(opts_group)
+        self.full_skip_existing = QCheckBox("Skip synthetic data generation if all datasets already exist")
+        self.full_skip_existing.setChecked(True)
+        self.full_skip_existing.setToolTip(
+            "If checked, Phase 1 will be skipped when the synthetic data directory already "
+            "contains TIFF files and ground truth CSVs for all selected datasets. "
+            "Uncheck to force regeneration."
+        )
+        opts_layout.addWidget(self.full_skip_existing)
+        layout.addWidget(opts_group)
+
         self.full_run_btn = QPushButton("Run Full Validation Suite")
         self.full_run_btn.setStyleSheet(
             "background-color: #e74c3c; color: white; font-weight: bold; padding: 14px; font-size: 13pt;"
@@ -13502,6 +13536,7 @@ class ThunderSTORMValidation(QWidget):
 
     def _start_synth_generate(self):
         self._last_output_dir = self.sim_output_label.text()
+        config_names = self._get_selected(self.sim_dataset_list) or []
         custom_configs = None
         if self.sim_custom_group.isChecked():
             name, cfg = self._build_custom_config()
@@ -13509,10 +13544,14 @@ class ThunderSTORMValidation(QWidget):
                 QMessageBox.warning(self, "Missing Name", "Please enter a name for the custom dataset.")
                 return
             custom_configs = {name: cfg}
+        if not config_names and not custom_configs:
+            QMessageBox.warning(self, "Nothing Selected",
+                                "Please select at least one preset dataset or enable the Custom Dataset option.")
+            return
         self._start_worker(
             'synthetic_generate',
             output_dir=self.sim_output_label.text(),
-            config_names=self._get_selected(self.sim_dataset_list),
+            config_names=config_names,
             seed=self.sim_seed_spin.value(),
             custom_configs=custom_configs,
         )
@@ -13645,6 +13684,7 @@ class ThunderSTORMValidation(QWidget):
             real_input_path=real_input,
             real_output_dir=self.real_output_label.text(),
             imagej_dir=imagej_dir,
+            skip_existing_synthetic=self.full_skip_existing.isChecked(),
         )
 
     # ========================================================================
@@ -13689,6 +13729,17 @@ class ThunderSTORMValidation(QWidget):
             msg = f"Full validation complete: {len(gt)} ground truth tests"
             if rs:
                 msg += f", {len(rs)} real data comparisons"
+            # Log summary of ground truth results
+            if gt:
+                f1_vals = [r['f1'] for r in gt if 'f1' in r]
+                if f1_vals:
+                    self.log_text.append(f"\nGround Truth Summary:")
+                    self.log_text.append(f"  Mean F1:  {np.mean(f1_vals):.3f}")
+                    self.log_text.append(f"  Min F1:   {np.min(f1_vals):.3f}")
+                    self.log_text.append(f"  Max F1:   {np.max(f1_vals):.3f}")
+                    rmse_vals = [r['rmse_nm'] for r in gt if 'rmse_nm' in r and not np.isnan(r['rmse_nm'])]
+                    if rmse_vals:
+                        self.log_text.append(f"  Mean RMSE: {np.mean(rmse_vals):.1f} nm")
         else:
             msg = "Complete"
 
@@ -13711,6 +13762,10 @@ class ThunderSTORMValidation(QWidget):
             if figs:
                 self.view_figures_btn.setEnabled(True)
                 self._last_figures_dir = str(output_dir)
+
+        # Auto-open HTML report in browser for tasks that generate one
+        if report_path and Path(report_path).exists():
+            self._open_path(report_path)
 
     def _on_error(self, error_msg):
         self._set_running(False)
