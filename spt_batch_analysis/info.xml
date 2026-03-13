@@ -23,6 +23,7 @@
     </dependencies>
     <menu_layout>
         <action location="__init__" function="launch_spt_analysis">Launch SPT Analysis</action>
+        <action location="__init__" function="launch_validation">Launch Validation</action>
         <action location="__init__" function="launch_docs">Documentation</action>
     </menu_layout>
 </plugin>

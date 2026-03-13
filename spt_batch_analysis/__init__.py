@@ -608,6 +608,815 @@ class DetectionWorker(QThread):
 
 
 
+class ValidationWorker(QThread):
+    """Worker thread for running validation tests (comparison and ground truth)."""
+
+    progress_update = Signal(str)
+    step_progress = Signal(int)  # 0-100 progress
+    test_complete = Signal(dict)  # results dict
+    test_error = Signal(str)
+
+    def __init__(self, task_type, **kwargs):
+        super().__init__()
+        self.task_type = task_type  # 'comparison', 'synthetic_generate', 'synthetic_run', 'ground_truth', 'full_validation'
+        self.kwargs = kwargs
+        self._cancelled = False
+
+    def cancel(self):
+        self._cancelled = True
+
+    def run(self):
+        try:
+            if self.task_type == 'comparison':
+                self._run_comparison_tests()
+            elif self.task_type == 'synthetic_generate':
+                self._run_synthetic_generation()
+            elif self.task_type == 'synthetic_run':
+                self._run_synthetic_flika()
+            elif self.task_type == 'ground_truth':
+                self._run_ground_truth_comparison()
+            elif self.task_type == 'full_validation':
+                self._run_full_validation()
+            else:
+                self.test_error.emit(f"Unknown task type: {self.task_type}")
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.test_error.emit(f"Validation failed: {str(e)}")
+
+    def _run_comparison_tests(self):
+        """Run FLIKA tests on real data and compare against ImageJ results."""
+        input_path = self.kwargs.get('input_path')
+        output_dir = Path(self.kwargs.get('output_dir'))
+        imagej_dir = self.kwargs.get('imagej_dir')
+        test_names = self.kwargs.get('test_names')
+        match_radius = self.kwargs.get('match_radius', 200.0)
+        generate_plots = self.kwargs.get('generate_plots', True)
+
+        # Import comparison modules
+        script_dir = Path(__file__).parent / 'tests' / 'comparison'
+        if str(script_dir) not in sys.path:
+            sys.path.insert(0, str(script_dir))
+        if str(Path(__file__).parent) not in sys.path:
+            sys.path.insert(0, str(Path(__file__).parent))
+
+        from generate_comparison_macros import TEST_CONFIGS, CAMERA_DEFAULTS, run_flika_tests, generate_all_macros, save_test_metadata
+        from compare_results import run_comparison, load_thunderstorm_csv, match_localizations, compute_comparison_stats, plot_comparison, plot_summary_chart, load_timing_data, plot_speed_comparison
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Step 1: Generate macros and save metadata
+        self.progress_update.emit("Saving test metadata...")
+        save_test_metadata(str(output_dir), input_path)
+
+        # Step 2: Generate ImageJ macros
+        self.progress_update.emit("Generating ImageJ macros...")
+        generate_all_macros(input_path, str(output_dir), test_names)
+        self.step_progress.emit(10)
+
+        # Step 3: Run FLIKA tests
+        self.progress_update.emit("Running FLIKA ThunderSTORM tests...")
+        configs = TEST_CONFIGS
+        if test_names:
+            configs = {k: v for k, v in configs.items() if k in test_names}
+
+        total = len(configs)
+        flika_results = run_flika_tests(input_path, str(output_dir), test_names)
+        self.step_progress.emit(60)
+
+        if self._cancelled:
+            return
+
+        # Step 4: Copy ImageJ results if provided
+        if imagej_dir and Path(imagej_dir).exists():
+            ij_dest = output_dir / "imagej_results"
+            ij_dest.mkdir(exist_ok=True)
+            import shutil
+            for csv_file in Path(imagej_dir).glob("*.csv"):
+                shutil.copy2(csv_file, ij_dest / csv_file.name)
+            for txt_file in Path(imagej_dir).glob("*.txt"):
+                shutil.copy2(txt_file, ij_dest / txt_file.name)
+            self.progress_update.emit(f"Copied ImageJ results from {imagej_dir}")
+
+        # Step 5: Run comparison
+        self.progress_update.emit("Comparing FLIKA vs ImageJ results...")
+        all_stats = run_comparison(
+            str(output_dir),
+            test_names=test_names,
+            match_radius_nm=match_radius,
+            do_plot=generate_plots
+        )
+        self.step_progress.emit(90)
+
+        # Step 6: Generate HTML report
+        self.progress_update.emit("Generating report...")
+        report_path = self._generate_html_report(output_dir, all_stats, 'comparison')
+        self.step_progress.emit(100)
+
+        results = {
+            'type': 'comparison',
+            'stats': all_stats,
+            'output_dir': str(output_dir),
+            'report_path': str(report_path) if report_path else None,
+            'n_tests': len(all_stats),
+            'flika_results': flika_results,
+        }
+        self.test_complete.emit(results)
+
+    def _run_synthetic_generation(self):
+        """Generate synthetic datasets."""
+        output_dir = Path(self.kwargs.get('output_dir'))
+        config_names = self.kwargs.get('config_names')
+        custom_configs = self.kwargs.get('custom_configs')
+        seed = self.kwargs.get('seed', 42)
+
+        script_dir = Path(__file__).parent / 'tests' / 'synthetic'
+        if str(script_dir) not in sys.path:
+            sys.path.insert(0, str(script_dir))
+        if str(Path(__file__).parent) not in sys.path:
+            sys.path.insert(0, str(Path(__file__).parent))
+
+        from generate_synthetic_data import (SYNTHETIC_CONFIGS, MAGNIFICATION_PRESETS,
+                                              CAMERA_PRESETS, generate_synthetic_dataset)
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        dataset_configs = dict(SYNTHETIC_CONFIGS)
+        if config_names:
+            dataset_configs = {k: v for k, v in dataset_configs.items() if k in config_names}
+
+        # Add custom configs — register any inline optics/camera presets
+        if custom_configs:
+            for cname, ccfg in custom_configs.items():
+                if ccfg.get('optics') == '__custom__' and 'custom_optics' in ccfg:
+                    MAGNIFICATION_PRESETS['__custom__'] = ccfg['custom_optics']
+                if ccfg.get('camera') == '__custom__' and 'custom_camera' in ccfg:
+                    CAMERA_PRESETS['__custom__'] = ccfg['custom_camera']
+                dataset_configs[cname] = ccfg
+
+        all_meta = {}
+        total = len(dataset_configs)
+        for i, (name, cfg) in enumerate(dataset_configs.items()):
+            if self._cancelled:
+                return
+            self.progress_update.emit(f"Generating synthetic dataset {i+1}/{total}: {name}")
+            meta = generate_synthetic_dataset(name, cfg, output_dir, seed=seed)
+            all_meta[name] = meta
+            self.step_progress.emit(int((i + 1) / total * 100))
+
+        # Save combined metadata
+        with open(str(output_dir / "all_metadata.json"), 'w') as fp:
+            json.dump(all_meta, fp, indent=2)
+
+        self.test_complete.emit({
+            'type': 'synthetic_generate',
+            'output_dir': str(output_dir),
+            'n_datasets': len(all_meta),
+            'datasets': list(all_meta.keys()),
+        })
+
+    def _run_synthetic_flika(self):
+        """Run FLIKA analysis on synthetic datasets."""
+        data_dir = Path(self.kwargs.get('data_dir'))
+        results_dir = Path(self.kwargs.get('results_dir'))
+        config_names = self.kwargs.get('config_names')
+        algo_names = self.kwargs.get('algo_names')
+
+        script_dir = Path(__file__).parent / 'tests' / 'synthetic'
+        comp_dir = Path(__file__).parent / 'tests' / 'comparison'
+        if str(script_dir) not in sys.path:
+            sys.path.insert(0, str(script_dir))
+        if str(comp_dir) not in sys.path:
+            sys.path.insert(0, str(comp_dir))
+        if str(Path(__file__).parent) not in sys.path:
+            sys.path.insert(0, str(Path(__file__).parent))
+
+        from generate_synthetic_data import SYNTHETIC_CONFIGS, MAGNIFICATION_PRESETS, CAMERA_PRESETS, run_flika_on_synthetic
+        from generate_comparison_macros import TEST_CONFIGS
+
+        results_dir.mkdir(parents=True, exist_ok=True)
+        flika_dir = results_dir / "flika_results"
+        flika_dir.mkdir(parents=True, exist_ok=True)
+
+        dataset_configs = SYNTHETIC_CONFIGS
+        if config_names:
+            dataset_configs = {k: v for k, v in dataset_configs.items() if k in config_names}
+        algo_configs = TEST_CONFIGS
+        if algo_names:
+            algo_configs = {k: v for k, v in algo_configs.items() if k in algo_names}
+
+        import tifffile
+        total_tests = len(dataset_configs) * len(algo_configs)
+        test_count = 0
+        flika_results = {}
+
+        for ds_name, ds_cfg in dataset_configs.items():
+            tiff_path = data_dir / f"{ds_name}.tif"
+            if not tiff_path.exists():
+                self.progress_update.emit(f"Skipping {ds_name}: data not found")
+                test_count += len(algo_configs)
+                continue
+
+            image_stack = tifffile.imread(str(tiff_path))
+            if image_stack.ndim == 2:
+                image_stack = image_stack[np.newaxis, ...]
+
+            for algo_name, algo_cfg in algo_configs.items():
+                if self._cancelled:
+                    return
+                test_name = f"{ds_name}__{algo_name}"
+                test_count += 1
+                self.progress_update.emit(f"[{test_count}/{total_tests}] {ds_name} / {algo_name}")
+                try:
+                    result = run_flika_on_synthetic(
+                        test_name, ds_cfg, algo_cfg['flika'],
+                        tiff_path, flika_dir, image_stack=image_stack)
+                    flika_results[test_name] = result
+                except Exception as e:
+                    self.progress_update.emit(f"  ERROR: {test_name}: {e}")
+                self.step_progress.emit(int(test_count / total_tests * 100))
+
+        # Save summary
+        with open(str(results_dir / "flika_synthetic_summary.json"), 'w') as fp:
+            json.dump(flika_results, fp, indent=2)
+
+        self.test_complete.emit({
+            'type': 'synthetic_run',
+            'results_dir': str(results_dir),
+            'n_tests': len(flika_results),
+            'results': flika_results,
+        })
+
+    def _run_ground_truth_comparison(self):
+        """Compare FLIKA (and optionally ImageJ) results against ground truth."""
+        data_dir = Path(self.kwargs.get('data_dir'))
+        results_dir = Path(self.kwargs.get('results_dir'))
+        config_names = self.kwargs.get('config_names')
+        algo_names = self.kwargs.get('algo_names')
+        match_radius = self.kwargs.get('match_radius', 200.0)
+        generate_plots = self.kwargs.get('generate_plots', True)
+
+        script_dir = Path(__file__).parent / 'tests' / 'synthetic'
+        comp_dir = Path(__file__).parent / 'tests' / 'comparison'
+        if str(script_dir) not in sys.path:
+            sys.path.insert(0, str(script_dir))
+        if str(comp_dir) not in sys.path:
+            sys.path.insert(0, str(comp_dir))
+        if str(Path(__file__).parent) not in sys.path:
+            sys.path.insert(0, str(Path(__file__).parent))
+
+        from generate_synthetic_data import SYNTHETIC_CONFIGS, MAGNIFICATION_PRESETS, compare_to_ground_truth
+        from generate_comparison_macros import TEST_CONFIGS
+
+        analysis_dir = results_dir / "analysis"
+        analysis_dir.mkdir(parents=True, exist_ok=True)
+        flika_dir = results_dir / "flika_results"
+        imagej_dir = results_dir / "imagej_results"
+
+        dataset_configs = SYNTHETIC_CONFIGS
+        if config_names:
+            dataset_configs = {k: v for k, v in dataset_configs.items() if k in config_names}
+        algo_configs = TEST_CONFIGS
+        if algo_names:
+            algo_configs = {k: v for k, v in algo_configs.items() if k in algo_names}
+
+        all_results = []
+        total = len(dataset_configs) * len(algo_configs)
+        count = 0
+
+        for ds_name, ds_cfg in dataset_configs.items():
+            optics = MAGNIFICATION_PRESETS[ds_cfg['optics']]
+            gt_csv = data_dir / f"{ds_name}_ground_truth.csv"
+            if not gt_csv.exists():
+                count += len(algo_configs)
+                continue
+
+            for algo_name in algo_configs:
+                if self._cancelled:
+                    return
+                test_name = f"{ds_name}__{algo_name}"
+                count += 1
+                self.progress_update.emit(f"[{count}/{total}] Comparing {test_name}")
+
+                # Compare FLIKA results
+                for suffix in ['_flika.csv', '_flika_locsID.csv']:
+                    flika_csv = flika_dir / f"{test_name}{suffix}"
+                    if flika_csv.exists():
+                        break
+                if flika_csv.exists():
+                    stats = compare_to_ground_truth(
+                        test_name, str(flika_csv), str(gt_csv),
+                        optics['pixel_size_nm'], match_radius_nm=match_radius, label='FLIKA')
+                    if stats:
+                        stats['dataset'] = ds_name
+                        stats['algorithm'] = algo_name
+                        all_results.append(stats)
+
+                # Compare ImageJ results if available
+                imagej_csv = imagej_dir / f"{test_name}_imagej.csv"
+                if imagej_csv.exists():
+                    stats = compare_to_ground_truth(
+                        test_name, str(imagej_csv), str(gt_csv),
+                        optics['pixel_size_nm'], match_radius_nm=match_radius, label='ImageJ')
+                    if stats:
+                        stats['dataset'] = ds_name
+                        stats['algorithm'] = algo_name
+                        all_results.append(stats)
+
+                self.step_progress.emit(int(count / total * 100))
+
+        # Save results
+        with open(str(analysis_dir / "ground_truth_comparison.json"), 'w') as fp:
+            json.dump(all_results, fp, indent=2)
+
+        # Generate plots
+        if generate_plots and all_results:
+            self.progress_update.emit("Generating ground truth comparison figures...")
+            self._plot_ground_truth_summary(all_results, analysis_dir)
+
+        # Generate HTML report
+        report_path = self._generate_html_report(analysis_dir, all_results, 'ground_truth')
+
+        self.test_complete.emit({
+            'type': 'ground_truth',
+            'results': all_results,
+            'analysis_dir': str(analysis_dir),
+            'report_path': str(report_path) if report_path else None,
+            'n_results': len(all_results),
+        })
+
+    def _run_full_validation(self):
+        """Run everything: generate synthetic, run FLIKA, compare to ground truth, plus real data comparison."""
+        # Step 1: Synthetic generation
+        data_dir = Path(self.kwargs.get('synthetic_data_dir'))
+        results_dir = Path(self.kwargs.get('synthetic_results_dir'))
+        config_names = self.kwargs.get('config_names')
+        algo_names = self.kwargs.get('algo_names')
+        seed = self.kwargs.get('seed', 42)
+        match_radius = self.kwargs.get('match_radius', 200.0)
+
+        script_dir = Path(__file__).parent / 'tests' / 'synthetic'
+        comp_dir = Path(__file__).parent / 'tests' / 'comparison'
+        if str(script_dir) not in sys.path:
+            sys.path.insert(0, str(script_dir))
+        if str(comp_dir) not in sys.path:
+            sys.path.insert(0, str(comp_dir))
+        if str(Path(__file__).parent) not in sys.path:
+            sys.path.insert(0, str(Path(__file__).parent))
+
+        from generate_synthetic_data import SYNTHETIC_CONFIGS, MAGNIFICATION_PRESETS, CAMERA_PRESETS, generate_synthetic_dataset, run_flika_on_synthetic, compare_to_ground_truth
+        from generate_comparison_macros import TEST_CONFIGS, CAMERA_DEFAULTS, run_flika_tests, generate_all_macros, save_test_metadata
+        from compare_results import run_comparison
+
+        # Phase 1: Generate synthetic data (20%)
+        self.progress_update.emit("Phase 1/4: Generating synthetic data...")
+        data_dir.mkdir(parents=True, exist_ok=True)
+        dataset_configs = SYNTHETIC_CONFIGS
+        if config_names:
+            dataset_configs = {k: v for k, v in dataset_configs.items() if k in config_names}
+
+        all_meta = {}
+        for i, (name, cfg) in enumerate(dataset_configs.items()):
+            if self._cancelled:
+                return
+            self.progress_update.emit(f"  Generating {name}...")
+            meta = generate_synthetic_dataset(name, cfg, data_dir, seed=seed)
+            all_meta[name] = meta
+        with open(str(data_dir / "all_metadata.json"), 'w') as fp:
+            json.dump(all_meta, fp, indent=2)
+        self.step_progress.emit(20)
+
+        # Phase 2: Run FLIKA on synthetic (60%)
+        self.progress_update.emit("Phase 2/4: Running FLIKA on synthetic data...")
+        results_dir.mkdir(parents=True, exist_ok=True)
+        flika_dir = results_dir / "flika_results"
+        flika_dir.mkdir(parents=True, exist_ok=True)
+
+        algo_configs = TEST_CONFIGS
+        if algo_names:
+            algo_configs = {k: v for k, v in algo_configs.items() if k in algo_names}
+
+        import tifffile
+        total_tests = len(dataset_configs) * len(algo_configs)
+        test_count = 0
+        for ds_name, ds_cfg in dataset_configs.items():
+            tiff_path = data_dir / f"{ds_name}.tif"
+            if not tiff_path.exists():
+                test_count += len(algo_configs)
+                continue
+            image_stack = tifffile.imread(str(tiff_path))
+            if image_stack.ndim == 2:
+                image_stack = image_stack[np.newaxis, ...]
+            for algo_name, algo_cfg in algo_configs.items():
+                if self._cancelled:
+                    return
+                test_name = f"{ds_name}__{algo_name}"
+                test_count += 1
+                self.progress_update.emit(f"  [{test_count}/{total_tests}] {ds_name} / {algo_name}")
+                try:
+                    run_flika_on_synthetic(test_name, ds_cfg, algo_cfg['flika'],
+                                           tiff_path, flika_dir, image_stack=image_stack)
+                except Exception as e:
+                    self.progress_update.emit(f"    ERROR: {e}")
+                self.step_progress.emit(20 + int(test_count / total_tests * 40))
+        self.step_progress.emit(60)
+
+        # Phase 3: Ground truth comparison (80%)
+        self.progress_update.emit("Phase 3/4: Comparing to ground truth...")
+        analysis_dir = results_dir / "analysis"
+        analysis_dir.mkdir(parents=True, exist_ok=True)
+
+        all_gt_results = []
+        count = 0
+        for ds_name, ds_cfg in dataset_configs.items():
+            optics = MAGNIFICATION_PRESETS[ds_cfg['optics']]
+            gt_csv = data_dir / f"{ds_name}_ground_truth.csv"
+            if not gt_csv.exists():
+                count += len(algo_configs)
+                continue
+            for algo_name in algo_configs:
+                test_name = f"{ds_name}__{algo_name}"
+                count += 1
+                for suffix in ['_flika.csv', '_flika_locsID.csv']:
+                    flika_csv = flika_dir / f"{test_name}{suffix}"
+                    if flika_csv.exists():
+                        break
+                if flika_csv.exists():
+                    stats = compare_to_ground_truth(
+                        test_name, str(flika_csv), str(gt_csv),
+                        optics['pixel_size_nm'], match_radius_nm=match_radius, label='FLIKA')
+                    if stats:
+                        stats['dataset'] = ds_name
+                        stats['algorithm'] = algo_name
+                        all_gt_results.append(stats)
+
+        with open(str(analysis_dir / "ground_truth_comparison.json"), 'w') as fp:
+            json.dump(all_gt_results, fp, indent=2)
+        self._plot_ground_truth_summary(all_gt_results, analysis_dir)
+        self.step_progress.emit(80)
+
+        # Phase 4: Real data comparison (100%)
+        real_stats = {}
+        real_input = self.kwargs.get('real_input_path')
+        real_output = self.kwargs.get('real_output_dir')
+        imagej_dir_path = self.kwargs.get('imagej_dir')
+        if real_input and Path(real_input).exists():
+            self.progress_update.emit("Phase 4/4: Running real data comparison...")
+            real_output = Path(real_output)
+            real_output.mkdir(parents=True, exist_ok=True)
+            save_test_metadata(str(real_output), real_input)
+            generate_all_macros(real_input, str(real_output))
+            run_flika_tests(real_input, str(real_output))
+
+            if imagej_dir_path and Path(imagej_dir_path).exists():
+                import shutil
+                ij_dest = real_output / "imagej_results"
+                ij_dest.mkdir(exist_ok=True)
+                for f in Path(imagej_dir_path).glob("*"):
+                    if f.is_file():
+                        shutil.copy2(f, ij_dest / f.name)
+
+            real_stats = run_comparison(str(real_output), do_plot=True)
+
+        self.step_progress.emit(100)
+
+        # Generate combined report
+        report_path = self._generate_full_report(
+            analysis_dir, all_gt_results, real_stats,
+            real_output_dir=real_output if real_input else None
+        )
+
+        self.test_complete.emit({
+            'type': 'full_validation',
+            'gt_results': all_gt_results,
+            'real_stats': real_stats,
+            'report_path': str(report_path) if report_path else None,
+            'analysis_dir': str(analysis_dir),
+        })
+
+    def _plot_ground_truth_summary(self, all_results, output_dir):
+        """Generate ground truth comparison summary figures."""
+        try:
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+
+            flika_results = [r for r in all_results if r.get('label') == 'FLIKA']
+            if not flika_results:
+                return
+
+            # Group by algorithm
+            algo_f1 = {}
+            for r in flika_results:
+                algo = r.get('algorithm', 'unknown')
+                algo_f1.setdefault(algo, []).append(r['f1'])
+
+            # Figure 1: F1 by algorithm (box plot)
+            fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+            fig.suptitle('Ground Truth Validation Summary', fontsize=14, fontweight='bold')
+
+            ax = axes[0, 0]
+            algo_names_sorted = sorted(algo_f1.keys(), key=lambda k: np.mean(algo_f1[k]), reverse=True)
+            data = [algo_f1[a] for a in algo_names_sorted]
+            bp = ax.boxplot(data, labels=algo_names_sorted, vert=True, patch_artist=True)
+            for patch in bp['boxes']:
+                patch.set_facecolor('#4CAF50')
+                patch.set_alpha(0.7)
+            ax.set_ylabel('F1 Score')
+            ax.set_title('F1 Score by Algorithm')
+            ax.set_xticklabels(algo_names_sorted, rotation=45, ha='right', fontsize=8)
+            ax.axhline(y=0.95, color='orange', linestyle='--', alpha=0.5, label='0.95')
+            ax.axhline(y=0.99, color='green', linestyle='--', alpha=0.5, label='0.99')
+            ax.legend(fontsize=8)
+
+            # Figure 2: F1 by dataset
+            ax = axes[0, 1]
+            ds_f1 = {}
+            for r in flika_results:
+                ds = r.get('dataset', 'unknown')
+                ds_f1.setdefault(ds, []).append(r['f1'])
+            ds_sorted = sorted(ds_f1.keys())
+            data = [ds_f1[d] for d in ds_sorted]
+            bp = ax.boxplot(data, labels=ds_sorted, vert=True, patch_artist=True)
+            for patch in bp['boxes']:
+                patch.set_facecolor('#2196F3')
+                patch.set_alpha(0.7)
+            ax.set_ylabel('F1 Score')
+            ax.set_title('F1 Score by Dataset')
+            ax.set_xticklabels(ds_sorted, rotation=45, ha='right', fontsize=8)
+
+            # Figure 3: RMSE distribution
+            ax = axes[1, 0]
+            rmse_vals = [r['rmse_nm'] for r in flika_results if not np.isnan(r.get('rmse_nm', float('nan')))]
+            if rmse_vals:
+                ax.hist(rmse_vals, bins=30, edgecolor='black', alpha=0.7, color='#FF9800')
+                ax.axvline(np.median(rmse_vals), color='red', linestyle='--',
+                           label=f'median={np.median(rmse_vals):.1f}nm')
+                ax.set_xlabel('RMSE (nm)')
+                ax.set_ylabel('Count')
+                ax.set_title('Position RMSE Distribution')
+                ax.legend()
+
+            # Figure 4: Precision vs Recall scatter
+            ax = axes[1, 1]
+            prec = [r['precision'] for r in flika_results]
+            rec = [r['recall'] for r in flika_results]
+            ax.scatter(rec, prec, s=15, alpha=0.5, c='#9C27B0')
+            ax.set_xlabel('Recall')
+            ax.set_ylabel('Precision')
+            ax.set_title('Precision vs Recall')
+            ax.set_xlim(0, 1.05)
+            ax.set_ylim(0, 1.05)
+            ax.plot([0, 1], [0, 1], 'k--', alpha=0.2)
+
+            plt.tight_layout()
+            fig_path = output_dir / "ground_truth_summary.png"
+            plt.savefig(str(fig_path), dpi=150, bbox_inches='tight')
+            plt.close()
+
+            # Heatmap: F1 by dataset x algorithm
+            fig, ax = plt.subplots(figsize=(14, 8))
+            datasets = sorted(set(r.get('dataset', '') for r in flika_results))
+            algorithms = sorted(set(r.get('algorithm', '') for r in flika_results))
+            f1_matrix = np.full((len(datasets), len(algorithms)), np.nan)
+            for r in flika_results:
+                di = datasets.index(r.get('dataset', ''))
+                ai = algorithms.index(r.get('algorithm', ''))
+                f1_matrix[di, ai] = r['f1']
+
+            im = ax.imshow(f1_matrix, cmap='RdYlGn', vmin=0.5, vmax=1.0, aspect='auto')
+            ax.set_xticks(range(len(algorithms)))
+            ax.set_xticklabels(algorithms, rotation=45, ha='right', fontsize=8)
+            ax.set_yticks(range(len(datasets)))
+            ax.set_yticklabels(datasets, fontsize=9)
+            ax.set_title('F1 Score Heatmap: Dataset x Algorithm')
+            plt.colorbar(im, ax=ax, label='F1 Score')
+            # Add text annotations
+            for i in range(len(datasets)):
+                for j in range(len(algorithms)):
+                    val = f1_matrix[i, j]
+                    if not np.isnan(val):
+                        color = 'white' if val < 0.7 else 'black'
+                        ax.text(j, i, f'{val:.2f}', ha='center', va='center',
+                                fontsize=7, color=color)
+            plt.tight_layout()
+            fig_path = output_dir / "ground_truth_heatmap.png"
+            plt.savefig(str(fig_path), dpi=150, bbox_inches='tight')
+            plt.close()
+
+        except Exception as e:
+            self.progress_update.emit(f"Warning: Could not generate plots: {e}")
+
+    def _generate_html_report(self, output_dir, results_data, report_type):
+        """Generate an HTML report for comparison or ground truth results."""
+        output_dir = Path(output_dir)
+        report_path = output_dir / f"validation_report_{report_type}.html"
+
+        try:
+            html = ['<!DOCTYPE html><html><head>',
+                    '<meta charset="utf-8">',
+                    f'<title>FLIKA ThunderSTORM Validation Report - {report_type.title()}</title>',
+                    '<style>',
+                    'body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }',
+                    '.container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }',
+                    'h1 { color: #2c5aa0; }',
+                    'h2 { color: #444; border-bottom: 2px solid #2c5aa0; padding-bottom: 5px; }',
+                    'table { border-collapse: collapse; width: 100%; margin: 15px 0; }',
+                    'th, td { padding: 8px 12px; text-align: left; border: 1px solid #ddd; }',
+                    'th { background: #2c5aa0; color: white; }',
+                    'tr:nth-child(even) { background: #f9f9f9; }',
+                    '.good { color: #2ecc71; font-weight: bold; }',
+                    '.warn { color: #f39c12; font-weight: bold; }',
+                    '.bad { color: #e74c3c; font-weight: bold; }',
+                    '.summary-box { background: #e8f4fd; padding: 15px; border-radius: 5px; margin: 15px 0; }',
+                    'img { max-width: 100%; height: auto; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; }',
+                    '.timestamp { color: #888; font-size: 0.9em; }',
+                    '</style></head><body><div class="container">']
+
+            html.append(f'<h1>FLIKA ThunderSTORM Validation Report</h1>')
+            html.append(f'<p class="timestamp">Generated: {time.strftime("%Y-%m-%d %H:%M:%S")}</p>')
+
+            if report_type == 'comparison' and isinstance(results_data, dict):
+                # Comparison report
+                f1_scores = [s['f1'] for s in results_data.values()]
+                pos_errors = [s.get('position_error_median_nm', float('nan'))
+                              for s in results_data.values() if s.get('n_matched', 0) > 0]
+
+                html.append('<div class="summary-box">')
+                html.append(f'<h2>Summary</h2>')
+                html.append(f'<p><strong>Tests run:</strong> {len(results_data)}</p>')
+                if f1_scores:
+                    html.append(f'<p><strong>Mean F1:</strong> {np.mean(f1_scores):.3f} (min: {np.min(f1_scores):.3f}, max: {np.max(f1_scores):.3f})</p>')
+                if pos_errors:
+                    html.append(f'<p><strong>Mean position error:</strong> {np.nanmean(pos_errors):.1f} nm</p>')
+                html.append('</div>')
+
+                html.append('<h2>Per-Configuration Results</h2>')
+                html.append('<table><tr><th>Test</th><th>ImageJ</th><th>FLIKA</th><th>Matched</th><th>F1</th><th>Pos Error (nm)</th><th>Intensity Ratio</th></tr>')
+                for name, stats in results_data.items():
+                    f1 = stats['f1']
+                    f1_class = 'good' if f1 >= 0.99 else 'warn' if f1 >= 0.95 else 'bad'
+                    pos_err = f"{stats.get('position_error_median_nm', 0):.1f}" if stats.get('n_matched', 0) > 0 else 'N/A'
+                    int_rat = f"{stats.get('intensity_ratio_mean', 0):.3f}" if 'intensity_ratio_mean' in stats else 'N/A'
+                    html.append(f'<tr><td>{name}</td><td>{stats["n_ref"]}</td><td>{stats["n_test"]}</td>'
+                                f'<td>{stats["n_matched"]}</td><td class="{f1_class}">{f1:.3f}</td>'
+                                f'<td>{pos_err}</td><td>{int_rat}</td></tr>')
+                html.append('</table>')
+
+                # Embed figures
+                for fig_name in ['summary_chart.png', 'speed_comparison.png']:
+                    fig_path = output_dir / fig_name
+                    if not fig_path.exists():
+                        # Check in comparison_results subdir
+                        fig_path = output_dir / "comparison_results" / fig_name
+                    if fig_path.exists():
+                        import base64
+                        with open(fig_path, 'rb') as f:
+                            img_data = base64.b64encode(f.read()).decode('utf-8')
+                        html.append(f'<h2>{fig_name.replace("_", " ").replace(".png", "").title()}</h2>')
+                        html.append(f'<img src="data:image/png;base64,{img_data}" />')
+
+            elif report_type == 'ground_truth' and isinstance(results_data, list):
+                # Ground truth report
+                flika_results = [r for r in results_data if r.get('label') == 'FLIKA']
+                f1_scores = [r['f1'] for r in flika_results]
+                rmse_vals = [r['rmse_nm'] for r in flika_results if not np.isnan(r.get('rmse_nm', float('nan')))]
+
+                html.append('<div class="summary-box">')
+                html.append(f'<h2>Summary</h2>')
+                html.append(f'<p><strong>Total tests (FLIKA):</strong> {len(flika_results)}</p>')
+                if f1_scores:
+                    within_001 = sum(1 for f in f1_scores if f >= 0.99)
+                    within_005 = sum(1 for f in f1_scores if f >= 0.95)
+                    html.append(f'<p><strong>Mean F1:</strong> {np.mean(f1_scores):.3f}</p>')
+                    html.append(f'<p><strong>Within 0.01 of perfect (F1 >= 0.99):</strong> {within_001}/{len(f1_scores)} ({100*within_001/len(f1_scores):.1f}%)</p>')
+                    html.append(f'<p><strong>Within 0.05 of perfect (F1 >= 0.95):</strong> {within_005}/{len(f1_scores)} ({100*within_005/len(f1_scores):.1f}%)</p>')
+                if rmse_vals:
+                    html.append(f'<p><strong>Median RMSE:</strong> {np.median(rmse_vals):.1f} nm</p>')
+                html.append('</div>')
+
+                html.append('<h2>Per-Test Results</h2>')
+                html.append('<table><tr><th>Dataset</th><th>Algorithm</th><th>Method</th><th>F1</th><th>Precision</th><th>Recall</th><th>RMSE (nm)</th><th>Detected</th><th>Ground Truth</th></tr>')
+                for r in results_data:
+                    f1 = r['f1']
+                    f1_class = 'good' if f1 >= 0.95 else 'warn' if f1 >= 0.8 else 'bad'
+                    html.append(f'<tr><td>{r.get("dataset", "")}</td><td>{r.get("algorithm", "")}</td>'
+                                f'<td>{r.get("label", "")}</td><td class="{f1_class}">{f1:.3f}</td>'
+                                f'<td>{r["precision"]:.3f}</td><td>{r["recall"]:.3f}</td>'
+                                f'<td>{r["rmse_nm"]:.1f}</td>'
+                                f'<td>{r["n_detected"]}</td><td>{r["n_ground_truth"]}</td></tr>')
+                html.append('</table>')
+
+                # Embed figures
+                for fig_name in ['ground_truth_summary.png', 'ground_truth_heatmap.png']:
+                    fig_path = output_dir / fig_name
+                    if fig_path.exists():
+                        import base64
+                        with open(fig_path, 'rb') as f:
+                            img_data = base64.b64encode(f.read()).decode('utf-8')
+                        html.append(f'<h2>{fig_name.replace("_", " ").replace(".png", "").title()}</h2>')
+                        html.append(f'<img src="data:image/png;base64,{img_data}" />')
+
+            html.append('</div></body></html>')
+
+            with open(str(report_path), 'w') as f:
+                f.write('\n'.join(html))
+            return report_path
+
+        except Exception as e:
+            self.progress_update.emit(f"Warning: Could not generate HTML report: {e}")
+            return None
+
+    def _generate_full_report(self, analysis_dir, gt_results, real_stats, real_output_dir=None):
+        """Generate a combined HTML report covering both synthetic and real data."""
+        report_path = analysis_dir / "full_validation_report.html"
+        try:
+            html = ['<!DOCTYPE html><html><head>',
+                    '<meta charset="utf-8">',
+                    '<title>FLIKA ThunderSTORM Full Validation Report</title>',
+                    '<style>',
+                    'body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }',
+                    '.container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }',
+                    'h1 { color: #2c5aa0; }',
+                    'h2 { color: #444; border-bottom: 2px solid #2c5aa0; padding-bottom: 5px; }',
+                    'h3 { color: #666; }',
+                    'table { border-collapse: collapse; width: 100%; margin: 15px 0; }',
+                    'th, td { padding: 8px 12px; text-align: left; border: 1px solid #ddd; }',
+                    'th { background: #2c5aa0; color: white; }',
+                    'tr:nth-child(even) { background: #f9f9f9; }',
+                    '.good { color: #2ecc71; font-weight: bold; }',
+                    '.warn { color: #f39c12; font-weight: bold; }',
+                    '.bad { color: #e74c3c; font-weight: bold; }',
+                    '.summary-box { background: #e8f4fd; padding: 15px; border-radius: 5px; margin: 15px 0; }',
+                    'img { max-width: 100%; height: auto; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; }',
+                    '.timestamp { color: #888; font-size: 0.9em; }',
+                    '</style></head><body><div class="container">']
+
+            html.append('<h1>FLIKA ThunderSTORM Full Validation Report</h1>')
+            html.append(f'<p class="timestamp">Generated: {time.strftime("%Y-%m-%d %H:%M:%S")}</p>')
+
+            # Real data section
+            if real_stats:
+                html.append('<h2>Real Data Comparison (FLIKA vs ImageJ)</h2>')
+                f1_scores = [s['f1'] for s in real_stats.values()]
+                html.append('<div class="summary-box">')
+                html.append(f'<p><strong>Mean F1:</strong> {np.mean(f1_scores):.3f}</p>')
+                html.append(f'<p><strong>Tests:</strong> {len(real_stats)}</p>')
+                html.append('</div>')
+
+                html.append('<table><tr><th>Config</th><th>F1</th><th>Pos Error (nm)</th><th>ImageJ</th><th>FLIKA</th></tr>')
+                for name, stats in real_stats.items():
+                    f1 = stats['f1']
+                    f1_class = 'good' if f1 >= 0.99 else 'warn' if f1 >= 0.95 else 'bad'
+                    pos_err = f"{stats.get('position_error_median_nm', 0):.1f}" if stats.get('n_matched', 0) > 0 else 'N/A'
+                    html.append(f'<tr><td>{name}</td><td class="{f1_class}">{f1:.3f}</td><td>{pos_err}</td>'
+                                f'<td>{stats["n_ref"]}</td><td>{stats["n_test"]}</td></tr>')
+                html.append('</table>')
+
+                # Embed real data figures
+                if real_output_dir:
+                    for fig_name in ['summary_chart.png', 'speed_comparison.png']:
+                        for subdir in ['comparison_results', '']:
+                            fig_path = Path(real_output_dir) / subdir / fig_name if subdir else Path(real_output_dir) / fig_name
+                            if fig_path.exists():
+                                import base64
+                                with open(fig_path, 'rb') as f:
+                                    img_data = base64.b64encode(f.read()).decode('utf-8')
+                                html.append(f'<img src="data:image/png;base64,{img_data}" />')
+                                break
+
+            # Ground truth section
+            if gt_results:
+                flika_gt = [r for r in gt_results if r.get('label') == 'FLIKA']
+                html.append('<h2>Synthetic Data - Ground Truth Comparison</h2>')
+                f1_scores = [r['f1'] for r in flika_gt]
+                if f1_scores:
+                    html.append('<div class="summary-box">')
+                    html.append(f'<p><strong>Tests:</strong> {len(flika_gt)}</p>')
+                    html.append(f'<p><strong>Mean F1:</strong> {np.mean(f1_scores):.3f}</p>')
+                    within_001 = sum(1 for f in f1_scores if f >= 0.99)
+                    within_005 = sum(1 for f in f1_scores if f >= 0.95)
+                    html.append(f'<p><strong>F1 >= 0.99:</strong> {within_001}/{len(f1_scores)}</p>')
+                    html.append(f'<p><strong>F1 >= 0.95:</strong> {within_005}/{len(f1_scores)}</p>')
+                    html.append('</div>')
+
+                # Embed ground truth figures
+                for fig_name in ['ground_truth_summary.png', 'ground_truth_heatmap.png']:
+                    fig_path = analysis_dir / fig_name
+                    if fig_path.exists():
+                        import base64
+                        with open(fig_path, 'rb') as f:
+                            img_data = base64.b64encode(f.read()).decode('utf-8')
+                        html.append(f'<img src="data:image/png;base64,{img_data}" />')
+
+            html.append('</div></body></html>')
+            with open(str(report_path), 'w') as f:
+                f.write('\n'.join(html))
+            return report_path
+        except Exception as e:
+            self.progress_update.emit(f"Warning: Could not generate report: {e}")
+            return None
+
+
 # ==================== U-TRACK WITH MIXED MOTION MODELS INTEGRATION ====================
 
 @dataclass
@@ -3834,6 +4643,9 @@ class SPTAnalysisParameters:
         self.ts_multi_emitter_fixed_intensity = False      # constrain intensity range
         self.ts_multi_emitter_intensity_min = 500          # min photons (if fixed)
         self.ts_multi_emitter_intensity_max = 2500         # max photons (if fixed)
+        self.ts_mfa_fitting_method = 'wlsq'               # MFA fitting: 'wlsq' or 'mle'
+        self.ts_mfa_model_selection_iterations = 50        # iterations during model comparison
+        self.ts_mfa_enable_final_refit = True              # refit winning model with unlimited iterations
         # ThunderSTORM camera parameters
         self.ts_photons_per_adu = 3.6
         self.ts_baseline = 100.0
@@ -5355,7 +6167,7 @@ class SPTBatchAnalysis(QWidget):
         self.create_autocorrelation_tab()
         self.create_progress_tab()
         self.create_export_control_tab()
-        self.create_thunderstorm_tab()  # NEW: ThunderSTORM macro generation
+        self.create_thunderstorm_tab()  # ThunderSTORM macro generation
 
         # Add this connection to update availability when tab is selected
         self.tab_widget.currentChanged.connect(self.on_tab_changed)
@@ -5821,6 +6633,46 @@ Parameters:
             self.parameters.ts_multi_emitter_enabled and self.parameters.ts_multi_emitter_fixed_intensity)
         ts_mfa_layout.addRow("Intensity Max:", self.ts_mfa_intensity_max_spin)
 
+        # MFA fitting method
+        self.ts_mfa_fitting_method_combo = QComboBox()
+        self.ts_mfa_fitting_method_combo.addItems(['Weighted least squares', 'Maximum likelihood'])
+        mfa_method_display = {
+            'wlsq': 'Weighted least squares',
+            'mle': 'Maximum likelihood',
+        }
+        self.ts_mfa_fitting_method_combo.setCurrentText(
+            mfa_method_display.get(self.parameters.ts_mfa_fitting_method, 'Weighted least squares'))
+        self.ts_mfa_fitting_method_combo.setToolTip(
+            "Fitting method used during multi-emitter model selection.\n"
+            "WLSQ: Matches ImageJ ThunderSTORM (recommended).\n"
+            "MLE: Higher statistical power but may over-split."
+        )
+        self.ts_mfa_fitting_method_combo.setEnabled(self.parameters.ts_multi_emitter_enabled)
+        ts_mfa_layout.addRow("MFA Fitting Method:", self.ts_mfa_fitting_method_combo)
+
+        # Model selection iterations
+        self.ts_mfa_iterations_spin = QSpinBox()
+        self.ts_mfa_iterations_spin.setRange(10, 1000)
+        self.ts_mfa_iterations_spin.setValue(self.parameters.ts_mfa_model_selection_iterations)
+        self.ts_mfa_iterations_spin.setToolTip(
+            "Maximum optimizer iterations during model comparison.\n"
+            "ImageJ default: 50. Lower values are faster but may\n"
+            "give less accurate model selection."
+        )
+        self.ts_mfa_iterations_spin.setEnabled(self.parameters.ts_multi_emitter_enabled)
+        ts_mfa_layout.addRow("Model Selection Iterations:", self.ts_mfa_iterations_spin)
+
+        # Final refit toggle
+        self.ts_mfa_final_refit_checkbox = QCheckBox("Final refit (unlimited iterations)")
+        self.ts_mfa_final_refit_checkbox.setChecked(self.parameters.ts_mfa_enable_final_refit)
+        self.ts_mfa_final_refit_checkbox.setToolTip(
+            "After model selection, refit the winning model with\n"
+            "unlimited iterations for maximum accuracy.\n"
+            "Matches ImageJ ThunderSTORM behavior."
+        )
+        self.ts_mfa_final_refit_checkbox.setEnabled(self.parameters.ts_multi_emitter_enabled)
+        ts_mfa_layout.addRow(self.ts_mfa_final_refit_checkbox)
+
         ts_scroll_layout.addWidget(ts_mfa_group)
 
         # ---- Camera Parameters group ----
@@ -5995,6 +6847,9 @@ Parameters:
         self.ts_multi_emitter_pvalue_combo.setEnabled(checked)
         self.ts_mfa_keep_intensity_checkbox.setEnabled(checked)
         self.ts_mfa_fixed_intensity_checkbox.setEnabled(checked)
+        self.ts_mfa_fitting_method_combo.setEnabled(checked)
+        self.ts_mfa_iterations_spin.setEnabled(checked)
+        self.ts_mfa_final_refit_checkbox.setEnabled(checked)
         fixed = checked and self.ts_mfa_fixed_intensity_checkbox.isChecked()
         self.ts_mfa_intensity_min_spin.setEnabled(fixed)
         self.ts_mfa_intensity_max_spin.setEnabled(fixed)
@@ -6237,6 +7092,10 @@ Parameters:
                 'ts_multi_emitter_fixed_intensity': self.ts_mfa_fixed_intensity_checkbox.isChecked(),
                 'ts_multi_emitter_intensity_min': self.ts_mfa_intensity_min_spin.value(),
                 'ts_multi_emitter_intensity_max': self.ts_mfa_intensity_max_spin.value(),
+                # MFA advanced options
+                'ts_mfa_fitting_method': 'mle' if 'likelihood' in self.ts_mfa_fitting_method_combo.currentText().lower() else 'wlsq',
+                'ts_mfa_model_selection_iterations': self.ts_mfa_iterations_spin.value(),
+                'ts_mfa_enable_final_refit': self.ts_mfa_final_refit_checkbox.isChecked(),
             })
 
         # Start detection worker with detection method
@@ -6467,25 +7326,11 @@ Parameters:
     def _run_thunderstorm_detection_for_file(self, images, detection_file, file_path):
         """Run ThunderSTORM detection for a single file during main analysis pipeline"""
         try:
-            gui_params = {
-                'ts_filter_type': self.parameters.ts_filter_type,
-                'ts_filter_scale': self.parameters.ts_filter_scale,
-                'ts_detector_type': self.parameters.ts_detector_type,
-                'ts_detector_threshold': self.parameters.ts_detector_threshold,
-                'ts_fitter_type': self.parameters.ts_fitter_type,
-                'ts_fit_radius': self.parameters.ts_fit_radius,
-                'pixel_size': self.parameters.pixel_size,
-                'ts_initial_sigma': self.parameters.ts_initial_sigma,
-                'ts_photons_per_adu': self.parameters.ts_photons_per_adu,
-                'ts_baseline': self.parameters.ts_baseline,
-                'ts_is_em_gain': self.parameters.ts_is_em_gain,
-                'ts_em_gain': self.parameters.ts_em_gain,
-                'ts_quantum_efficiency': self.parameters.ts_quantum_efficiency,
-                'ts_use_watershed': self.parameters.ts_use_watershed,
-                'ts_multi_emitter_enabled': self.parameters.ts_multi_emitter_enabled,
-                'ts_multi_emitter_max': self.parameters.ts_multi_emitter_max,
-                'ts_multi_emitter_pvalue': self.parameters.ts_multi_emitter_pvalue,
-            }
+            # Build gui_params from all ts_* attributes on self.parameters
+            gui_params = {'pixel_size': self.parameters.pixel_size}
+            for attr in dir(self.parameters):
+                if attr.startswith('ts_'):
+                    gui_params[attr] = getattr(self.parameters, attr)
 
             detector = ThunderSTORMDetector.create_from_gui_parameters(gui_params)
             localizations = detector.detect_and_fit(images, show_progress=False)
@@ -8744,6 +9589,11 @@ directional persistence is important for understanding underlying mechanisms.
             self.parameters.ts_multi_emitter_fixed_intensity = self.ts_mfa_fixed_intensity_checkbox.isChecked()
             self.parameters.ts_multi_emitter_intensity_min = self.ts_mfa_intensity_min_spin.value()
             self.parameters.ts_multi_emitter_intensity_max = self.ts_mfa_intensity_max_spin.value()
+            # MFA advanced options
+            mfa_method_text = self.ts_mfa_fitting_method_combo.currentText()
+            self.parameters.ts_mfa_fitting_method = 'mle' if 'likelihood' in mfa_method_text.lower() else 'wlsq'
+            self.parameters.ts_mfa_model_selection_iterations = self.ts_mfa_iterations_spin.value()
+            self.parameters.ts_mfa_enable_final_refit = self.ts_mfa_final_refit_checkbox.isChecked()
 
         # ThunderSTORM camera parameters
         if hasattr(self, 'ts_photons_per_adu_spin'):
@@ -11651,8 +12501,1251 @@ directional persistence is important for understanding underlying mechanisms.
             print(f"Error closing file logger: {e}")
         super().close()
 
+# ==============================================================================
+# THUNDERSTORM VALIDATION GUI - Standalone window for validation & comparison
+# ==============================================================================
+
+class ThunderSTORMValidation(QWidget):
+    """Standalone GUI for ThunderSTORM validation, comparison testing, and ground truth analysis.
+
+    Provides separate tabs for:
+    1. Simulation - Generate synthetic SMLM datasets with known ground truth
+    2. ImageJ Macros - Generate macros for running ImageJ ThunderSTORM on test data
+    3. Real Data Comparison - Compare FLIKA vs ImageJ ThunderSTORM on real data
+    4. Ground Truth Testing - Compare FLIKA detections against synthetic ground truth
+    5. Full Validation - One-click comprehensive validation suite
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.validation_worker = None
+        self._last_output_dir = None
+        self._last_report_path = None
+        self._last_figures_dir = None
+        self._last_results = None
+        self._plugin_dir = str(Path(__file__).parent)
+        self._setup_paths()
+        self._setup_ui()
+
+    def _setup_paths(self):
+        """Ensure test module paths are importable."""
+        for subdir in ['tests/comparison', 'tests/synthetic']:
+            p = os.path.join(self._plugin_dir, subdir)
+            if p not in sys.path:
+                sys.path.insert(0, p)
+        if self._plugin_dir not in sys.path:
+            sys.path.insert(0, self._plugin_dir)
+
+    def _setup_ui(self):
+        self.setWindowTitle("ThunderSTORM Validation & Comparison Testing")
+        self.setMinimumSize(1000, 750)
+
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+
+        self.tab_widget = QTabWidget()
+        layout.addWidget(self.tab_widget)
+
+        self._create_simulation_tab()
+        self._create_imagej_macros_tab()
+        self._create_real_comparison_tab()
+        self._create_ground_truth_tab()
+        self._create_full_validation_tab()
+
+        # Shared progress and log area at the bottom
+        bottom = QWidget()
+        bottom_layout = QVBoxLayout(bottom)
+        bottom_layout.setContentsMargins(5, 0, 5, 5)
+
+        # Progress
+        prog_layout = QHBoxLayout()
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        prog_layout.addWidget(self.progress_bar)
+        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.setEnabled(False)
+        self.cancel_btn.setFixedWidth(80)
+        self.cancel_btn.clicked.connect(self._cancel)
+        prog_layout.addWidget(self.cancel_btn)
+        bottom_layout.addLayout(prog_layout)
+
+        self.status_label = QLabel("Ready")
+        self.status_label.setStyleSheet("color: #666; padding: 2px;")
+        self.status_label.setWordWrap(True)
+        bottom_layout.addWidget(self.status_label)
+
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setMaximumHeight(180)
+        self.log_text.setPlaceholderText("Output log...")
+        bottom_layout.addWidget(self.log_text)
+
+        # Result buttons
+        result_layout = QHBoxLayout()
+        self.view_report_btn = QPushButton("View Report")
+        self.view_report_btn.setEnabled(False)
+        self.view_report_btn.clicked.connect(self._view_report)
+        result_layout.addWidget(self.view_report_btn)
+
+        self.open_output_btn = QPushButton("Open Output Directory")
+        self.open_output_btn.setEnabled(False)
+        self.open_output_btn.clicked.connect(self._open_output_dir)
+        result_layout.addWidget(self.open_output_btn)
+
+        self.view_figures_btn = QPushButton("View Figures")
+        self.view_figures_btn.setEnabled(False)
+        self.view_figures_btn.clicked.connect(self._view_figures)
+        result_layout.addWidget(self.view_figures_btn)
+        bottom_layout.addLayout(result_layout)
+
+        layout.addWidget(bottom)
+
+    # ========================================================================
+    # TAB 1: Simulation - Generate synthetic SMLM data
+    # ========================================================================
+
+    def _create_scrollable_tab(self, tab_name):
+        """Create a tab with a scrollable content area. Returns (content_layout, tab_widget)."""
+        tab = QWidget()
+        tab_layout = QVBoxLayout(tab)
+        tab_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+        scroll_widget = QWidget()
+        content_layout = QVBoxLayout(scroll_widget)
+        content_layout.setContentsMargins(10, 10, 10, 10)
+        content_layout.setSpacing(12)
+
+        scroll.setWidget(scroll_widget)
+        tab_layout.addWidget(scroll)
+
+        self.tab_widget.addTab(tab, tab_name)
+        return content_layout
+
+    def _create_simulation_tab(self):
+        layout = self._create_scrollable_tab("Simulation")
+
+        # Instructions
+        info = QLabel(
+            "<b>Generate Synthetic SMLM Data</b><br><br>"
+            "This tab creates simulated single-molecule localization microscopy (SMLM) image stacks "
+            "with known ground truth molecule positions. The synthetic data uses realistic imaging "
+            "models including:<br>"
+            "<ul>"
+            "<li><b>Integrated Gaussian PSF</b> with erf-based pixel integration (matching ThunderSTORM)</li>"
+            "<li><b>Realistic camera models</b>: EMCCD (with EM gain) and sCMOS</li>"
+            "<li><b>Poisson shot noise</b>, readout noise, and background fluorescence</li>"
+            "<li><b>Stochastic blinking</b>: on/off/bleaching dynamics per molecule</li>"
+            "</ul>"
+            "<b>Available datasets</b> vary in molecule density (sparse/medium/dense), "
+            "signal-to-noise ratio (low/high SNR), pixel size (60x/100x/150x objectives), "
+            "and camera type (EMCCD/sCMOS).<br><br>"
+            "<b>Output:</b> For each dataset, a TIFF image stack, a ground truth CSV "
+            "(frame, x_nm, y_nm, intensity, molecule_id), and metadata JSON are saved.<br><br>"
+            "<i>After generating data, proceed to the 'ImageJ Macros' tab to create macros for "
+            "ImageJ comparison, or to 'Ground Truth' tab to run FLIKA and compare against ground truth.</i>"
+        )
+        info.setWordWrap(True)
+        info.setTextFormat(Qt.RichText)
+        layout.addWidget(info)
+
+        # Settings
+        settings = QGroupBox("Settings")
+        settings_layout = QGridLayout(settings)
+
+        settings_layout.addWidget(QLabel("Output Directory:"), 0, 0)
+        self.sim_output_label = QLabel(str(Path(self._plugin_dir) / "test_data" / "synthetic"))
+        self.sim_output_label.setFrameStyle(QFrame.Panel | QFrame.Sunken)
+        settings_layout.addWidget(self.sim_output_label, 0, 1)
+        btn = QPushButton("Browse...")
+        btn.clicked.connect(lambda: self._browse_dir(self.sim_output_label, "Select Synthetic Data Output Directory"))
+        settings_layout.addWidget(btn, 0, 2)
+
+        settings_layout.addWidget(QLabel("Random Seed:"), 1, 0)
+        self.sim_seed_spin = QSpinBox()
+        self.sim_seed_spin.setRange(0, 999999)
+        self.sim_seed_spin.setValue(42)
+        settings_layout.addWidget(self.sim_seed_spin, 1, 1)
+
+        layout.addWidget(settings)
+
+        # Dataset selection
+        ds_group = QGroupBox("Select Datasets to Generate")
+        ds_layout = QVBoxLayout(ds_group)
+        self.sim_dataset_list = QListWidget()
+        self.sim_dataset_list.setSelectionMode(QListWidget.MultiSelection)
+        self._populate_dataset_list(self.sim_dataset_list)
+        ds_layout.addWidget(self.sim_dataset_list)
+
+        sel_layout = QHBoxLayout()
+        btn_all = QPushButton("Select All")
+        btn_all.clicked.connect(lambda: self._select_all(self.sim_dataset_list))
+        sel_layout.addWidget(btn_all)
+        btn_none = QPushButton("Select None")
+        btn_none.clicked.connect(lambda: self._select_none(self.sim_dataset_list))
+        sel_layout.addWidget(btn_none)
+        sel_layout.addStretch()
+        ds_layout.addLayout(sel_layout)
+        layout.addWidget(ds_group)
+
+        # ---- Custom dataset ----
+        custom_group = QGroupBox("Custom Dataset (Optional)")
+        custom_group.setCheckable(True)
+        custom_group.setChecked(False)
+        custom_layout = QGridLayout(custom_group)
+
+        custom_layout.addWidget(QLabel(
+            "<i>Define a custom synthetic dataset with your own imaging parameters. "
+            "When enabled, this will be generated alongside any selected presets above.</i>"
+        ), 0, 0, 1, 6)
+
+        row = 1
+        custom_layout.addWidget(QLabel("Dataset Name:"), row, 0)
+        self.sim_custom_name = QLineEdit("custom_dataset")
+        self.sim_custom_name.setPlaceholderText("e.g. my_custom_test")
+        custom_layout.addWidget(self.sim_custom_name, row, 1, 1, 2)
+
+        # -- Image parameters --
+        row = 2
+        custom_layout.addWidget(QLabel("<b>Image</b>"), row, 0)
+        custom_layout.addWidget(QLabel("Width (px):"), row, 1)
+        self.sim_custom_width = QSpinBox()
+        self.sim_custom_width.setRange(32, 2048)
+        self.sim_custom_width.setValue(128)
+        custom_layout.addWidget(self.sim_custom_width, row, 2)
+        custom_layout.addWidget(QLabel("Height (px):"), row, 3)
+        self.sim_custom_height = QSpinBox()
+        self.sim_custom_height.setRange(32, 2048)
+        self.sim_custom_height.setValue(128)
+        custom_layout.addWidget(self.sim_custom_height, row, 4)
+
+        row = 3
+        custom_layout.addWidget(QLabel("Frames:"), row, 1)
+        self.sim_custom_frames = QSpinBox()
+        self.sim_custom_frames.setRange(1, 100000)
+        self.sim_custom_frames.setValue(100)
+        custom_layout.addWidget(self.sim_custom_frames, row, 2)
+
+        # -- Molecule parameters --
+        row = 4
+        custom_layout.addWidget(QLabel("<b>Molecules</b>"), row, 0)
+        custom_layout.addWidget(QLabel("Total molecules:"), row, 1)
+        self.sim_custom_n_molecules = QSpinBox()
+        self.sim_custom_n_molecules.setRange(1, 1000000)
+        self.sim_custom_n_molecules.setValue(1000)
+        custom_layout.addWidget(self.sim_custom_n_molecules, row, 2)
+        custom_layout.addWidget(QLabel("Photons/molecule:"), row, 3)
+        self.sim_custom_photons = QSpinBox()
+        self.sim_custom_photons.setRange(10, 1000000)
+        self.sim_custom_photons.setValue(1500)
+        custom_layout.addWidget(self.sim_custom_photons, row, 4)
+
+        row = 5
+        custom_layout.addWidget(QLabel("Background (photons/px):"), row, 1)
+        self.sim_custom_background = QSpinBox()
+        self.sim_custom_background.setRange(0, 10000)
+        self.sim_custom_background.setValue(20)
+        custom_layout.addWidget(self.sim_custom_background, row, 2)
+
+        # -- Optics --
+        row = 6
+        custom_layout.addWidget(QLabel("<b>Optics</b>"), row, 0)
+        custom_layout.addWidget(QLabel("Preset:"), row, 1)
+        self.sim_custom_optics = QComboBox()
+        self.sim_custom_optics.addItem("Custom...", "custom")
+        self.sim_custom_optics.addItem("60x oil (NA 1.4) — 267 nm/px", "60x")
+        self.sim_custom_optics.addItem("100x oil (NA 1.49) — 160 nm/px", "100x")
+        self.sim_custom_optics.addItem("100x bin2 — 320 nm/px", "100x_bin2")
+        self.sim_custom_optics.addItem("150x TIRF (NA 1.49) — 107 nm/px", "150x")
+        self.sim_custom_optics.addItem("Match test data — 108 nm/px", "108nm")
+        self.sim_custom_optics.setCurrentIndex(5)  # default to 108nm
+        self.sim_custom_optics.currentIndexChanged.connect(self._on_optics_preset_changed)
+        custom_layout.addWidget(self.sim_custom_optics, row, 2, 1, 3)
+
+        row = 7
+        custom_layout.addWidget(QLabel("Pixel size (nm):"), row, 1)
+        self.sim_custom_pixel_size = QDoubleSpinBox()
+        self.sim_custom_pixel_size.setRange(1.0, 10000.0)
+        self.sim_custom_pixel_size.setDecimals(1)
+        self.sim_custom_pixel_size.setValue(108.0)
+        self.sim_custom_pixel_size.setEnabled(False)
+        custom_layout.addWidget(self.sim_custom_pixel_size, row, 2)
+        custom_layout.addWidget(QLabel("PSF sigma (nm):"), row, 3)
+        self.sim_custom_psf_sigma = QDoubleSpinBox()
+        self.sim_custom_psf_sigma.setRange(1.0, 10000.0)
+        self.sim_custom_psf_sigma.setDecimals(1)
+        self.sim_custom_psf_sigma.setValue(173.0)
+        self.sim_custom_psf_sigma.setEnabled(False)
+        custom_layout.addWidget(self.sim_custom_psf_sigma, row, 4)
+
+        # -- Camera --
+        row = 8
+        custom_layout.addWidget(QLabel("<b>Camera</b>"), row, 0)
+        custom_layout.addWidget(QLabel("Preset:"), row, 1)
+        self.sim_custom_camera = QComboBox()
+        self.sim_custom_camera.addItem("Custom...", "custom")
+        self.sim_custom_camera.addItem("EMCCD (Andor iXon)", "emccd")
+        self.sim_custom_camera.addItem("sCMOS (Hamamatsu Orca)", "scmos")
+        self.sim_custom_camera.addItem("Match test data", "match_test")
+        self.sim_custom_camera.setCurrentIndex(3)  # default to match_test
+        self.sim_custom_camera.currentIndexChanged.connect(self._on_camera_preset_changed)
+        custom_layout.addWidget(self.sim_custom_camera, row, 2, 1, 3)
+
+        row = 9
+        custom_layout.addWidget(QLabel("Baseline (ADU):"), row, 1)
+        self.sim_custom_baseline = QDoubleSpinBox()
+        self.sim_custom_baseline.setRange(0, 65535)
+        self.sim_custom_baseline.setValue(100)
+        self.sim_custom_baseline.setEnabled(False)
+        custom_layout.addWidget(self.sim_custom_baseline, row, 2)
+        custom_layout.addWidget(QLabel("Photons/ADU:"), row, 3)
+        self.sim_custom_photons_per_adu = QDoubleSpinBox()
+        self.sim_custom_photons_per_adu.setRange(0.01, 1000.0)
+        self.sim_custom_photons_per_adu.setDecimals(2)
+        self.sim_custom_photons_per_adu.setValue(3.6)
+        self.sim_custom_photons_per_adu.setEnabled(False)
+        custom_layout.addWidget(self.sim_custom_photons_per_adu, row, 4)
+
+        row = 10
+        custom_layout.addWidget(QLabel("Readout noise (e⁻):"), row, 1)
+        self.sim_custom_readout = QDoubleSpinBox()
+        self.sim_custom_readout.setRange(0, 1000)
+        self.sim_custom_readout.setDecimals(1)
+        self.sim_custom_readout.setValue(1.0)
+        self.sim_custom_readout.setEnabled(False)
+        custom_layout.addWidget(self.sim_custom_readout, row, 2)
+        custom_layout.addWidget(QLabel("EM gain:"), row, 3)
+        self.sim_custom_em_gain = QDoubleSpinBox()
+        self.sim_custom_em_gain.setRange(1, 10000)
+        self.sim_custom_em_gain.setValue(100)
+        self.sim_custom_em_gain.setEnabled(False)
+        custom_layout.addWidget(self.sim_custom_em_gain, row, 4)
+
+        row = 11
+        self.sim_custom_is_emccd = QCheckBox("EMCCD (apply EM gain)")
+        self.sim_custom_is_emccd.setChecked(True)
+        self.sim_custom_is_emccd.setEnabled(False)
+        custom_layout.addWidget(self.sim_custom_is_emccd, row, 1, 1, 2)
+        custom_layout.addWidget(QLabel("QE:"), row, 3)
+        self.sim_custom_qe = QDoubleSpinBox()
+        self.sim_custom_qe.setRange(0.01, 1.0)
+        self.sim_custom_qe.setDecimals(2)
+        self.sim_custom_qe.setValue(1.0)
+        self.sim_custom_qe.setSingleStep(0.05)
+        self.sim_custom_qe.setEnabled(False)
+        custom_layout.addWidget(self.sim_custom_qe, row, 4)
+
+        # -- Blinking dynamics --
+        row = 12
+        custom_layout.addWidget(QLabel("<b>Blinking</b>"), row, 0)
+        custom_layout.addWidget(QLabel("P(on):"), row, 1)
+        self.sim_custom_p_on = QDoubleSpinBox()
+        self.sim_custom_p_on.setRange(0.001, 1.0)
+        self.sim_custom_p_on.setDecimals(3)
+        self.sim_custom_p_on.setSingleStep(0.01)
+        self.sim_custom_p_on.setValue(0.05)
+        self.sim_custom_p_on.setToolTip("Probability of dark→on transition per frame")
+        custom_layout.addWidget(self.sim_custom_p_on, row, 2)
+        custom_layout.addWidget(QLabel("P(off):"), row, 3)
+        self.sim_custom_p_off = QDoubleSpinBox()
+        self.sim_custom_p_off.setRange(0.001, 1.0)
+        self.sim_custom_p_off.setDecimals(3)
+        self.sim_custom_p_off.setSingleStep(0.01)
+        self.sim_custom_p_off.setValue(0.4)
+        self.sim_custom_p_off.setToolTip("Probability of on→dark transition per frame")
+        custom_layout.addWidget(self.sim_custom_p_off, row, 4)
+
+        row = 13
+        custom_layout.addWidget(QLabel("P(bleach):"), row, 1)
+        self.sim_custom_p_bleach = QDoubleSpinBox()
+        self.sim_custom_p_bleach.setRange(0.0, 1.0)
+        self.sim_custom_p_bleach.setDecimals(4)
+        self.sim_custom_p_bleach.setSingleStep(0.001)
+        self.sim_custom_p_bleach.setValue(0.005)
+        self.sim_custom_p_bleach.setToolTip("Probability of permanent bleaching per frame (0 = no bleaching)")
+        custom_layout.addWidget(self.sim_custom_p_bleach, row, 2)
+
+        # Estimated density label
+        row = 14
+        self.sim_custom_density_label = QLabel("")
+        self.sim_custom_density_label.setStyleSheet("color: #555; font-style: italic;")
+        custom_layout.addWidget(self.sim_custom_density_label, row, 0, 1, 6)
+        self._update_custom_density_estimate()
+
+        # Open in FLIKA option
+        row = 15
+        self.sim_custom_open_flika = QCheckBox("Open generated data in a FLIKA window")
+        self.sim_custom_open_flika.setChecked(False)
+        self.sim_custom_open_flika.setToolTip(
+            "After generation, automatically open the synthetic image stack in a FLIKA viewer window"
+        )
+        custom_layout.addWidget(self.sim_custom_open_flika, row, 0, 1, 6)
+
+        # Connect signals for density estimate update
+        for spin in [self.sim_custom_n_molecules, self.sim_custom_frames,
+                     self.sim_custom_width, self.sim_custom_height]:
+            spin.valueChanged.connect(self._update_custom_density_estimate)
+        self.sim_custom_p_on.valueChanged.connect(self._update_custom_density_estimate)
+        self.sim_custom_p_off.valueChanged.connect(self._update_custom_density_estimate)
+
+        layout.addWidget(custom_group)
+        self.sim_custom_group = custom_group
+
+        # Run button
+        self.sim_run_btn = QPushButton("Generate Synthetic Datasets")
+        self.sim_run_btn.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold; padding: 10px; font-size: 11pt;")
+        self.sim_run_btn.setMinimumHeight(40)
+        self.sim_run_btn.clicked.connect(self._start_synth_generate)
+        layout.addWidget(self.sim_run_btn)
+
+        layout.addStretch()
+
+    # ========================================================================
+    # TAB 2: ImageJ Macros
+    # ========================================================================
+
+    def _create_imagej_macros_tab(self):
+        layout = self._create_scrollable_tab("ImageJ Macros")
+
+        info = QLabel(
+            "<b>Generate ImageJ ThunderSTORM Macros</b><br><br>"
+            "This tab generates ImageJ macro files (.ijm) that run ThunderSTORM analysis on your "
+            "data using the <b>original ImageJ ThunderSTORM plugin</b>. This allows direct "
+            "comparison between FLIKA's ThunderSTORM implementation and the reference ImageJ version.<br><br>"
+            "<b>How it works:</b><br>"
+            "<ol>"
+            "<li>Select your input TIFF file (real data or synthetic data from the Simulation tab)</li>"
+            "<li>Choose which algorithm configurations to test (13 available, covering different "
+            "filters, detectors, fitters, and parameter variations)</li>"
+            "<li>Click 'Generate Macros' to create the .ijm files</li>"
+            "<li>Open <b>Fiji/ImageJ</b> with the ThunderSTORM plugin installed</li>"
+            "<li>Run the generated <code>run_all_tests.ijm</code> macro (Plugins > Macros > Run...)</li>"
+            "<li>ImageJ will process each configuration and save CSV results</li>"
+            "</ol>"
+            "<b>Test configurations</b> cover:<br>"
+            "<ul>"
+            "<li><b>Filters:</b> Wavelet B-Spline (default & custom), Difference of Gaussians, Lowered Gaussian</li>"
+            "<li><b>Detectors:</b> Local maximum, Non-maximum suppression, Centroid of connected components</li>"
+            "<li><b>Fitters:</b> Integrated Gaussian (LSQ, WLSQ, MLE), Radial symmetry</li>"
+            "<li><b>Options:</b> Multi-emitter fitting, different thresholds, fit radii</li>"
+            "</ul>"
+            "<i>After running the ImageJ macro, use the 'Real Data Comparison' tab to compare "
+            "ImageJ results against FLIKA.</i>"
+        )
+        info.setWordWrap(True)
+        info.setTextFormat(Qt.RichText)
+        layout.addWidget(info)
+
+        settings = QGroupBox("Settings")
+        s_layout = QGridLayout(settings)
+
+        s_layout.addWidget(QLabel("Input TIFF:"), 0, 0)
+        default_tif = str(Path(self._plugin_dir) / "test_data" / "real" / "Endothelial_NonBapta_bin10_crop.tif")
+        self.macro_input_label = QLabel(default_tif if Path(default_tif).exists() else "No file selected")
+        self.macro_input_label.setFrameStyle(QFrame.Panel | QFrame.Sunken)
+        s_layout.addWidget(self.macro_input_label, 0, 1)
+        btn = QPushButton("Browse...")
+        btn.clicked.connect(lambda: self._browse_file(self.macro_input_label, "Select Input TIFF", "TIFF Files (*.tif *.tiff)"))
+        s_layout.addWidget(btn, 0, 2)
+
+        s_layout.addWidget(QLabel("Output Directory:"), 1, 0)
+        self.macro_output_label = QLabel(str(Path(self._plugin_dir) / "tests" / "comparison" / "results"))
+        self.macro_output_label.setFrameStyle(QFrame.Panel | QFrame.Sunken)
+        s_layout.addWidget(self.macro_output_label, 1, 1)
+        btn = QPushButton("Browse...")
+        btn.clicked.connect(lambda: self._browse_dir(self.macro_output_label, "Select Macro Output Directory"))
+        s_layout.addWidget(btn, 1, 2)
+
+        layout.addWidget(settings)
+
+        # Algorithm selection
+        algo_group = QGroupBox("Select Algorithm Configurations")
+        algo_layout = QVBoxLayout(algo_group)
+        self.macro_algo_list = QListWidget()
+        self.macro_algo_list.setSelectionMode(QListWidget.MultiSelection)
+        self._populate_algo_list(self.macro_algo_list)
+        algo_layout.addWidget(self.macro_algo_list)
+
+        sel_layout = QHBoxLayout()
+        btn_all = QPushButton("Select All")
+        btn_all.clicked.connect(lambda: self._select_all(self.macro_algo_list))
+        sel_layout.addWidget(btn_all)
+        btn_none = QPushButton("Select None")
+        btn_none.clicked.connect(lambda: self._select_none(self.macro_algo_list))
+        sel_layout.addWidget(btn_none)
+        sel_layout.addStretch()
+        algo_layout.addLayout(sel_layout)
+        layout.addWidget(algo_group)
+
+        # Synthetic data macros option
+        synth_group = QGroupBox("Synthetic Data Macros (Optional)")
+        synth_layout = QGridLayout(synth_group)
+
+        self.macro_also_synth = QCheckBox("Also generate macros for synthetic data")
+        self.macro_also_synth.setChecked(False)
+        self.macro_also_synth.toggled.connect(self._on_macro_synth_toggled)
+        synth_layout.addWidget(self.macro_also_synth, 0, 0, 1, 3)
+
+        synth_layout.addWidget(QLabel("Synthetic Data Dir:"), 1, 0)
+        self.macro_synth_dir_label = QLabel(str(Path(self._plugin_dir) / "test_data" / "synthetic"))
+        self.macro_synth_dir_label.setFrameStyle(QFrame.Panel | QFrame.Sunken)
+        self.macro_synth_dir_label.setEnabled(False)
+        synth_layout.addWidget(self.macro_synth_dir_label, 1, 1)
+        self.macro_synth_dir_btn = QPushButton("Browse...")
+        self.macro_synth_dir_btn.setEnabled(False)
+        self.macro_synth_dir_btn.clicked.connect(lambda: self._browse_dir(self.macro_synth_dir_label, "Select Synthetic Data Directory"))
+        synth_layout.addWidget(self.macro_synth_dir_btn, 1, 2)
+
+        synth_note = QLabel(
+            "<i>Points to the directory containing .tif and _ground_truth.csv files "
+            "generated in the Simulation tab. Macros will be generated for each synthetic "
+            "dataset found in this directory.</i>"
+        )
+        synth_note.setWordWrap(True)
+        synth_note.setTextFormat(Qt.RichText)
+        synth_note.setStyleSheet("color: #666; font-size: 9pt;")
+        synth_layout.addWidget(synth_note, 2, 0, 1, 3)
+
+        layout.addWidget(synth_group)
+
+        # Generate button
+        self.macro_generate_btn = QPushButton("Generate ImageJ Macros")
+        self.macro_generate_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 10px; font-size: 11pt;")
+        self.macro_generate_btn.setMinimumHeight(40)
+        self.macro_generate_btn.clicked.connect(self._generate_macros)
+        layout.addWidget(self.macro_generate_btn)
+
+        # Macro preview
+        preview_group = QGroupBox("Generated Macro Preview")
+        p_layout = QVBoxLayout(preview_group)
+        self.macro_preview = QTextEdit()
+        self.macro_preview.setReadOnly(True)
+        self.macro_preview.setMaximumHeight(200)
+        self.macro_preview.setPlaceholderText("Macro content will appear here after generation...")
+        p_layout.addWidget(self.macro_preview)
+        layout.addWidget(preview_group)
+
+        layout.addStretch()
+
+    def _on_macro_synth_toggled(self, checked):
+        """Enable/disable synthetic data directory controls."""
+        self.macro_synth_dir_label.setEnabled(checked)
+        self.macro_synth_dir_btn.setEnabled(checked)
+
+    # ========================================================================
+    # TAB 3: Real Data Comparison
+    # ========================================================================
+
+    def _create_real_comparison_tab(self):
+        layout = self._create_scrollable_tab("Real Data Comparison")
+
+        info = QLabel(
+            "<b>Compare FLIKA vs ImageJ ThunderSTORM on Real Data</b><br><br>"
+            "This tab runs FLIKA's ThunderSTORM implementation on real microscopy data and "
+            "compares the results against ImageJ ThunderSTORM output (if available).<br><br>"
+            "<b>What it does:</b><br>"
+            "<ol>"
+            "<li>Runs <b>all 13 algorithm configurations</b> through FLIKA's ThunderSTORM pipeline</li>"
+            "<li>If ImageJ results are provided, performs <b>per-localization matching</b> "
+            "(nearest-neighbour within the match radius)</li>"
+            "<li>Computes <b>F1 score, precision, recall</b> — treating ImageJ as reference</li>"
+            "<li>Measures <b>position error</b> (nm), intensity ratio, sigma error, uncertainty ratio</li>"
+            "<li>Generates <b>comparison plots</b> and an <b>HTML report</b></li>"
+            "</ol>"
+            "<b>To get ImageJ results:</b> Use the 'ImageJ Macros' tab first to generate and run "
+            "macros in Fiji, then point the 'ImageJ Results Dir' to the <code>imagej_results/</code> "
+            "folder.<br><br>"
+            "<b>Without ImageJ results:</b> FLIKA tests still run and save their output. "
+            "You can add ImageJ results later and re-run the comparison."
+        )
+        info.setWordWrap(True)
+        info.setTextFormat(Qt.RichText)
+        layout.addWidget(info)
+
+        settings = QGroupBox("Settings")
+        s_layout = QGridLayout(settings)
+
+        s_layout.addWidget(QLabel("Input TIFF:"), 0, 0)
+        default_tif = str(Path(self._plugin_dir) / "test_data" / "real" / "Endothelial_NonBapta_bin10_crop.tif")
+        self.real_input_label = QLabel(default_tif if Path(default_tif).exists() else "No file selected")
+        self.real_input_label.setFrameStyle(QFrame.Panel | QFrame.Sunken)
+        s_layout.addWidget(self.real_input_label, 0, 1)
+        btn = QPushButton("Browse...")
+        btn.clicked.connect(lambda: self._browse_file(self.real_input_label, "Select Input TIFF", "TIFF Files (*.tif *.tiff)"))
+        s_layout.addWidget(btn, 0, 2)
+
+        s_layout.addWidget(QLabel("ImageJ Results Dir:"), 1, 0)
+        default_ij = str(Path(self._plugin_dir) / "tests" / "comparison" / "results" / "imagej_results")
+        self.real_imagej_label = QLabel(default_ij if Path(default_ij).exists() else "Optional - select after running ImageJ macros")
+        self.real_imagej_label.setFrameStyle(QFrame.Panel | QFrame.Sunken)
+        s_layout.addWidget(self.real_imagej_label, 1, 1)
+        btn = QPushButton("Browse...")
+        btn.clicked.connect(lambda: self._browse_dir(self.real_imagej_label, "Select ImageJ Results Directory"))
+        s_layout.addWidget(btn, 1, 2)
+
+        s_layout.addWidget(QLabel("Output Directory:"), 2, 0)
+        self.real_output_label = QLabel(str(Path(self._plugin_dir) / "tests" / "comparison" / "results"))
+        self.real_output_label.setFrameStyle(QFrame.Panel | QFrame.Sunken)
+        s_layout.addWidget(self.real_output_label, 2, 1)
+        btn = QPushButton("Browse...")
+        btn.clicked.connect(lambda: self._browse_dir(self.real_output_label, "Select Output Directory"))
+        s_layout.addWidget(btn, 2, 2)
+
+        opts = QHBoxLayout()
+        opts.addWidget(QLabel("Match radius (nm):"))
+        self.real_match_spin = QDoubleSpinBox()
+        self.real_match_spin.setRange(10.0, 1000.0)
+        self.real_match_spin.setValue(200.0)
+        opts.addWidget(self.real_match_spin)
+        self.real_plots_check = QCheckBox("Generate plots")
+        self.real_plots_check.setChecked(True)
+        opts.addWidget(self.real_plots_check)
+        opts.addStretch()
+        s_layout.addLayout(opts, 3, 0, 1, 3)
+
+        layout.addWidget(settings)
+
+        self.real_run_btn = QPushButton("Run FLIKA Tests && Compare Against ImageJ")
+        self.real_run_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 10px; font-size: 11pt;")
+        self.real_run_btn.setMinimumHeight(40)
+        self.real_run_btn.clicked.connect(self._start_comparison)
+        layout.addWidget(self.real_run_btn)
+
+        layout.addStretch()
+
+    # ========================================================================
+    # TAB 4: Ground Truth Testing
+    # ========================================================================
+
+    def _create_ground_truth_tab(self):
+        layout = self._create_scrollable_tab("Ground Truth")
+
+        info = QLabel(
+            "<b>Ground Truth Testing with Synthetic Data</b><br><br>"
+            "This tab runs FLIKA's ThunderSTORM on <b>synthetic datasets</b> (generated in the "
+            "Simulation tab) and compares detected localizations against the <b>known ground truth</b> "
+            "molecule positions.<br><br>"
+            "<b>This is the gold standard test</b> because the true positions are known exactly. "
+            "It measures how well each algorithm configuration can:<br>"
+            "<ul>"
+            "<li><b>Detect</b> molecules (recall — fraction of true molecules found)</li>"
+            "<li><b>Avoid false positives</b> (precision — fraction of detections that are real)</li>"
+            "<li><b>Localize accurately</b> (RMSE — root mean square position error in nm)</li>"
+            "</ul>"
+            "<b>Workflow:</b><br>"
+            "<ol>"
+            "<li>Select datasets and algorithm configurations to test</li>"
+            "<li>Click 'Run FLIKA Analysis' to process all dataset/algorithm combinations</li>"
+            "<li>Click 'Compare to Ground Truth' to compute F1, precision, recall, and RMSE</li>"
+            "</ol>"
+            "<b>Output:</b> JSON results, summary figures (F1 heatmap, box plots, RMSE distribution), "
+            "and an HTML report.<br><br>"
+            "<i>Tip: If you also ran ImageJ macros on the synthetic data, those results will be "
+            "compared too (if found in the results directory).</i>"
+        )
+        info.setWordWrap(True)
+        info.setTextFormat(Qt.RichText)
+        layout.addWidget(info)
+
+        settings = QGroupBox("Directories")
+        s_layout = QGridLayout(settings)
+
+        s_layout.addWidget(QLabel("Synthetic Data Dir:"), 0, 0)
+        self.gt_data_label = QLabel(str(Path(self._plugin_dir) / "test_data" / "synthetic"))
+        self.gt_data_label.setFrameStyle(QFrame.Panel | QFrame.Sunken)
+        s_layout.addWidget(self.gt_data_label, 0, 1)
+        btn = QPushButton("Browse...")
+        btn.clicked.connect(lambda: self._browse_dir(self.gt_data_label, "Select Synthetic Data Directory"))
+        s_layout.addWidget(btn, 0, 2)
+
+        s_layout.addWidget(QLabel("Results Dir:"), 1, 0)
+        self.gt_results_label = QLabel(str(Path(self._plugin_dir) / "tests" / "synthetic" / "results"))
+        self.gt_results_label.setFrameStyle(QFrame.Panel | QFrame.Sunken)
+        s_layout.addWidget(self.gt_results_label, 1, 1)
+        btn = QPushButton("Browse...")
+        btn.clicked.connect(lambda: self._browse_dir(self.gt_results_label, "Select Results Directory"))
+        s_layout.addWidget(btn, 1, 2)
+
+        opts = QHBoxLayout()
+        opts.addWidget(QLabel("Match radius (nm):"))
+        self.gt_match_spin = QDoubleSpinBox()
+        self.gt_match_spin.setRange(10.0, 1000.0)
+        self.gt_match_spin.setValue(200.0)
+        opts.addWidget(self.gt_match_spin)
+        self.gt_plots_check = QCheckBox("Generate plots")
+        self.gt_plots_check.setChecked(True)
+        opts.addWidget(self.gt_plots_check)
+        opts.addStretch()
+        s_layout.addLayout(opts, 2, 0, 1, 3)
+
+        layout.addWidget(settings)
+
+        # Dataset selection
+        ds_group = QGroupBox("Select Datasets")
+        ds_layout = QVBoxLayout(ds_group)
+        self.gt_dataset_list = QListWidget()
+        self.gt_dataset_list.setSelectionMode(QListWidget.MultiSelection)
+        self.gt_dataset_list.setMaximumHeight(130)
+        self._populate_dataset_list(self.gt_dataset_list)
+        ds_layout.addWidget(self.gt_dataset_list)
+        layout.addWidget(ds_group)
+
+        # Algorithm selection
+        algo_group = QGroupBox("Select Algorithm Configurations")
+        algo_layout = QVBoxLayout(algo_group)
+        self.gt_algo_list = QListWidget()
+        self.gt_algo_list.setSelectionMode(QListWidget.MultiSelection)
+        self.gt_algo_list.setMaximumHeight(130)
+        self._populate_algo_list(self.gt_algo_list)
+        algo_layout.addWidget(self.gt_algo_list)
+        layout.addWidget(algo_group)
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+
+        self.gt_run_flika_btn = QPushButton("Step 1: Run FLIKA Analysis")
+        self.gt_run_flika_btn.setStyleSheet("background-color: #FF9800; color: white; font-weight: bold; padding: 8px;")
+        self.gt_run_flika_btn.setMinimumHeight(35)
+        self.gt_run_flika_btn.clicked.connect(self._start_synth_run)
+        btn_layout.addWidget(self.gt_run_flika_btn)
+
+        self.gt_compare_btn = QPushButton("Step 2: Compare to Ground Truth")
+        self.gt_compare_btn.setStyleSheet("background-color: #9C27B0; color: white; font-weight: bold; padding: 8px;")
+        self.gt_compare_btn.setMinimumHeight(35)
+        self.gt_compare_btn.clicked.connect(self._start_ground_truth)
+        btn_layout.addWidget(self.gt_compare_btn)
+
+        layout.addLayout(btn_layout)
+
+        layout.addStretch()
+
+    # ========================================================================
+    # TAB 5: Full Validation
+    # ========================================================================
+
+    def _create_full_validation_tab(self):
+        layout = self._create_scrollable_tab("Full Validation")
+
+        info = QLabel(
+            "<b>Full Validation Suite (One-Click)</b><br><br>"
+            "This tab runs the <b>complete validation pipeline</b> in one operation:<br><br>"
+            "<b>Phase 1 — Synthetic Data Generation:</b><br>"
+            "Generates all selected synthetic datasets with known ground truth positions.<br><br>"
+            "<b>Phase 2 — FLIKA Analysis on Synthetic Data:</b><br>"
+            "Runs every selected algorithm configuration on each synthetic dataset "
+            "(up to 9 datasets x 13 algorithms = 117 tests).<br><br>"
+            "<b>Phase 3 — Ground Truth Comparison:</b><br>"
+            "Matches FLIKA detections against ground truth, computing F1, precision, recall, "
+            "and RMSE for each test. Generates summary figures and heatmaps.<br><br>"
+            "<b>Phase 4 — Real Data Comparison (optional):</b><br>"
+            "If a real data TIFF and ImageJ results are available, also runs FLIKA on real data "
+            "and compares against ImageJ ThunderSTORM.<br><br>"
+            "<b>Output:</b> A comprehensive HTML report with all results, comparison tables, "
+            "and embedded figures is generated and can be opened immediately.<br><br>"
+            "<i>This may take several minutes depending on the number of datasets and algorithms selected.</i>"
+        )
+        info.setWordWrap(True)
+        info.setTextFormat(Qt.RichText)
+        layout.addWidget(info)
+
+        # Settings (reuse paths from other tabs via getters)
+        settings = QGroupBox("Paths (uses settings from other tabs)")
+        s_layout = QFormLayout(settings)
+
+        paths_info = QLabel(
+            "Synthetic data dir: <i>from Simulation tab</i><br>"
+            "Results dir: <i>from Ground Truth tab</i><br>"
+            "Real data & ImageJ results: <i>from Real Data Comparison tab</i><br>"
+            "Datasets & algorithms: <i>from Ground Truth tab selections</i>"
+        )
+        paths_info.setTextFormat(Qt.RichText)
+        paths_info.setWordWrap(True)
+        paths_info.setStyleSheet("color: #555;")
+        s_layout.addRow(paths_info)
+        layout.addWidget(settings)
+
+        self.full_run_btn = QPushButton("Run Full Validation Suite")
+        self.full_run_btn.setStyleSheet(
+            "background-color: #e74c3c; color: white; font-weight: bold; padding: 14px; font-size: 13pt;"
+        )
+        self.full_run_btn.setMinimumHeight(55)
+        self.full_run_btn.clicked.connect(self._start_full_validation)
+        layout.addWidget(self.full_run_btn)
+
+        layout.addStretch()
+
+    # ========================================================================
+    # Helpers
+    # ========================================================================
+
+    def _populate_dataset_list(self, list_widget):
+        try:
+            from generate_synthetic_data import SYNTHETIC_CONFIGS
+            for name, cfg in SYNTHETIC_CONFIGS.items():
+                list_widget.addItem(f"{name} - {cfg['description']}")
+            for i in range(list_widget.count()):
+                list_widget.item(i).setSelected(True)
+        except Exception:
+            list_widget.addItem("(Could not load dataset configs)")
+
+    def _populate_algo_list(self, list_widget):
+        try:
+            from generate_comparison_macros import TEST_CONFIGS
+            for name, cfg in TEST_CONFIGS.items():
+                list_widget.addItem(f"{name} - {cfg['description']}")
+            for i in range(list_widget.count()):
+                list_widget.item(i).setSelected(True)
+        except Exception:
+            list_widget.addItem("(Could not load algorithm configs)")
+
+    def _select_all(self, list_widget):
+        for i in range(list_widget.count()):
+            list_widget.item(i).setSelected(True)
+
+    def _select_none(self, list_widget):
+        for i in range(list_widget.count()):
+            list_widget.item(i).setSelected(False)
+
+    def _get_selected(self, list_widget):
+        items = list_widget.selectedItems()
+        if not items:
+            return None
+        return [item.text().split(' - ')[0] for item in items]
+
+    def _browse_dir(self, label, title):
+        d = QFileDialog.getExistingDirectory(self, title)
+        if d:
+            label.setText(d)
+
+    def _browse_file(self, label, title, filter_str):
+        path, _ = QFileDialog.getOpenFileName(self, title, "", filter_str)
+        if path:
+            label.setText(path)
+
+    def _on_optics_preset_changed(self, index):
+        """Update optics fields when preset changes."""
+        preset_key = self.sim_custom_optics.currentData()
+        is_custom = (preset_key == "custom")
+        self.sim_custom_pixel_size.setEnabled(is_custom)
+        self.sim_custom_psf_sigma.setEnabled(is_custom)
+        if not is_custom:
+            try:
+                from generate_synthetic_data import MAGNIFICATION_PRESETS
+                p = MAGNIFICATION_PRESETS[preset_key]
+                self.sim_custom_pixel_size.setValue(p['pixel_size_nm'])
+                self.sim_custom_psf_sigma.setValue(p['psf_sigma_nm'])
+            except Exception:
+                pass
+
+    def _on_camera_preset_changed(self, index):
+        """Update camera fields when preset changes."""
+        preset_key = self.sim_custom_camera.currentData()
+        is_custom = (preset_key == "custom")
+        for w in [self.sim_custom_baseline, self.sim_custom_photons_per_adu,
+                   self.sim_custom_readout, self.sim_custom_em_gain,
+                   self.sim_custom_is_emccd, self.sim_custom_qe]:
+            w.setEnabled(is_custom)
+        if not is_custom:
+            try:
+                from generate_synthetic_data import CAMERA_PRESETS
+                c = CAMERA_PRESETS[preset_key]
+                self.sim_custom_baseline.setValue(c['baseline_adu'])
+                self.sim_custom_photons_per_adu.setValue(c['photons_per_adu'])
+                self.sim_custom_readout.setValue(c['readout_noise_e'])
+                self.sim_custom_em_gain.setValue(c['em_gain'])
+                self.sim_custom_is_emccd.setChecked(c['is_emccd'])
+                self.sim_custom_qe.setValue(c['quantum_efficiency'])
+            except Exception:
+                pass
+
+    def _update_custom_density_estimate(self):
+        """Update the estimated molecule density label."""
+        try:
+            n_mol = self.sim_custom_n_molecules.value()
+            p_on = self.sim_custom_p_on.value()
+            p_off = self.sim_custom_p_off.value()
+            # Steady-state fraction of on molecules: p_on / (p_on + p_off)
+            frac_on = p_on / (p_on + p_off) if (p_on + p_off) > 0 else 0
+            avg_per_frame = n_mol * frac_on
+            w = self.sim_custom_width.value()
+            h = self.sim_custom_height.value()
+            area = w * h
+            density_per_px = avg_per_frame / area if area > 0 else 0
+            self.sim_custom_density_label.setText(
+                f"Estimated ~{avg_per_frame:.1f} active molecules/frame "
+                f"(density: {density_per_px:.4f} molecules/pixel)"
+            )
+        except Exception:
+            pass
+
+    def _build_custom_config(self):
+        """Build a synthetic dataset config dict from the custom UI fields."""
+        optics_key = self.sim_custom_optics.currentData()
+        camera_key = self.sim_custom_camera.currentData()
+
+        config = {
+            'description': f'Custom dataset ({self.sim_custom_name.text()})',
+            'image_size': (self.sim_custom_height.value(), self.sim_custom_width.value()),
+            'n_frames': self.sim_custom_frames.value(),
+            'n_molecules': self.sim_custom_n_molecules.value(),
+            'photons_per_molecule': self.sim_custom_photons.value(),
+            'background_per_pixel': self.sim_custom_background.value(),
+            'density_description': f'custom ({self.sim_custom_n_molecules.value()} molecules)',
+            'blinking': {
+                'p_on': self.sim_custom_p_on.value(),
+                'p_off': self.sim_custom_p_off.value(),
+                'p_bleach': self.sim_custom_p_bleach.value(),
+            },
+        }
+
+        # Optics: use preset key or inline custom values
+        if optics_key != "custom":
+            config['optics'] = optics_key
+        else:
+            config['optics'] = '__custom__'
+            config['custom_optics'] = {
+                'description': 'Custom optics',
+                'magnification': 100,
+                'pixel_size_nm': self.sim_custom_pixel_size.value(),
+                'na': 1.49,
+                'emission_wavelength_nm': 680.0,
+                'psf_sigma_nm': self.sim_custom_psf_sigma.value(),
+            }
+
+        # Camera: use preset key or inline custom values
+        if camera_key != "custom":
+            config['camera'] = camera_key
+        else:
+            config['camera'] = '__custom__'
+            config['custom_camera'] = {
+                'description': 'Custom camera',
+                'baseline_adu': self.sim_custom_baseline.value(),
+                'readout_noise_e': self.sim_custom_readout.value(),
+                'photons_per_adu': self.sim_custom_photons_per_adu.value(),
+                'em_gain': self.sim_custom_em_gain.value(),
+                'is_emccd': self.sim_custom_is_emccd.isChecked(),
+                'quantum_efficiency': self.sim_custom_qe.value(),
+                'bit_depth': 16,
+            }
+
+        return self.sim_custom_name.text(), config
+
+    def _open_custom_in_flika(self, results):
+        """Open the custom synthetic dataset in a FLIKA window."""
+        try:
+            output_dir = results.get('output_dir', '')
+            name = self.sim_custom_name.text().strip()
+            if not name or not output_dir:
+                return
+            tiff_path = Path(output_dir) / f"{name}.tif"
+            if not tiff_path.exists():
+                return
+            from flika.window import Window
+            import tifffile
+            stack = tifffile.imread(str(tiff_path))
+            Window(stack, name=f"Synthetic: {name}")
+            self.log_text.append(f"Opened '{name}' in FLIKA window")
+        except Exception as e:
+            self.log_text.append(f"Could not open in FLIKA: {e}")
+
+    def _open_path(self, path):
+        """Open a file or directory with the system default handler."""
+        try:
+            if sys.platform == 'darwin':
+                subprocess.call(['open', str(path)])
+            elif sys.platform.startswith('win'):
+                os.startfile(str(path))
+            else:
+                subprocess.call(['xdg-open', str(path)])
+        except Exception as e:
+            QMessageBox.warning(self, "Cannot Open", f"Could not open:\n{e}\n\nPath: {path}")
+
+    # ========================================================================
+    # Worker management
+    # ========================================================================
+
+    def _set_running(self, running):
+        """Toggle UI state for running/idle."""
+        for btn in [self.sim_run_btn, self.macro_generate_btn, self.real_run_btn,
+                     self.gt_run_flika_btn, self.gt_compare_btn, self.full_run_btn]:
+            btn.setEnabled(not running)
+        self.cancel_btn.setEnabled(running)
+        if running:
+            self.progress_bar.setValue(0)
+            self.view_report_btn.setEnabled(False)
+            self.open_output_btn.setEnabled(False)
+            self.view_figures_btn.setEnabled(False)
+
+    def _start_worker(self, task_type, **kwargs):
+        self._set_running(True)
+        self.log_text.clear()
+        self.validation_worker = ValidationWorker(task_type, **kwargs)
+        self.validation_worker.progress_update.connect(self._on_progress)
+        self.validation_worker.step_progress.connect(self._on_step_progress)
+        self.validation_worker.test_complete.connect(self._on_complete)
+        self.validation_worker.test_error.connect(self._on_error)
+        self.validation_worker.start()
+
+    def _cancel(self):
+        if self.validation_worker and self.validation_worker.isRunning():
+            self.validation_worker.cancel()
+            self.status_label.setText("Cancelling...")
+            self.status_label.setStyleSheet("color: orange; padding: 2px;")
+
+    # ========================================================================
+    # Task launchers
+    # ========================================================================
+
+    def _start_synth_generate(self):
+        self._last_output_dir = self.sim_output_label.text()
+        custom_configs = None
+        if self.sim_custom_group.isChecked():
+            name, cfg = self._build_custom_config()
+            if not name.strip():
+                QMessageBox.warning(self, "Missing Name", "Please enter a name for the custom dataset.")
+                return
+            custom_configs = {name: cfg}
+        self._start_worker(
+            'synthetic_generate',
+            output_dir=self.sim_output_label.text(),
+            config_names=self._get_selected(self.sim_dataset_list),
+            seed=self.sim_seed_spin.value(),
+            custom_configs=custom_configs,
+        )
+
+    def _generate_macros(self):
+        """Generate ImageJ macros (runs synchronously — fast)."""
+        input_path = self.macro_input_label.text()
+        output_dir = self.macro_output_label.text()
+        algo_names = self._get_selected(self.macro_algo_list)
+
+        if not Path(input_path).exists():
+            QMessageBox.warning(self, "Missing Input", "Please select a valid input TIFF file.")
+            return
+
+        try:
+            from generate_comparison_macros import generate_all_macros, save_test_metadata, TEST_CONFIGS
+
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
+            save_test_metadata(output_dir, input_path)
+            macro_path = generate_all_macros(input_path, output_dir, algo_names)
+
+            # Show macro content in preview
+            with open(str(macro_path)) as f:
+                content = f.read()
+            self.macro_preview.setPlainText(content)
+
+            n_configs = len(algo_names) if algo_names else len(TEST_CONFIGS)
+            self.status_label.setText(f"Generated {n_configs} macros. Main macro: {macro_path}")
+            self.status_label.setStyleSheet("color: green; padding: 2px; font-weight: bold;")
+            self.log_text.append(f"Generated macros in: {output_dir}")
+            self.log_text.append(f"Run in Fiji: Plugins > Macros > Run... > {macro_path}")
+
+            self._last_output_dir = output_dir
+            self.open_output_btn.setEnabled(True)
+
+            # Also generate synthetic macros if requested
+            if self.macro_also_synth.isChecked():
+                from generate_synthetic_data import SYNTHETIC_CONFIGS, MAGNIFICATION_PRESETS, CAMERA_PRESETS, generate_imagej_macros_for_dataset
+                synth_dir = self.macro_synth_dir_label.text()
+                imagej_dir = Path(output_dir) / "imagej_results"
+                imagej_dir.mkdir(exist_ok=True)
+
+                ds_configs = SYNTHETIC_CONFIGS
+                ds_names = self._get_selected(self.sim_dataset_list)
+                if ds_names:
+                    ds_configs = {k: v for k, v in ds_configs.items() if k in ds_names}
+
+                all_macros = []
+                for ds_name, ds_cfg in ds_configs.items():
+                    tiff_path = Path(synth_dir) / f"{ds_name}.tif"
+                    if tiff_path.exists():
+                        macros = generate_imagej_macros_for_dataset(
+                            ds_name, ds_cfg, tiff_path, imagej_dir,
+                            {k: v for k, v in TEST_CONFIGS.items() if not algo_names or k in algo_names})
+                        for _, macro_text in macros:
+                            all_macros.append(macro_text)
+
+                if all_macros:
+                    synth_macro_path = Path(output_dir) / "macros" / "run_all_synthetic.ijm"
+                    synth_macro_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(str(synth_macro_path), 'w') as f:
+                        f.write('\n\n'.join(all_macros))
+                    self.log_text.append(f"Synthetic macros ({len(all_macros)} tests): {synth_macro_path}")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to generate macros:\n{e}")
+            import traceback
+            traceback.print_exc()
+
+    def _start_comparison(self):
+        input_path = self.real_input_label.text()
+        if not Path(input_path).exists():
+            QMessageBox.warning(self, "Missing Input", "Please select a valid input TIFF file.")
+            return
+
+        imagej_dir = self.real_imagej_label.text()
+        if not Path(imagej_dir).exists():
+            imagej_dir = None
+
+        self._last_output_dir = self.real_output_label.text()
+        self._start_worker(
+            'comparison',
+            input_path=input_path,
+            output_dir=self.real_output_label.text(),
+            imagej_dir=imagej_dir,
+            match_radius=self.real_match_spin.value(),
+            generate_plots=self.real_plots_check.isChecked(),
+        )
+
+    def _start_synth_run(self):
+        self._last_output_dir = self.gt_results_label.text()
+        self._start_worker(
+            'synthetic_run',
+            data_dir=self.gt_data_label.text(),
+            results_dir=self.gt_results_label.text(),
+            config_names=self._get_selected(self.gt_dataset_list),
+            algo_names=self._get_selected(self.gt_algo_list),
+        )
+
+    def _start_ground_truth(self):
+        self._last_output_dir = str(Path(self.gt_results_label.text()) / "analysis")
+        self._start_worker(
+            'ground_truth',
+            data_dir=self.gt_data_label.text(),
+            results_dir=self.gt_results_label.text(),
+            config_names=self._get_selected(self.gt_dataset_list),
+            algo_names=self._get_selected(self.gt_algo_list),
+            match_radius=self.gt_match_spin.value(),
+            generate_plots=self.gt_plots_check.isChecked(),
+        )
+
+    def _start_full_validation(self):
+        self._last_output_dir = str(Path(self.gt_results_label.text()) / "analysis")
+
+        real_input = self.real_input_label.text()
+        if not Path(real_input).exists():
+            real_input = None
+        imagej_dir = self.real_imagej_label.text() if hasattr(self, 'real_imagej_label') else None
+        if imagej_dir and not Path(imagej_dir).exists():
+            imagej_dir = None
+
+        self._start_worker(
+            'full_validation',
+            synthetic_data_dir=self.sim_output_label.text(),
+            synthetic_results_dir=self.gt_results_label.text(),
+            config_names=self._get_selected(self.gt_dataset_list),
+            algo_names=self._get_selected(self.gt_algo_list),
+            seed=self.sim_seed_spin.value(),
+            match_radius=self.gt_match_spin.value(),
+            real_input_path=real_input,
+            real_output_dir=self.real_output_label.text(),
+            imagej_dir=imagej_dir,
+        )
+
+    # ========================================================================
+    # Signal handlers
+    # ========================================================================
+
+    def _on_progress(self, msg):
+        self.status_label.setText(msg)
+        self.log_text.append(msg)
+
+    def _on_step_progress(self, value):
+        self.progress_bar.setValue(value)
+
+    def _on_complete(self, results):
+        self._set_running(False)
+        self.progress_bar.setValue(100)
+        self._last_results = results
+
+        task_type = results.get('type', '')
+        report_path = results.get('report_path')
+
+        if task_type == 'comparison':
+            stats = results.get('stats', {})
+            if stats:
+                f1_scores = [s['f1'] for s in stats.values()]
+                msg = f"Comparison complete: {len(stats)} tests, mean F1={np.mean(f1_scores):.3f}"
+            else:
+                msg = f"FLIKA tests complete: {results.get('n_tests', 0)} configs (no ImageJ results for comparison)"
+        elif task_type == 'synthetic_generate':
+            msg = f"Generated {results.get('n_datasets', 0)} synthetic datasets"
+            # Open custom dataset in FLIKA if requested
+            if (self.sim_custom_group.isChecked() and
+                    self.sim_custom_open_flika.isChecked()):
+                self._open_custom_in_flika(results)
+        elif task_type == 'synthetic_run':
+            msg = f"FLIKA analysis complete: {results.get('n_tests', 0)} tests"
+        elif task_type == 'ground_truth':
+            msg = f"Ground truth comparison complete: {results.get('n_results', 0)} results"
+        elif task_type == 'full_validation':
+            gt = results.get('gt_results', [])
+            rs = results.get('real_stats', {})
+            msg = f"Full validation complete: {len(gt)} ground truth tests"
+            if rs:
+                msg += f", {len(rs)} real data comparisons"
+        else:
+            msg = "Complete"
+
+        self.status_label.setText(msg)
+        self.status_label.setStyleSheet("color: green; padding: 2px; font-weight: bold;")
+        self.log_text.append(f"\n{'='*60}\n{msg}")
+
+        self.open_output_btn.setEnabled(True)
+        if report_path and Path(report_path).exists():
+            self.view_report_btn.setEnabled(True)
+            self._last_report_path = report_path
+
+        output_dir = results.get('output_dir') or results.get('analysis_dir') or ''
+        if output_dir:
+            figs = list(Path(output_dir).glob("*.png"))
+            for subdir in ['comparison_results', 'analysis']:
+                sd = Path(output_dir) / subdir
+                if sd.exists():
+                    figs.extend(sd.glob("*.png"))
+            if figs:
+                self.view_figures_btn.setEnabled(True)
+                self._last_figures_dir = str(output_dir)
+
+    def _on_error(self, error_msg):
+        self._set_running(False)
+        self.status_label.setText(f"ERROR: {error_msg}")
+        self.status_label.setStyleSheet("color: red; padding: 2px; font-weight: bold;")
+        self.log_text.append(f"\nERROR: {error_msg}")
+        QMessageBox.critical(self, "Validation Error", error_msg)
+
+    # ========================================================================
+    # Result viewing
+    # ========================================================================
+
+    def _view_report(self):
+        if self._last_report_path and Path(self._last_report_path).exists():
+            self._open_path(self._last_report_path)
+
+    def _open_output_dir(self):
+        if self._last_output_dir and Path(self._last_output_dir).exists():
+            self._open_path(self._last_output_dir)
+
+    def _view_figures(self):
+        if not self._last_figures_dir:
+            return
+        png_files = sorted(Path(self._last_figures_dir).glob("*.png"))
+        for subdir in ['comparison_results', 'analysis']:
+            sd = Path(self._last_figures_dir) / subdir
+            if sd.exists():
+                png_files.extend(sorted(sd.glob("*.png")))
+        for fig_path in png_files[:10]:
+            self._open_path(str(fig_path))
+
+
 # Plugin instance management
 spt_batch_analysis_instance = None
+validation_instance = None
 
 
 def launch_spt_analysis():
@@ -11665,6 +13758,17 @@ def launch_spt_analysis():
     spt_batch_analysis_instance.show()
     spt_batch_analysis_instance.raise_()
     spt_batch_analysis_instance.activateWindow()
+
+def launch_validation():
+    """Launch the ThunderSTORM Validation & Comparison Testing GUI"""
+    global validation_instance
+
+    if validation_instance is None or not validation_instance.isVisible():
+        validation_instance = ThunderSTORMValidation()
+
+    validation_instance.show()
+    validation_instance.raise_()
+    validation_instance.activateWindow()
 
 def launch_docs():
     """Launch documentation"""

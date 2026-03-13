@@ -339,9 +339,10 @@ def generate_synthetic_dataset(config_name, config, output_dir, seed=42):
     mol_y = rng.uniform(border * pixel_size, (h - border) * pixel_size, n_molecules)
 
     # Simulate blinking: each molecule has ~10% chance of being on per frame
-    p_on = 0.05
-    p_off = 0.4
-    p_bleach = 0.005
+    blinking = config.get('blinking', {})
+    p_on = blinking.get('p_on', 0.05)
+    p_off = blinking.get('p_off', 0.4)
+    p_bleach = blinking.get('p_bleach', 0.005)
     states = np.zeros((n_frames, n_molecules), dtype=bool)
     active = np.zeros(n_molecules, dtype=bool)
     bleached = np.zeros(n_molecules, dtype=bool)

@@ -34,7 +34,7 @@
     "per_frame_count_diff_std": 0.31288975694324034,
     "per_frame_correlation": 0.9950935343307603,
     "imagej_time_s": 1.628,
-    "flika_time_s": 0.35602784156799316
+    "flika_time_s": 0.42826175689697266
   },
   "wavelet_scale4_order5": {
     "n_ref": 1147,
@@ -71,7 +71,7 @@
     "per_frame_count_diff_std": 0.0,
     "per_frame_correlation": 1.0,
     "imagej_time_s": 0.499,
-    "flika_time_s": 0.1643810272216797
+    "flika_time_s": 0.16883420944213867
   },
   "dog_filter": {
     "n_ref": 2715,
@@ -108,7 +108,7 @@
     "per_frame_count_diff_std": 0.44317039612320674,
     "per_frame_correlation": 0.9814971801757283,
     "imagej_time_s": 1.858,
-    "flika_time_s": 0.18808984756469727
+    "flika_time_s": 0.1944417953491211
   },
   "gaussian_filter": {
     "n_ref": 2592,
@@ -145,7 +145,7 @@
     "per_frame_count_diff_std": 0.2958039891549808,
     "per_frame_correlation": 0.9935990561864514,
     "imagej_time_s": 0.924,
-    "flika_time_s": 0.3450789451599121
+    "flika_time_s": 0.34691500663757324
   },
   "nms_detector": {
     "n_ref": 3569,
@@ -182,7 +182,7 @@
     "per_frame_count_diff_std": 0.28618176042508375,
     "per_frame_correlation": 0.9953439688133678,
     "imagej_time_s": 0.741,
-    "flika_time_s": 0.17214107513427734
+    "flika_time_s": 0.17644405364990234
   },
   "centroid_detector": {
     "n_ref": 3350,
@@ -219,7 +219,7 @@
     "per_frame_count_diff_std": 0.3,
     "per_frame_correlation": 0.9952718620642296,
     "imagej_time_s": 0.648,
-    "flika_time_s": 0.211472749710083
+    "flika_time_s": 0.22484874725341797
   },
   "lsq_fitting": {
     "n_ref": 3555,
@@ -256,7 +256,7 @@
     "per_frame_count_diff_std": 0.41424630354415964,
     "per_frame_correlation": 0.9902662680427926,
     "imagej_time_s": 0.675,
-    "flika_time_s": 0.22658514976501465
+    "flika_time_s": 0.23433208465576172
   },
   "mle_fitting": {
     "n_ref": 3563,
@@ -291,7 +291,7 @@
     "per_frame_count_diff_std": 0.3570714214271425,
     "per_frame_correlation": 0.9927526269860161,
     "imagej_time_s": 84.166,
-    "flika_time_s": 0.20507001876831055
+    "flika_time_s": 0.22329282760620117
   },
   "psf_gaussian": {
     "n_ref": 3569,
@@ -328,7 +328,7 @@
     "per_frame_count_diff_std": 0.28618176042508375,
     "per_frame_correlation": 0.9953439688133678,
     "imagej_time_s": 0.601,
-    "flika_time_s": 0.2270960807800293
+    "flika_time_s": 0.22910523414611816
   },
   "radial_symmetry": {
     "n_ref": 3578,
@@ -355,7 +355,7 @@
     "per_frame_count_diff_std": 0.0,
     "per_frame_correlation": 1.0,
     "imagej_time_s": 0.218,
-    "flika_time_s": 0.12556099891662598
+    "flika_time_s": 0.1382761001586914
   },
   "mfa_enabled": {
     "n_ref": 3583,
@@ -392,7 +392,7 @@
     "per_frame_count_diff_std": 1.3450278807519196,
     "per_frame_correlation": 0.8997680703241321,
     "imagej_time_s": 47.047,
-    "flika_time_s": 9.139438152313232
+    "flika_time_s": 9.23166012763977
   },
   "high_threshold": {
     "n_ref": 2365,
@@ -429,7 +429,7 @@
     "per_frame_count_diff_std": 0.13999999999999999,
     "per_frame_correlation": 0.9984328055061713,
     "imagej_time_s": 0.347,
-    "flika_time_s": 0.15434813499450684
+    "flika_time_s": 0.15650725364685059
   },
   "fitradius_5": {
     "n_ref": 3131,
@@ -466,6 +466,6 @@
     "per_frame_count_diff_std": 0.8046738469715541,
     "per_frame_correlation": 0.956783446392939,
     "imagej_time_s": 0.833,
-    "flika_time_s": 0.5520989894866943
+    "flika_time_s": 0.5569350719451904
   }
 }

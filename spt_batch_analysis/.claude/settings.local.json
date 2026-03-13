@@ -101,7 +101,12 @@
       "Bash(while ps:*)",
       "Bash(python tests/comparison/generate_comparison_macros.py --flika-only 2>&1 | tail -30)",
       "Bash(python tests/comparison/compare_results.py -d tests/comparison/results 2>&1 | tail -50)",
-      "Bash(python -c \"\nimport json, glob, os\nresults_dir = 'tests/synthetic/results/analysis'\nfiles = sorted\\(glob.glob\\(os.path.join\\(results_dir, '*.json'\\)\\)\\)\nif files:\n    with open\\(files[-1]\\) as f:\n        data = json.load\\(f\\)\n    print\\(type\\(data\\), len\\(data\\)\\)\n    if len\\(data\\) > 0:\n        print\\(type\\(data[0]\\)\\)\n        if isinstance\\(data[0], dict\\):\n            print\\(list\\(data[0].keys\\(\\)\\)\\)\n        else:\n            print\\(data[0][:200] if isinstance\\(data[0], str\\) else data[0]\\)\n\" 2>&1)"
+      "Bash(python -c \"\nimport json, glob, os\nresults_dir = 'tests/synthetic/results/analysis'\nfiles = sorted\\(glob.glob\\(os.path.join\\(results_dir, '*.json'\\)\\)\\)\nif files:\n    with open\\(files[-1]\\) as f:\n        data = json.load\\(f\\)\n    print\\(type\\(data\\), len\\(data\\)\\)\n    if len\\(data\\) > 0:\n        print\\(type\\(data[0]\\)\\)\n        if isinstance\\(data[0], dict\\):\n            print\\(list\\(data[0].keys\\(\\)\\)\\)\n        else:\n            print\\(data[0][:200] if isinstance\\(data[0], str\\) else data[0]\\)\n\" 2>&1)",
+      "Bash(find /Users/george/claude_test/spt_batch_analysis -name \"*gui*\" -o -name \"*UI*\" -o -name \"*ui*\" -o -name \"*widget*\" 2>/dev/null | head -20)",
+      "Bash(/tmp/audit_summary.txt:*)",
+      "Read(//tmp/**)",
+      "Bash(python -c \"import py_compile; py_compile.compile\\('__init__.py', doraise=True\\); print\\('OK'\\)\" 2>&1)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('__init__.py'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")"
     ]
   }
 }
