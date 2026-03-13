@@ -9,6 +9,8 @@ Updated with comprehensive edge/border handling to prevent artifacts.
 """
 
 import numpy as np
+from concurrent.futures import ThreadPoolExecutor
+import os
 from . import filters, detection, fitting, postprocessing, visualization, utils
 
 
@@ -60,7 +62,9 @@ class ThunderSTORM:
                  baseline=100.0,
                  em_gain=1.0,
                  is_emccd=False,
-                 border_exclusion=None):
+                 border_exclusion=None,
+                 sigma_range=None,
+                 fwhm_range_nm=None):
 
         # Create components
         self.filter = filters.create_filter(
@@ -89,6 +93,12 @@ class ThunderSTORM:
             em_gain=em_gain,
             is_emccd=is_emccd
         )
+
+        # Sigma / FWHM range constraint (fit rejection)
+        if sigma_range is not None:
+            self.fitter.set_sigma_range(*sigma_range)
+        elif fwhm_range_nm is not None:
+            self.fitter.set_fwhm_range(*fwhm_range_nm)
 
         # Border handling
         self.border_exclusion = border_exclusion
@@ -275,11 +285,22 @@ class ThunderSTORM:
         filtered = self.filter.apply(image)
 
         # Step 2: Compute threshold
-        # For wavelet filters, pass the first detail coefficient (F1 = I - V1)
-        # so that Wave.F1 in threshold expressions refers to the correct data
+        # Pass the filter object so that filter-prefixed variable names
+        # (e.g. Wave.F1, DoG.G1) are resolved from the filter's exports.
+        # When the threshold expression references Wave.F1 but the current
+        # filter is not a wavelet filter, compute the wavelet first detail
+        # coefficient separately — matching ImageJ thunderSTORM where
+        # Wave.F1 is the first wavelet detail level (noise estimator).
         wave_f1 = getattr(self.filter, 'F1', None)
+        threshold_expr_str = str(self.threshold_expression)
+        if 'Wave' in threshold_expr_str and not isinstance(self.filter, filters.WaveletFilter):
+            # Compute wavelet F1 for threshold even though a different filter is used
+            _wave = filters.WaveletFilter(scale=2, order=3)
+            _wave.apply(image)
+            wave_f1 = _wave.F1
         threshold = filters.compute_threshold_expression(
-            image, filtered, self.threshold_expression, wave_f1=wave_f1
+            image, filtered, self.threshold_expression,
+            wave_f1=wave_f1, filter_obj=self.filter
         )
 
         # Step 3: Detect molecules
@@ -342,8 +363,8 @@ class ThunderSTORM:
         result['frame'] = np.full(len(result['x']), frame_number)
 
         # Step 9: Convert from pixels to nanometers
-        result['x'] = result['x'] * self.pixel_size
-        result['y'] = result['y'] * self.pixel_size
+        result['x'] = (result['x'] + 0.5) * self.pixel_size
+        result['y'] = (result['y'] + 0.5) * self.pixel_size
 
         # Also convert sigma and uncertainty to nm
         if 'sigma_x' in result and result['sigma_x'] is not None:

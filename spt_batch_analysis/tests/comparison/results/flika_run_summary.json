@@ -1,0 +1,67 @@
+{
+  "wavelet_default": {
+    "n_locs": 3689,
+    "time_s": 0.35602784156799316,
+    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/wavelet_default_flika_locsID.csv"
+  },
+  "wavelet_scale4_order5": {
+    "n_locs": 1147,
+    "time_s": 0.1643810272216797,
+    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/wavelet_scale4_order5_flika_locsID.csv"
+  },
+  "dog_filter": {
+    "n_locs": 2709,
+    "time_s": 0.18808984756469727,
+    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/dog_filter_flika_locsID.csv"
+  },
+  "gaussian_filter": {
+    "n_locs": 2597,
+    "time_s": 0.3450789451599121,
+    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/gaussian_filter_flika_locsID.csv"
+  },
+  "nms_detector": {
+    "n_locs": 3578,
+    "time_s": 0.17214107513427734,
+    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/nms_detector_flika_locsID.csv"
+  },
+  "centroid_detector": {
+    "n_locs": 3360,
+    "time_s": 0.211472749710083,
+    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/centroid_detector_flika_locsID.csv"
+  },
+  "lsq_fitting": {
+    "n_locs": 3577,
+    "time_s": 0.22658514976501465,
+    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/lsq_fitting_flika_locsID.csv"
+  },
+  "mle_fitting": {
+    "n_locs": 3578,
+    "time_s": 0.20507001876831055,
+    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/mle_fitting_flika_locsID.csv"
+  },
+  "psf_gaussian": {
+    "n_locs": 3578,
+    "time_s": 0.2270960807800293,
+    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/psf_gaussian_flika_locsID.csv"
+  },
+  "radial_symmetry": {
+    "n_locs": 3578,
+    "time_s": 0.12556099891662598,
+    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/radial_symmetry_flika_locsID.csv"
+  },
+  "mfa_enabled": {
+    "n_locs": 3580,
+    "time_s": 9.139438152313232,
+    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/mfa_enabled_flika_locsID.csv"
+  },
+  "high_threshold": {
+    "n_locs": 2367,
+    "time_s": 0.15434813499450684,
+    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/high_threshold_flika_locsID.csv"
+  },
+  "fitradius_5": {
+    "n_locs": 3186,
+    "time_s": 0.5520989894866943,
+    "csv_path": "/Users/george/claude_test/spt_batch_analysis/tests/comparison/results/flika_results/fitradius_5_flika_locsID.csv"
+  }
+}

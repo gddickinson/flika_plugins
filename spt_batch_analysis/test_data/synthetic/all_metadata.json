@@ -1,0 +1,335 @@
+{
+  "sparse_108nm": {
+    "config_name": "sparse_108nm",
+    "description": "Sparse molecules, 108nm pixel (match real data)",
+    "optics": {
+      "description": "Match real test data (108nm pixel)",
+      "magnification": 148,
+      "pixel_size_nm": 108.0,
+      "na": 1.49,
+      "emission_wavelength_nm": 680.0,
+      "psf_sigma_nm": 173.0
+    },
+    "camera": {
+      "description": "Match real comparison test camera",
+      "baseline_adu": 100,
+      "readout_noise_e": 1.0,
+      "photons_per_adu": 3.6,
+      "em_gain": 100,
+      "is_emccd": true,
+      "quantum_efficiency": 1.0,
+      "bit_depth": 16
+    },
+    "pixel_size_nm": 108.0,
+    "psf_sigma_nm": 173.0,
+    "image_size": [
+      128,
+      128
+    ],
+    "n_frames": 100,
+    "n_molecules": 500,
+    "photons_per_molecule": 1500,
+    "background_per_pixel": 20,
+    "n_ground_truth_localizations": 5511,
+    "mean_active_per_frame": 55.11,
+    "tiff_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/sparse_108nm.tif",
+    "ground_truth_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/sparse_108nm_ground_truth.csv",
+    "seed": 42
+  },
+  "medium_108nm": {
+    "config_name": "medium_108nm",
+    "description": "Medium density, 108nm pixel",
+    "optics": {
+      "description": "Match real test data (108nm pixel)",
+      "magnification": 148,
+      "pixel_size_nm": 108.0,
+      "na": 1.49,
+      "emission_wavelength_nm": 680.0,
+      "psf_sigma_nm": 173.0
+    },
+    "camera": {
+      "description": "Match real comparison test camera",
+      "baseline_adu": 100,
+      "readout_noise_e": 1.0,
+      "photons_per_adu": 3.6,
+      "em_gain": 100,
+      "is_emccd": true,
+      "quantum_efficiency": 1.0,
+      "bit_depth": 16
+    },
+    "pixel_size_nm": 108.0,
+    "psf_sigma_nm": 173.0,
+    "image_size": [
+      128,
+      128
+    ],
+    "n_frames": 100,
+    "n_molecules": 2000,
+    "photons_per_molecule": 1500,
+    "background_per_pixel": 20,
+    "n_ground_truth_localizations": 21041,
+    "mean_active_per_frame": 210.41,
+    "tiff_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/medium_108nm.tif",
+    "ground_truth_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/medium_108nm_ground_truth.csv",
+    "seed": 42
+  },
+  "dense_108nm": {
+    "config_name": "dense_108nm",
+    "description": "Dense molecules, 108nm pixel",
+    "optics": {
+      "description": "Match real test data (108nm pixel)",
+      "magnification": 148,
+      "pixel_size_nm": 108.0,
+      "na": 1.49,
+      "emission_wavelength_nm": 680.0,
+      "psf_sigma_nm": 173.0
+    },
+    "camera": {
+      "description": "Match real comparison test camera",
+      "baseline_adu": 100,
+      "readout_noise_e": 1.0,
+      "photons_per_adu": 3.6,
+      "em_gain": 100,
+      "is_emccd": true,
+      "quantum_efficiency": 1.0,
+      "bit_depth": 16
+    },
+    "pixel_size_nm": 108.0,
+    "psf_sigma_nm": 173.0,
+    "image_size": [
+      128,
+      128
+    ],
+    "n_frames": 100,
+    "n_molecules": 5000,
+    "photons_per_molecule": 1500,
+    "background_per_pixel": 20,
+    "n_ground_truth_localizations": 52625,
+    "mean_active_per_frame": 526.25,
+    "tiff_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/dense_108nm.tif",
+    "ground_truth_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/dense_108nm_ground_truth.csv",
+    "seed": 42
+  },
+  "low_snr_108nm": {
+    "config_name": "low_snr_108nm",
+    "description": "Low SNR (few photons, high background)",
+    "optics": {
+      "description": "Match real test data (108nm pixel)",
+      "magnification": 148,
+      "pixel_size_nm": 108.0,
+      "na": 1.49,
+      "emission_wavelength_nm": 680.0,
+      "psf_sigma_nm": 173.0
+    },
+    "camera": {
+      "description": "Match real comparison test camera",
+      "baseline_adu": 100,
+      "readout_noise_e": 1.0,
+      "photons_per_adu": 3.6,
+      "em_gain": 100,
+      "is_emccd": true,
+      "quantum_efficiency": 1.0,
+      "bit_depth": 16
+    },
+    "pixel_size_nm": 108.0,
+    "psf_sigma_nm": 173.0,
+    "image_size": [
+      128,
+      128
+    ],
+    "n_frames": 100,
+    "n_molecules": 1000,
+    "photons_per_molecule": 500,
+    "background_per_pixel": 50,
+    "n_ground_truth_localizations": 10626,
+    "mean_active_per_frame": 106.26,
+    "tiff_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/low_snr_108nm.tif",
+    "ground_truth_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/low_snr_108nm_ground_truth.csv",
+    "seed": 42
+  },
+  "high_snr_108nm": {
+    "config_name": "high_snr_108nm",
+    "description": "High SNR (many photons, low background)",
+    "optics": {
+      "description": "Match real test data (108nm pixel)",
+      "magnification": 148,
+      "pixel_size_nm": 108.0,
+      "na": 1.49,
+      "emission_wavelength_nm": 680.0,
+      "psf_sigma_nm": 173.0
+    },
+    "camera": {
+      "description": "Match real comparison test camera",
+      "baseline_adu": 100,
+      "readout_noise_e": 1.0,
+      "photons_per_adu": 3.6,
+      "em_gain": 100,
+      "is_emccd": true,
+      "quantum_efficiency": 1.0,
+      "bit_depth": 16
+    },
+    "pixel_size_nm": 108.0,
+    "psf_sigma_nm": 173.0,
+    "image_size": [
+      128,
+      128
+    ],
+    "n_frames": 100,
+    "n_molecules": 1000,
+    "photons_per_molecule": 5000,
+    "background_per_pixel": 10,
+    "n_ground_truth_localizations": 10626,
+    "mean_active_per_frame": 106.26,
+    "tiff_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/high_snr_108nm.tif",
+    "ground_truth_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/high_snr_108nm_ground_truth.csv",
+    "seed": 42
+  },
+  "sparse_60x": {
+    "config_name": "sparse_60x",
+    "description": "Sparse molecules, 60x objective",
+    "optics": {
+      "description": "60x oil objective (NA 1.4)",
+      "magnification": 60,
+      "pixel_size_nm": 267.0,
+      "na": 1.4,
+      "emission_wavelength_nm": 680.0,
+      "psf_sigma_nm": 360.0
+    },
+    "camera": {
+      "description": "EMCCD (Andor iXon)",
+      "baseline_adu": 100,
+      "readout_noise_e": 1.0,
+      "photons_per_adu": 3.6,
+      "em_gain": 100,
+      "is_emccd": true,
+      "quantum_efficiency": 0.9,
+      "bit_depth": 16
+    },
+    "pixel_size_nm": 267.0,
+    "psf_sigma_nm": 360.0,
+    "image_size": [
+      128,
+      128
+    ],
+    "n_frames": 100,
+    "n_molecules": 500,
+    "photons_per_molecule": 1500,
+    "background_per_pixel": 15,
+    "n_ground_truth_localizations": 5511,
+    "mean_active_per_frame": 55.11,
+    "tiff_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/sparse_60x.tif",
+    "ground_truth_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/sparse_60x_ground_truth.csv",
+    "seed": 42
+  },
+  "sparse_100x": {
+    "config_name": "sparse_100x",
+    "description": "Sparse molecules, 100x objective",
+    "optics": {
+      "description": "100x oil objective (NA 1.49)",
+      "magnification": 100,
+      "pixel_size_nm": 160.0,
+      "na": 1.49,
+      "emission_wavelength_nm": 680.0,
+      "psf_sigma_nm": 220.0
+    },
+    "camera": {
+      "description": "EMCCD (Andor iXon)",
+      "baseline_adu": 100,
+      "readout_noise_e": 1.0,
+      "photons_per_adu": 3.6,
+      "em_gain": 100,
+      "is_emccd": true,
+      "quantum_efficiency": 0.9,
+      "bit_depth": 16
+    },
+    "pixel_size_nm": 160.0,
+    "psf_sigma_nm": 220.0,
+    "image_size": [
+      128,
+      128
+    ],
+    "n_frames": 100,
+    "n_molecules": 500,
+    "photons_per_molecule": 1500,
+    "background_per_pixel": 15,
+    "n_ground_truth_localizations": 5511,
+    "mean_active_per_frame": 55.11,
+    "tiff_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/sparse_100x.tif",
+    "ground_truth_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/sparse_100x_ground_truth.csv",
+    "seed": 42
+  },
+  "sparse_150x": {
+    "config_name": "sparse_150x",
+    "description": "Sparse molecules, 150x TIRF",
+    "optics": {
+      "description": "150x TIRF objective (NA 1.49)",
+      "magnification": 150,
+      "pixel_size_nm": 107.0,
+      "na": 1.49,
+      "emission_wavelength_nm": 680.0,
+      "psf_sigma_nm": 150.0
+    },
+    "camera": {
+      "description": "EMCCD (Andor iXon)",
+      "baseline_adu": 100,
+      "readout_noise_e": 1.0,
+      "photons_per_adu": 3.6,
+      "em_gain": 100,
+      "is_emccd": true,
+      "quantum_efficiency": 0.9,
+      "bit_depth": 16
+    },
+    "pixel_size_nm": 107.0,
+    "psf_sigma_nm": 150.0,
+    "image_size": [
+      128,
+      128
+    ],
+    "n_frames": 100,
+    "n_molecules": 500,
+    "photons_per_molecule": 1500,
+    "background_per_pixel": 15,
+    "n_ground_truth_localizations": 5511,
+    "mean_active_per_frame": 55.11,
+    "tiff_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/sparse_150x.tif",
+    "ground_truth_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/sparse_150x_ground_truth.csv",
+    "seed": 42
+  },
+  "medium_scmos_100x": {
+    "config_name": "medium_scmos_100x",
+    "description": "Medium density, sCMOS camera, 100x",
+    "optics": {
+      "description": "100x oil objective (NA 1.49)",
+      "magnification": 100,
+      "pixel_size_nm": 160.0,
+      "na": 1.49,
+      "emission_wavelength_nm": 680.0,
+      "psf_sigma_nm": 220.0
+    },
+    "camera": {
+      "description": "sCMOS (Hamamatsu Orca)",
+      "baseline_adu": 100,
+      "readout_noise_e": 1.5,
+      "photons_per_adu": 0.47,
+      "em_gain": 1,
+      "is_emccd": false,
+      "quantum_efficiency": 0.82,
+      "bit_depth": 16
+    },
+    "pixel_size_nm": 160.0,
+    "psf_sigma_nm": 220.0,
+    "image_size": [
+      128,
+      128
+    ],
+    "n_frames": 100,
+    "n_molecules": 2000,
+    "photons_per_molecule": 2000,
+    "background_per_pixel": 20,
+    "n_ground_truth_localizations": 21041,
+    "mean_active_per_frame": 210.41,
+    "tiff_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/medium_scmos_100x.tif",
+    "ground_truth_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/medium_scmos_100x_ground_truth.csv",
+    "seed": 42
+  }
+}

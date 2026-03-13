@@ -30,7 +30,7 @@ def safe_border_width(fit_radius):
     border_width : int
         Recommended border exclusion width
     """
-    return max(5, int(fit_radius * 1.5))  # At least 5 pixels, or 1.5x fit radius
+    return fit_radius  # Match ImageJ: exclude only where full fitting ROI can't be extracted
 
 
 class BaseDetector:
@@ -70,7 +70,7 @@ class LocalMaximumDetector(BaseDetector):
         Border exclusion width (int) or True for automatic
     """
 
-    def __init__(self, connectivity='8-neighbourhood', min_distance=1, exclude_border=True):
+    def __init__(self, connectivity='8-neighbourhood', min_distance=1, exclude_border=0):
         super().__init__("LocalMaximum")
         self.connectivity = connectivity
         self.min_distance = min_distance
@@ -86,15 +86,28 @@ class LocalMaximumDetector(BaseDetector):
         else:
             border_pixels = False
 
-        # Use peak_local_max for robust detection
-        coordinates = peak_local_max(
-            image,
-            min_distance=self.min_distance,
-            threshold_abs=threshold,
-            exclude_border=border_pixels if border_pixels else False
-        )
+        # Connectivity determines the neighbourhood structure:
+        # 4-neighbourhood: only orthogonal neighbors (connectivity=1)
+        # 8-neighbourhood: includes diagonal neighbors (connectivity=2)
+        use_4conn = '4' in str(self.connectivity)
 
-        # Additional safety border filtering
+        if use_4conn:
+            # 4-connectivity: pixel must be > orthogonal neighbors only
+            # peak_local_max always uses 8-connectivity, so implement manually
+            struct = ndimage.generate_binary_structure(2, 1)  # 4-connected
+            dilated = ndimage.grey_dilation(image, footprint=struct)
+            maxima = (image >= dilated) & (image > threshold)
+            coordinates = np.column_stack(np.where(maxima))
+        else:
+            # 8-connectivity: use peak_local_max
+            coordinates = peak_local_max(
+                image,
+                min_distance=self.min_distance,
+                threshold_abs=threshold,
+                exclude_border=border_pixels if border_pixels else False
+            )
+
+        # Apply border exclusion
         if border_pixels and len(coordinates) > 0:
             coordinates = remove_border_detections(
                 coordinates,
@@ -108,19 +121,27 @@ class LocalMaximumDetector(BaseDetector):
 class NonMaximumSuppression(BaseDetector):
     """Non-maximum suppression detector.
 
-    Finds local maxima using morphological operations.
+    Finds local maxima using morphological dilation.  Pixels that remain
+    unchanged after grey dilation (i.e. they equal the local maximum in
+    their neighbourhood) and exceed the threshold are returned.
 
     Parameters
     ----------
     connectivity : int
-        Connectivity for morphological operations (1 or 2)
+        Connectivity for morphological operations (1 or 2).
+        Only used when *radius* is 1 (default).
+    radius : int
+        Dilation radius in pixels (default 1).  Matches the
+        thunderSTORM "Radius" parameter for non-maximum suppression.
+        A larger radius requires peaks to dominate a wider area.
     exclude_border : int or bool
         Border exclusion width
     """
 
-    def __init__(self, connectivity=2, exclude_border=True):
+    def __init__(self, connectivity=2, radius=1, exclude_border=0):
         super().__init__("NonMaxSuppression")
         self.connectivity = connectivity
+        self.radius = radius
         self.exclude_border = exclude_border
 
     def detect(self, image, threshold):
@@ -128,8 +149,16 @@ class NonMaximumSuppression(BaseDetector):
         # Threshold image
         binary = image > threshold
 
-        # Find local maxima using morphological dilation
-        struct = ndimage.generate_binary_structure(2, self.connectivity)
+        # Build dilation footprint from radius
+        if self.radius <= 1:
+            struct = ndimage.generate_binary_structure(2, self.connectivity)
+        else:
+            # Disk-like footprint of given radius (matches thunderSTORM)
+            size = 2 * self.radius + 1
+            y, x = np.ogrid[-self.radius:self.radius + 1,
+                             -self.radius:self.radius + 1]
+            struct = (x * x + y * y) <= self.radius * self.radius
+
         dilated = ndimage.grey_dilation(image, footprint=struct)
 
         # Maxima are where image equals dilated image
@@ -173,7 +202,7 @@ class CentroidDetector(BaseDetector):
         separate overlapping PSFs.
     """
 
-    def __init__(self, connectivity=2, min_area=1, exclude_border=True,
+    def __init__(self, connectivity=2, min_area=1, exclude_border=0,
                  use_watershed=True):
         super().__init__("Centroid")
         self.connectivity = connectivity
@@ -195,21 +224,24 @@ class CentroidDetector(BaseDetector):
             # Simple connected component labeling
             labeled = measure.label(binary, connectivity=self.connectivity)
 
-        # Get region properties
-        regions = measure.regionprops(labeled, intensity_image=image)
-
-        # Extract centroids of regions above min_area
-        coordinates = []
-        for region in regions:
-            if region.area >= self.min_area:
-                # Use weighted centroid (intensity-weighted)
-                coordinates.append([region.weighted_centroid[0],
-                                  region.weighted_centroid[1]])
-
-        if not coordinates:
+        # Use scipy center_of_mass instead of skimage regionprops (much faster)
+        n_labels = labeled.max()
+        if n_labels == 0:
             return np.array([]).reshape(0, 2)
 
-        coordinates = np.array(coordinates)
+        # Get centroids and areas using scipy (C-compiled, no Python object overhead)
+        centroids = ndimage.center_of_mass(labeled > 0, labeled, range(1, n_labels + 1))
+
+        if self.min_area > 1:
+            # Only compute areas if needed for filtering
+            areas = ndimage.sum(np.ones_like(labeled), labeled, range(1, n_labels + 1))
+            coordinates = np.array([c for c, a in zip(centroids, areas)
+                                    if a >= self.min_area])
+        else:
+            coordinates = np.array(centroids)
+
+        if len(coordinates) == 0:
+            return np.array([]).reshape(0, 2)
 
         # Apply border exclusion
         if self.exclude_border and len(coordinates) > 0:

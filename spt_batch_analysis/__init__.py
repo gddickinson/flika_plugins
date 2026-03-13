@@ -557,25 +557,11 @@ class DetectionWorker(QThread):
                     continue
 
                 # Create ThunderSTORM detector with parameters
-                gui_params = {
-                    'ts_filter_type': self.detector_params.get('ts_filter_type', 'wavelet'),
-                    'ts_filter_scale': self.detector_params.get('ts_filter_scale', 2),
-                    'ts_detector_type': self.detector_params.get('ts_detector_type', 'local_maximum'),
-                    'ts_detector_threshold': self.detector_params.get('ts_detector_threshold', 'std(Wave.F1)'),
-                    'ts_fitter_type': self.detector_params.get('ts_fitter_type', 'gaussian_lsq'),
-                    'ts_fit_radius': self.detector_params.get('ts_fit_radius', 3),
-                    'pixel_size': self.pixel_size,
-                    'ts_initial_sigma': self.detector_params.get('ts_initial_sigma', 1.3),
-                    'ts_photons_per_adu': self.detector_params.get('ts_photons_per_adu', 3.6),
-                    'ts_baseline': self.detector_params.get('ts_baseline', 100.0),
-                    'ts_is_em_gain': self.detector_params.get('ts_is_em_gain', True),
-                    'ts_em_gain': self.detector_params.get('ts_em_gain', 100.0),
-                    'ts_quantum_efficiency': self.detector_params.get('ts_quantum_efficiency', 1.0),
-                    'ts_use_watershed': self.detector_params.get('ts_use_watershed', True),
-                    'ts_multi_emitter_enabled': self.detector_params.get('ts_multi_emitter_enabled', False),
-                    'ts_multi_emitter_max': self.detector_params.get('ts_multi_emitter_max', 5),
-                    'ts_multi_emitter_pvalue': self.detector_params.get('ts_multi_emitter_pvalue', 1e-6),
-                }
+                # Pass all ts_* prefixed params from the GUI through to the detector
+                gui_params = {'pixel_size': self.pixel_size}
+                for key, value in self.detector_params.items():
+                    if key.startswith('ts_'):
+                        gui_params[key] = value
 
                 detector = ThunderSTORMDetector.create_from_gui_parameters(gui_params)
 
@@ -3813,18 +3799,41 @@ class SPTAnalysisParameters:
         self.detection_show_results = False
         # ThunderSTORM detection parameters
         self.detection_method = 'utrack'  # 'utrack' or 'thunderstorm'
+        # ThunderSTORM filter parameters
         self.ts_filter_type = 'wavelet'
-        self.ts_filter_scale = 2
+        self.ts_filter_scale = 2          # wavelet scale (1-5)
+        self.ts_filter_order = 3          # B-spline order (1-5, 3=cubic)
+        self.ts_filter_sigma = 1.6        # Gaussian/Lowered Gaussian sigma
+        self.ts_filter_sigma1 = 1.0       # DoG sigma1
+        self.ts_filter_sigma2 = 1.6       # DoG sigma2
+        self.ts_filter_size1 = 3          # box/median/diff_avg size 1
+        self.ts_filter_size2 = 5          # diff_avg size 2
+        self.ts_filter_pattern = 'box'    # median pattern: 'box' or 'cross'
+        # ThunderSTORM detector parameters
         self.ts_detector_type = 'local_maximum'
         self.ts_detector_threshold = 'std(Wave.F1)'
-        self.ts_fitter_type = 'gaussian_lsq'
+        self.ts_detector_connectivity = '8-neighbourhood'
+        self.ts_detector_radius = 1       # NMS dilation radius
+        # ThunderSTORM sub-pixel localization parameters
+        self.ts_psf_model = 'integrated_gaussian'  # PSF model / estimator
+        self.ts_fitting_method = 'least_squares'    # optimizer (for PSF models)
+        self.ts_fitter_type = 'gaussian_lsq'        # internal combined key (derived)
         self.ts_fit_radius = 3
         self.ts_initial_sigma = 1.3
+        # Sigma / FWHM range constraint (fit quality gate)
+        self.ts_sigma_min = None          # min sigma in pixels (None = no limit)
+        self.ts_sigma_max = None          # max sigma in pixels (None = no limit)
+        self.ts_fwhm_min_nm = None        # min FWHM in nm (alternative)
+        self.ts_fwhm_max_nm = None        # max FWHM in nm (alternative)
         # Advanced ThunderSTORM options
-        self.ts_use_watershed = True  # watershed segmentation for centroid detector
+        self.ts_use_watershed = True      # watershed segmentation for centroid detector
         self.ts_multi_emitter_enabled = False  # multi-emitter fitting
-        self.ts_multi_emitter_max = 5  # max emitters per region
+        self.ts_multi_emitter_max = 5     # max emitters per region
         self.ts_multi_emitter_pvalue = 1e-6  # model selection p-value
+        self.ts_multi_emitter_keep_same_intensity = True  # force similar intensity across emitters
+        self.ts_multi_emitter_fixed_intensity = False      # constrain intensity range
+        self.ts_multi_emitter_intensity_min = 500          # min photons (if fixed)
+        self.ts_multi_emitter_intensity_max = 2500         # max photons (if fixed)
         # ThunderSTORM camera parameters
         self.ts_photons_per_adu = 3.6
         self.ts_baseline = 100.0
@@ -5482,112 +5491,339 @@ Parameters:
         ts_title.setStyleSheet("font-size: 12pt; color: #A23B72; margin-bottom: 10px;")
         ts_layout.addWidget(ts_title)
 
-        ts_params_group = QGroupBox("ThunderSTORM Settings")
-        ts_params_layout = QFormLayout(ts_params_group)
+        # Wrap everything in a scroll area so it all fits
+        ts_scroll = QScrollArea()
+        ts_scroll.setWidgetResizable(True)
+        ts_scroll_widget = QWidget()
+        ts_scroll_layout = QVBoxLayout(ts_scroll_widget)
 
-        # Filter type
+        # ---- Image Filtering group ----
+        ts_filter_group = QGroupBox("Image Filtering")
+        ts_filter_layout = QFormLayout(ts_filter_group)
+
         self.ts_filter_combo = QComboBox()
-        self.ts_filter_combo.addItems(['wavelet', 'gaussian', 'dog', 'lowered_gaussian'])
+        self.ts_filter_combo.addItems(['wavelet', 'gaussian', 'dog', 'lowered_gaussian',
+                                       'diff_avg', 'median', 'box', 'none'])
         self.ts_filter_combo.setCurrentText(self.parameters.ts_filter_type)
-        ts_params_layout.addRow("Filter Type:", self.ts_filter_combo)
+        self.ts_filter_combo.currentTextChanged.connect(self._on_ts_filter_type_changed)
+        ts_filter_layout.addRow("Filter Type:", self.ts_filter_combo)
 
-        # Filter scale (for wavelet)
+        # Wavelet: scale + order
         self.ts_filter_scale_spin = QSpinBox()
         self.ts_filter_scale_spin.setRange(1, 5)
         self.ts_filter_scale_spin.setValue(self.parameters.ts_filter_scale)
-        ts_params_layout.addRow("Wavelet Scale:", self.ts_filter_scale_spin)
+        self.ts_filter_scale_spin.setToolTip("Wavelet decomposition level (higher = coarser features)")
+        ts_filter_layout.addRow("B-Spline Scale:", self.ts_filter_scale_spin)
 
-        # Detector type
+        self.ts_filter_order_spin = QSpinBox()
+        self.ts_filter_order_spin.setRange(1, 5)
+        self.ts_filter_order_spin.setValue(self.parameters.ts_filter_order)
+        self.ts_filter_order_spin.setToolTip("B-spline order: 1=linear, 3=cubic (default), 5=quintic")
+        ts_filter_layout.addRow("B-Spline Order:", self.ts_filter_order_spin)
+
+        # Gaussian / Lowered Gaussian: sigma
+        self.ts_filter_sigma_spin = QDoubleSpinBox()
+        self.ts_filter_sigma_spin.setRange(0.1, 20.0)
+        self.ts_filter_sigma_spin.setDecimals(2)
+        self.ts_filter_sigma_spin.setSingleStep(0.1)
+        self.ts_filter_sigma_spin.setValue(self.parameters.ts_filter_sigma)
+        self.ts_filter_sigma_spin.setSuffix(" px")
+        self.ts_filter_sigma_spin.setToolTip("Gaussian sigma (for Gaussian, Lowered Gaussian filters)")
+        ts_filter_layout.addRow("Filter Sigma:", self.ts_filter_sigma_spin)
+
+        # DoG: sigma1, sigma2
+        self.ts_filter_sigma1_spin = QDoubleSpinBox()
+        self.ts_filter_sigma1_spin.setRange(0.1, 20.0)
+        self.ts_filter_sigma1_spin.setDecimals(2)
+        self.ts_filter_sigma1_spin.setSingleStep(0.1)
+        self.ts_filter_sigma1_spin.setValue(self.parameters.ts_filter_sigma1)
+        self.ts_filter_sigma1_spin.setSuffix(" px")
+        self.ts_filter_sigma1_spin.setToolTip("Smaller Gaussian sigma (DoG)")
+        ts_filter_layout.addRow("DoG Sigma 1:", self.ts_filter_sigma1_spin)
+
+        self.ts_filter_sigma2_spin = QDoubleSpinBox()
+        self.ts_filter_sigma2_spin.setRange(0.1, 20.0)
+        self.ts_filter_sigma2_spin.setDecimals(2)
+        self.ts_filter_sigma2_spin.setSingleStep(0.1)
+        self.ts_filter_sigma2_spin.setValue(self.parameters.ts_filter_sigma2)
+        self.ts_filter_sigma2_spin.setSuffix(" px")
+        self.ts_filter_sigma2_spin.setToolTip("Larger Gaussian sigma (DoG, must be > Sigma 1)")
+        ts_filter_layout.addRow("DoG Sigma 2:", self.ts_filter_sigma2_spin)
+
+        # Box/Median/DiffAvg: size1, size2
+        self.ts_filter_size1_spin = QSpinBox()
+        self.ts_filter_size1_spin.setRange(1, 31)
+        self.ts_filter_size1_spin.setSingleStep(2)
+        self.ts_filter_size1_spin.setValue(self.parameters.ts_filter_size1)
+        self.ts_filter_size1_spin.setSuffix(" px")
+        self.ts_filter_size1_spin.setToolTip("Kernel size (Box, Median) or small kernel (Diff Avg)")
+        ts_filter_layout.addRow("Kernel Size 1:", self.ts_filter_size1_spin)
+
+        self.ts_filter_size2_spin = QSpinBox()
+        self.ts_filter_size2_spin.setRange(1, 31)
+        self.ts_filter_size2_spin.setSingleStep(2)
+        self.ts_filter_size2_spin.setValue(self.parameters.ts_filter_size2)
+        self.ts_filter_size2_spin.setSuffix(" px")
+        self.ts_filter_size2_spin.setToolTip("Large kernel size (Diff Avg only, must be > Size 1)")
+        ts_filter_layout.addRow("Kernel Size 2:", self.ts_filter_size2_spin)
+
+        # Median: pattern
+        self.ts_filter_pattern_combo = QComboBox()
+        self.ts_filter_pattern_combo.addItems(['box', 'cross'])
+        self.ts_filter_pattern_combo.setCurrentText(self.parameters.ts_filter_pattern)
+        self.ts_filter_pattern_combo.setToolTip("Median neighbourhood shape: box (square) or cross (plus)")
+        ts_filter_layout.addRow("Median Pattern:", self.ts_filter_pattern_combo)
+
+        ts_scroll_layout.addWidget(ts_filter_group)
+
+        # Show/hide filter-specific rows on init
+        self._on_ts_filter_type_changed(self.parameters.ts_filter_type)
+
+        # ---- Approximate Localization (Detection) group ----
+        ts_detect_group = QGroupBox("Approximate Localization")
+        ts_detect_layout = QFormLayout(ts_detect_group)
+
         self.ts_detector_combo = QComboBox()
         self.ts_detector_combo.addItems(['local_maximum', 'non_maximum_suppression', 'centroid'])
         self.ts_detector_combo.setCurrentText(self.parameters.ts_detector_type)
-        ts_params_layout.addRow("Detector Type:", self.ts_detector_combo)
+        self.ts_detector_combo.currentTextChanged.connect(self._on_ts_detector_type_changed)
+        ts_detect_layout.addRow("Detector Method:", self.ts_detector_combo)
 
-        # Threshold expression
         self.ts_threshold_combo = QComboBox()
         self.ts_threshold_combo.setEditable(True)
         self.ts_threshold_combo.addItems(['std(Wave.F1)', '2*std(Wave.F1)', '3*std(Wave.F1)',
                                           'mean(Wave.F1) + 3*std(Wave.F1)', '100'])
         self.ts_threshold_combo.setCurrentText(self.parameters.ts_detector_threshold)
-        ts_params_layout.addRow("Detection Threshold:", self.ts_threshold_combo)
-
-        # Fitter type
-        self.ts_fitter_combo = QComboBox()
-        self.ts_fitter_combo.addItems(['gaussian_lsq', 'gaussian_wlsq', 'gaussian_mle',
-                                       'elliptical_gaussian_mle', 'phasor',
-                                       'radial_symmetry', 'centroid'])
-        self.ts_fitter_combo.setCurrentText(self.parameters.ts_fitter_type)
-        self.ts_fitter_combo.setToolTip(
-            "gaussian_lsq/wlsq/mle: Symmetric Gaussian PSF (LSQ, Weighted LSQ, or MLE)\n"
-            "elliptical_gaussian_mle: Elliptical Gaussian for astigmatism-based 3D\n"
-            "phasor: Fast Fourier-based phasor localization\n"
-            "radial_symmetry: Parthasarathy 2012 radial symmetry method\n"
-            "centroid: Simple intensity-weighted centroid"
+        self.ts_threshold_combo.setToolTip(
+            "Threshold expression. Variables: I (raw image), F (filtered),\n"
+            "Wave.F1 (wavelet detail), DoG.G1/G2 etc.\n"
+            "Functions: std, mean, median, var, sum, abs, min, max.\n"
+            "Operators: +, -, *, /, ^ (power)."
         )
-        ts_params_layout.addRow("PSF Fitter:", self.ts_fitter_combo)
+        ts_detect_layout.addRow("Threshold:", self.ts_threshold_combo)
 
-        # Fit radius
+        self.ts_detector_connectivity_combo = QComboBox()
+        self.ts_detector_connectivity_combo.addItems(['8-neighbourhood', '4-neighbourhood'])
+        self.ts_detector_connectivity_combo.setCurrentText(self.parameters.ts_detector_connectivity)
+        self.ts_detector_connectivity_combo.setToolTip(
+            "Pixel connectivity for peak detection.\n"
+            "8-neighbourhood: includes diagonals (default)\n"
+            "4-neighbourhood: only horizontal/vertical neighbours"
+        )
+        ts_detect_layout.addRow("Connectivity:", self.ts_detector_connectivity_combo)
+
+        self.ts_detector_radius_spin = QSpinBox()
+        self.ts_detector_radius_spin.setRange(1, 10)
+        self.ts_detector_radius_spin.setValue(self.parameters.ts_detector_radius)
+        self.ts_detector_radius_spin.setSuffix(" px")
+        self.ts_detector_radius_spin.setToolTip(
+            "Dilation radius for non-maximum suppression.\n"
+            "Larger = peaks must dominate a wider area.\n"
+            "Only used with 'non_maximum_suppression' detector."
+        )
+        ts_detect_layout.addRow("NMS Radius:", self.ts_detector_radius_spin)
+
+        self.ts_use_watershed_checkbox = QCheckBox("Watershed segmentation")
+        self.ts_use_watershed_checkbox.setChecked(self.parameters.ts_use_watershed)
+        self.ts_use_watershed_checkbox.setToolTip(
+            "Split touching molecules using watershed transform.\n"
+            "Only applies with 'centroid' detector."
+        )
+        ts_detect_layout.addRow(self.ts_use_watershed_checkbox)
+
+        ts_scroll_layout.addWidget(ts_detect_group)
+
+        # Show/hide detector-specific rows on init
+        self._on_ts_detector_type_changed(self.parameters.ts_detector_type)
+
+        # ---- Sub-pixel Localization (Fitting) group ----
+        ts_fit_group = QGroupBox("Sub-pixel Localization")
+        ts_fit_layout = QFormLayout(ts_fit_group)
+
+        # PSF Model / Estimator (matches thunderSTORM's top-level choice)
+        self.ts_psf_model_combo = QComboBox()
+        self.ts_psf_model_combo.addItems([
+            'PSF: Integrated Gaussian',
+            'PSF: Gaussian',
+            'PSF: Elliptical Gaussian (3D astigmatism)',
+            'Phasor',
+            'Radial symmetry',
+            'Centroid of local neighbourhood',
+            'No estimator',
+        ])
+        # Restore from saved parameter
+        psf_display_map = {
+            'integrated_gaussian': 'PSF: Integrated Gaussian',
+            'gaussian': 'PSF: Gaussian',
+            'elliptical_gaussian': 'PSF: Elliptical Gaussian (3D astigmatism)',
+            'phasor': 'Phasor',
+            'radial_symmetry': 'Radial symmetry',
+            'centroid': 'Centroid of local neighbourhood',
+            'no_estimator': 'No estimator',
+        }
+        saved_model = self.parameters.ts_psf_model
+        self.ts_psf_model_combo.setCurrentText(
+            psf_display_map.get(saved_model, 'PSF: Integrated Gaussian'))
+        self.ts_psf_model_combo.currentTextChanged.connect(self._on_ts_psf_model_changed)
+        ts_fit_layout.addRow("Method:", self.ts_psf_model_combo)
+
+        # Fitting method / optimizer (only for PSF models)
+        self.ts_fitting_method_combo = QComboBox()
+        self.ts_fitting_method_combo.addItems([
+            'Least squares',
+            'Weighted least squares',
+            'Maximum likelihood estimation',
+        ])
+        fitting_method_display = {
+            'least_squares': 'Least squares',
+            'weighted_least_squares': 'Weighted least squares',
+            'maximum_likelihood': 'Maximum likelihood estimation',
+        }
+        saved_method = self.parameters.ts_fitting_method
+        self.ts_fitting_method_combo.setCurrentText(
+            fitting_method_display.get(saved_method, 'Least squares'))
+        self.ts_fitting_method_combo.setToolTip(
+            "Least squares: Fast, good default (Levenberg-Marquardt)\n"
+            "Weighted least squares: Poisson variance weighting\n"
+            "Maximum likelihood: Optimal for low SNR data"
+        )
+        ts_fit_layout.addRow("Fitting Method:", self.ts_fitting_method_combo)
+
+        # Fitting radius (shown for all methods, label changes)
         self.ts_fit_radius_spin = QSpinBox()
         self.ts_fit_radius_spin.setRange(2, 10)
         self.ts_fit_radius_spin.setValue(self.parameters.ts_fit_radius)
-        self.ts_fit_radius_spin.setSuffix(" pixels")
-        ts_params_layout.addRow("Fit Radius:", self.ts_fit_radius_spin)
+        self.ts_fit_radius_spin.setSuffix(" px")
+        self.ts_fit_radius_spin.setToolTip(
+            "Size of the ROI around each detection for fitting/estimation.\n"
+            "ROI is (2*radius+1) x (2*radius+1) pixels."
+        )
+        self.ts_fit_radius_label = QLabel("Fitting Radius:")
+        ts_fit_layout.addRow(self.ts_fit_radius_label, self.ts_fit_radius_spin)
 
-        # Initial sigma
+        # Initial sigma (only for PSF models)
         self.ts_initial_sigma_spin = QDoubleSpinBox()
         self.ts_initial_sigma_spin.setRange(0.5, 5.0)
         self.ts_initial_sigma_spin.setDecimals(2)
+        self.ts_initial_sigma_spin.setSingleStep(0.1)
         self.ts_initial_sigma_spin.setValue(self.parameters.ts_initial_sigma)
-        self.ts_initial_sigma_spin.setSuffix(" pixels")
-        ts_params_layout.addRow("Initial PSF Sigma:", self.ts_initial_sigma_spin)
-
-        ts_layout.addWidget(ts_params_group)
-
-        # Advanced Options group
-        ts_advanced_group = QGroupBox("Advanced Options")
-        ts_advanced_layout = QFormLayout(ts_advanced_group)
-
-        # Watershed segmentation for centroid detector
-        self.ts_use_watershed_checkbox = QCheckBox("Use watershed segmentation")
-        self.ts_use_watershed_checkbox.setChecked(self.parameters.ts_use_watershed)
-        self.ts_use_watershed_checkbox.setToolTip(
-            "Split touching molecules in centroid detector using watershed.\n"
-            "Matches original thunderSTORM behavior. Only applies when\n"
-            "detector type is 'centroid'."
+        self.ts_initial_sigma_spin.setSuffix(" px")
+        self.ts_initial_sigma_spin.setToolTip(
+            "Initial PSF sigma guess for the optimizer.\n"
+            "Should be close to the actual PSF width."
         )
-        ts_advanced_layout.addRow(self.ts_use_watershed_checkbox)
+        self.ts_initial_sigma_label = QLabel("Initial Sigma:")
+        ts_fit_layout.addRow(self.ts_initial_sigma_label, self.ts_initial_sigma_spin)
 
-        # Multi-emitter fitting
-        self.ts_multi_emitter_checkbox = QCheckBox("Enable multi-emitter fitting (MFA)")
+        # FWHM / sigma range constraint (only for PSF models)
+        self.ts_sigma_range_label = QLabel("Sigma range (fit rejection):")
+        self.ts_sigma_range_label.setStyleSheet("color: #666; font-style: italic; font-size: 9pt;")
+        ts_fit_layout.addRow(self.ts_sigma_range_label)
+
+        self.ts_sigma_min_spin = QDoubleSpinBox()
+        self.ts_sigma_min_spin.setRange(0.0, 20.0)
+        self.ts_sigma_min_spin.setDecimals(2)
+        self.ts_sigma_min_spin.setSingleStep(0.1)
+        self.ts_sigma_min_spin.setSpecialValueText("No limit")
+        self.ts_sigma_min_spin.setValue(self.parameters.ts_sigma_min if self.parameters.ts_sigma_min is not None else 0.0)
+        self.ts_sigma_min_spin.setSuffix(" px")
+        self.ts_sigma_min_spin.setToolTip(
+            "Minimum fitted sigma (pixels). Fits below this are rejected.\n"
+            "Set to 0 for no lower limit."
+        )
+        self.ts_sigma_min_label = QLabel("Min Sigma:")
+        ts_fit_layout.addRow(self.ts_sigma_min_label, self.ts_sigma_min_spin)
+
+        self.ts_sigma_max_spin = QDoubleSpinBox()
+        self.ts_sigma_max_spin.setRange(0.0, 50.0)
+        self.ts_sigma_max_spin.setDecimals(2)
+        self.ts_sigma_max_spin.setSingleStep(0.1)
+        self.ts_sigma_max_spin.setSpecialValueText("No limit")
+        self.ts_sigma_max_spin.setValue(self.parameters.ts_sigma_max if self.parameters.ts_sigma_max is not None else 0.0)
+        self.ts_sigma_max_spin.setSuffix(" px")
+        self.ts_sigma_max_spin.setToolTip(
+            "Maximum fitted sigma (pixels). Fits above this are rejected.\n"
+            "Set to 0 for no upper limit."
+        )
+        self.ts_sigma_max_label = QLabel("Max Sigma:")
+        ts_fit_layout.addRow(self.ts_sigma_max_label, self.ts_sigma_max_spin)
+
+        ts_scroll_layout.addWidget(ts_fit_group)
+
+        # Set initial visibility based on PSF model
+        self._on_ts_psf_model_changed(self.ts_psf_model_combo.currentText())
+
+        # ---- Multi-Emitter Analysis (MFA) group ----
+        ts_mfa_group = QGroupBox("Multi-Emitter Analysis (MFA)")
+        ts_mfa_layout = QFormLayout(ts_mfa_group)
+
+        self.ts_multi_emitter_checkbox = QCheckBox("Enable multi-emitter fitting")
         self.ts_multi_emitter_checkbox.setChecked(self.parameters.ts_multi_emitter_enabled)
         self.ts_multi_emitter_checkbox.setToolTip(
-            "After initial single-PSF fit, attempt to fit multiple overlapping\n"
-            "emitters in each ROI using chi-squared log-likelihood ratio test.\n"
-            "Improves detection in high-density regions but is slower."
+            "Fit multiple overlapping emitters in each ROI using\n"
+            "chi-squared log-likelihood ratio test for model selection.\n"
+            "Improves detection in crowded regions but is slower."
         )
         self.ts_multi_emitter_checkbox.toggled.connect(self._on_ts_multi_emitter_toggled)
-        ts_advanced_layout.addRow(self.ts_multi_emitter_checkbox)
+        ts_mfa_layout.addRow(self.ts_multi_emitter_checkbox)
 
         self.ts_multi_emitter_max_spin = QSpinBox()
         self.ts_multi_emitter_max_spin.setRange(2, 10)
         self.ts_multi_emitter_max_spin.setValue(self.parameters.ts_multi_emitter_max)
-        self.ts_multi_emitter_max_spin.setToolTip("Maximum number of emitters to fit per region")
+        self.ts_multi_emitter_max_spin.setToolTip("Maximum number of emitters per fitting region")
         self.ts_multi_emitter_max_spin.setEnabled(self.parameters.ts_multi_emitter_enabled)
-        ts_advanced_layout.addRow("Max Emitters:", self.ts_multi_emitter_max_spin)
+        ts_mfa_layout.addRow("Max Emitters (Nmax):", self.ts_multi_emitter_max_spin)
 
         self.ts_multi_emitter_pvalue_combo = QComboBox()
+        self.ts_multi_emitter_pvalue_combo.setEditable(True)
         self.ts_multi_emitter_pvalue_combo.addItems(['1e-6', '1e-4', '1e-3', '0.01', '0.05'])
         self.ts_multi_emitter_pvalue_combo.setCurrentText(str(self.parameters.ts_multi_emitter_pvalue))
         self.ts_multi_emitter_pvalue_combo.setToolTip(
-            "p-value threshold for chi-squared model selection.\n"
-            "Lower = more conservative (fewer multi-emitter fits)."
+            "P-value threshold for chi-squared model selection.\n"
+            "Lower = more conservative (fewer multi-emitter fits).\n"
+            "Default 1e-6 matches thunderSTORM."
         )
         self.ts_multi_emitter_pvalue_combo.setEnabled(self.parameters.ts_multi_emitter_enabled)
-        ts_advanced_layout.addRow("MFA p-value:", self.ts_multi_emitter_pvalue_combo)
+        ts_mfa_layout.addRow("P-value:", self.ts_multi_emitter_pvalue_combo)
 
-        ts_layout.addWidget(ts_advanced_group)
+        self.ts_mfa_keep_intensity_checkbox = QCheckBox("Keep same intensity")
+        self.ts_mfa_keep_intensity_checkbox.setChecked(self.parameters.ts_multi_emitter_keep_same_intensity)
+        self.ts_mfa_keep_intensity_checkbox.setToolTip(
+            "Force all emitters in a multi-fit region to have\n"
+            "similar intensity values."
+        )
+        self.ts_mfa_keep_intensity_checkbox.setEnabled(self.parameters.ts_multi_emitter_enabled)
+        ts_mfa_layout.addRow(self.ts_mfa_keep_intensity_checkbox)
 
-        # Camera Parameters group
+        self.ts_mfa_fixed_intensity_checkbox = QCheckBox("Fixed intensity range")
+        self.ts_mfa_fixed_intensity_checkbox.setChecked(self.parameters.ts_multi_emitter_fixed_intensity)
+        self.ts_mfa_fixed_intensity_checkbox.setToolTip(
+            "Constrain fitted intensity to a user-specified\n"
+            "photon count range."
+        )
+        self.ts_mfa_fixed_intensity_checkbox.setEnabled(self.parameters.ts_multi_emitter_enabled)
+        self.ts_mfa_fixed_intensity_checkbox.toggled.connect(self._on_ts_mfa_fixed_intensity_toggled)
+        ts_mfa_layout.addRow(self.ts_mfa_fixed_intensity_checkbox)
+
+        self.ts_mfa_intensity_min_spin = QSpinBox()
+        self.ts_mfa_intensity_min_spin.setRange(1, 100000)
+        self.ts_mfa_intensity_min_spin.setValue(self.parameters.ts_multi_emitter_intensity_min)
+        self.ts_mfa_intensity_min_spin.setSuffix(" photons")
+        self.ts_mfa_intensity_min_spin.setEnabled(
+            self.parameters.ts_multi_emitter_enabled and self.parameters.ts_multi_emitter_fixed_intensity)
+        ts_mfa_layout.addRow("Intensity Min:", self.ts_mfa_intensity_min_spin)
+
+        self.ts_mfa_intensity_max_spin = QSpinBox()
+        self.ts_mfa_intensity_max_spin.setRange(1, 100000)
+        self.ts_mfa_intensity_max_spin.setValue(self.parameters.ts_multi_emitter_intensity_max)
+        self.ts_mfa_intensity_max_spin.setSuffix(" photons")
+        self.ts_mfa_intensity_max_spin.setEnabled(
+            self.parameters.ts_multi_emitter_enabled and self.parameters.ts_multi_emitter_fixed_intensity)
+        ts_mfa_layout.addRow("Intensity Max:", self.ts_mfa_intensity_max_spin)
+
+        ts_scroll_layout.addWidget(ts_mfa_group)
+
+        # ---- Camera Parameters group ----
         ts_camera_group = QGroupBox("Camera Parameters")
         ts_camera_layout = QFormLayout(ts_camera_group)
 
@@ -5627,32 +5863,17 @@ Parameters:
         ts_camera_layout.addRow("Quantum Efficiency:", self.ts_quantum_efficiency_spin)
 
         camera_info = QLabel(
-            "Set camera parameters for correct photon conversion.\n"
-            "Conversion: photons = (ADU - offset) × photons2ADU / QE / EM_gain\n"
-            "Values from camera spec sheet or photon transfer curve."
+            "photons = (ADU - offset) x photons/ADU / QE / EM_gain"
         )
         camera_info.setStyleSheet("color: #666; font-style: italic; font-size: 9pt;")
         camera_info.setWordWrap(True)
         ts_camera_layout.addRow(camera_info)
 
-        ts_layout.addWidget(ts_camera_group)
+        ts_scroll_layout.addWidget(ts_camera_group)
+        ts_scroll_layout.addStretch()
 
-        # ThunderSTORM description
-        ts_desc = QTextEdit()
-        ts_desc.setReadOnly(True)
-        ts_desc.setMaximumHeight(140)
-        ts_desc.setText("""ThunderSTORM Detection:
-
-• Wavelet Filtering: B-spline wavelet decomposition (recommended)
-• Multiple Detectors: Local maximum, NMS, or centroid
-• Advanced Fitting: LSQ, WLSQ, MLE, or radial symmetry
-• Flexible Thresholding: Expression-based adaptive thresholds
-
-Output columns: x [nm], y [nm], sigma [nm], intensity [AU],
-  intensity [photon], offset [photon], bkgstd [photon],
-  chi2, uncertainty [nm]
-        """)
-        ts_layout.addWidget(ts_desc)
+        ts_scroll.setWidget(ts_scroll_widget)
+        ts_layout.addWidget(ts_scroll)
 
         detection_splitter.addWidget(self.thunderstorm_panel)
 
@@ -5772,6 +5993,154 @@ Output columns: x [nm], y [nm], sigma [nm], intensity [AU],
         """Enable/disable multi-emitter fitting options based on checkbox"""
         self.ts_multi_emitter_max_spin.setEnabled(checked)
         self.ts_multi_emitter_pvalue_combo.setEnabled(checked)
+        self.ts_mfa_keep_intensity_checkbox.setEnabled(checked)
+        self.ts_mfa_fixed_intensity_checkbox.setEnabled(checked)
+        fixed = checked and self.ts_mfa_fixed_intensity_checkbox.isChecked()
+        self.ts_mfa_intensity_min_spin.setEnabled(fixed)
+        self.ts_mfa_intensity_max_spin.setEnabled(fixed)
+
+    def _on_ts_mfa_fixed_intensity_toggled(self, checked):
+        """Enable/disable MFA intensity range spinners"""
+        enabled = self.ts_multi_emitter_checkbox.isChecked() and checked
+        self.ts_mfa_intensity_min_spin.setEnabled(enabled)
+        self.ts_mfa_intensity_max_spin.setEnabled(enabled)
+
+    def _on_ts_filter_type_changed(self, filter_type):
+        """Show/hide filter-specific parameter rows based on selected filter."""
+        is_wavelet = (filter_type == 'wavelet')
+        is_gauss_like = (filter_type in ('gaussian', 'lowered_gaussian'))
+        is_dog = (filter_type == 'dog')
+        is_diff_avg = (filter_type == 'diff_avg')
+        is_median = (filter_type == 'median')
+        is_box = (filter_type == 'box')
+
+        # Wavelet params
+        self.ts_filter_scale_spin.setVisible(is_wavelet)
+        self.ts_filter_order_spin.setVisible(is_wavelet)
+        # Find labels in the form layout and hide them too
+        for spin, visible in [
+            (self.ts_filter_scale_spin, is_wavelet),
+            (self.ts_filter_order_spin, is_wavelet),
+            (self.ts_filter_sigma_spin, is_gauss_like),
+            (self.ts_filter_sigma1_spin, is_dog),
+            (self.ts_filter_sigma2_spin, is_dog),
+            (self.ts_filter_size1_spin, is_diff_avg or is_median or is_box),
+            (self.ts_filter_size2_spin, is_diff_avg),
+            (self.ts_filter_pattern_combo, is_median),
+        ]:
+            spin.setVisible(visible)
+            # Also hide the label in the form layout
+            parent_layout = spin.parentWidget().layout() if spin.parentWidget() else None
+            if parent_layout and isinstance(parent_layout, QFormLayout):
+                label = parent_layout.labelForField(spin)
+                if label:
+                    label.setVisible(visible)
+
+    def _on_ts_psf_model_changed(self, model_text):
+        """Show/hide sub-pixel localization options based on selected PSF model."""
+        is_psf = model_text.startswith('PSF:')
+        is_no_estimator = ('No estimator' in model_text)
+
+        # Fitting method, initial sigma, sigma range: only for PSF models
+        for widget in [self.ts_fitting_method_combo, self.ts_initial_sigma_spin,
+                       self.ts_sigma_range_label, self.ts_sigma_min_spin,
+                       self.ts_sigma_max_spin]:
+            widget.setVisible(is_psf)
+        for label_widget in [self.ts_initial_sigma_label, self.ts_sigma_min_label,
+                             self.ts_sigma_max_label]:
+            label_widget.setVisible(is_psf)
+        # Fitting method label
+        parent_layout = self.ts_fitting_method_combo.parentWidget().layout() if self.ts_fitting_method_combo.parentWidget() else None
+        if parent_layout and isinstance(parent_layout, QFormLayout):
+            label = parent_layout.labelForField(self.ts_fitting_method_combo)
+            if label:
+                label.setVisible(is_psf)
+
+        # Fit/estimation radius: shown for all except 'No estimator'
+        self.ts_fit_radius_spin.setVisible(not is_no_estimator)
+        self.ts_fit_radius_label.setVisible(not is_no_estimator)
+
+        # Update radius label text
+        if is_psf:
+            self.ts_fit_radius_label.setText("Fitting Radius:")
+        else:
+            self.ts_fit_radius_label.setText("Estimation Radius:")
+
+    def _get_ts_fitter_type(self):
+        """Derive internal fitter_type from the PSF model + fitting method combos.
+
+        Maps the user-facing thunderSTORM-style selections to the internal
+        fitter_type keys used by the fitting module.
+
+        Returns
+        -------
+        fitter_type : str
+            Internal fitter key (e.g. 'gaussian_lsq', 'centroid', etc.)
+        psf_model : str
+            Canonical PSF model key for parameter storage.
+        fitting_method : str
+            Canonical fitting method key for parameter storage.
+        """
+        model_text = self.ts_psf_model_combo.currentText()
+        method_text = self.ts_fitting_method_combo.currentText()
+
+        # Map model display text → internal key
+        model_map = {
+            'PSF: Integrated Gaussian': 'integrated_gaussian',
+            'PSF: Gaussian': 'gaussian',
+            'PSF: Elliptical Gaussian (3D astigmatism)': 'elliptical_gaussian',
+            'Phasor': 'phasor',
+            'Radial symmetry': 'radial_symmetry',
+            'Centroid of local neighbourhood': 'centroid',
+            'No estimator': 'no_estimator',
+        }
+        psf_model = model_map.get(model_text, 'integrated_gaussian')
+
+        # Map fitting method display text → internal key
+        method_map = {
+            'Least squares': 'least_squares',
+            'Weighted least squares': 'weighted_least_squares',
+            'Maximum likelihood estimation': 'maximum_likelihood',
+        }
+        fitting_method = method_map.get(method_text, 'least_squares')
+
+        # Derive the combined fitter_type
+        if psf_model in ('phasor', 'radial_symmetry', 'centroid'):
+            fitter_type = psf_model
+        elif psf_model == 'no_estimator':
+            fitter_type = 'centroid'  # fallback
+        elif psf_model == 'elliptical_gaussian':
+            fitter_type = 'elliptical_gaussian_mle'
+        elif psf_model in ('integrated_gaussian', 'gaussian'):
+            # Map fitting method to suffix
+            method_suffix = {
+                'least_squares': 'lsq',
+                'weighted_least_squares': 'wlsq',
+                'maximum_likelihood': 'mle',
+            }
+            fitter_type = 'gaussian_' + method_suffix.get(fitting_method, 'lsq')
+        else:
+            fitter_type = 'gaussian_lsq'
+
+        return fitter_type, psf_model, fitting_method
+
+    def _on_ts_detector_type_changed(self, detector_type):
+        """Show/hide detector-specific parameter rows."""
+        is_nms = (detector_type == 'non_maximum_suppression')
+        is_centroid = (detector_type == 'centroid')
+
+        self.ts_detector_radius_spin.setVisible(is_nms)
+        self.ts_use_watershed_checkbox.setVisible(is_centroid)
+
+        for widget, visible in [
+            (self.ts_detector_radius_spin, is_nms),
+            (self.ts_use_watershed_checkbox, is_centroid),
+        ]:
+            parent_layout = widget.parentWidget().layout() if widget.parentWidget() else None
+            if parent_layout and isinstance(parent_layout, QFormLayout):
+                label = parent_layout.labelForField(widget)
+                if label:
+                    label.setVisible(visible)
 
     def select_detection_output_directory(self):
         """Select output directory for detection results"""
@@ -5823,23 +6192,51 @@ Output columns: x [nm], y [nm], sigma [nm], intensity [AU],
 
         # Add ThunderSTORM parameters if thunderSTORM is selected
         if hasattr(self, 'ts_filter_combo'):
+            # Sigma range: 0 means "no limit" → convert to None
+            sigma_min_val = self.ts_sigma_min_spin.value()
+            sigma_max_val = self.ts_sigma_max_spin.value()
+            # Derive combined fitter_type from PSF model + fitting method
+            fitter_type, psf_model, fitting_method = self._get_ts_fitter_type()
             detector_params.update({
+                # Filter
                 'ts_filter_type': self.ts_filter_combo.currentText(),
                 'ts_filter_scale': self.ts_filter_scale_spin.value(),
+                'ts_filter_order': self.ts_filter_order_spin.value(),
+                'ts_filter_sigma': self.ts_filter_sigma_spin.value(),
+                'ts_filter_sigma1': self.ts_filter_sigma1_spin.value(),
+                'ts_filter_sigma2': self.ts_filter_sigma2_spin.value(),
+                'ts_filter_size1': self.ts_filter_size1_spin.value(),
+                'ts_filter_size2': self.ts_filter_size2_spin.value(),
+                'ts_filter_pattern': self.ts_filter_pattern_combo.currentText(),
+                # Detector
                 'ts_detector_type': self.ts_detector_combo.currentText(),
                 'ts_detector_threshold': self.ts_threshold_combo.currentText(),
-                'ts_fitter_type': self.ts_fitter_combo.currentText(),
+                'ts_detector_connectivity': self.ts_detector_connectivity_combo.currentText(),
+                'ts_detector_radius': self.ts_detector_radius_spin.value(),
+                # Sub-pixel localization
+                'ts_psf_model': psf_model,
+                'ts_fitting_method': fitting_method,
+                'ts_fitter_type': fitter_type,
                 'ts_fit_radius': self.ts_fit_radius_spin.value(),
                 'ts_initial_sigma': self.ts_initial_sigma_spin.value(),
+                'ts_sigma_min': sigma_min_val if sigma_min_val > 0 else None,
+                'ts_sigma_max': sigma_max_val if sigma_max_val > 0 else None,
+                # Camera
                 'ts_photons_per_adu': self.ts_photons_per_adu_spin.value(),
                 'ts_baseline': self.ts_baseline_spin.value(),
                 'ts_is_em_gain': self.ts_is_em_gain_checkbox.isChecked(),
                 'ts_em_gain': self.ts_em_gain_spin.value(),
                 'ts_quantum_efficiency': self.ts_quantum_efficiency_spin.value(),
+                # Detection options
                 'ts_use_watershed': self.ts_use_watershed_checkbox.isChecked(),
+                # Multi-emitter
                 'ts_multi_emitter_enabled': self.ts_multi_emitter_checkbox.isChecked(),
                 'ts_multi_emitter_max': self.ts_multi_emitter_max_spin.value(),
                 'ts_multi_emitter_pvalue': float(self.ts_multi_emitter_pvalue_combo.currentText()),
+                'ts_multi_emitter_keep_same_intensity': self.ts_mfa_keep_intensity_checkbox.isChecked(),
+                'ts_multi_emitter_fixed_intensity': self.ts_mfa_fixed_intensity_checkbox.isChecked(),
+                'ts_multi_emitter_intensity_min': self.ts_mfa_intensity_min_spin.value(),
+                'ts_multi_emitter_intensity_max': self.ts_mfa_intensity_max_spin.value(),
             })
 
         # Start detection worker with detection method
@@ -8312,11 +8709,27 @@ directional persistence is important for understanding underlying mechanisms.
         if hasattr(self, 'ts_filter_combo'):
             self.parameters.ts_filter_type = self.ts_filter_combo.currentText()
             self.parameters.ts_filter_scale = self.ts_filter_scale_spin.value()
+            self.parameters.ts_filter_order = self.ts_filter_order_spin.value()
+            self.parameters.ts_filter_sigma = self.ts_filter_sigma_spin.value()
+            self.parameters.ts_filter_sigma1 = self.ts_filter_sigma1_spin.value()
+            self.parameters.ts_filter_sigma2 = self.ts_filter_sigma2_spin.value()
+            self.parameters.ts_filter_size1 = self.ts_filter_size1_spin.value()
+            self.parameters.ts_filter_size2 = self.ts_filter_size2_spin.value()
+            self.parameters.ts_filter_pattern = self.ts_filter_pattern_combo.currentText()
             self.parameters.ts_detector_type = self.ts_detector_combo.currentText()
             self.parameters.ts_detector_threshold = self.ts_threshold_combo.currentText()
-            self.parameters.ts_fitter_type = self.ts_fitter_combo.currentText()
+            self.parameters.ts_detector_connectivity = self.ts_detector_connectivity_combo.currentText()
+            self.parameters.ts_detector_radius = self.ts_detector_radius_spin.value()
+            fitter_type, psf_model, fitting_method = self._get_ts_fitter_type()
+            self.parameters.ts_fitter_type = fitter_type
+            self.parameters.ts_psf_model = psf_model
+            self.parameters.ts_fitting_method = fitting_method
             self.parameters.ts_fit_radius = self.ts_fit_radius_spin.value()
             self.parameters.ts_initial_sigma = self.ts_initial_sigma_spin.value()
+            sigma_min_val = self.ts_sigma_min_spin.value()
+            sigma_max_val = self.ts_sigma_max_spin.value()
+            self.parameters.ts_sigma_min = sigma_min_val if sigma_min_val > 0 else None
+            self.parameters.ts_sigma_max = sigma_max_val if sigma_max_val > 0 else None
 
         # ThunderSTORM advanced options
         if hasattr(self, 'ts_use_watershed_checkbox'):
@@ -8327,6 +8740,10 @@ directional persistence is important for understanding underlying mechanisms.
                 self.parameters.ts_multi_emitter_pvalue = float(self.ts_multi_emitter_pvalue_combo.currentText())
             except ValueError:
                 self.parameters.ts_multi_emitter_pvalue = 1e-6
+            self.parameters.ts_multi_emitter_keep_same_intensity = self.ts_mfa_keep_intensity_checkbox.isChecked()
+            self.parameters.ts_multi_emitter_fixed_intensity = self.ts_mfa_fixed_intensity_checkbox.isChecked()
+            self.parameters.ts_multi_emitter_intensity_min = self.ts_mfa_intensity_min_spin.value()
+            self.parameters.ts_multi_emitter_intensity_max = self.ts_mfa_intensity_max_spin.value()
 
         # ThunderSTORM camera parameters
         if hasattr(self, 'ts_photons_per_adu_spin'):
@@ -9398,14 +9815,67 @@ directional persistence is important for understanding underlying mechanisms.
         self.on_autocorr_enable_toggled()
         self.on_full_interpolation_toggled()
 
-        # ThunderSTORM camera parameters
-        if hasattr(self, 'ts_photons_per_adu_spin'):
+        # ThunderSTORM parameters
+        if hasattr(self, 'ts_filter_combo'):
+            # Filter
+            self.ts_filter_combo.setCurrentText(self.parameters.ts_filter_type)
+            self.ts_filter_scale_spin.setValue(self.parameters.ts_filter_scale)
+            self.ts_filter_order_spin.setValue(self.parameters.ts_filter_order)
+            self.ts_filter_sigma_spin.setValue(self.parameters.ts_filter_sigma)
+            self.ts_filter_sigma1_spin.setValue(self.parameters.ts_filter_sigma1)
+            self.ts_filter_sigma2_spin.setValue(self.parameters.ts_filter_sigma2)
+            self.ts_filter_size1_spin.setValue(self.parameters.ts_filter_size1)
+            self.ts_filter_size2_spin.setValue(self.parameters.ts_filter_size2)
+            self.ts_filter_pattern_combo.setCurrentText(self.parameters.ts_filter_pattern)
+            # Detector
+            self.ts_detector_combo.setCurrentText(self.parameters.ts_detector_type)
+            self.ts_threshold_combo.setCurrentText(self.parameters.ts_detector_threshold)
+            self.ts_detector_connectivity_combo.setCurrentText(self.parameters.ts_detector_connectivity)
+            self.ts_detector_radius_spin.setValue(self.parameters.ts_detector_radius)
+            self.ts_use_watershed_checkbox.setChecked(self.parameters.ts_use_watershed)
+            # Sub-pixel localization
+            psf_display_map = {
+                'integrated_gaussian': 'PSF: Integrated Gaussian',
+                'gaussian': 'PSF: Gaussian',
+                'elliptical_gaussian': 'PSF: Elliptical Gaussian (3D astigmatism)',
+                'phasor': 'Phasor',
+                'radial_symmetry': 'Radial symmetry',
+                'centroid': 'Centroid of local neighbourhood',
+                'no_estimator': 'No estimator',
+            }
+            fitting_method_display = {
+                'least_squares': 'Least squares',
+                'weighted_least_squares': 'Weighted least squares',
+                'maximum_likelihood': 'Maximum likelihood estimation',
+            }
+            self.ts_psf_model_combo.setCurrentText(
+                psf_display_map.get(self.parameters.ts_psf_model, 'PSF: Integrated Gaussian'))
+            self.ts_fitting_method_combo.setCurrentText(
+                fitting_method_display.get(self.parameters.ts_fitting_method, 'Least squares'))
+            self.ts_fit_radius_spin.setValue(self.parameters.ts_fit_radius)
+            self.ts_initial_sigma_spin.setValue(self.parameters.ts_initial_sigma)
+            self.ts_sigma_min_spin.setValue(self.parameters.ts_sigma_min if self.parameters.ts_sigma_min is not None else 0.0)
+            self.ts_sigma_max_spin.setValue(self.parameters.ts_sigma_max if self.parameters.ts_sigma_max is not None else 0.0)
+            # Multi-emitter
+            self.ts_multi_emitter_checkbox.setChecked(self.parameters.ts_multi_emitter_enabled)
+            self.ts_multi_emitter_max_spin.setValue(self.parameters.ts_multi_emitter_max)
+            self.ts_multi_emitter_pvalue_combo.setCurrentText(str(self.parameters.ts_multi_emitter_pvalue))
+            self.ts_mfa_keep_intensity_checkbox.setChecked(self.parameters.ts_multi_emitter_keep_same_intensity)
+            self.ts_mfa_fixed_intensity_checkbox.setChecked(self.parameters.ts_multi_emitter_fixed_intensity)
+            self.ts_mfa_intensity_min_spin.setValue(self.parameters.ts_multi_emitter_intensity_min)
+            self.ts_mfa_intensity_max_spin.setValue(self.parameters.ts_multi_emitter_intensity_max)
+            # Camera
             self.ts_photons_per_adu_spin.setValue(self.parameters.ts_photons_per_adu)
             self.ts_baseline_spin.setValue(self.parameters.ts_baseline)
             self.ts_is_em_gain_checkbox.setChecked(self.parameters.ts_is_em_gain)
             self.ts_em_gain_spin.setValue(self.parameters.ts_em_gain)
             self.ts_quantum_efficiency_spin.setValue(self.parameters.ts_quantum_efficiency)
+            # Refresh visibility states
             self.on_ts_em_gain_toggled()
+            self._on_ts_filter_type_changed(self.parameters.ts_filter_type)
+            self._on_ts_detector_type_changed(self.parameters.ts_detector_type)
+            self._on_ts_multi_emitter_toggled(self.parameters.ts_multi_emitter_enabled)
+            self._on_ts_psf_model_changed(self.ts_psf_model_combo.currentText())
 
         # Call the enhanced version with trackpy support
         self.update_gui_from_parameters_with_mixed_motion()
@@ -10431,7 +10901,10 @@ directional persistence is important for understanding underlying mechanisms.
             'Wavelet filter (B-Spline)',
             'Gaussian filter',
             'Difference of Gaussians',
-            'Lowpass filter',
+            'Lowered Gaussian filter',
+            'Median filter',
+            'Averaging filter (Box)',
+            'Difference of averaging filters',
             'No filter'
         ])
         filter_layout.addRow("Filter Type:", self.ts_filter_type)
@@ -10857,6 +11330,15 @@ directional persistence is important for understanding underlying mechanisms.
         if 'Wavelet' in filter_type:
             run_analysis_parts.append(f'scale={self.ts_wavelet_scale.value()}')
             run_analysis_parts.append(f'order={self.ts_wavelet_order.value()}')
+        elif filter_type in ('Gaussian filter', 'Lowered Gaussian filter'):
+            run_analysis_parts.append(f'sigma={self.ts_sigma.value()}')
+        elif filter_type == 'Difference of Gaussians':
+            run_analysis_parts.append(f'sigma1={self.ts_sigma.value() * 0.625}')
+            run_analysis_parts.append(f'sigma2={self.ts_sigma.value()}')
+        elif filter_type == 'Median filter':
+            run_analysis_parts.append(f'size={int(self.ts_wavelet_scale.value() * 2 + 1)}')
+        elif filter_type in ('Averaging filter (Box)', 'Difference of averaging filters'):
+            run_analysis_parts.append(f'size={int(self.ts_wavelet_scale.value() * 2 + 1)}')
 
         # Detector
         run_analysis_parts.append(f'detector=[{self.ts_detector.currentText()}]')

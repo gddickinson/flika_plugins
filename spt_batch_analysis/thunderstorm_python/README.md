@@ -1,24 +1,35 @@
 # ThunderSTORM Python
 
-A comprehensive Python implementation of thunderSTORM for Single Molecule Localization Microscopy (SMLM) data analysis.
+A comprehensive, Numba-optimized Python implementation of thunderSTORM for Single Molecule Localization Microscopy (SMLM) data analysis. Validated against ImageJ ThunderSTORM with **mean F1 = 0.995** across 13 pipeline configurations and **34.9x average speedup**.
 
 ## Overview
 
-This package provides a complete Python clone of the popular [thunderSTORM](https://github.com/zitmen/thunderstorm) ImageJ plugin, implementing all major features for PALM/STORM/SMLM analysis.
+This package provides a complete Python reimplementation of the popular [thunderSTORM](https://github.com/zitmen/thunderstorm) ImageJ plugin, implementing all major features for PALM/STORM/SMLM analysis. Every component has been validated against the original ImageJ plugin using both real and synthetic microscopy data.
 
-**Reference:** Ovesný, M., Křížek, P., Borkovec, J., Švindrych, Z., & Hagen, G. M. (2014). ThunderSTORM: a comprehensive ImageJ plugin for PALM and STORM data analysis and super-resolution imaging. *Bioinformatics*, 30(16), 2389-2390.
+**Reference:** Ovesny, M., Krizek, P., Borkovec, J., Svindrych, Z., & Hagen, G. M. (2014). ThunderSTORM: a comprehensive ImageJ plugin for PALM and STORM data analysis and super-resolution imaging. *Bioinformatics*, 30(16), 2389-2390.
+
+## Validation Summary
+
+| Metric | Value |
+|---|---|
+| Mean F1 vs ImageJ (real data) | **0.995** |
+| Mean position error | **0.7 nm** |
+| Synthetic tests within 0.01 F1 | **107 / 117 (91.5%)** |
+| Synthetic tests within 0.05 F1 | **115 / 117 (98.3%)** |
+| Speed vs ImageJ | **34.9x faster** (all configs faster) |
+
+See [VALIDATION_REPORT.md](VALIDATION_REPORT.md) for full comparison data, methodology, and per-configuration results.
 
 ## Features
 
 ### Core Analysis Pipeline
-- **Image Filtering**: Wavelet, Gaussian, DoG, LoG, median, and more
-- **Molecule Detection**: Local maxima, non-maximum suppression, centroid
-- **PSF Fitting**: 
-  - Gaussian (2D and 3D astigmatism)
-  - Least Squares (LSQ)
-  - Weighted Least Squares (WLSQ)
-  - Maximum Likelihood Estimation (MLE)
-  - Radial Symmetry (fast, non-iterative)
+- **Image Filtering**: Wavelet B-Spline, Gaussian, DoG, LoG, median, and more
+- **Molecule Detection**: Local maxima, non-maximum suppression, centroid of connected components
+- **PSF Fitting** (all Numba JIT-compiled for 10-400x speedup):
+  - Integrated Gaussian with erf-based pixel model (LSQ, WLSQ, MLE)
+  - Levenberg-Marquardt optimization with squared parameterization
+  - Radial Symmetry (Parthasarathy 2012) -- Numba-compiled batch processing
+  - Multi-Emitter Analysis with F-test model selection (WLSQ or MLE)
   - Centroid
 
 ### Post-Processing
@@ -34,11 +45,11 @@ This package provides a complete Python clone of the popular [thunderSTORM](http
 - **Average Shifted Histogram (ASH)**: Fast alternative to Gaussian rendering
 - **3D Rendering**: Color-coded Z-slices for 3D data
 
-### Simulation
+### Simulation & Validation
 - **Synthetic Data Generation**: Create test datasets with known ground truth
 - **Blinking Simulation**: Realistic fluorophore dynamics
 - **Performance Evaluation**: Precision/recall, F1 score, RMSE analysis
-- **Test Patterns**: Siemens star, grids, circles for resolution testing
+- **Comparison Testing**: Automated comparison against ImageJ ThunderSTORM results
 
 ## Installation
 
@@ -361,14 +372,30 @@ filtered_df = df[
 filtered_df.to_csv('filtered_localizations.csv', index=False)
 ```
 
-## Performance Tips
+## Performance
 
-1. **Use appropriate filtering**: Wavelet filter works best for most data
-2. **Tune threshold**: Start with `std(Wave.F1)` and adjust
-3. **PSF sigma**: Estimate from your data, typically 1.0-1.6 pixels
-4. **Fitting radius**: 3-5 pixels is usually sufficient
-5. **MLE vs LSQ**: MLE is more accurate but slower
-6. **Radial symmetry**: Very fast but less accurate than Gaussian fitting
+### Speed Comparison vs ImageJ ThunderSTORM (100 frames, warm Numba cache)
+
+| Configuration | ImageJ | FLIKA | Speedup |
+|---|---|---|---|
+| wavelet + WLSQ | 1.63s | 0.36s | 4.6x |
+| wavelet + LSQ | 0.68s | 0.23s | 3.0x |
+| wavelet + MLE | 84.17s | 0.21s | 410.4x |
+| radial symmetry | 0.22s | 0.13s | 1.7x |
+| multi-emitter (MFA) | 47.05s | 9.14s | 5.1x |
+| centroid detector | 0.65s | 0.21s | 3.1x |
+
+All Numba-compiled functions use `cache=True` for persistent on-disk caching. First-run JIT compilation takes ~5s; subsequent runs load from cache in <1s.
+
+### Performance Tips
+
+1. **Install Numba**: `pip install numba` for 10-400x fitting speedup
+2. **Use appropriate filtering**: Wavelet filter works best for most data
+3. **Tune threshold**: Start with `std(Wave.F1)` and adjust
+4. **PSF sigma**: Estimate from your data, typically 1.0-1.6 pixels
+5. **Fitting radius**: 3-5 pixels is usually sufficient
+6. **WLSQ vs MLE**: WLSQ is recommended (fast and accurate); MLE has higher statistical power but may over-split in MFA
+7. **Radial symmetry**: Very fast non-iterative method, good for initial screening
 
 ## Contributing
 

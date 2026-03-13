@@ -1,6 +1,6 @@
 # SPT Batch Analysis Plugin for FLIKA
 
-**Version:** 2025.08.26  
+**Version:** 2026.03.12
 **Author:** George Dickinson  
 **Platform:** FLIKA (FLuorescence Image analysis Kit)
 
@@ -41,6 +41,12 @@ The SPT Batch Analysis plugin integrates particle detection, linking, feature ca
 ## Key Features
 
 ### 🔬 Particle Detection
+- **ThunderSTORM Integration**: Full Python reimplementation of ImageJ ThunderSTORM, validated to F1 = 0.995 against the original plugin (see [Validation Report](thunderstorm_python/VALIDATION_REPORT.md))
+  - Wavelet, DoG, Gaussian, LoG filtering
+  - Local maximum, non-maximum suppression, centroid detection
+  - Integrated Gaussian PSF fitting (LSQ, WLSQ, MLE) -- Numba JIT compiled, 34.9x faster than ImageJ
+  - Multi-emitter analysis with F-test model selection
+  - Radial symmetry fitting (Parthasarathy 2012)
 - **U-Track Integration**: Statistical significance-based particle detection
 - **Background Estimation**: Automatic background and noise level calculation
 - **Adaptive Thresholding**: Alpha-level significance testing for robust detection
@@ -750,6 +756,15 @@ spt_batch_analysis/
 ├── config.py                # Configuration management
 ├── logging_setup.py         # Logging infrastructure
 ├── utrack_linking.py        # Particle linking algorithms
+├── thunderstorm_integration.py  # ThunderSTORM Python integration layer
+├── thunderstorm_python/     # Full ThunderSTORM reimplementation
+│   ├── pipeline.py          # Main analysis pipeline
+│   ├── filters.py           # Image filtering (wavelet, DoG, etc.)
+│   ├── detection.py         # Molecule detection
+│   ├── fitting.py           # Numba-optimized PSF fitting
+│   ├── postprocessing.py    # Drift correction, merging
+│   ├── visualization.py     # Super-resolution rendering
+│   └── VALIDATION_REPORT.md # Comparison report vs ImageJ
 ├── detection/               # Particle detection modules
 ├── analysis/                # Feature calculation
 ├── classification/          # Machine learning
@@ -779,10 +794,14 @@ python -m pytest --cov=spt_batch_analysis tests/
 - scikit-learn >= 0.24.0
 - scikit-image >= 0.18.0
 
+**Recommended:**
+- numba >= 0.55.0 (10-400x speedup for ThunderSTORM PSF fitting)
+
 **Optional Requirements:**
 - trackpy >= 0.5.0 (for trackpy linking)
 - tqdm >= 4.60.0 (for progress bars)
 - matplotlib >= 3.3.0 (for visualization)
+- tifffile >= 2021.0.0 (for TIFF I/O)
 
 ---
 
@@ -840,7 +859,15 @@ For questions, bug reports, or feature requests:
 
 ## Changelog
 
-### Version 2025.08.26 (Current)
+### Version 2026.03.12 (Current)
+- **ThunderSTORM Python integration**: Full Python reimplementation of ImageJ ThunderSTORM
+  - Validated to F1 = 0.995 against ImageJ across 13 pipeline configurations
+  - Numba JIT-compiled PSF fitting (LSQ, WLSQ, MLE, radial symmetry) -- 34.9x average speedup vs ImageJ
+  - Multi-emitter analysis with F-test model selection matching ImageJ behavior
+  - 107/117 synthetic tests within 0.01 F1 of ImageJ
+- Numba on-disk caching for near-instant startup after first compilation
+
+### Version 2025.08.26
 - Comprehensive batch processing with error handling
 - Multiple particle linking algorithms (Built-in, Trackpy, U-Track)
 - SVM classification with custom training support
@@ -907,5 +934,5 @@ For questions, bug reports, or feature requests:
 
 ---
 
-**Last Updated:** December 8, 2025  
-**Documentation Version:** 1.0
+**Last Updated:** March 12, 2026
+**Documentation Version:** 2.0

@@ -1,0 +1,391 @@
+{
+  "input_file": "/Users/george/claude_test/spt_batch_analysis/test_data/real/Endothelial_NonBapta_bin10_crop.tif",
+  "camera": {
+    "pixel_size": 108.0,
+    "photons_per_adu": 3.6,
+    "baseline": 100.0,
+    "is_em_gain": true,
+    "em_gain": 100.0,
+    "quantum_efficiency": 1.0
+  },
+  "tests": {
+    "wavelet_default": {
+      "description": "Wavelet B-Spline filter, default settings",
+      "imagej_params": {
+        "filter": "Wavelet filter (B-Spline)",
+        "scale": 2.0,
+        "order": 3,
+        "detector": "Local maximum",
+        "connectivity": "4-neighbourhood",
+        "threshold": "std(Wave.F1)",
+        "estimator": "PSF: Integrated Gaussian",
+        "sigma": 1.6,
+        "fitradius": 3,
+        "method": "Weighted Least squares",
+        "full_image_fitting": false,
+        "mfaenabled": false
+      },
+      "flika_params": {
+        "filter_type": "wavelet",
+        "filter_scale": 2.0,
+        "filter_order": 3,
+        "detector_type": "local_maximum",
+        "detector_connectivity": "4-neighbourhood",
+        "detector_threshold": "std(Wave.F1)",
+        "fitter_type": "gaussian_wlsq",
+        "fit_radius": 3,
+        "initial_sigma": 1.6
+      }
+    },
+    "wavelet_scale4_order5": {
+      "description": "Wavelet filter with scale=4, order=5",
+      "imagej_params": {
+        "filter": "Wavelet filter (B-Spline)",
+        "scale": 4.0,
+        "order": 5,
+        "detector": "Local maximum",
+        "connectivity": "8-neighbourhood",
+        "threshold": "std(Wave.F1)",
+        "estimator": "PSF: Integrated Gaussian",
+        "sigma": 1.6,
+        "fitradius": 3,
+        "method": "Weighted Least squares",
+        "full_image_fitting": false,
+        "mfaenabled": false
+      },
+      "flika_params": {
+        "filter_type": "wavelet",
+        "filter_scale": 4.0,
+        "filter_order": 5,
+        "detector_type": "local_maximum",
+        "detector_connectivity": "8-neighbourhood",
+        "detector_threshold": "std(Wave.F1)",
+        "fitter_type": "gaussian_wlsq",
+        "fit_radius": 3,
+        "initial_sigma": 1.6
+      }
+    },
+    "dog_filter": {
+      "description": "Difference of Gaussians filter",
+      "imagej_params": {
+        "filter": "Difference-of-Gaussians filter",
+        "sigma1": 1.0,
+        "sigma2": 1.6,
+        "detector": "Local maximum",
+        "connectivity": "8-neighbourhood",
+        "threshold": "std(Wave.F1)",
+        "estimator": "PSF: Integrated Gaussian",
+        "sigma": 1.6,
+        "fitradius": 3,
+        "method": "Weighted Least squares",
+        "full_image_fitting": false,
+        "mfaenabled": false
+      },
+      "flika_params": {
+        "filter_type": "dog",
+        "filter_sigma1": 1.0,
+        "filter_sigma2": 1.6,
+        "detector_type": "local_maximum",
+        "detector_connectivity": "8-neighbourhood",
+        "detector_threshold": "std(Wave.F1)",
+        "fitter_type": "gaussian_wlsq",
+        "fit_radius": 3,
+        "initial_sigma": 1.6
+      }
+    },
+    "gaussian_filter": {
+      "description": "Gaussian (lowered) filter",
+      "imagej_params": {
+        "filter": "Lowered Gaussian filter",
+        "scale": 2.0,
+        "order": 3,
+        "detector": "Local maximum",
+        "connectivity": "8-neighbourhood",
+        "threshold": "1.5*std(Wave.F1)",
+        "estimator": "PSF: Integrated Gaussian",
+        "sigma": 1.6,
+        "fitradius": 3,
+        "method": "Weighted Least squares",
+        "full_image_fitting": false,
+        "mfaenabled": false
+      },
+      "flika_params": {
+        "filter_type": "lowered_gaussian",
+        "filter_sigma": 1.6,
+        "detector_type": "local_maximum",
+        "detector_connectivity": "8-neighbourhood",
+        "detector_threshold": "1.5*std(Wave.F1)",
+        "fitter_type": "gaussian_wlsq",
+        "fit_radius": 3,
+        "initial_sigma": 1.6
+      }
+    },
+    "nms_detector": {
+      "description": "Non-maximum suppression detector",
+      "imagej_params": {
+        "filter": "Wavelet filter (B-Spline)",
+        "scale": 2.0,
+        "order": 3,
+        "detector": "Non-maximum suppression",
+        "connectivity": "8-neighbourhood",
+        "threshold": "std(Wave.F1)",
+        "estimator": "PSF: Integrated Gaussian",
+        "sigma": 1.6,
+        "fitradius": 3,
+        "method": "Weighted Least squares",
+        "full_image_fitting": false,
+        "mfaenabled": false
+      },
+      "flika_params": {
+        "filter_type": "wavelet",
+        "filter_scale": 2.0,
+        "filter_order": 3,
+        "detector_type": "non_maximum_suppression",
+        "detector_connectivity": "8-neighbourhood",
+        "detector_radius": 1,
+        "detector_threshold": "std(Wave.F1)",
+        "fitter_type": "gaussian_wlsq",
+        "fit_radius": 3,
+        "initial_sigma": 1.6
+      }
+    },
+    "centroid_detector": {
+      "description": "Centroid of connected components detector",
+      "imagej_params": {
+        "filter": "Wavelet filter (B-Spline)",
+        "scale": 2.0,
+        "order": 3,
+        "detector": "Centroid of connected components",
+        "connectivity": "8-neighbourhood",
+        "threshold": "std(Wave.F1)",
+        "estimator": "PSF: Integrated Gaussian",
+        "sigma": 1.6,
+        "fitradius": 3,
+        "method": "Weighted Least squares",
+        "full_image_fitting": false,
+        "mfaenabled": false
+      },
+      "flika_params": {
+        "filter_type": "wavelet",
+        "filter_scale": 2.0,
+        "filter_order": 3,
+        "detector_type": "centroid",
+        "detector_connectivity": "8-neighbourhood",
+        "use_watershed": false,
+        "detector_threshold": "std(Wave.F1)",
+        "fitter_type": "gaussian_wlsq",
+        "fit_radius": 3,
+        "initial_sigma": 1.6
+      }
+    },
+    "lsq_fitting": {
+      "description": "Least squares fitting",
+      "imagej_params": {
+        "filter": "Wavelet filter (B-Spline)",
+        "scale": 2.0,
+        "order": 3,
+        "detector": "Local maximum",
+        "connectivity": "8-neighbourhood",
+        "threshold": "std(Wave.F1)",
+        "estimator": "PSF: Integrated Gaussian",
+        "sigma": 1.6,
+        "fitradius": 3,
+        "method": "Least squares",
+        "full_image_fitting": false,
+        "mfaenabled": false
+      },
+      "flika_params": {
+        "filter_type": "wavelet",
+        "filter_scale": 2.0,
+        "filter_order": 3,
+        "detector_type": "local_maximum",
+        "detector_connectivity": "8-neighbourhood",
+        "detector_threshold": "std(Wave.F1)",
+        "fitter_type": "gaussian_lsq",
+        "fit_radius": 3,
+        "initial_sigma": 1.6
+      }
+    },
+    "mle_fitting": {
+      "description": "Maximum likelihood estimation fitting",
+      "imagej_params": {
+        "filter": "Wavelet filter (B-Spline)",
+        "scale": 2.0,
+        "order": 3,
+        "detector": "Local maximum",
+        "connectivity": "8-neighbourhood",
+        "threshold": "std(Wave.F1)",
+        "estimator": "PSF: Integrated Gaussian",
+        "sigma": 1.6,
+        "fitradius": 3,
+        "method": "Maximum likelihood",
+        "full_image_fitting": false,
+        "mfaenabled": false
+      },
+      "flika_params": {
+        "filter_type": "wavelet",
+        "filter_scale": 2.0,
+        "filter_order": 3,
+        "detector_type": "local_maximum",
+        "detector_connectivity": "8-neighbourhood",
+        "detector_threshold": "std(Wave.F1)",
+        "fitter_type": "gaussian_mle",
+        "fit_radius": 3,
+        "initial_sigma": 1.6
+      }
+    },
+    "psf_gaussian": {
+      "description": "PSF: Gaussian (non-integrated) with WLSQ",
+      "imagej_params": {
+        "filter": "Wavelet filter (B-Spline)",
+        "scale": 2.0,
+        "order": 3,
+        "detector": "Local maximum",
+        "connectivity": "8-neighbourhood",
+        "threshold": "std(Wave.F1)",
+        "estimator": "PSF: Gaussian",
+        "sigma": 1.6,
+        "fitradius": 3,
+        "method": "Weighted Least squares",
+        "full_image_fitting": false,
+        "mfaenabled": false
+      },
+      "flika_params": {
+        "filter_type": "wavelet",
+        "filter_scale": 2.0,
+        "filter_order": 3,
+        "detector_type": "local_maximum",
+        "detector_connectivity": "8-neighbourhood",
+        "detector_threshold": "std(Wave.F1)",
+        "fitter_type": "gaussian_wlsq",
+        "fit_radius": 3,
+        "initial_sigma": 1.6
+      }
+    },
+    "radial_symmetry": {
+      "description": "Radial symmetry estimator",
+      "imagej_params": {
+        "filter": "Wavelet filter (B-Spline)",
+        "scale": 2.0,
+        "order": 3,
+        "detector": "Local maximum",
+        "connectivity": "8-neighbourhood",
+        "threshold": "std(Wave.F1)",
+        "estimator": "Radial symmetry",
+        "sigma": 1.6,
+        "fitradius": 3,
+        "method": "Weighted Least squares",
+        "full_image_fitting": false,
+        "mfaenabled": false
+      },
+      "flika_params": {
+        "filter_type": "wavelet",
+        "filter_scale": 2.0,
+        "filter_order": 3,
+        "detector_type": "local_maximum",
+        "detector_connectivity": "8-neighbourhood",
+        "detector_threshold": "std(Wave.F1)",
+        "fitter_type": "radial_symmetry",
+        "fit_radius": 3,
+        "initial_sigma": 1.6
+      }
+    },
+    "mfa_enabled": {
+      "description": "Multi-emitter fitting analysis enabled",
+      "imagej_params": {
+        "filter": "Wavelet filter (B-Spline)",
+        "scale": 2.0,
+        "order": 3,
+        "detector": "Local maximum",
+        "connectivity": "8-neighbourhood",
+        "threshold": "std(Wave.F1)",
+        "estimator": "PSF: Integrated Gaussian",
+        "sigma": 1.6,
+        "fitradius": 3,
+        "method": "Weighted Least squares",
+        "full_image_fitting": false,
+        "mfaenabled": true,
+        "keep_same_intensity": true,
+        "nmax": 5,
+        "fixed_intensity": false,
+        "expected_intensity": "500:2500",
+        "pvalue": "1.0E-6"
+      },
+      "flika_params": {
+        "filter_type": "wavelet",
+        "filter_scale": 2.0,
+        "filter_order": 3,
+        "detector_type": "local_maximum",
+        "detector_connectivity": "8-neighbourhood",
+        "detector_threshold": "std(Wave.F1)",
+        "fitter_type": "gaussian_wlsq",
+        "fit_radius": 3,
+        "initial_sigma": 1.6,
+        "multi_emitter_enabled": true,
+        "multi_emitter_max": 5,
+        "multi_emitter_pvalue": 1e-06,
+        "multi_emitter_keep_same_intensity": true,
+        "multi_emitter_fixed_intensity": false,
+        "multi_emitter_intensity_min": 500,
+        "multi_emitter_intensity_max": 2500
+      }
+    },
+    "high_threshold": {
+      "description": "Higher detection threshold (2x std)",
+      "imagej_params": {
+        "filter": "Wavelet filter (B-Spline)",
+        "scale": 2.0,
+        "order": 3,
+        "detector": "Local maximum",
+        "connectivity": "8-neighbourhood",
+        "threshold": "2*std(Wave.F1)",
+        "estimator": "PSF: Integrated Gaussian",
+        "sigma": 1.6,
+        "fitradius": 3,
+        "method": "Weighted Least squares",
+        "full_image_fitting": false,
+        "mfaenabled": false
+      },
+      "flika_params": {
+        "filter_type": "wavelet",
+        "filter_scale": 2.0,
+        "filter_order": 3,
+        "detector_type": "local_maximum",
+        "detector_connectivity": "8-neighbourhood",
+        "detector_threshold": "2*std(Wave.F1)",
+        "fitter_type": "gaussian_wlsq",
+        "fit_radius": 3,
+        "initial_sigma": 1.6
+      }
+    },
+    "fitradius_5": {
+      "description": "Larger fit radius (5 pixels)",
+      "imagej_params": {
+        "filter": "Wavelet filter (B-Spline)",
+        "scale": 2.0,
+        "order": 3,
+        "detector": "Local maximum",
+        "connectivity": "8-neighbourhood",
+        "threshold": "std(Wave.F1)",
+        "estimator": "PSF: Integrated Gaussian",
+        "sigma": 1.6,
+        "fitradius": 5,
+        "method": "Weighted Least squares",
+        "full_image_fitting": false,
+        "mfaenabled": false
+      },
+      "flika_params": {
+        "filter_type": "wavelet",
+        "filter_scale": 2.0,
+        "filter_order": 3,
+        "detector_type": "local_maximum",
+        "detector_connectivity": "8-neighbourhood",
+        "detector_threshold": "std(Wave.F1)",
+        "fitter_type": "gaussian_wlsq",
+        "fit_radius": 5,
+        "initial_sigma": 1.6
+      }
+    }
+  },
+  "generated_at": "2026-03-12 22:33:51"
+}

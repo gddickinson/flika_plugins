@@ -1,0 +1,1 @@
+sparse_60x__centroid_detector,496

@@ -1,0 +1,37 @@
+{
+  "config_name": "sparse_100x",
+  "description": "Sparse molecules, 100x objective",
+  "optics": {
+    "description": "100x oil objective (NA 1.49)",
+    "magnification": 100,
+    "pixel_size_nm": 160.0,
+    "na": 1.49,
+    "emission_wavelength_nm": 680.0,
+    "psf_sigma_nm": 220.0
+  },
+  "camera": {
+    "description": "EMCCD (Andor iXon)",
+    "baseline_adu": 100,
+    "readout_noise_e": 1.0,
+    "photons_per_adu": 3.6,
+    "em_gain": 100,
+    "is_emccd": true,
+    "quantum_efficiency": 0.9,
+    "bit_depth": 16
+  },
+  "pixel_size_nm": 160.0,
+  "psf_sigma_nm": 220.0,
+  "image_size": [
+    128,
+    128
+  ],
+  "n_frames": 100,
+  "n_molecules": 500,
+  "photons_per_molecule": 1500,
+  "background_per_pixel": 15,
+  "n_ground_truth_localizations": 5511,
+  "mean_active_per_frame": 55.11,
+  "tiff_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/sparse_100x.tif",
+  "ground_truth_path": "/Users/george/claude_test/spt_batch_analysis/test_data/synthetic/sparse_100x_ground_truth.csv",
+  "seed": 42
+}

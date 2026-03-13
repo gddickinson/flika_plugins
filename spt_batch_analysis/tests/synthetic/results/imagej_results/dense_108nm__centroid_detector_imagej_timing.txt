@@ -1,0 +1,1 @@
+dense_108nm__centroid_detector,2475

@@ -1,0 +1,1 @@
+sparse_60x__nms_detector,445
