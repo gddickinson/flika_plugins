@@ -7658,13 +7658,41 @@ Parameters:
 
         layout.addWidget(file_group)
 
-        # File list
+        # --- Analysed files list ---
+        layout.addWidget(QLabel("Files to analyse:"))
         self.file_list_widget = QListWidget()
         self.file_list_widget.setMaximumHeight(150)
+        self.file_list_widget.setSelectionMode(QListWidget.ExtendedSelection)
         layout.addWidget(self.file_list_widget)
 
         self.file_count_label = QLabel("0 files selected")
         layout.addWidget(self.file_count_label)
+
+        # Transfer buttons
+        transfer_layout = QHBoxLayout()
+        self.exclude_btn = QPushButton("Exclude Selected ▼")
+        self.exclude_btn.setToolTip("Move selected files to the ignored list")
+        self.exclude_btn.clicked.connect(self.exclude_selected_files)
+        transfer_layout.addWidget(self.exclude_btn)
+
+        self.include_btn = QPushButton("▲ Include Selected")
+        self.include_btn.setToolTip("Move selected files back to the analysis list")
+        self.include_btn.clicked.connect(self.include_selected_files)
+        transfer_layout.addWidget(self.include_btn)
+        layout.addLayout(transfer_layout)
+
+        # --- Ignored files list ---
+        layout.addWidget(QLabel("Ignored files (excluded from analysis):"))
+        self.ignored_list_widget = QListWidget()
+        self.ignored_list_widget.setMaximumHeight(150)
+        self.ignored_list_widget.setSelectionMode(QListWidget.ExtendedSelection)
+        layout.addWidget(self.ignored_list_widget)
+
+        self.ignored_count_label = QLabel("0 files ignored")
+        layout.addWidget(self.ignored_count_label)
+
+        # Track ignored file paths
+        self.ignored_file_paths = []
 
         self.tab_widget.addTab(tab, "Files")
 
@@ -9285,6 +9313,8 @@ directional persistence is important for understanding underlying mechanisms.
                 'total_columns_selected': len(selected_columns),
                 'selected_columns': selected_columns
             },
+            'analysed_files': [os.path.basename(fp) for fp in getattr(self, 'file_paths', [])],
+            'ignored_files': [os.path.basename(fp) for fp in getattr(self, 'ignored_file_paths', [])],
             'analysis_parameters': self.parameters.to_dict(),
             'file_export_options': {
                 'export_enhanced_analysis': self.export_enhanced_checkbox.isChecked(),
@@ -9517,6 +9547,11 @@ directional persistence is important for understanding underlying mechanisms.
         self.file_count_label.setText(f"{len(file_list)} files selected")
         self.file_paths = file_list
 
+        # Clear ignored files on refresh
+        self.ignored_file_paths = []
+        self.ignored_list_widget.clear()
+        self.ignored_count_label.setText("0 files ignored")
+
         # Show preview of experiment names if auto-detection is enabled
         if hasattr(self, 'auto_detect_checkbox') and self.auto_detect_checkbox.isChecked():
             self.preview_experiment_names()
@@ -9543,6 +9578,59 @@ directional persistence is important for understanding underlying mechanisms.
             preview_text = f"{len(self.file_paths)} files selected"
 
         self.file_count_label.setText(preview_text)
+
+    def exclude_selected_files(self):
+        """Move selected files from the analysis list to the ignored list"""
+        selected_items = self.file_list_widget.selectedItems()
+        if not selected_items:
+            return
+
+        selected_basenames = {item.text() for item in selected_items}
+        # Find full paths for selected basenames
+        paths_to_exclude = [p for p in self.file_paths
+                            if os.path.basename(p) in selected_basenames]
+
+        # Move paths between lists
+        self.file_paths = [p for p in self.file_paths if p not in paths_to_exclude]
+        self.ignored_file_paths.extend(paths_to_exclude)
+
+        # Update widgets
+        self.file_list_widget.clear()
+        for fp in sorted(self.file_paths):
+            self.file_list_widget.addItem(os.path.basename(fp))
+        self.file_count_label.setText(f"{len(self.file_paths)} files selected")
+
+        self.ignored_list_widget.clear()
+        for fp in sorted(self.ignored_file_paths):
+            self.ignored_list_widget.addItem(os.path.basename(fp))
+        self.ignored_count_label.setText(f"{len(self.ignored_file_paths)} files ignored")
+
+    def include_selected_files(self):
+        """Move selected files from the ignored list back to the analysis list"""
+        selected_items = self.ignored_list_widget.selectedItems()
+        if not selected_items:
+            return
+
+        selected_basenames = {item.text() for item in selected_items}
+        # Find full paths for selected basenames
+        paths_to_include = [p for p in self.ignored_file_paths
+                            if os.path.basename(p) in selected_basenames]
+
+        # Move paths between lists
+        self.ignored_file_paths = [p for p in self.ignored_file_paths
+                                   if p not in paths_to_include]
+        self.file_paths.extend(paths_to_include)
+
+        # Update widgets
+        self.file_list_widget.clear()
+        for fp in sorted(self.file_paths):
+            self.file_list_widget.addItem(os.path.basename(fp))
+        self.file_count_label.setText(f"{len(self.file_paths)} files selected")
+
+        self.ignored_list_widget.clear()
+        for fp in sorted(self.ignored_file_paths):
+            self.ignored_list_widget.addItem(os.path.basename(fp))
+        self.ignored_count_label.setText(f"{len(self.ignored_file_paths)} files ignored")
 
     def on_auto_detect_toggled(self):
         """Handle auto-detect checkbox toggle"""
@@ -9898,6 +9986,15 @@ directional persistence is important for understanding underlying mechanisms.
 
         # Log what will be processed
         self.log_message(f"📁 Processing {len(self.file_paths)} files")
+        for fp in self.file_paths:
+            self.log_message(f"  + {os.path.basename(fp)}")
+
+        # Log ignored files
+        ignored = getattr(self, 'ignored_file_paths', [])
+        if ignored:
+            self.log_message(f"🚫 Ignoring {len(ignored)} excluded files:")
+            for fp in ignored:
+                self.log_message(f"  - {os.path.basename(fp)}")
 
         if self.parameters.enable_detection:
             detection_method_name = "ThunderSTORM" if self.parameters.detection_method == 'thunderstorm' else "U-Track"
