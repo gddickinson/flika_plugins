@@ -3833,6 +3833,8 @@ class UTrackLinkerAdapter:
                     if os.path.exists(file_path):
                         import skimage.io as skio
                         A = skio.imread(file_path, plugin='tifffile')
+                        if A.ndim == 2:
+                            A = A[np.newaxis, ...]
                         A = np.rot90(A, axes=(1,2))
                         A = np.fliplr(A)
 
@@ -4072,6 +4074,8 @@ class AutoBackgroundDetector:
     def load_and_transform_image(file_path):
         """Load TIFF and apply same transforms as analysis pipeline."""
         A = skio.imread(file_path, plugin='tifffile')
+        if A.ndim == 2:
+            A = A[np.newaxis, ...]
         A = np.rot90(A, axes=(1, 2))
         A = np.fliplr(A)
         return A
@@ -10368,10 +10372,148 @@ directional persistence is important for understanding underlying mechanisms.
 
         return df[available_columns]
 
+    # ---- Single-frame mode helpers ----
+    # A single-frame TIFF contains no temporal information, so linking is not
+    # meaningful. These helpers let the rest of the pipeline treat each
+    # detection as a one-point "track" and skip analyses that require >=2
+    # frames. Multi-frame inputs bypass this code path entirely.
+
+    # Analyses that are auto-disabled when a single-frame TIFF is processed.
+    # Everything else either degrades to NaN naturally (via existing
+    # len(track) < N guards) or is meaningful on per-detection data (e.g.
+    # intensity, background subtraction, nearest-neighbour).
+    _SINGLE_FRAME_DISABLE_FLAGS = (
+        'enable_svm_classification',
+        'enable_enhanced_interpolation',
+        'enable_missing_points_integration',
+        'enable_autocorrelation_analysis',
+    )
+
+    # Columns normally produced by the auto-disabled analyses. In
+    # single-frame mode we emit them as NaN so downstream consumers see a
+    # stable schema.
+    _SINGLE_FRAME_PAD_COLUMNS = (
+        'Elected_Label',
+        'SVM_mobile_prob',
+        'SVM_confined_prob',
+        'SVM_trapped_prob',
+        'is_interpolated',
+    )
+
+    def _is_single_frame(self, txy_pts):
+        """True if all detections belong to a single frame."""
+        if txy_pts is None or len(txy_pts) == 0:
+            return False
+        frames = txy_pts[:, 0]
+        return int(frames.max()) == int(frames.min())
+
+    def build_unlinked_points(self, txy_pts, file_path):
+        """Build a Points-compatible object for single-frame data.
+
+        Each detection becomes its own one-element track -- no linking runs.
+        Intensities are extracted the same way as link_particles_builtin so
+        downstream code sees an identical structure.
+        """
+        try:
+            if txy_pts.shape[1] == 4:
+                linking_data = txy_pts[:, :3]
+                point_ids = txy_pts[:, 3]
+            else:
+                linking_data = txy_pts
+                point_ids = np.arange(len(txy_pts))
+
+            points = Points(linking_data)
+            points.tracks = [[i] for i in range(len(linking_data))]
+            points.point_ids = point_ids
+            points.recursiveFailure = False
+            points.linking_stats = {
+                'method_used': 'none (single-frame)',
+                'num_tracks': len(points.tracks),
+                'total_input_points': len(linking_data),
+                'total_linked_points': len(linking_data),
+                'linking_success': True,
+                'single_frame_mode': True,
+            }
+
+            if os.path.exists(file_path):
+                try:
+                    A = skio.imread(file_path, plugin='tifffile')
+                    # getIntensities requires a 3D (frames, H, W) array.
+                    if A.ndim == 2:
+                        A = A[np.newaxis, ...]
+                    points.getIntensities(A)
+                except Exception as e:
+                    self.file_logger.log_error(
+                        "Error during single-frame intensity extraction", e)
+                    points.intensities = [0.0] * len(points.txy_pts)
+            else:
+                points.intensities = [0.0] * len(points.txy_pts)
+
+            self.log_message(
+                f"    Single-frame mode: {len(points.tracks)} unlinked detections")
+            return points
+
+        except Exception as e:
+            self.log_message(f"    Error building unlinked points: {e}")
+            return None
+
+    def _override_params_for_single_frame(self):
+        """Temporarily disable analyses that require multiple frames.
+
+        Also forces min_track_segments=1 so the feature filter keeps the
+        one-point "tracks". Returns a dict of saved originals that must be
+        passed back to _restore_params_after_single_frame.
+        """
+        saved = {}
+        disabled = []
+        for flag in self._SINGLE_FRAME_DISABLE_FLAGS:
+            if hasattr(self.parameters, flag):
+                saved[flag] = getattr(self.parameters, flag)
+                if saved[flag]:
+                    setattr(self.parameters, flag, False)
+                    disabled.append(flag)
+
+        saved['min_track_segments'] = self.parameters.min_track_segments
+        if self.parameters.min_track_segments > 1:
+            self.parameters.min_track_segments = 1
+
+        if disabled:
+            self.log_message(
+                f"    Single-frame mode: auto-disabled {', '.join(disabled)}")
+        return saved
+
+    def _restore_params_after_single_frame(self, saved):
+        if not saved:
+            return
+        for key, value in saved.items():
+            setattr(self.parameters, key, value)
+
+    def _pad_single_frame_schema(self, tracks_df):
+        """Finalise the single-frame output: pad schema and null track IDs.
+
+        Detections are unlinked in single-frame mode, so no track membership
+        exists -- we NaN out track_number (and track-only columns like
+        n_segments which would otherwise be 1 and imply a tracked record).
+        Any columns produced only by auto-disabled analyses are emitted as
+        NaN so downstream consumers see a stable schema.
+        """
+        if tracks_df is None:
+            return tracks_df
+        for col in self._SINGLE_FRAME_PAD_COLUMNS:
+            if col not in tracks_df.columns:
+                tracks_df[col] = np.nan
+        # Unlinked particles have no track identity.
+        if 'track_number' in tracks_df.columns:
+            tracks_df['track_number'] = np.nan
+        if 'n_segments' in tracks_df.columns:
+            tracks_df['n_segments'] = np.nan
+        return tracks_df
+
     # Enhanced process_file method that removes the built-in autocorrelation
     # (since it will be handled in Phase 2)
     def process_file(self, file_path):
         """Enhanced process_file with comprehensive logging and error handling"""
+        saved_single_frame_params = None
         try:
             # Setup comprehensive file logging
             log_file = self.setup_logging_for_analysis(file_path)
@@ -10396,28 +10538,52 @@ directional persistence is important for understanding underlying mechanisms.
             load_time = time.time() - start_time
             self.file_logger.log_performance("data_loading", load_time, f"loaded {len(data)} localizations")
 
-            # Validate and log linking method
-            self.validate_linking_method()
-            self.file_logger.log('info', f"Using linking method: {self.parameters.linking_method}")
-            if self.parameters.linking_method == 'builtin':
-                self.file_logger.log('info', f"Built-in algorithm: {self.parameters.builtin_linking_algorithm}")
+            # Detect single-frame inputs: linking is meaningless here, so we
+            # skip it, build one-point "tracks" per detection, and disable
+            # analyses that assume >=2 frames. Multi-frame data takes the
+            # original path unchanged.
+            single_frame_mode = self._is_single_frame(data)
+            saved_single_frame_params = None
 
-            # Link particles with enhanced logging
-            self.log_message("  Linking particles...")
-            start_time = time.time()
-            points = self.link_particles_enhanced_with_mixed_motion(data, file_path)
-            linking_time = time.time() - start_time
+            if single_frame_mode:
+                self.log_message("  Single-frame input detected -- skipping linking")
+                self.file_logger.log('info', "Single-frame mode: no temporal linking will be performed")
+                saved_single_frame_params = self._override_params_for_single_frame()
 
-            if points is None:
-                self.file_logger.log_error("Particle linking returned None")
-                return False
+                start_time = time.time()
+                points = self.build_unlinked_points(data, file_path)
+                linking_time = time.time() - start_time
 
-            if points.recursiveFailure:
-                self.file_logger.log_error("Particle linking failed due to recursive failure")
-                return False
+                if points is None:
+                    self.file_logger.log_error("Failed to build unlinked points for single-frame input")
+                    return False
 
-            self.file_logger.log_performance("particle_linking", linking_time,
-                                           f"{len(points.tracks)} tracks created")
+                self.file_logger.log_performance(
+                    "single_frame_detection_passthrough", linking_time,
+                    f"{len(points.tracks)} detections treated as length-1 tracks")
+            else:
+                # Validate and log linking method
+                self.validate_linking_method()
+                self.file_logger.log('info', f"Using linking method: {self.parameters.linking_method}")
+                if self.parameters.linking_method == 'builtin':
+                    self.file_logger.log('info', f"Built-in algorithm: {self.parameters.builtin_linking_algorithm}")
+
+                # Link particles with enhanced logging
+                self.log_message("  Linking particles...")
+                start_time = time.time()
+                points = self.link_particles_enhanced_with_mixed_motion(data, file_path)
+                linking_time = time.time() - start_time
+
+                if points is None:
+                    self.file_logger.log_error("Particle linking returned None")
+                    return False
+
+                if points.recursiveFailure:
+                    self.file_logger.log_error("Particle linking failed due to recursive failure")
+                    return False
+
+                self.file_logger.log_performance("particle_linking", linking_time,
+                                               f"{len(points.tracks)} tracks created")
 
 
             # Calculate basic features
@@ -10549,6 +10715,11 @@ directional persistence is important for understanding underlying mechanisms.
             # Log final track statistics
             self.log_final_track_statistics(tracks_df)
 
+            # In single-frame mode, pad the schema so downstream consumers
+            # still see the columns normally produced by disabled analyses.
+            if single_frame_mode:
+                tracks_df = self._pad_single_frame_schema(tracks_df)
+
             # Save results with export control filtering
             self.log_message("  💾 Saving results...")
 
@@ -10598,7 +10769,10 @@ directional persistence is important for understanding underlying mechanisms.
             # Final logging
             self.file_logger.log('info', "="*50)
             self.file_logger.log('info', f"ANALYSIS COMPLETED SUCCESSFULLY FOR: {os.path.basename(file_path)}")
-            self.file_logger.log('info', f"Final dataset: {len(tracks_df)} points in {len(tracks_df['track_number'].unique())} tracks")
+            if single_frame_mode:
+                self.file_logger.log('info', f"Final dataset: {len(tracks_df)} unlinked detections (single-frame mode)")
+            else:
+                self.file_logger.log('info', f"Final dataset: {len(tracks_df)} points in {len(tracks_df['track_number'].unique())} tracks")
             self.file_logger.log('info', "="*50)
 
             return True
@@ -10608,6 +10782,12 @@ directional persistence is important for understanding underlying mechanisms.
             self.log_message(f"  {error_msg}")
             self.file_logger.log_error(error_msg, e, context={"file_path": file_path})
             return False
+
+        finally:
+            # Always restore any single-frame parameter overrides so the
+            # next file in the batch sees the user's original settings.
+            if saved_single_frame_params is not None:
+                self._restore_params_after_single_frame(saved_single_frame_params)
 
 
     def save_analysis_files(self, tracks_df, file_path, use_export_control, suffix=""):
@@ -11327,6 +11507,12 @@ directional persistence is important for understanding underlying mechanisms.
             # Load image with same transformations as Points.getIntensities
             A = skio.imread(file_path, plugin='tifffile')
 
+            # Promote a single-frame TIFF (shape (H, W)) to (1, H, W) so the
+            # rot90 + rot-axis calls below, plus downstream 3D-indexing,
+            # behave identically for single- and multi-frame inputs.
+            if A.ndim == 2:
+                A = A[np.newaxis, ...]
+
             # Apply same transformations as in Points.getIntensities
             A = np.rot90(A, axes=(1,2))
             A = np.fliplr(A)
@@ -11909,6 +12095,8 @@ directional persistence is important for understanding underlying mechanisms.
                 try:
                     if os.path.exists(file_path):
                         A = skio.imread(file_path, plugin='tifffile')
+                        if A.ndim == 2:
+                            A = A[np.newaxis, ...]
                         # Apply same transformations as built-in method
                         A = np.rot90(A, axes=(1,2))
                         A = np.fliplr(A)
