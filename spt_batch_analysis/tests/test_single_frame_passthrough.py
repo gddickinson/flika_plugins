@@ -22,6 +22,14 @@ import skimage.io as skio
 
 SINGLE_FRAME_TIF = "/Users/george/Desktop/test_singleFrame/1Frame.tif"
 MULTI_FRAME_TIF = "/Users/george/Desktop/test_multiFrame/Endothelial_NonBapta_bin10_crop.tif"
+NO_TRACKS_TIF = (
+    "/Users/george/claude_test/data/IC305_Unlabeled_FOV30_561_1/"
+    "IC305_Unlabeled_FOV30_561_1_MMStack_Default.ome.tif"
+)
+NO_TRACKS_LOCS = (
+    "/Users/george/claude_test/data/IC305_Unlabeled_FOV30_561_1/"
+    "IC305_Unlabeled_FOV30_561_1_MMStack_Default.ome_locs.csv"
+)
 
 
 def _patch_numpy_for_flika():
@@ -154,6 +162,9 @@ def _assert(cond, msg):
 
 def test_single_frame():
     mod = _load_plugin_module()
+    if not os.path.exists(SINGLE_FRAME_TIF):
+        print(f"  ! single-frame test TIFF not found at {SINGLE_FRAME_TIF}; skipping")
+        return
     with tempfile.TemporaryDirectory(prefix="spt_sf_") as workdir:
         tif = _copy_tif_to_workdir(SINGLE_FRAME_TIF, workdir)
 
@@ -241,9 +252,98 @@ def test_multi_frame_regression():
               f"max track length = {track_counts.max()}")
 
 
+def test_no_tracks_fallback():
+    """Multi-frame TIFF with min_track_segments high enough that no track passes
+    the filter. With continue_without_tracks=True (the default), the pipeline
+    should fall back to unlinked-particle passthrough instead of failing."""
+    mod = _load_plugin_module()
+    if not os.path.exists(NO_TRACKS_TIF):
+        print(f"  ! no-tracks test TIFF not found at {NO_TRACKS_TIF}; skipping")
+        return
+    if not os.path.exists(NO_TRACKS_LOCS):
+        print(f"  ! no-tracks locs file not found at {NO_TRACKS_LOCS}; skipping")
+        return
+
+    with tempfile.TemporaryDirectory(prefix="spt_nt_") as workdir:
+        tif = _copy_tif_to_workdir(NO_TRACKS_TIF, workdir)
+        # Co-locate the precomputed _locs.csv next to the TIFF so detection
+        # can be skipped.
+        shutil.copy2(NO_TRACKS_LOCS,
+                     os.path.join(workdir, os.path.basename(NO_TRACKS_LOCS)))
+
+        A = skio.imread(tif, plugin="tifffile")
+        _assert(A.ndim == 3 and A.shape[0] > 1,
+                f"input is multi-frame (shape={A.shape})")
+
+        inst = _make_headless_plugin(mod, workdir)
+        # Match the user's reported failing config: filter so high that
+        # no real track survives.
+        inst.parameters.min_track_segments = 10
+        inst.parameters.continue_without_tracks = True
+        inst.parameters.max_gap_frames = 36
+        inst.parameters.max_link_distance = 3.0
+        inst.parameters.linking_method = "builtin"
+
+        n_locs = len(pd.read_csv(os.path.join(
+            workdir, os.path.basename(NO_TRACKS_LOCS))))
+
+        _run_analysis(inst, tif)
+
+        base = os.path.splitext(os.path.basename(tif))[0]
+        enhanced_csv = os.path.join(workdir, f"{base}_enhanced_analysis.csv")
+        _assert(os.path.exists(enhanced_csv),
+                "enhanced_analysis.csv emitted despite zero qualifying tracks")
+        df = pd.read_csv(enhanced_csv)
+        _assert(len(df) == n_locs,
+                f"one output row per detection ({len(df)} == {n_locs})")
+        _assert(df["track_number"].isna().all(),
+                "track_number is NaN for every unlinked detection")
+        _assert(df["n_segments"].isna().all(),
+                "n_segments is NaN for every unlinked detection")
+        _assert(df["intensity"].notna().any() and (df["intensity"] > 0).any(),
+                f"intensity non-trivial (mean={df['intensity'].mean():.2f})")
+
+        # Confirm we didn't lose information about the original frames.
+        _assert(df["frame"].nunique() > 1,
+                f"detections still span {df['frame'].nunique()} frames")
+
+        print(f"\n[no-tracks] schema: {len(df.columns)} columns, {len(df)} rows")
+
+
+def test_no_tracks_disabled():
+    """When continue_without_tracks=False, the legacy failure path must still
+    return False so users can opt out of the new behaviour."""
+    mod = _load_plugin_module()
+    if not os.path.exists(NO_TRACKS_TIF):
+        print(f"  ! no-tracks test TIFF not found at {NO_TRACKS_TIF}; skipping")
+        return
+
+    with tempfile.TemporaryDirectory(prefix="spt_nt_off_") as workdir:
+        tif = _copy_tif_to_workdir(NO_TRACKS_TIF, workdir)
+        shutil.copy2(NO_TRACKS_LOCS,
+                     os.path.join(workdir, os.path.basename(NO_TRACKS_LOCS)))
+
+        inst = _make_headless_plugin(mod, workdir)
+        inst.parameters.min_track_segments = 10
+        inst.parameters.continue_without_tracks = False
+        inst.parameters.linking_method = "builtin"
+
+        ok = inst.process_file(tif)
+        _assert(ok is False,
+                "process_file returns False when continue_without_tracks=False")
+        base = os.path.splitext(os.path.basename(tif))[0]
+        _assert(not os.path.exists(
+                    os.path.join(workdir, f"{base}_enhanced_analysis.csv")),
+                "no enhanced_analysis.csv when fallback is disabled")
+
+
 if __name__ == "__main__":
     print("=== Single-frame passthrough test ===")
     test_single_frame()
     print("\n=== Multi-frame regression test ===")
     test_multi_frame_regression()
+    print("\n=== No-tracks fallback test (continue_without_tracks=True) ===")
+    test_no_tracks_fallback()
+    print("\n=== No-tracks opt-out test (continue_without_tracks=False) ===")
+    test_no_tracks_disabled()
     print("\nAll tests passed.")

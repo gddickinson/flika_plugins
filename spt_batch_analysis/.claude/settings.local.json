@@ -107,7 +107,12 @@
       "Read(//tmp/**)",
       "Bash(python -c \"import py_compile; py_compile.compile\\('__init__.py', doraise=True\\); print\\('OK'\\)\" 2>&1)",
       "Bash(python -c \"import ast; ast.parse\\(open\\('__init__.py'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
-      "Bash(python3 -c \"import py_compile; py_compile.compile\\('__init__.py', doraise=True\\)\" 2>&1)"
+      "Bash(python3 -c \"import py_compile; py_compile.compile\\('__init__.py', doraise=True\\)\" 2>&1)",
+      "Bash(python -c \"import flika; print\\('flika OK', flika.__file__\\)\")",
+      "Bash(python -c \"import sys; sys.path.insert\\(0, '/Users/george/claude_test'\\); import spt_batch_analysis; print\\('OK'\\)\")",
+      "Bash(python tests/test_single_frame_passthrough.py)",
+      "Read(//Users/george/claude_test/**)",
+      "Bash(python spt_batch_analysis/tests/test_single_frame_passthrough.py)"
     ]
   }
 }

@@ -4790,6 +4790,10 @@ class SPTAnalysisParameters:
         self.pixel_size = 108  # nm per pixel
         self.frame_length = 1  # seconds per frame
         self.min_track_segments = 4
+        # When linking produces zero tracks meeting min_track_segments,
+        # fall back to reporting every detection as an unlinked particle
+        # instead of failing the whole file.
+        self.continue_without_tracks = True
 
         # Linking parameters - Built-in method with dual options
         self.linking_method = 'builtin'
@@ -7809,6 +7813,17 @@ Parameters:
         self.min_segments_spin.setValue(self.parameters.min_track_segments)
         common_layout.addRow("Min Track Segments:", self.min_segments_spin)
 
+        self.continue_without_tracks_checkbox = QCheckBox(
+            "Continue if no tracks meet minimum (report unlinked particles)")
+        self.continue_without_tracks_checkbox.setChecked(
+            getattr(self.parameters, 'continue_without_tracks', True))
+        self.continue_without_tracks_checkbox.setToolTip(
+            "When checked, files where no track meets 'Min Track Segments' will "
+            "still produce output -- every detection is passed through as an "
+            "unlinked particle (track_number = NaN) with intensities. When "
+            "unchecked, such files are reported as failures (legacy behaviour).")
+        common_layout.addRow("", self.continue_without_tracks_checkbox)
+
         left_layout.addWidget(common_group)
 
         # Built-in linking parameters (ENHANCED with algorithm selection)
@@ -9843,6 +9858,8 @@ directional persistence is important for understanding underlying mechanisms.
         self.parameters.max_gap_frames = self.max_gap_spin.value()
         self.parameters.max_link_distance = self.max_dist_spin.value()
         self.parameters.min_track_segments = self.min_segments_spin.value()
+        if hasattr(self, 'continue_without_tracks_checkbox'):
+            self.parameters.continue_without_tracks = self.continue_without_tracks_checkbox.isChecked()
         self.parameters.rg_mobility_threshold = self.rg_threshold_spin.value()
         self.parameters.experiment_name = self.experiment_name_edit.currentText()
         self.parameters.auto_detect_experiment_names = self.auto_detect_checkbox.isChecked()
@@ -10544,8 +10561,10 @@ directional persistence is important for understanding underlying mechanisms.
             # original path unchanged.
             single_frame_mode = self._is_single_frame(data)
             saved_single_frame_params = None
+            passthrough_reason = None
 
             if single_frame_mode:
+                passthrough_reason = 'single-frame'
                 self.log_message("  Single-frame input detected -- skipping linking")
                 self.file_logger.log('info', "Single-frame mode: no temporal linking will be performed")
                 saved_single_frame_params = self._override_params_for_single_frame()
@@ -10584,6 +10603,33 @@ directional persistence is important for understanding underlying mechanisms.
 
                 self.file_logger.log_performance("particle_linking", linking_time,
                                                f"{len(points.tracks)} tracks created")
+
+                # No-tracks fallback: if linking yielded zero tracks meeting
+                # min_track_segments, calculate_features() would discard them
+                # all and return None. When continue_without_tracks is set,
+                # rebuild points as one-detection-per-"track" and reuse the
+                # single-frame passthrough downstream so the file still
+                # produces output instead of failing the batch.
+                survivors = sum(
+                    1 for t in points.tracks
+                    if len(t) >= self.parameters.min_track_segments
+                )
+                if survivors == 0 and getattr(self.parameters, 'continue_without_tracks', True):
+                    self.log_message(
+                        f"  No tracks meet min_track_segments="
+                        f"{self.parameters.min_track_segments} -- "
+                        f"falling back to unlinked-particle passthrough")
+                    self.file_logger.log(
+                        'info',
+                        "No-tracks fallback: treating all detections as unlinked particles")
+                    saved_single_frame_params = self._override_params_for_single_frame()
+                    points = self.build_unlinked_points(data, file_path)
+                    if points is None:
+                        self.file_logger.log_error(
+                            "Failed to build unlinked points for no-tracks fallback")
+                        return False
+                    single_frame_mode = True
+                    passthrough_reason = 'no-tracks'
 
 
             # Calculate basic features
@@ -10770,7 +10816,10 @@ directional persistence is important for understanding underlying mechanisms.
             self.file_logger.log('info', "="*50)
             self.file_logger.log('info', f"ANALYSIS COMPLETED SUCCESSFULLY FOR: {os.path.basename(file_path)}")
             if single_frame_mode:
-                self.file_logger.log('info', f"Final dataset: {len(tracks_df)} unlinked detections (single-frame mode)")
+                reason = passthrough_reason or 'single-frame'
+                self.file_logger.log(
+                    'info',
+                    f"Final dataset: {len(tracks_df)} unlinked detections ({reason} mode)")
             else:
                 self.file_logger.log('info', f"Final dataset: {len(tracks_df)} points in {len(tracks_df['track_number'].unique())} tracks")
             self.file_logger.log('info', "="*50)
@@ -11192,6 +11241,9 @@ directional persistence is important for understanding underlying mechanisms.
         self.max_gap_spin.setValue(self.parameters.max_gap_frames)
         self.max_dist_spin.setValue(self.parameters.max_link_distance)
         self.min_segments_spin.setValue(self.parameters.min_track_segments)
+        if hasattr(self, 'continue_without_tracks_checkbox'):
+            self.continue_without_tracks_checkbox.setChecked(
+                getattr(self.parameters, 'continue_without_tracks', True))
         self.rg_threshold_spin.setValue(self.parameters.rg_mobility_threshold)
 
         if self.parameters.experiment_name:
@@ -11848,6 +11900,8 @@ directional persistence is important for understanding underlying mechanisms.
         self.parameters.pixel_size = self.pixel_size_spin.value()
         self.parameters.frame_length = self.frame_length_spin.value()
         self.parameters.min_track_segments = self.min_segments_spin.value()
+        if hasattr(self, 'continue_without_tracks_checkbox'):
+            self.parameters.continue_without_tracks = self.continue_without_tracks_checkbox.isChecked()
         self.parameters.rg_mobility_threshold = self.rg_threshold_spin.value()
         self.parameters.experiment_name = self.experiment_name_edit.currentText()
         self.parameters.auto_detect_experiment_names = self.auto_detect_checkbox.isChecked()
@@ -11909,6 +11963,9 @@ directional persistence is important for understanding underlying mechanisms.
         self.pixel_size_spin.setValue(self.parameters.pixel_size)
         self.frame_length_spin.setValue(self.parameters.frame_length)
         self.min_segments_spin.setValue(self.parameters.min_track_segments)
+        if hasattr(self, 'continue_without_tracks_checkbox'):
+            self.continue_without_tracks_checkbox.setChecked(
+                getattr(self.parameters, 'continue_without_tracks', True))
         self.rg_threshold_spin.setValue(self.parameters.rg_mobility_threshold)
 
         if self.parameters.experiment_name:
