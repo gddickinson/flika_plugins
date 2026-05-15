@@ -19,7 +19,10 @@ import numpy as np
 import pandas as pd
 import pyqtgraph as pg
 from qtpy.QtCore import Qt, Signal
-from qtpy.QtWidgets import QGraphicsProxyWidget, QPushButton, QLabel
+from qtpy.QtWidgets import (
+    QGraphicsProxyWidget, QPushButton, QLabel, QListView,
+    QWidget, QVBoxLayout, QHBoxLayout,
+)
 from qtpy.QtGui import QFont
 from packaging.version import Version
 
@@ -94,10 +97,29 @@ class TrackWindow(BaseProcess):
     def _setup_ui(self) -> None:
         """Set up the user interface."""
         try:
-            # Create main graphics layout widget
-            self.win = pg.GraphicsLayoutWidget()
-            self.win.resize(600, 800)
+            # Top-level container. We use a normal QWidget so the column
+            # selector below can live OUTSIDE the QGraphicsScene — when it
+            # was embedded via QGraphicsProxyWidget the dropdown's scrollbar
+            # didn't receive mouse / wheel events, so users with many
+            # columns couldn't reach the entries beyond the visible window.
+            self.win = QWidget()
+            self.win.resize(600, 850)
             self.win.setWindowTitle('Track Analysis - Press "T" to select track')
+
+            outer_layout = QVBoxLayout(self.win)
+            outer_layout.setContentsMargins(0, 0, 0, 0)
+            outer_layout.setSpacing(0)
+
+            # The pyqtgraph layout owns all of the plots and existing
+            # proxy-wrapped controls. Code elsewhere in this class still
+            # references ``self.plotArea`` (legacy code referenced
+            # ``self.win`` for graphics — those usages were redirected to
+            # ``self.plotArea``).
+            self.plotArea = pg.GraphicsLayoutWidget()
+            outer_layout.addWidget(self.plotArea, stretch=1)
+
+            # Native Qt panel for the column selector below the plots.
+            self._create_column_selector_panel(outer_layout)
 
             # Create labels for track info
             self._create_info_labels()
@@ -113,29 +135,111 @@ class TrackWindow(BaseProcess):
         except Exception as e:
             self.logger.error(f"Error setting up TrackWindow UI: {e}")
 
+    def _create_column_selector_panel(self, parent_layout) -> None:
+        """Build the column-selector panel as a native Qt widget.
+
+        The selector lives outside the QGraphicsScene so its dropdown
+        receives mouse-wheel and scrollbar-drag events normally, which is
+        required to navigate long column lists (40+ entries).
+        """
+        panel = QWidget()
+        layout = QHBoxLayout(panel)
+        layout.setContentsMargins(8, 4, 8, 6)
+        layout.setSpacing(8)
+
+        self.columnSelector_Box = pg.ComboBox()
+        # Force a QListView popup with a bounded visible-item count and
+        # scrollbars when the list overflows. ``combobox-popup: 0`` is
+        # required so styles (notably macOS native) honour
+        # ``setMaxVisibleItems`` instead of rendering full height.
+        list_view = QListView()
+        list_view.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        list_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.columnSelector_Box.setView(list_view)
+        self.columnSelector_Box.setMaxVisibleItems(15)
+        self.columnSelector_Box.setStyleSheet(
+            "QComboBox { combobox-popup: 0; }"
+        )
+        # Keep the combobox itself a reasonable width even on long labels.
+        self.columnSelector_Box.setMinimumWidth(220)
+        self.columnSelector_Box.currentIndexChanged.connect(
+            self._on_column_selection_changed)
+
+        self.columnValue_label = QLabel('--')
+        self.columnValue_label.setAlignment(Qt.AlignCenter)
+        font = QFont()
+        font.setPointSize(12)
+        self.columnValue_label.setFont(font)
+        self.columnValue_label.setMinimumWidth(120)
+
+        layout.addWidget(QLabel('Column:'))
+        layout.addWidget(self.columnSelector_Box, stretch=1)
+        layout.addSpacing(12)
+        layout.addWidget(QLabel('Value:'))
+        layout.addWidget(self.columnValue_label, stretch=1)
+
+        parent_layout.addWidget(panel)
+
     def _create_info_labels(self) -> None:
         """Create information labels."""
         # Track ID label
         self.label = pg.LabelItem(justify='center')
-        self.win.addItem(self.label)
+        self.plotArea.addItem(self.label)
 
         # Track statistics label
         self.label_2 = pg.LabelItem(justify='center')
-        self.win.addItem(self.label_2)
+        self.plotArea.addItem(self.label_2)
 
-        self.win.nextRow()
+        self.plotArea.nextRow()
 
     def _update_info_labels(self, track_id: int, svm: int, length: int) -> None:
-        """Update information labels."""
+        """Update information labels (track id, SVM, length, sRg)."""
         try:
             self.label.setText(f"<span style='font-size: 16pt'>Track ID = {track_id}</span>")
-            self.label_2.setText(f"<span style='font-size: 16pt'>SVM = {svm}, Length = {length}</span>")
+
+            # Look up an sRg value if the source data exposes one. Prefer the
+            # geometric form ('sRg_geometric') when available; otherwise fall
+            # back to the classical scaled radius of gyration.
+            srg_text = self._lookup_srg(track_id)
+            label_2_html = (
+                f"<span style='font-size: 16pt'>SVM = {svm}, "
+                f"Length = {length}{srg_text}</span>"
+            )
+            self.label_2.setText(label_2_html)
 
             # Update custom column value
             self._update_column_value(track_id)
 
         except Exception as e:
             self.logger.error(f"Error updating info labels: {e}")
+
+    def _lookup_srg(self, track_id: int) -> str:
+        """Return ', sRg = ...' for the given track, or '' if unavailable."""
+        try:
+            if not hasattr(self.mainGUI, 'data') or self.mainGUI.data is None:
+                return ''
+
+            if (hasattr(self.mainGUI, 'useFilteredData')
+                    and self.mainGUI.useFilteredData
+                    and getattr(self.mainGUI, 'filteredData', None) is not None):
+                source = self.mainGUI.filteredData
+            else:
+                source = self.mainGUI.data
+
+            for col in ('sRg_geometric', 'radius_gyration_scaled'):
+                if col in source.columns:
+                    track_rows = source[source['track_number'] == int(track_id)]
+                    if track_rows.empty:
+                        continue
+                    value = track_rows[col].iloc[0]
+                    if pd.isna(value):
+                        continue
+                    label = 'sRg' if col == 'sRg_geometric' else 'sRg(scaled)'
+                    return f", {label} = {float(value):.3f}"
+            return ''
+        except Exception as e:
+            self.logger.error(f"Error looking up sRg: {e}")
+            return ''
 
     def _update_column_value(self, track_id: int) -> None:
         """Update the value display for the selected column."""
@@ -213,9 +317,17 @@ class TrackWindow(BaseProcess):
             # Update combo box
             self.columnSelector_Box.setItems(column_dict)
 
-            # Set default selection
-            if 'sRg_geometric' in columns:
-                self.columnSelector_Box.setValue('sRg_geometric')
+            # Set default selection — prefer scaled-Rg columns so the
+            # user sees a meaningful per-track metric immediately.
+            preferred = [
+                'sRg_geometric',
+                'radius_gyration_scaled',
+                'radius_gyration',
+                'SVM',
+            ]
+            default_col = next((c for c in preferred if c in columns), None)
+            if default_col is not None:
+                self.columnSelector_Box.setValue(default_col)
             elif columns:
                 self.columnSelector_Box.setValue(columns[0])
             else:
@@ -228,7 +340,7 @@ class TrackWindow(BaseProcess):
         """Create all analysis plots."""
         try:
             # Intensity plot
-            self.plt1 = self.win.addPlot(title='Intensity Trace')
+            self.plt1 = self.plotArea.addPlot(title='Intensity Trace')
             self.plt1.getAxis('left').enableAutoSIPrefix(False)
             self.plt1.setLabel('left', 'Intensity', units='AU')
             self.plt1.setLabel('bottom', 'Time', units='Frames')
@@ -236,7 +348,7 @@ class TrackWindow(BaseProcess):
             self.plots['intensity'] = self.plt1
 
             # Track position plot (relative to origin)
-            self.plt3 = self.win.addPlot(title='Track Position (Relative to Origin)')
+            self.plt3 = self.plotArea.addPlot(title='Track Position (Relative to Origin)')
             self.plt3.setAspectLocked()
             self.plt3.showGrid(x=True, y=True, alpha=0.3)
             self.plt3.setXRange(-5, 5)
@@ -246,10 +358,10 @@ class TrackWindow(BaseProcess):
             self.plt3.setLabel('bottom', 'X Position', units='pixels')
             self.plots['position'] = self.plt3
 
-            self.win.nextRow()
+            self.plotArea.nextRow()
 
             # Distance from origin plot
-            self.plt2 = self.win.addPlot(title='Distance from Origin')
+            self.plt2 = self.plotArea.addPlot(title='Distance from Origin')
             self.plt2.getAxis('left').enableAutoSIPrefix(False)
             self.plt2.setLabel('left', 'Distance', units='pixels')
             self.plt2.setLabel('bottom', 'Time', units='Frames')
@@ -257,17 +369,17 @@ class TrackWindow(BaseProcess):
             self.plots['distance'] = self.plt2
 
             # Nearest neighbor count plot
-            self.plt4 = self.win.addPlot(title='Nearest Neighbor Count')
+            self.plt4 = self.plotArea.addPlot(title='Nearest Neighbor Count')
             self.plt4.getAxis('left').enableAutoSIPrefix(False)
             self.plt4.setLabel('left', 'Number of Neighbors', units='count')
             self.plt4.setLabel('bottom', 'Time', units='Frames')
             self.plt4.showGrid(x=True, y=True, alpha=0.3)
             self.plots['neighbors'] = self.plt4
 
-            self.win.nextRow()
+            self.plotArea.nextRow()
 
             # Instantaneous velocity plot
-            self.plt5 = self.win.addPlot(title='Instantaneous Velocity')
+            self.plt5 = self.plotArea.addPlot(title='Instantaneous Velocity')
             self.plt5.getAxis('left').enableAutoSIPrefix(False)
             self.plt5.setLabel('left', 'Velocity', units='pixels/frame')
             self.plt5.setLabel('bottom', 'Time', units='Frames')
@@ -275,14 +387,14 @@ class TrackWindow(BaseProcess):
             self.plots['velocity'] = self.plt5
 
             # Intensity variance plot
-            self.plt6 = self.win.addPlot(title='Intensity Variance (Rolling)')
+            self.plt6 = self.plotArea.addPlot(title='Intensity Variance (Rolling)')
             self.plt6.getAxis('left').enableAutoSIPrefix(False)
             self.plt6.setLabel('left', 'Variance', units='intensity')
             self.plt6.setLabel('bottom', 'Time', units='Frames')
             self.plt6.showGrid(x=True, y=True, alpha=0.3)
             self.plots['variance'] = self.plt6
 
-            self.win.nextRow()
+            self.plotArea.nextRow()
 
         except Exception as e:
             self.logger.error(f"Error creating plots: {e}")
@@ -310,38 +422,11 @@ class TrackWindow(BaseProcess):
             self.plotCountSelector.currentIndexChanged.connect(self._on_nn_radius_changed)
             self.optionsPanel2.setWidget(self.plotCountSelector)
 
-            # Add first row of controls
-            self.win.addItem(self.optionsPanel)
-            self.win.addItem(self.optionsPanel2)
-
-            # Move to next row for column selector
-            self.win.nextRow()
-
-            # Custom column selector and value display
-            self.optionsPanel3 = QGraphicsProxyWidget()
-            self.columnSelectorWidget = pg.LayoutWidget()
-
-            # Column selector combo box
-            self.columnSelector_Box = pg.ComboBox()
-            self.columnSelector_Box.currentIndexChanged.connect(self._on_column_selection_changed)
-
-            # Value display label
-            self.columnValue_label = QLabel('--')
-            self.columnValue_label.setAlignment(Qt.AlignCenter)
-            font = QFont()
-            font.setPointSize(12)
-            self.columnValue_label.setFont(font)
-
-            # Layout the widgets
-            self.columnSelectorWidget.addWidget(QLabel('Column:'), row=0, col=0)
-            self.columnSelectorWidget.addWidget(self.columnSelector_Box, row=0, col=1)
-            self.columnSelectorWidget.addWidget(QLabel('Value:'), row=0, col=2)
-            self.columnSelectorWidget.addWidget(self.columnValue_label, row=0, col=3)
-
-            self.optionsPanel3.setWidget(self.columnSelectorWidget)
-
-            # Add column selector on new row
-            self.win.addItem(self.optionsPanel3)
+            # Add controls row (position indicator + NN-radius selector).
+            # The column selector intentionally lives in a native Qt panel
+            # outside the graphics scene — see ``_create_column_selector_panel``.
+            self.plotArea.addItem(self.optionsPanel)
+            self.plotArea.addItem(self.optionsPanel2)
 
         except Exception as e:
             self.logger.error(f"Error creating controls: {e}")
@@ -424,14 +509,6 @@ class TrackWindow(BaseProcess):
         except Exception as e:
             self.logger.error(f"Error validating input data: {e}")
             return False
-
-    def _update_info_labels(self, track_id: int, svm: int, length: int) -> None:
-        """Update information labels."""
-        try:
-            self.label.setText(f"<span style='font-size: 16pt'>Track ID = {track_id}</span>")
-            self.label_2.setText(f"<span style='font-size: 16pt'>SVM = {svm}, Length = {length}</span>")
-        except Exception as e:
-            self.logger.error(f"Error updating info labels: {e}")
 
     def _update_intensity_plot(self, time: np.ndarray, intensity: np.ndarray) -> None:
         """Update intensity trace plot."""

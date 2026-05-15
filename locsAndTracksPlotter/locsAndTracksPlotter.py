@@ -28,7 +28,7 @@ from typing import Dict, List, Optional, Tuple, Union, Any
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
-from qtpy.QtCore import Qt, Signal, QPointF
+from qtpy.QtCore import Qt, Signal, QPointF, QObject, QEvent
 from qtpy.QtGui import QColor, QPainter, QPen, QPainterPath
 from qtpy.QtWidgets import (QMainWindow, QLabel, QPushButton, QLineEdit,
                            QFileDialog, QMessageBox, QGraphicsPathItem)
@@ -545,17 +545,25 @@ class TrackPlotOptions:
         }
         self.intensityChoice_Box.setItems(self.intensityChoice)
         self.intensityChoice_Box_label = QLabel('Intensity plot data')
+        # Re-plot the track window whenever the user changes which intensity
+        # column to display.
+        self.intensityChoice_Box.currentIndexChanged.connect(
+            self._refresh_track_intensity)
 
         # Background subtraction
         self.backgroundSubtract_checkbox = CheckBox()
         self.backgroundSubtract_checkbox.setChecked(False)
         self.backgroundSubtract_label = QLabel('Subtract Background')
+        self.backgroundSubtract_checkbox.stateChanged.connect(
+            self._refresh_track_intensity)
 
         self.background_selector = pg.SpinBox(value=0, int=True)
         self.background_selector.setSingleStep(1)
         self.background_selector.setMinimum(0)
         self.background_selector.setMaximum(10000)
         self.background_selector_label = QLabel('background value')
+        self.background_selector.sigValueChanged.connect(
+            self._refresh_track_intensity)
 
         self.estimatedCameraBlack = QLabel('')
         self.estimatedCameraBlack_label = QLabel('estimated camera black')
@@ -571,6 +579,22 @@ class TrackPlotOptions:
         self.w3.addWidget(self.estimatedCameraBlack, row=3, col=1)
 
         self.d3.addWidget(self.w3)
+
+    def _refresh_track_intensity(self, *_args) -> None:
+        """Refresh the track window when an intensity option changes.
+
+        Connected to the intensity-choice combobox, the background-subtract
+        checkbox and the background value spinbox so toggling any of them
+        immediately re-plots the currently selected track instead of forcing
+        the user to press ``T`` again.
+        """
+        try:
+            if (hasattr(self.mainGUI, 'displayTrack')
+                    and self.mainGUI.displayTrack is not None
+                    and getattr(self.mainGUI, 'data', None) is not None):
+                self.mainGUI._update_track_displays()
+        except Exception as e:
+            logger.error(f"Error refreshing track intensity: {e}")
 
     def _set_above_colour(self) -> None:
         """Handle above threshold color setting."""
@@ -621,6 +645,40 @@ class TrackPlotOptions:
     def hide(self) -> None:
         """Hide the track plot options window."""
         self.win.hide()
+
+
+class _WindowCloseFilter(QObject):
+    """Intercept native window-close events on sub-windows.
+
+    The sub-windows are toggled by checkboxes / buttons in the main GUI but
+    can also be dismissed by the OS-level X button. Without an intercept,
+    closing via X would destroy / hide the window without updating the
+    corresponding checkbox or state flag, leaving the GUI desynchronised —
+    re-clicking the checkbox produced no apparent effect (the toggle's
+    internal state still believed the window was open).
+
+    The filter consumes the QEvent.Close on the watched widget, hides the
+    widget instead, and invokes a caller-supplied callback so the parent
+    can flip its checkbox / button state.
+    """
+
+    def __init__(self, on_close, parent=None):
+        super().__init__(parent)
+        self._on_close = on_close
+
+    def eventFilter(self, obj, event):
+        try:
+            if event.type() == QEvent.Close:
+                try:
+                    self._on_close()
+                except Exception as cb_err:
+                    logger.error(f"Close callback failed: {cb_err}")
+                obj.hide()
+                event.ignore()
+                return True
+        except Exception as filter_err:
+            logger.error(f"Close-filter dispatch failed: {filter_err}")
+        return False
 
 
 class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
@@ -831,10 +889,80 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             self.ROIplot = ROIPLOT(self)
             self.ROIplot.hide()
 
+            # Keep a list of installed event filters alive — without an
+            # owning reference the QObjects would be garbage collected and
+            # silently stop filtering.
+            self._close_filters: List[_WindowCloseFilter] = []
+
+            # Wire each sub-window's native close (X button / Cmd-W) so the
+            # corresponding checkbox or state flag stays in sync.
+            self._install_close_handler(
+                self.trackPlotOptions.win,
+                self._on_track_plot_options_closed)
+            self._install_close_handler(
+                self.filterOptionsWindow.win,
+                lambda: self.displayFilterOptions_checkbox.setChecked(False))
+            self._install_close_handler(
+                self.flowerPlotWindow.win,
+                lambda: self.displayFlowPlot_checkbox.setChecked(False))
+            self._install_close_handler(
+                self.singleTrackPlot.win,
+                lambda: self.displaySingleTrackPlot_checkbox.setChecked(False))
+            self._install_close_handler(
+                self.allTracksPlot.win,
+                lambda: self.displayAllTracksPlot_checkbox.setChecked(False))
+            self._install_close_handler(
+                self.ROIplot.win,
+                self._on_roi_plot_closed)
+            self._install_close_handler(
+                self.overlayWindow.win,
+                self._on_overlay_closed)
+
             logger.debug("Sub-windows initialized")
 
         except Exception as e:
             logger.error(f"Error initializing windows: {e}")
+
+    def _install_close_handler(self, widget, on_close) -> None:
+        """Install a close-event filter that calls ``on_close`` then hides."""
+        try:
+            if widget is None:
+                return
+            filt = _WindowCloseFilter(on_close, parent=widget)
+            widget.installEventFilter(filt)
+            self._close_filters.append(filt)
+        except Exception as e:
+            logger.error(f"Error installing close handler: {e}")
+
+    def _on_track_plot_options_closed(self) -> None:
+        """Sync state when the user closes the Display-Options window."""
+        self.displayTrackPlotOptions = False
+        if hasattr(self, 'displayTrackPlotOptions_checkbox'):
+            self.displayTrackPlotOptions_checkbox.setChecked(False)
+
+    def _on_roi_plot_closed(self) -> None:
+        """Sync state when the user closes the ROI-plot window."""
+        self.displayROIplot = False
+        if hasattr(self, 'displayROIplot_checkbox'):
+            self.displayROIplot_checkbox.setChecked(False)
+
+    def _on_overlay_closed(self) -> None:
+        """Sync state when the user closes the Overlay window."""
+        self.displayOverlay = False
+        if hasattr(self, 'overlayOption_button'):
+            self.overlayOption_button.setText('Overlay')
+
+    def _on_charts_closed(self) -> None:
+        """Sync state when the user closes the Charts window."""
+        self.displayCharts = False
+        if hasattr(self, 'showCharts_button'):
+            self.showCharts_button.setText('Show Charts')
+
+    def _on_diffusion_closed(self) -> None:
+        """Sync state when the user closes the Diffusion window."""
+        self.displayDiffusionPlot = False
+        if hasattr(self, 'showDiffusion_button'):
+            self.showDiffusion_button.setText('Show Diffusion')
 
     def _setup_main_gui(self) -> None:
         """Set up the main GUI elements."""
@@ -1762,13 +1890,19 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             filter_col = self.filterOptionsWindow.filterCol_Box.value()
 
             if filter_col == 'None' or filter_col not in self.data.columns:
-                logger.warning(f"Invalid filter column: {filter_col}")
+                message = f"Invalid filter column: {filter_col}"
+                logger.warning(message)
+                if hasattr(g, 'm') and hasattr(g.m, 'statusBar'):
+                    g.m.statusBar().showMessage(message)
                 return
 
             try:
                 value = float(self.filterOptionsWindow.filterValue_Box.text())
             except ValueError:
-                logger.error("Invalid filter value - must be numeric")
+                message = "Invalid filter value — must be numeric"
+                logger.error(message)
+                if hasattr(g, 'm') and hasattr(g.m, 'statusBar'):
+                    g.m.statusBar().showMessage(message)
                 return
 
             # Determine source data
@@ -1776,6 +1910,23 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
                 source_data = self.filteredData
             else:
                 source_data = self.data
+
+            # Warn early when the chosen column is all-NaN — NaN comparisons
+            # always evaluate to False, so the user otherwise just sees an
+            # empty plot with no indication of what went wrong (common for
+            # track-level metrics like radius_gyration_scaled when the
+            # column was never populated).
+            column_values = source_data[filter_col]
+            if column_values.isna().all():
+                message = (
+                    f"Filter column '{filter_col}' contains no numeric data — "
+                    "nothing to filter. Re-run feature calculations or pick "
+                    "a different column."
+                )
+                logger.warning(message)
+                if hasattr(g, 'm') and hasattr(g.m, 'statusBar'):
+                    g.m.statusBar().showMessage(message)
+                return
 
             # Apply filter operation
             if op == '==':
@@ -1798,8 +1949,14 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             if hasattr(self, 'allTracksPlot'):
                 self.allTracksPlot.updateTrackList()
 
-            # Update status
-            message = f'Filter applied: {len(self.filteredData)} points remaining'
+            # Update status — include NaN-skipped count so the user can tell
+            # how much of the source set was unevaluable for this column.
+            nan_count = int(column_values.isna().sum())
+            message = (
+                f"Filter applied: {len(self.filteredData)} points remaining"
+                f" (column '{filter_col}' {op} {value};"
+                f" {nan_count} NaN values skipped)"
+            )
             if hasattr(g, 'm') and hasattr(g.m, 'statusBar'):
                 g.m.statusBar().showMessage(message)
             logger.info(message)
@@ -1895,39 +2052,47 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             logger.error(f"Error toggling filter options: {e}")
 
     def toggleTrackPlotOptions(self) -> None:
-        """Toggle track plot options window visibility."""
+        """Toggle track plot options window visibility (checkbox-driven)."""
         try:
-            if not self.displayTrackPlotOptions:
+            checked = self.displayTrackPlotOptions_checkbox.isChecked()
+            if checked:
                 self.trackPlotOptions.show()
-                self.displayTrackPlotOptions = True
             else:
                 self.trackPlotOptions.hide()
-                self.displayTrackPlotOptions = False
+            # Keep the internal flag aligned with the actual visibility so
+            # close-via-X still reports the right state.
+            self.displayTrackPlotOptions = checked
         except Exception as e:
             logger.error(f"Error toggling track plot options: {e}")
 
     def toggleROIplot(self) -> None:
-        """Toggle ROI plot window visibility."""
+        """Toggle ROI plot window visibility (checkbox-driven)."""
         try:
-            if not self.displayROIplot:
+            checked = self.displayROIplot_checkbox.isChecked()
+            if checked:
                 self.ROIplot.show()
-                self.displayROIplot = True
             else:
                 self.ROIplot.hide()
-                self.displayROIplot = False
+            self.displayROIplot = checked
         except Exception as e:
             logger.error(f"Error toggling ROI plot: {e}")
 
     def toggleCharts(self) -> None:
-        """Toggle charts window visibility."""
+        """Toggle charts window visibility (button-driven, lazy-created)."""
         try:
+            # Lazy creation — and install the close handler the first time
+            # the window comes into existence.
             if self.chartWindow is None:
                 self.chartWindow = ChartDock(self)
                 self.chartWindow.xColSelector.setItems(self.colDict)
                 self.chartWindow.yColSelector.setItems(self.colDict)
                 self.chartWindow.colSelector.setItems(self.colDict)
+                self._install_close_handler(
+                    self.chartWindow.win, self._on_charts_closed)
 
-            if not self.displayCharts:
+            # Drive visibility off the actual window state (more robust
+            # than a side-channel boolean that can drift on X-close).
+            if not self.chartWindow.win.isVisible():
                 self.chartWindow.show()
                 self.displayCharts = True
                 self.showCharts_button.setText('Hide Charts')
@@ -1940,12 +2105,14 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             logger.error(f"Error toggling charts: {e}")
 
     def toggleDiffusionPlot(self) -> None:
-        """Toggle diffusion plot window visibility."""
+        """Toggle diffusion plot window visibility (button-driven, lazy)."""
         try:
             if self.diffusionWindow is None:
                 self.diffusionWindow = DiffusionPlotWindow(self)
+                self._install_close_handler(
+                    self.diffusionWindow.win, self._on_diffusion_closed)
 
-            if not self.displayDiffusionPlot:
+            if not self.diffusionWindow.win.isVisible():
                 self.diffusionWindow.show()
                 self.displayDiffusionPlot = True
                 self.showDiffusion_button.setText('Hide Diffusion')
@@ -1958,16 +2125,16 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             logger.error(f"Error toggling diffusion plot: {e}")
 
     def displayOverlayOptions(self) -> None:
-        """Toggle overlay options window visibility."""
+        """Toggle overlay options window visibility (button-driven)."""
         try:
-            if not self.displayOverlay:
+            if not self.overlayWindow.win.isVisible():
                 self.overlayWindow.show()
                 self.displayOverlay = True
                 self.overlayOption_button.setText('Hide Overlay')
             else:
                 self.overlayWindow.hide()
                 self.displayOverlay = False
-                self.overlayOption_button.setText('Show Overlay')
+                self.overlayOption_button.setText('Overlay')
 
         except Exception as e:
             logger.error(f"Error toggling overlay options: {e}")
@@ -2085,7 +2252,31 @@ class LocsAndTracksPlotter(BaseProcess_noPriorWindow):
             # Extract track information
             frame = track_data['frame'].to_numpy()
             intensity_col = self.trackPlotOptions.intensityChoice_Box.value()
-            intensity = track_data[intensity_col].to_numpy()
+
+            # Fall back to a usable intensity column when the chosen one
+            # is missing or contains only NaN — otherwise the plot is
+            # silently blank and the user can't tell what went wrong.
+            if (intensity_col not in track_data.columns
+                    or track_data[intensity_col].isna().all()):
+                fallback_col = (
+                    'intensity'
+                    if 'intensity' in track_data.columns
+                    and not track_data['intensity'].isna().all()
+                    else None
+                )
+                message = (
+                    f"Intensity column '{intensity_col}' is missing or empty"
+                )
+                if fallback_col is not None:
+                    message += f"; falling back to '{fallback_col}'"
+                logger.warning(message)
+                if hasattr(g, 'm') and hasattr(g.m, 'statusBar'):
+                    g.m.statusBar().showMessage(message)
+                if fallback_col is None:
+                    return
+                intensity_col = fallback_col
+
+            intensity = track_data[intensity_col].to_numpy().astype(float)
 
             # Apply background subtraction if enabled
             if self.trackPlotOptions.backgroundSubtract_checkbox.isChecked():

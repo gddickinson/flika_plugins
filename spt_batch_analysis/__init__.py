@@ -4926,6 +4926,55 @@ class SPTAnalysisParameters:
         self.ts_quantum_efficiency = 1.0
 
 
+        # ThunderSTORM macro generator parameters (separate from the
+        # Detection tab's ThunderSTORM widgets — these drive the generated
+        # ImageJ macro for batch runs in external Fiji).
+        # File selection
+        self.ts_macro_input_dir = ''
+        self.ts_macro_file_pattern = '**/*_crop.tif'
+        # Image filtering
+        self.ts_macro_filter_type = 'Wavelet filter (B-Spline)'
+        self.ts_macro_wavelet_scale = 2.0
+        self.ts_macro_wavelet_order = 3
+        # Molecular detection
+        self.ts_macro_detector = 'Local maximum'
+        self.ts_macro_connectivity = '8-neighbourhood'
+        self.ts_macro_threshold = 'std(Wave.F1)'
+        # Sub-pixel localization
+        self.ts_macro_estimator = 'PSF: Integrated Gaussian'
+        self.ts_macro_sigma = 1.6
+        self.ts_macro_fit_radius = 3
+        self.ts_macro_fitting_method = 'Weighted Least squares'
+        self.ts_macro_full_image_fitting = False
+        # Multi-emitter analysis
+        self.ts_macro_mfa_enabled = False
+        self.ts_macro_mfa_keep_same_intensity = False
+        self.ts_macro_mfa_nmax = 5
+        self.ts_macro_mfa_fixed_intensity = True
+        self.ts_macro_mfa_intensity_min = 100
+        self.ts_macro_mfa_intensity_max = 500
+        self.ts_macro_mfa_pvalue = '1.0E-6'
+        # Export / rendering
+        self.ts_macro_renderer = 'No Renderer'
+        self.ts_macro_magnification = 5.0
+        self.ts_macro_colorize_z = False
+        self.ts_macro_3d_mode = False
+        self.ts_macro_export_sigma = True
+        self.ts_macro_export_intensity = True
+        self.ts_macro_export_chi2 = True
+        self.ts_macro_export_offset = True
+        self.ts_macro_export_x = True
+        self.ts_macro_export_y = True
+        self.ts_macro_export_bkgstd = True
+        self.ts_macro_export_uncertainty = True
+        self.ts_macro_export_frame = True
+        self.ts_macro_export_protocol = True
+        self.ts_macro_export_id = True
+        # PyImageJ / subprocess execution
+        self.ts_macro_auto_run = False
+        self.ts_macro_fiji_path = ''
+        self.ts_macro_exec_method = 'subprocess'  # 'subprocess' or 'pyimagej'
+
         # Enhanced U-Track linking parameters (all existing preserved)
         self.utrack_max_linking_distance = 10.0
         self.utrack_max_gap_frames = 5
@@ -9979,6 +10028,10 @@ directional persistence is important for understanding underlying mechanisms.
         self.parameters.detection_skip_existing = self.detection_skip_existing_checkbox.isChecked()
         self.parameters.detection_show_results = self.detection_show_results_checkbox.isChecked()
 
+        # Persist ThunderSTORM macro generator tab widgets.
+        if hasattr(self, '_collect_thunderstorm_macro_parameters'):
+            self._collect_thunderstorm_macro_parameters()
+
         # Call the enhanced version with trackpy support
         self.update_parameters_with_mixed_motion()
 
@@ -11374,6 +11427,31 @@ directional persistence is important for understanding underlying mechanisms.
             self._on_ts_detector_type_changed(self.parameters.ts_detector_type)
             self._on_ts_multi_emitter_toggled(self.parameters.ts_multi_emitter_enabled)
             self._on_ts_psf_model_changed(self.ts_psf_model_combo.currentText())
+
+        # Detection method radio buttons (Detection tab). Without this the
+        # loaded ``detection_method`` was ignored and the GUI always reverted
+        # to whichever radio the user had last clicked (typically utrack).
+        if hasattr(self, 'utrack_method_radio'):
+            is_thunderstorm = (
+                getattr(self.parameters, 'detection_method', 'utrack')
+                == 'thunderstorm'
+            )
+            self.utrack_method_radio.setChecked(not is_thunderstorm)
+            if hasattr(self, 'thunderstorm_method_radio'):
+                # Only honour the saved choice if ThunderSTORM is actually
+                # available — otherwise leave utrack selected.
+                if is_thunderstorm and self.thunderstorm_method_radio.isEnabled():
+                    self.thunderstorm_method_radio.setChecked(True)
+                else:
+                    self.thunderstorm_method_radio.setChecked(False)
+                    self.utrack_method_radio.setChecked(True)
+            # Refresh dependent panel enablement / styling.
+            if hasattr(self, 'on_detection_method_changed'):
+                self.on_detection_method_changed()
+
+        # Refresh ThunderSTORM macro generator tab widgets, if present.
+        if hasattr(self, '_update_thunderstorm_macro_gui_from_parameters'):
+            self._update_thunderstorm_macro_gui_from_parameters()
 
         # Call the enhanced version with trackpy support
         self.update_gui_from_parameters_with_mixed_motion()
@@ -13147,6 +13225,141 @@ directional persistence is important for understanding underlying mechanisms.
             raise FileNotFoundError(str(e))
         except Exception as e:
             raise
+
+    # -- ThunderSTORM macro tab parameter persistence -----------------------
+    # The macro generator tab carries its own independent set of widgets
+    # (separate from the Detection tab's ThunderSTORM controls). These
+    # helpers persist them through save/load_parameters so the user's
+    # macro-tab choices survive a session restart.
+
+    def _collect_thunderstorm_macro_parameters(self):
+        """Copy macro-generator widget state into ``self.parameters``."""
+        p = self.parameters
+        # File selection
+        if hasattr(self, 'ts_input_dir') and self.ts_input_dir:
+            p.ts_macro_input_dir = self.ts_input_dir
+        if hasattr(self, 'ts_file_pattern'):
+            p.ts_macro_file_pattern = self.ts_file_pattern.currentText()
+        # Filtering
+        if hasattr(self, 'ts_filter_type'):
+            p.ts_macro_filter_type = self.ts_filter_type.currentText()
+            p.ts_macro_wavelet_scale = self.ts_wavelet_scale.value()
+            p.ts_macro_wavelet_order = self.ts_wavelet_order.value()
+        # Detection
+        if hasattr(self, 'ts_detector'):
+            p.ts_macro_detector = self.ts_detector.currentText()
+            p.ts_macro_connectivity = self.ts_connectivity.currentText()
+            p.ts_macro_threshold = self.ts_threshold.text()
+        # Sub-pixel localization
+        if hasattr(self, 'ts_estimator'):
+            p.ts_macro_estimator = self.ts_estimator.currentText()
+            p.ts_macro_sigma = self.ts_sigma.value()
+            p.ts_macro_fit_radius = self.ts_fit_radius.value()
+            p.ts_macro_fitting_method = self.ts_fitting_method.currentText()
+            p.ts_macro_full_image_fitting = self.ts_full_image_fitting.isChecked()
+        # Multi-emitter
+        if hasattr(self, 'ts_mfa_enabled'):
+            p.ts_macro_mfa_enabled = self.ts_mfa_enabled.isChecked()
+            p.ts_macro_mfa_keep_same_intensity = self.ts_mfa_keep_same_intensity.isChecked()
+            p.ts_macro_mfa_nmax = self.ts_mfa_nmax.value()
+            p.ts_macro_mfa_fixed_intensity = self.ts_mfa_fixed_intensity.isChecked()
+            p.ts_macro_mfa_intensity_min = self.ts_mfa_intensity_min.value()
+            p.ts_macro_mfa_intensity_max = self.ts_mfa_intensity_max.value()
+            p.ts_macro_mfa_pvalue = self.ts_mfa_pvalue.currentText()
+        # Export
+        if hasattr(self, 'ts_renderer'):
+            p.ts_macro_renderer = self.ts_renderer.currentText()
+            p.ts_macro_magnification = self.ts_magnification.value()
+            p.ts_macro_colorize_z = self.ts_colorize_z.isChecked()
+            p.ts_macro_3d_mode = self.ts_3d_mode.isChecked()
+            p.ts_macro_export_sigma = self.ts_export_sigma.isChecked()
+            p.ts_macro_export_intensity = self.ts_export_intensity.isChecked()
+            p.ts_macro_export_chi2 = self.ts_export_chi2.isChecked()
+            p.ts_macro_export_offset = self.ts_export_offset.isChecked()
+            p.ts_macro_export_x = self.ts_export_x.isChecked()
+            p.ts_macro_export_y = self.ts_export_y.isChecked()
+            p.ts_macro_export_bkgstd = self.ts_export_bkgstd.isChecked()
+            p.ts_macro_export_uncertainty = self.ts_export_uncertainty.isChecked()
+            p.ts_macro_export_frame = self.ts_export_frame.isChecked()
+            p.ts_macro_export_protocol = self.ts_export_protocol.isChecked()
+            p.ts_macro_export_id = self.ts_export_id.isChecked()
+        # PyImageJ / subprocess
+        if hasattr(self, 'ts_auto_run'):
+            p.ts_macro_auto_run = self.ts_auto_run.isChecked()
+        if hasattr(self, 'ts_fiji_installation') and self.ts_fiji_installation:
+            p.ts_macro_fiji_path = self.ts_fiji_installation
+        if hasattr(self, 'ts_exec_pyimagej_radio'):
+            p.ts_macro_exec_method = (
+                'pyimagej' if self.ts_exec_pyimagej_radio.isChecked()
+                else 'subprocess'
+            )
+
+    def _update_thunderstorm_macro_gui_from_parameters(self):
+        """Push ``self.parameters`` back onto the macro tab widgets."""
+        p = self.parameters
+        # File selection
+        if hasattr(self, 'ts_input_dir_label') and getattr(p, 'ts_macro_input_dir', ''):
+            self.ts_input_dir = p.ts_macro_input_dir
+            self.ts_input_dir_label.setText(p.ts_macro_input_dir)
+            if hasattr(self, 'ts_output_macro_label'):
+                self.ts_output_macro_label.setText(
+                    os.path.join(p.ts_macro_input_dir, 'thunderstorm_macro_auto.ijm'))
+        if hasattr(self, 'ts_file_pattern') and getattr(p, 'ts_macro_file_pattern', None):
+            self.ts_file_pattern.setCurrentText(p.ts_macro_file_pattern)
+        # Filtering
+        if hasattr(self, 'ts_filter_type'):
+            self.ts_filter_type.setCurrentText(p.ts_macro_filter_type)
+            self.ts_wavelet_scale.setValue(p.ts_macro_wavelet_scale)
+            self.ts_wavelet_order.setValue(p.ts_macro_wavelet_order)
+        # Detection
+        if hasattr(self, 'ts_detector'):
+            self.ts_detector.setCurrentText(p.ts_macro_detector)
+            self.ts_connectivity.setCurrentText(p.ts_macro_connectivity)
+            self.ts_threshold.setText(p.ts_macro_threshold)
+        # Sub-pixel localization
+        if hasattr(self, 'ts_estimator'):
+            self.ts_estimator.setCurrentText(p.ts_macro_estimator)
+            self.ts_sigma.setValue(p.ts_macro_sigma)
+            self.ts_fit_radius.setValue(p.ts_macro_fit_radius)
+            self.ts_fitting_method.setCurrentText(p.ts_macro_fitting_method)
+            self.ts_full_image_fitting.setChecked(p.ts_macro_full_image_fitting)
+        # Multi-emitter
+        if hasattr(self, 'ts_mfa_enabled'):
+            self.ts_mfa_enabled.setChecked(p.ts_macro_mfa_enabled)
+            self.ts_mfa_keep_same_intensity.setChecked(p.ts_macro_mfa_keep_same_intensity)
+            self.ts_mfa_nmax.setValue(p.ts_macro_mfa_nmax)
+            self.ts_mfa_fixed_intensity.setChecked(p.ts_macro_mfa_fixed_intensity)
+            self.ts_mfa_intensity_min.setValue(p.ts_macro_mfa_intensity_min)
+            self.ts_mfa_intensity_max.setValue(p.ts_macro_mfa_intensity_max)
+            self.ts_mfa_pvalue.setCurrentText(p.ts_macro_mfa_pvalue)
+        # Export
+        if hasattr(self, 'ts_renderer'):
+            self.ts_renderer.setCurrentText(p.ts_macro_renderer)
+            self.ts_magnification.setValue(p.ts_macro_magnification)
+            self.ts_colorize_z.setChecked(p.ts_macro_colorize_z)
+            self.ts_3d_mode.setChecked(p.ts_macro_3d_mode)
+            self.ts_export_sigma.setChecked(p.ts_macro_export_sigma)
+            self.ts_export_intensity.setChecked(p.ts_macro_export_intensity)
+            self.ts_export_chi2.setChecked(p.ts_macro_export_chi2)
+            self.ts_export_offset.setChecked(p.ts_macro_export_offset)
+            self.ts_export_x.setChecked(p.ts_macro_export_x)
+            self.ts_export_y.setChecked(p.ts_macro_export_y)
+            self.ts_export_bkgstd.setChecked(p.ts_macro_export_bkgstd)
+            self.ts_export_uncertainty.setChecked(p.ts_macro_export_uncertainty)
+            self.ts_export_frame.setChecked(p.ts_macro_export_frame)
+            self.ts_export_protocol.setChecked(p.ts_macro_export_protocol)
+            self.ts_export_id.setChecked(p.ts_macro_export_id)
+        # PyImageJ / subprocess
+        if hasattr(self, 'ts_auto_run'):
+            self.ts_auto_run.setChecked(p.ts_macro_auto_run)
+        if hasattr(self, 'ts_fiji_path') and getattr(p, 'ts_macro_fiji_path', ''):
+            self.ts_fiji_installation = p.ts_macro_fiji_path
+            self.ts_fiji_path.setText(p.ts_macro_fiji_path)
+        if hasattr(self, 'ts_exec_pyimagej_radio'):
+            if p.ts_macro_exec_method == 'pyimagej':
+                self.ts_exec_pyimagej_radio.setChecked(True)
+            else:
+                self.ts_exec_subprocess_radio.setChecked(True)
 
     def add_thunderstorm_attributes_to_init(self):
         """Initialize thunderSTORM-specific attributes"""
