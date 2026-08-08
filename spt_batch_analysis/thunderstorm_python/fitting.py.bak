@@ -1295,35 +1295,6 @@ class BaseFitter:
         self.em_gain = em_gain
         self.is_emccd = is_emccd
 
-    def _photons_and_background_sd(self, intensity_adu, background_adu):
-        """Convert fitted ADU quantities into the photon units the precision formula wants.
-
-        Two conversions happen here, both of which used to be missing at the call sites.
-
-        **Units.** `intensity` and `background` come off the fitter in ADU, but
-        `compute_localization_precision` documents both as photons. Precision scales as
-        1/sqrt(photons), so unless the calibration set by `set_camera_params` is applied
-        here it has no effect on the result at all.
-
-        **Background level versus background noise.** The fitter's `background` is the
-        fitted DC **offset** of the Gaussian model. The formula's `b` is the background
-        **standard deviation** per pixel — it enters as b^2, a variance. For a
-        shot-noise-limited background sitting at B photons per pixel the variance is B, so
-        the standard deviation is sqrt(B). Passing the offset straight through inflates b^2
-        by the ratio of level to variance; on Andor iXon data with a 324 ADU fitted offset
-        against a 57 ADU true noise SD that is a factor of about 32, and it dominated the
-        reported uncertainty.
-
-        Returns
-        -------
-        (N_photons, b_sd_photons)
-        """
-        ppa = self.photons_per_adu if self.photons_per_adu > 0 else 1.0
-        n_photons = max(float(intensity_adu), 0.0) * ppa
-        # background level above the camera baseline, in photons
-        b_level = max(float(background_adu) - self.baseline, 0.0) * ppa
-        return n_photons, np.sqrt(b_level)
-
     def set_sigma_range(self, min_sigma=None, max_sigma=None):
         """Set allowed sigma range in pixels for fit rejection.
 
@@ -1480,10 +1451,8 @@ class GaussianLSQFitter(BaseFitter):
         uncertainty = np.zeros(len(x))
         for i in range(len(x)):
             if mask[i]:
-                n_ph, b_sd = self._photons_and_background_sd(
-                    intensity[i], background[i])
                 uncertainty[i] = compute_localization_precision(
-                    n_ph, b_sd, sigma_x[i],
+                    intensity[i], background[i], sigma_x[i],
                     1.0, fitting_method='lsq', is_emccd=self.is_emccd
                 )
 
@@ -1563,10 +1532,8 @@ class GaussianWLSQFitter(BaseFitter):
         uncertainty = np.zeros(len(x))
         for i in range(len(x)):
             if mask[i]:
-                n_ph, b_sd = self._photons_and_background_sd(
-                    intensity[i], background[i])
                 uncertainty[i] = compute_localization_precision(
-                    n_ph, b_sd, sigma_x[i],
+                    intensity[i], background[i], sigma_x[i],
                     1.0, fitting_method='wlsq', is_emccd=self.is_emccd
                 )
 
@@ -1647,10 +1614,8 @@ class GaussianMLEFitter(BaseFitter):
         uncertainty = np.zeros(len(x))
         for i in range(len(x)):
             if mask[i]:
-                n_ph, b_sd = self._photons_and_background_sd(
-                    intensity[i], background[i])
                 uncertainty[i] = compute_localization_precision(
-                    n_ph, b_sd, sigma_x[i],
+                    intensity[i], background[i], sigma_x[i],
                     1.0, fitting_method='mle', is_emccd=self.is_emccd
                 )
 
@@ -2321,10 +2286,8 @@ class EllipticalGaussianMLEFitter(BaseFitter):
         for i in range(len(x)):
             if mask[i]:
                 sigma_eff = np.sqrt(sigma_x[i] * sigma_y[i])
-                n_ph, b_sd = self._photons_and_background_sd(
-                    intensity[i], background[i])
                 uncertainty[i] = compute_localization_precision(
-                    n_ph, b_sd, sigma_eff,
+                    intensity[i], background[i], sigma_eff,
                     1.0, fitting_method='mle', is_emccd=self.is_emccd
                 )
 
@@ -3032,9 +2995,8 @@ class MultiEmitterFitter(BaseFitter):
                 all_sx.append(sigma)
                 all_sy.append(sigma)
                 all_chi2.append(best_nll)
-                n_ph, b_sd = self._photons_and_background_sd(inten, offset)
                 all_unc.append(compute_localization_precision(
-                    n_ph, b_sd, sigma, 1.0,
+                    inten, offset, sigma, 1.0,
                     fitting_method=self.mfa_fitting_method,
                     is_emccd=self.is_emccd
                 ))
