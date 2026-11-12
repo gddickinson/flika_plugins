@@ -608,7 +608,8 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
                 self.puff4_PowerAverage, self.puff4_FreqAverage = getAverage(puff4_start, puff4_stop)
                 self.average_dict.update( {'puff4_PowerAverage' : self.puff4_PowerAverage, 'puff4_FreqAverage' :self.puff4_FreqAverage} )
     
-        self.averageResults_dict.update( {'AverageResult_{}'.format(str(key)) : self.average_dict} )  
+            # one entry per ROI trace (this line used to sit after the loop, keeping only the last trace)
+            self.averageResults_dict.update( {'AverageResult_{}'.format(str(key)) : self.average_dict} )
         return
 
     def exportAverage(self):
