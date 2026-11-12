@@ -42,6 +42,8 @@ class JoinTracks():
         normed_points = points_array - center[None, :]
         radiusGyration_tensor = np.einsum('im,in->mn', normed_points, normed_points)/len(points_array)
         eig_values, eig_vectors = np.linalg.eig(radiusGyration_tensor)
+        # The tensor is real and symmetric: NumPy >= 2.5 returns complex arrays here, so keep the real part.
+        eig_values, eig_vectors = eig_values.real, eig_vectors.real
         radius_gyration_value = np.sqrt(np.sum(eig_values))
         asymmetry_numerator = pow((eig_values[0] - eig_values[1]), 2)
         asymmetry_denominator = 2 * (pow((eig_values[0] + eig_values[1]), 2))
@@ -107,7 +109,8 @@ class JoinTracks():
         ab = points_set_b - points_set_a
         bc = points_set_c - points_set_b
         # Evaluate sin and cos values
-        cross_products = np.cross(ab, bc)
+        # z-component of the 2D cross product (np.cross of 2-vectors is an error in NumPy >= 2.5)
+        cross_products = ab[:, 0] * bc[:, 1] - ab[:, 1] * bc[:, 0]
         dot_products = np.einsum('ij,ij->i', ab, bc)
         product_magnitudes_ab_bc = np.linalg.norm(ab, axis=1) * np.linalg.norm(bc, axis=1)
         cos_vals = dot_products / product_magnitudes_ab_bc

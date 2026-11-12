@@ -5284,6 +5284,8 @@ class FeatureCalculator:
 
         rg_tensor = np.einsum('im,in->mn', normed_points, normed_points) / len(points_array)
         eig_values, eig_vectors = np.linalg.eig(rg_tensor)
+        # The tensor is real and symmetric: NumPy >= 2.5 returns complex arrays here, so keep the real part.
+        eig_values, eig_vectors = eig_values.real, eig_vectors.real
 
         radius_gyration = np.sqrt(np.sum(eig_values))
 
@@ -5382,7 +5384,8 @@ class FeatureCalculator:
         ab = points_b - points_a
         bc = points_c - points_b
 
-        cross_products = np.cross(ab, bc)
+        # z-component of the 2D cross product (np.cross of 2-vectors is an error in NumPy >= 2.5)
+        cross_products = ab[:, 0] * bc[:, 1] - ab[:, 1] * bc[:, 0]
         dot_products = np.einsum('ij,ij->i', ab, bc)
         magnitudes = np.linalg.norm(ab, axis=1) * np.linalg.norm(bc, axis=1)
 
