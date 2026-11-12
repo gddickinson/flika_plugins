@@ -4196,6 +4196,10 @@ class AutocorrelationAnalyzer:
         # Use pandas diff to find frame discontinuities
         frame_diff = df['frame'].diff()
         new_traj_mask = (frame_diff <= 0).copy()
+        # A new track number also starts a trajectory: a track that begins at a later frame than the previous
+        # track ended has no frame reset, and was previously joined onto it.
+        if 'track_number' in df.columns:
+            new_traj_mask |= df['track_number'].ne(df['track_number'].shift())
         new_traj_mask.iloc[0] = True
 
         # Find trajectory start indices
@@ -4265,11 +4269,14 @@ class AutocorrelationAnalyzer:
             track_id = f"track_{i+1}"
             individual_track_results[track_id] = {}
 
-            max_intervals = min(num_intervals, traj_length)
+            # A track of L points has L-1 direction vectors, so the longest lag with a vector pair is L-2 steps.
+            # Every lag 1..num_intervals is computed when the track is long enough (the loop used to stop at
+            # num_intervals-1, leaving the last lag empty).
+            max_step = min(num_intervals, traj_length - 2)
             traj_vectors = df.iloc[start_idx:end_idx]
 
             # For each step size
-            for step in range(1, max_intervals):
+            for step in range(1, max_step + 1):
                 time_point = time_interval * step
 
                 # Get vectors
@@ -4377,8 +4384,8 @@ class AutocorrelationAnalyzer:
             track_data = tracks_df[tracks_df['track_number'] == track_num].sort_values('frame')
 
             if len(track_data) >= 3:  # Need minimum track length
-                # Add track data with consistent frame numbering
-                track_subset = track_data[['frame', 'x', 'y']].copy()
+                # Keep the track number so calculate_normed_vectors can split the combined table by track
+                track_subset = track_data[['track_number', 'frame', 'x', 'y']].copy()
                 grouped_tracks.append(track_subset)
 
         if not grouped_tracks:
