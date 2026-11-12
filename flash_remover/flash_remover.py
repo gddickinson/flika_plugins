@@ -209,7 +209,7 @@ class Flash_remover(BaseProcess_noPriorWindow):
         for row in range(r):
             for col in range(c):
                 points = range(0,n)
-                xp = [0,n]
+                xp = [0,n-1]  # the first and last frames of the block are the buffer frames either side
                 fp = [flash[0,row,col],flash[-1,row,col]]
                 
                 interp_data = np.interp(points,xp,fp)
