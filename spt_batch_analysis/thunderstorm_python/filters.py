@@ -15,7 +15,6 @@ import numpy as np
 from scipy import ndimage
 from scipy.ndimage import convolve1d
 from scipy.signal import convolve2d
-import pywt
 
 
 class BaseFilter:
