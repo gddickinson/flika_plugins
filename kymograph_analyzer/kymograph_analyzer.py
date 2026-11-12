@@ -24,6 +24,19 @@ else:
     from flika.roi import ROI_Drawing, makeROI
 
 
+def _event_bounds(above):
+    """(starts, ends) of the complete runs of True in `above`: start is the first frame above threshold, end is one
+    past the last, so trace[start:end] is the event. Runs cut off by the start or end of the trace have no up- or
+    down-crossing and are left out, as before. Up- and down-crossings used to be zipped as found, which mispaired
+    every event when the trace began above threshold, and the start was the last frame below threshold."""
+    crossings = np.diff(above.astype(int))
+    starts = np.where(crossings == 1)[0] + 1
+    ends = np.where(crossings == -1)[0] + 1
+    if len(ends) and len(starts) and ends[0] < starts[0]:
+        ends = ends[1:]
+    return starts[:len(ends)], ends
+
+
 class KymographAnalyzer(BaseProcess_noPriorWindow):
     """
     Advanced Kymograph Analysis for studying spatiotemporal dynamics in TIRF microscopy.
@@ -328,9 +341,7 @@ class KymographAnalyzer(BaseProcess_noPriorWindow):
             elif method == 'threshold':
                 # Simple threshold crossing
                 above_threshold = trace > (threshold * np.std(trace) + np.mean(trace))
-                crossings = np.diff(above_threshold.astype(int))
-                starts = np.where(crossings == 1)[0]
-                ends = np.where(crossings == -1)[0]
+                starts, ends = _event_bounds(above_threshold)
 
                 for start, end in zip(starts, ends):
                     if end - start >= min_duration:
@@ -345,9 +356,7 @@ class KymographAnalyzer(BaseProcess_noPriorWindow):
                 # Z-score based detection
                 z_scores = zscore(trace)
                 above_threshold = z_scores > threshold
-                crossings = np.diff(above_threshold.astype(int))
-                starts = np.where(crossings == 1)[0]
-                ends = np.where(crossings == -1)[0]
+                starts, ends = _event_bounds(above_threshold)
 
                 for start, end in zip(starts, ends):
                     if end - start >= min_duration:
