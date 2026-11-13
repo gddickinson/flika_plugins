@@ -67,12 +67,14 @@ def load(path, names, extra: dict | None = None) -> dict:
         picked.append((name, ast.copy_location(fn, top[cls])))
     used = _names_used([n for _, n in picked])
     ns = {"__name__": f"flika_plugin_{path.stem}", "__file__": str(path), **(extra or {})}
+    needed = used - set(extra or {})   # names given in `extra` (stand-ins) are never imported
     for node in tree.body:
-        if _is_import_block(node) and _bound_names(node) & used:
+        if _is_import_block(node) and _bound_names(node) & needed:
             try:
                 exec(compile(ast.Module(body=[node], type_ignores=[]), str(path), "exec"), ns)
             except Exception:  # noqa: BLE001 - flika, qtpy and other GUI-only imports are expected to fail
                 pass
+    ns.update(extra or {})
     for _, node in picked:
         exec(compile(ast.fix_missing_locations(ast.Module(body=[node], type_ignores=[])), str(path), "exec"), ns)
     return {name: ns[node.name] for name, node in picked}

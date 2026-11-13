@@ -21,3 +21,5 @@ NanotubeDetection/
 /locsAndTracksPlotter/__pycache__
 /volumeSlider/__pycache__
 /spt_batch_analysis/thunderstorm_python/__pycache__
+site/
+__pycache__/

@@ -1,0 +1,10 @@
+# Web catalogue (FastAPI) and its tests: python -m pytest -q tests
+fastapi==0.162.2
+httpx==0.28.1
+pytest==9.2.0
+uvicorn==0.54.0
+# read by the API (web/demos.py reads the test-data TIFFs) and by the tests that run the plugins' own functions
+numpy==2.5.4
+scipy==1.18.1
+pandas==3.1.1
+tifffile==2026.11.8

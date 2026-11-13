@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FLIKA Plugins</title>
+<meta name="description" content="A catalogue of the FLIKA plugins in gddickinson/flika_plugins (status, menus, dependencies, READMEs, classes and functions), with in-browser demos of spot localization, track features and chunked FFT ported from the plugins' Python.">
+<link rel="icon" href="static/icon.svg">
+<link rel="stylesheet" href="static/style.css">
+<link rel="stylesheet" href="static/style_app.css">
+</head>
+<body>
+<canvas id="bg" aria-hidden="true"></canvas>
+<header class="top">
+  <a class="brand" href="#/"><span class="mark"></span>FLIKA Plugins</a>
+  <nav class="groups">
+    <a href="#/plugins" data-nav="plugins">Plugins</a>
+    <details><summary>Demos</summary><div class="menu">
+      <a href="#/demos">All demos</a>
+      <a href="#/demo/localization">Spot localization</a>
+      <a href="#/demo/tracks">Track features</a>
+      <a href="#/demo/fft">FFT in chunks</a>
+    </div></details>
+    <a href="#/about" data-nav="about">About</a>
+  </nav>
+  <div class="right"><a class="small mute" href="https://github.com/gddickinson/flika_plugins" target="_blank" rel="noopener">GitHub</a></div>
+</header>
+<main id="app" tabindex="-1"></main>
+<footer class="foot">FLIKA Plugins · <a href="https://github.com/gddickinson/flika_plugins">source on GitHub</a> · <span id="mode"></span></footer>
+<script type="module" src="static/main.js"></script>
+</body>
+</html>

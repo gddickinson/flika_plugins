@@ -1,0 +1,55 @@
+/* FLIKA Plugins: accent palette and page styles (theme in style.css). */
+:root { --accent:#3dffb0; --accent2:#ff6bd6; --accent3:#3db8ff; --glow:rgba(61,255,176,.13); }
+button, .btn, .seg button.on { color:#00140c; }
+.two > *, .side > *, .row > * { min-width:0; }
+.mark { border-color:var(--accent); box-shadow:0 0 12px var(--accent), inset 0 0 0 4px var(--bg), inset 0 0 0 9px var(--accent3); }
+.hero .btn { margin-right:10px; }
+.hide { display:none !important; }
+
+/* status badges */
+.st { display:inline-block; font:11px var(--mono); padding:2px 8px; border-radius:3px; border:1px solid var(--line); color:var(--mute); white-space:nowrap; vertical-align:middle; }
+.st.main { color:var(--accent); border-color:color-mix(in srgb, var(--accent) 55%, transparent); }
+.st.experimental { color:var(--accent3); border-color:color-mix(in srgb, var(--accent3) 55%, transparent); }
+.st.py311, .st.broken { color:var(--accent2); border-color:color-mix(in srgb, var(--accent2) 55%, transparent); }
+h1 .st { font-size:13px; }
+
+/* browse */
+.filters { display:grid; grid-template-columns:2fr 1fr 1fr; gap:10px; align-items:end; }
+.slist { list-style:none; padding:0; margin:0; }
+.slist li { border-bottom:1px solid var(--line); padding:10px 4px; }
+.slist li a.nm { font:600 15px var(--mono); overflow-wrap:anywhere; }
+.slist .sum { display:block; color:#c6d4ee; font-size:14px; margin-top:2px; }
+.slist .meta { font:12px var(--mono); color:var(--mute); overflow-wrap:anywhere; }
+
+/* plugin page */
+.kv { display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:14px; }
+.kv dt { color:var(--mute); } .kv dd { margin:0; overflow-wrap:anywhere; }
+.fn { border-top:1px solid var(--line); padding:10px 0; overflow-wrap:anywhere; }
+.fn code { overflow-wrap:anywhere; }
+.fn code.sig { color:var(--accent3); }
+.pager { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; margin:24px 0 0; overflow-wrap:anywhere; }
+details.box { border:1px solid var(--line); border-radius:6px; padding:8px 14px; margin:12px 0; background:rgba(9,12,26,.7); }
+details.box > summary { cursor:pointer; font:600 13px var(--mono); color:var(--accent2); text-transform:uppercase; letter-spacing:.08em; }
+.md { overflow-wrap:anywhere; } .md pre { overflow:auto; max-width:100%; } .md h3, .md h4 { margin:18px 0 6px; }
+.md blockquote { border-left:3px solid var(--line); margin:8px 0; padding-left:12px; color:var(--mute); }
+.tblwrap { overflow-x:auto; max-width:100%; }
+.tbl td, .tbl th { font:12.5px var(--mono); }
+
+/* demos */
+.demo-grid { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:18px; align-items:start; }
+.stage canvas { width:100%; height:auto; touch-action:none; cursor:crosshair; image-rendering:pixelated; }
+.ctl2 { display:grid; gap:4px; } .ctl2 label { margin-top:6px; } .chk { display:flex; gap:6px; align-items:center; }
+.vals { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:8px; margin-top:10px; }
+.vals div { background:rgba(12,16,32,.92); border-left:3px solid var(--accent3); padding:6px 10px; border-radius:0 4px 4px 0; }
+.vals b { display:block; font:600 16px var(--mono); } .vals b small { font-size:11px; color:var(--mute); } .vals span { color:var(--mute); font-size:12px; }
+.chart { width:100%; height:auto; display:block; }
+.chart text { fill:var(--mute); font:11px var(--mono); }
+.chart .axis { stroke:var(--line); }
+.src-list { font-size:13px; overflow-wrap:anywhere; }
+.legend { display:flex; flex-wrap:wrap; gap:6px 16px; margin:8px 0; font:12px var(--mono); }
+.legend span::before { content:""; display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--c); margin-right:6px; }
+.groups { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:8px; }
+.groups div { border:1px solid var(--line); border-radius:6px; padding:6px 10px; }
+.groups span { font:600 13px var(--mono); display:block; } .groups input { width:70px; }
+input[type=number] { max-width:120px; }
+@media (max-width:760px) { .filters, .demo-grid { grid-template-columns:1fr; } }

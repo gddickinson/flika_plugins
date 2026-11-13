@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -21,6 +22,7 @@ def _box(v):
     return SimpleNamespace(value=lambda: v)
 
 
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")  # the plugin prints log10 of a 0 Hz frequency
 def test_every_trace_gets_its_averages():
     t = np.arange(400) * 0.01
     traces = {0: np.sin(2 * np.pi * 5 * t), 1: 0.5 * np.sin(2 * np.pi * 12 * t)}
