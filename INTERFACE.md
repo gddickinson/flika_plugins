@@ -20,8 +20,8 @@ A collection of FLIKA plugins. Each folder with an `info.xml` is one plugin (64 
 | `web/topics.py` | `TOPICS`, `topic_of(folder)`: the only hand-made grouping |
 | `web/demos.py` | `DEMOS` (which plugin functions each JS engine ports), `localization_data()` (test-data frames + reference positions), `track_data()`, `real_camera()` |
 | `web/source_loader.py` | `load(path, names, extra)`: run a plugin's own function / class / method without importing flika or Qt |
-| `web/static/` | front end: `main.js` (router), `home.js`, `browse.js`, `plugin.js`, `demos.js`, `demo_localize.js`, `demo_tracks.js`, `demo_fft.js`, `about.js`, `ui.js` (chart, Markdown), `static_api.js`, `core.js` / `style.css` (shared kit), `style_app.css` |
-| `web/static/*_engine.js` | JS ports: `localize_engine.js` (+ `erf.js`), `track_engine.js`, `fft_engine.js`; `*.test.mjs` node tests, `fixture.test.mjs` helper |
+| `web/static/` | front end: `main.js` (router), `home.js`, `browse.js`, `plugin.js`, `demos.js`, `demo_localize.js`, `demo_tracks.js`, `demo_fft.js`, `demo_kymo.js`, `about.js`, `ui.js` (chart, Markdown), `static_api.js`, `core.js` / `style.css` (shared kit), `style_app.css` |
+| `web/static/*_engine.js` | JS ports: `localize_engine.js` (+ `erf.js`), `track_engine.js`, `fft_engine.js`, `kymo_engine.js`; `*.test.mjs` node tests, `fixture.test.mjs` helper |
 
 Connections: `app.py` → `plugins.py` → `topics.py`; `app.py` → `demos.py` (reads `spt_batch_analysis/test_data`,
 `EXPERIMENTAL/advanced_particle_tracking/*tracking_results.csv`). `scripts/make_demo_fixture.py` → `thunderstorm_python`

@@ -11,7 +11,7 @@ route('home', async () => {
       <a href="https://flika-org.github.io/" target="_blank" rel="noopener">FLIKA</a>, the image-processing program for
       biologists: calcium-puff detection, single-particle tracking and ThunderSTORM-style localization, light-sheet
       volumes, ROI tools and movie export. Each page is read from the plugin's own files (info.xml, README and Python
-      source). Three of the analyses are ported to JavaScript and run here in your browser.</p>
+      source). Four of the analyses are ported to JavaScript and run here in your browser.</p>
     <a class="btn" href="#/plugins">Browse the plugins</a><a class="btn alt" href="#/demos">Interactive demos</a>
   </section>
   <div class="tiles">

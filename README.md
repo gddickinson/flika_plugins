@@ -72,7 +72,7 @@ including the newer ones (spt_batch_analysis, thunderstorm_flika, kymograph_anal
 ## Web catalogue and demos
 
 A browsable catalogue of every plugin, read from the repository itself (info.xml, README, and each Python file parsed
-with `ast`), with interactive demos of three pure-numpy analyses ported to JavaScript and run in the browser:
+with `ast`), with interactive demos of four pure-numpy analyses ported to JavaScript and run in the browser:
 
 - **Spot detection and localization**: the `spt_batch_analysis/thunderstorm_python` pipeline on single frames
   (B-spline wavelet filter, `std(Wave.F1)` threshold, 4/8-neighbourhood local maxima, integrated-Gaussian LSQ/WLSQ fits,
@@ -81,6 +81,8 @@ with `ast`), with interactive demos of three pure-numpy analyses ported to JavaS
 - **Track features and directional autocorrelation**: `FeatureCalculator`, `GeometricAnalyzer`, `DirectionAnalyzer`
   and `AutocorrelationAnalyzer` from `spt_batch_analysis` on committed tracks, random walks, drawn or pasted tracks.
 - **FFT in chunks**: `fft_Chunker`'s `fft_chunks` and group averages on the plugin's own test signal or a pasted trace.
+- **Kymograph speed and events**: `kymograph_analyzer`'s gradient velocity and threshold / z-score events on a
+  synthetic kymograph with a known speed (kymograph extraction from a movie is not ported).
 
 Each port is checked in node against the plugin's own Python (`tests/fixtures/demo_cases.json`, written by
 `scripts/make_demo_fixture.py`); the localization port reproduces the Python fits to better than 1e-6.
@@ -101,6 +103,7 @@ python -m pytest -q tests     # catalogue, demos, fixture, regression tests and 
 |---|---|
 | ![Home](docs/img/home.png) | ![A plugin page](docs/img/plugin.png) |
 | ![Localization demo](docs/img/localization.png) | ![Track features demo](docs/img/tracks.png) |
+| ![FFT demo](docs/img/fft.png) | ![Kymograph demo](docs/img/kymograph.png) |
 
 ## Contributing
 

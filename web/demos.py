@@ -40,6 +40,12 @@ DEMOS = [
               "against frequency, and ranges of chunks are averaged (the baseline and puff groups).",
      "engine": "fft_engine.js", "plugins": ["fft_Chunker"],
      "functions": [{"path": "fft_Chunker/fft_Chunker.py", "names": ["fft_chunks", "FFT_Chunker.makeAverage"]}]},
+    {"id": "kymograph", "title": "Kymograph speed and events",
+     "blurb": "kymograph_analyzer's gradient (optical-flow) velocity and its threshold / z-score event detection on a "
+              "synthetic kymograph with a known speed, so you can see what the estimate recovers and how noise biases it.",
+     "engine": "kymo_engine.js", "plugins": ["kymograph_analyzer"],
+     "functions": [{"path": "kymograph_analyzer/kymograph_analyzer.py",
+                    "names": ["_event_bounds", "KymographAnalyzer.measure_velocities", "KymographAnalyzer.detect_events"]}]},
 ]
 
 

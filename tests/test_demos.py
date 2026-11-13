@@ -51,6 +51,10 @@ def test_tracks_fixture_is_current():
     _close(_fresh(mk.tracks), FIXTURE["tracks"])
 
 
+def test_kymograph_fixture_is_current():
+    _close(_fresh(mk.kymograph), FIXTURE["kymograph"])
+
+
 def test_fft_fixture_is_current():
     _close(_fresh(mk.fft), FIXTURE["fft"])
 

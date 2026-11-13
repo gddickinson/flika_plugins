@@ -199,10 +199,31 @@ def fft() -> dict:
                                         "result": me.averageResults_dict["AverageResult_0"]}}
 
 
+# --- kymograph ----------------------------------------------------------------------------------------------------
+def kymograph() -> dict:
+    """measure_velocities and detect_events of kymograph_analyzer on seeded synthetic kymographs (not data)."""
+    f = load(ROOT / "kymograph_analyzer/kymograph_analyzer.py",
+             ["_event_bounds", "KymographAnalyzer.measure_velocities", "KymographAnalyzer.detect_events"])
+    rng = np.random.default_rng(11)
+    cases = []
+    for speed, noise in [(0.6, 0.0), (-1.1, 3.0), (0.25, 6.0)]:
+        t, x = np.mgrid[0:30, 0:50].astype(float)
+        k = 10 + 100 * np.exp(-0.5 * ((x - 25 + speed * 15 - speed * t) / 3.0) ** 2) + noise * rng.normal(size=t.shape)
+        me = type("Me", (), {})()
+        me.kymograph, me.analysis_results = None, {}
+        v = f["KymographAnalyzer.measure_velocities"](me, kymo=k, spacing=0.16, row_time=0.05)
+        ev = {m: f["KymographAnalyzer.detect_events"](me, kymo=k, method=m, threshold=1.0, min_duration=3)
+              for m in ("threshold", "zscore")}
+        cases.append({"speed": speed, "rows": 30, "cols": 50, "data": k.ravel(), "spacing": 0.16, "row_time": 0.05,
+                      **{key: v[key] for key in ("velocity", "mean_velocity", "median_velocity", "std_velocity")},
+                      "map": v["velocity_map"].ravel(), "events": ev})
+    return {"cases": cases}
+
+
 def build() -> dict:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return clean({"localization": localization(), "tracks": tracks(), "fft": fft()})
+        return clean({"localization": localization(), "tracks": tracks(), "fft": fft(), "kymograph": kymograph()})
 
 
 if __name__ == "__main__":

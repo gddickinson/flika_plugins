@@ -1,7 +1,7 @@
 // Demos index and the #/demo/<id> router: each demo lives in its own module and exports render(host, ctx).
 import { api, app, esc, list, route } from './core.js';
 
-const MODULES = { localization: './demo_localize.js', tracks: './demo_tracks.js', fft: './demo_fft.js' };
+const MODULES = { localization: './demo_localize.js', tracks: './demo_tracks.js', fft: './demo_fft.js', kymograph: './demo_kymo.js' };
 const sources = d => `<ul class="src-list">${d.functions.map(f => `<li><a href="https://github.com/gddickinson/flika_plugins/blob/master/${esc(f.path)}" target="_blank" rel="noopener">${esc(f.path)}</a>: <code>${f.names.map(esc).join('</code>, <code>')}</code></li>`).join('')}</ul>`;
 
 route('demos', async () => {
@@ -12,7 +12,7 @@ route('demos', async () => {
     ${list(demos, d => `<div class="panel"><h2 style="margin-top:0"><a href="#/demo/${d.id}">${esc(d.title)}</a></h2>
       <p>${esc(d.blurb)}</p><p class="small mute">Ports:</p>${sources(d)}</div>`)}
     <p class="small mute">Not ported (they need FLIKA, Qt, a GPU or large libraries): U-Track linking, the SVM classifier,
-      multi-emitter and MLE fitting, puff detection (detect_puffs), light-sheet reshaping, the experimental deep-learning
+      multi-emitter and MLE fitting, puff detection (detect_puffs), kymograph extraction from a movie, light-sheet reshaping, the experimental deep-learning
       plugins. Their pages in the catalogue describe them.</p>`;
 });
 

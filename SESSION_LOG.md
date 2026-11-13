@@ -18,3 +18,12 @@
   - Persistence docstring (random directions give ~0.5, not 0). README plugin list now says where each one lives.
 - Needs George's decision: fft_Chunker group stop chunk (exclusive, crashes when start == stop); kymograph velocity
   formula (dx/dt gradient ratio); see reports/flika_plugins.md.
+
+## 2026-11-12 (follow-up): George's decisions on fft_Chunker and kymograph_analyzer
+- fft_Chunker group ranges now include the stop chunk; start == stop is a one-chunk group (was: stop excluded, and a
+  crash). Plugin README says so; regression test `tests/test_fix_fft_chunker_inclusive.py`.
+- kymograph_analyzer measure_velocities returns v (was -1/v): least-squares 'velocity' = -sum(It Ix)/sum(Ix^2), per-pixel
+  map -It/Ix where |Ix| >= 10% of max; units samples/row, or spacing/row_time for physical units; positive = towards
+  the end of the line. README/EXAMPLES updated. Regression test `tests/test_fix_kymograph_velocity.py`.
+- New demo "Kymograph speed and events" (`kymo_engine.js`, node-tested against the plugin; synthetic kymograph with a
+  known speed). Noise biases the gradient estimate towards zero; the page says so.

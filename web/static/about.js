@@ -21,7 +21,7 @@ route('about', async () => {
       ${s.parse_errors} files do not parse with Python 3.12 (Python 2 syntax) and are flagged on their plugin's page.</li>
     <li>Status is the folder a plugin sits in; topics are the only hand-made grouping.</li>
     <li>The demos are JavaScript ports of pure-numpy code from spt_batch_analysis (ThunderSTORM localization, track
-      features, directional autocorrelation) and fft_Chunker, tested in node against the plugin code itself.</li>
+      features, directional autocorrelation), fft_Chunker and kymograph_analyzer, tested in node against the plugin code itself.</li>
   </ul>
   <h2>Run this site locally</h2>
   <pre>pip install -r requirements-web.txt
