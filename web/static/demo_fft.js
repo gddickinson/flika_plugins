@@ -19,13 +19,13 @@ export function render(host) {
     </div>
   </div>
   <h3>Group averages (makeAverage)</h3>
-  <p class="small">Chunks are numbered from 1. As in the plugin, a group averages chunks <i>start</i> to <i>stop - 1</i>
-    (Python's range(start, stop)), and is used when stop > 0 and stop >= start.</p>
+  <p class="small">Chunks are numbered from 1. As in the plugin, a group averages chunks <i>start</i> to <i>stop</i>
+    (stop included; start = stop is one chunk), and is used when stop > 0 and stop >= start.</p>
   <div class="groups" id="groups"></div><div id="avg"></div><div class="tblwrap"><table class="tbl" id="peaks"></table></div>
   <p class="small mute">"Power" is |FFT| (the magnitude), as the plugin computes it; negative frequencies are dropped.
     The plugin exports log10 of these values. The noise added here is from a seeded generator (not data).</p>`;
   const $ = s => host.querySelector(s);
-  const groups = [['baseline', 1, 2], ['puff1', 2, 4], ['puff2', 4, 6], ['puff3', 0, 0], ['puff4', 0, 0]];
+  const groups = [['baseline', 1, 1], ['puff1', 2, 3], ['puff2', 4, 5], ['puff3', 6, 6], ['puff4', 0, 0]];
   $('#groups').innerHTML = groups.map(([g, a, b]) => `<div><span>${g}</span><label>start <input type="number" min="1" value="${a}" data-g="${g}" data-e="a"></label>
     <label>stop <input type="number" min="0" value="${b}" data-g="${g}" data-e="b"></label></div>`).join('');
   let pasted = null;
@@ -57,7 +57,7 @@ export function render(host) {
       series.push({ x: av.frequency, y: av.power, color: COLORS[k], dots: true, line: false });
       let best = -1;
       av.power.forEach((p, i) => { if (i > 0 && Number.isFinite(p) && (best < 0 || p > av.power[best])) best = i; });
-      rows.push(`<tr><td><span style="color:${COLORS[k]}">${g}</span></td><td>${av.chunks} chunks (${a} to ${b - 1})</td><td>${best > 0 ? fmt(av.frequency[best], 3) + ' Hz' : '-'}</td><td>${best > 0 ? fmt(av.power[best]) : '-'}</td></tr>`);
+      rows.push(`<tr><td><span style="color:${COLORS[k]}">${g}</span></td><td>${av.chunks} chunk${av.chunks === 1 ? '' : 's'} (${a} to ${b})</td><td>${best > 0 ? fmt(av.frequency[best], 3) + ' Hz' : '-'}</td><td>${best > 0 ? fmt(av.power[best]) : '-'}</td></tr>`);
     });
     $('#avg').innerHTML = chart(series, { w: 1040, h: 240, xlabel: 'frequency (Hz)', ylabel: 'mean power', logy: $('#logy').checked });
     $('#peaks').innerHTML = '<tr><th>group</th><th>chunks</th><th>peak frequency (above 0 Hz)</th><th>its mean power</th></tr>' + rows.join('');

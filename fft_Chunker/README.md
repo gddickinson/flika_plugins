@@ -28,5 +28,8 @@ Loads CSV time-series data, splits traces into chunks, performs FFT on each chun
 | Parameter | Description |
 |-----------|-------------|
 | Chunk size | Number of frames per FFT chunk |
-| Baseline start/end | Frame range for baseline condition |
-| Puff 1-4 start/end | Frame ranges for experimental conditions |
+| Baseline start/stop | Chunks averaged for the baseline (chunk numbers from 1, stop included) |
+| Puff 1-4 start/stop | Chunks averaged for each experimental group (from 1, stop included; start = stop is one chunk) |
+
+A group is used when stop > 0 and stop >= start. Before 2026-11-12 the stop chunk was left out of each group and
+start = stop stopped with an error, so averages exported earlier cover one chunk fewer than the stop value suggests.

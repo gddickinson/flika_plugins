@@ -44,13 +44,12 @@ export function fftChunks(trace, n, timeStep) {
 }
 
 // makeAverage's getAverage(start, stop): element-wise mean of the power (and frequency) columns of chunks
-// start .. stop-1 (chunks are numbered from 1; the stop chunk is not included, as range(start, stop) in the plugin).
-// A row is NaN when any averaged chunk is NaN there. A group is used when stop > 0 and stop >= start; with
-// stop == start the range is empty and the plugin raises an error.
+// start .. stop inclusive (chunks are numbered from 1; start == stop is one chunk). A row is NaN when any averaged
+// chunk is NaN there. A group is used when stop > 0 and stop >= start.
 export function groupAverage(chunks, start, stop) {
   if (!(stop > 0 && stop >= start)) return null;
-  const sel = chunks.slice(start - 1, stop - 1);
-  if (!sel.length || start < 1) return { error: `chunks ${start} to ${stop - 1} is an empty range: the plugin stops with an error here` };
+  const sel = chunks.slice(Math.max(start, 1) - 1, stop);
+  if (start < 1 || stop > chunks.length) return { error: `chunks ${start} to ${stop}: there are only ${chunks.length} chunks (the plugin limits the boxes to that)` };
   const avg = key => sel[0][key].map((_, r) => sel.reduce((s, c) => s + c[key][r], 0) / sel.length);
   return { power: avg('power'), frequency: avg('frequency'), chunks: sel.length };
 }

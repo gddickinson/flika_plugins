@@ -547,12 +547,14 @@ class FFT_Chunker(BaseProcess_noPriorWindow):
     
     
             def getAverage(start,end):
+                # chunks are numbered from 1; the group is start..end inclusive (start == end is one chunk).
+                # This used to be range(start, end), which left out the end chunk and crashed when start == end.
                 powerList = []
                 frequencyList = []
                 
                 print('Averaging Group {} - {}'.format(start,end))
                 
-                for i in range(start,end):
+                for i in range(start,end+1):
                     print('power_{}'.format(str(i)),)
                     #print(result_data['power_{}'.format(str(i))])
                     print('frequency_{}'.format(str(i)),)

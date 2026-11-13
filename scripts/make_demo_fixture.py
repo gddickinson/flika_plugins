@@ -186,7 +186,7 @@ def fft() -> dict:
                       "rows": len(df), "power_raw": [df[f"power_{i}"].tolist() for i in range(1, len(chunks) + 1)]})
     df = f["fft_chunks"](noise, 64, 0.05)[0]
     box = lambda v: type("Box", (), {"value": staticmethod(lambda: v)})  # noqa: E731
-    groups = {"baseline": (1, 3), "puff1": (3, 6), "puff2": (2, 4), "puff3": (0, 0), "puff4": (6, 8)}
+    groups = {"baseline": (1, 2), "puff1": (3, 5), "puff2": (2, 2), "puff3": (0, 0), "puff4": (6, 8)}
     me = type("Me", (), {})()
     me.result_dict = {0: df}
     for g, (a, b) in groups.items():
