@@ -5489,7 +5489,10 @@ class DirectionAnalyzer:
 
     @staticmethod
     def calculate_directional_persistence(angles):
-        """Calculate directional persistence (0=random, 1=straight)"""
+        """Calculate directional persistence: 1 - mean |turn| / 180.
+
+        1 for a straight line, about 0.5 for uncorrelated (random) directions, 0 when every step reverses.
+        """
         if len(angles) < 2 or np.isnan(angles).all():
             return np.nan
 
