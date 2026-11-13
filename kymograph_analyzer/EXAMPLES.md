@@ -169,17 +169,14 @@ kymo = kymograph_analyzer(
     normalize=True
 )
 
-# Measure velocities
-velocities = kymograph_analyzer.measure_velocities()
+# Measure velocities in physical units (positive = towards the end of the line)
+pixel_size = 0.16  # µm per sample along the line (your microscope calibration)
+frame_interval = 0.05  # seconds between frames (times the temporal binning)
 
-# Convert to physical units
-pixel_size = 0.16  # µm/pixel (your microscope calibration)
-frame_interval = 0.05  # seconds between frames
+velocities = kymograph_analyzer.measure_velocities(spacing=pixel_size, row_time=frame_interval)
 
-velocity_um_s = velocities['mean_velocity'] * pixel_size / frame_interval
-
-print(f"Wave velocity: {velocity_um_s:.2f} µm/s")
-print(f"Median velocity: {velocities['median_velocity'] * pixel_size / frame_interval:.2f} µm/s")
+print(f"Wave velocity: {velocities['velocity']:.2f} µm/s")
+print(f"Median of the per-pixel map: {velocities['median_velocity']:.2f} µm/s")
 ```
 
 ## Example 5: Flicker Frequency Analysis

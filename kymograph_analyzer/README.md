@@ -514,18 +514,20 @@ kymo = kymograph_analyzer(
     normalize=True
 )
 
-# 3. Measure velocities
+# 3. Measure velocities (samples along the line per kymograph row; positive = towards the end of the line)
 velocities = kymograph_analyzer.measure_velocities()
 
-print(f"Mean wave velocity: {velocities['mean_velocity']:.2f} pixels/frame")
+print(f"Wave velocity: {velocities['velocity']:.2f} pixels/frame")
 
-# Convert to physical units
-pixel_size = 0.16  # µm/pixel
-frame_interval = 0.05  # seconds
-velocity_um_s = velocities['mean_velocity'] * pixel_size / frame_interval
-
-print(f"Wave velocity: {velocity_um_s:.2f} µm/s")
+# Physical units: spacing = distance per sample, row_time = frame interval x temporal binning
+velocities = kymograph_analyzer.measure_velocities(spacing=0.16, row_time=0.05)  # µm, s
+print(f"Wave velocity: {velocities['velocity']:.2f} µm/s")
 ```
+
+`velocity` is the least-squares estimate over the whole kymograph, -Σ(∂I/∂t·∂I/∂x)/Σ(∂I/∂x)², from
+I(t, x) = f(x - v t). `mean_velocity` / `median_velocity` summarise the per-pixel map -(∂I/∂t)/(∂I/∂x), computed where
+the spatial gradient is at least 10% of its maximum. Before 2026-11-12 the plugin returned (∂I/∂x)/(∂I/∂t), i.e.
+-1/v, so velocities measured with earlier versions are not speeds.
 
 ## Citations
 

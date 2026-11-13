@@ -371,13 +371,32 @@ class KymographAnalyzer(BaseProcess_noPriorWindow):
         self.analysis_results['events'] = events
         return events
 
-    def measure_velocities(self, kymo=None, events=None):
+    def measure_velocities(self, kymo=None, events=None, spacing=1.0, row_time=1.0, min_gradient=0.1):
         """
-        Measure velocities of events/waves in kymograph.
+        Measure the velocity of features moving along the line in the kymograph (gradient / optical-flow method).
+
+        For intensity carried along the line at speed v, I(t, x) = f(x - v t), so dI/dt = -v dI/dx and
+        v = -(dI/dt) / (dI/dx). (Before 2026-11-12 this returned (dI/dx) / (dI/dt), i.e. -1/v, averaged over all
+        pixels including flat background.)
+
+        Parameters:
+        -----------
+        kymo : ndarray
+            Kymograph (rows = time, columns = position along the line); self.kymograph if None
+        events : unused
+        spacing : float
+            Distance per column (sample along the line). Default 1: samples, about 1 pixel each.
+        row_time : float
+            Time per row (frame interval x temporal binning). Default 1: kymograph rows (= frames when unbinned).
+        min_gradient : float
+            The per-pixel map is computed only where |dI/dx| > min_gradient x max |dI/dx|; elsewhere it is NaN.
 
         Returns:
         --------
-        dict : Dictionary with velocity measurements
+        dict : 'velocity' (least-squares estimate over the whole kymograph, -sum(It*Ix)/sum(Ix^2): the speed of
+        the dominant moving feature), 'mean_velocity' / 'median_velocity' / 'std_velocity' of the per-pixel map,
+        'velocity_map', and 'units' ('samples/row' unless spacing/row_time are given).
+        Positive velocity = moving towards the end of the line (increasing column index).
         """
         if kymo is None:
             kymo = self.kymograph
@@ -385,23 +404,29 @@ class KymographAnalyzer(BaseProcess_noPriorWindow):
         if kymo is None:
             return {}
 
-        # Simple approach: detect diagonal features
-        # Calculate gradient
-        dt_gradient = np.gradient(kymo, axis=0)  # temporal
-        dx_gradient = np.gradient(kymo, axis=1)  # spatial
+        kymo = np.asarray(kymo, dtype=float)
+        dt_gradient = np.gradient(kymo, axis=0)  # temporal (per row)
+        dx_gradient = np.gradient(kymo, axis=1)  # spatial (per sample)
+        scale = spacing / row_time
 
-        # Velocity = dx/dt
-        with np.errstate(divide='ignore', invalid='ignore'):
-            velocity_map = dx_gradient / (dt_gradient + 1e-10)
+        # Least-squares velocity over the whole kymograph
+        denom = np.sum(dx_gradient * dx_gradient)
+        velocity = -np.sum(dt_gradient * dx_gradient) / denom * scale if denom > 0 else np.nan
 
-        # Filter out infinite and nan values
+        # Per-pixel map where the spatial gradient is informative
+        strong = np.abs(dx_gradient) > min_gradient * np.max(np.abs(dx_gradient)) if denom > 0 else np.zeros_like(kymo, bool)
+        velocity_map = np.full(kymo.shape, np.nan)
+        velocity_map[strong] = -dt_gradient[strong] / dx_gradient[strong] * scale
         valid_velocities = velocity_map[np.isfinite(velocity_map)]
+        have = len(valid_velocities) > 0
 
         velocities = {
-            'mean_velocity': np.mean(valid_velocities),
-            'median_velocity': np.median(valid_velocities),
-            'std_velocity': np.std(valid_velocities),
-            'velocity_map': velocity_map
+            'velocity': velocity,
+            'mean_velocity': np.mean(valid_velocities) if have else np.nan,
+            'median_velocity': np.median(valid_velocities) if have else np.nan,
+            'std_velocity': np.std(valid_velocities) if have else np.nan,
+            'velocity_map': velocity_map,
+            'units': 'samples/row' if spacing == 1.0 and row_time == 1.0 else 'distance/time',
         }
 
         self.analysis_results['velocities'] = velocities
